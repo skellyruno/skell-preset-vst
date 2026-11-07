@@ -24,4 +24,4 @@ As of the Stage 3 testing and integration pass on 2026-11-07:
 Supported bus layouts in source: mono→mono, mono→stereo, and stereo→stereo. Stereo→mono is unsupported. In mono→stereo, the mono input feeds both effect channels. Host verification is pending.
 
 
-Stage 4: reduced idle GUI overdraw (meter-only canvas redraw) and clarified true bypass semantics; added zipped `.skellpreset` roundtrip I/O, browser Import/Save controls, validation caps and a Windows `NativePresetPackage` CTest target. Status: code integrated; Windows CI validation pending. Covers / IR / sample embedding are not yet supported.
+Stage 4: reduced idle GUI overdraw (meter-only canvas redraw) and clarified true bypass semantics; added zipped `.skellpreset` roundtrip I/O, browser Import/Save controls, validation caps and a Windows `NativePresetPackage` CTest target. Status: Windows CI passed (VST3, Standalone, native ZIP roundtrip/security tests) on November 7, 2026. Covers / IR / sample embedding are not yet supported.

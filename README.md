@@ -1,6 +1,6 @@
 # SKELL-PRESET | ONE PLUGIN. EVERY SOUND.
 
-**Stage 4 / 0.4.0 development build** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, global gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete. Windows VST3 and Standalone targets compiled successfully in GitHub Actions at Stage 3; Stage 4 package validation is pending. Neither build has been DAW-tested in FL Studio.**
+**Stage 4 / 0.4.0 development build** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, global gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete. Windows VST3 and Standalone targets compiled successfully in GitHub Actions at Stage 3; Stage 4 Windows VST3, Standalone and native package security tests passed in GitHub Actions run 42405769660. Neither build has been DAW-tested in FL Studio.**
 
 ## What works now
 
