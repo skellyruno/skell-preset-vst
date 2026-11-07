@@ -12,6 +12,9 @@ struct Result {
     bool inverted=false;
     float gainDb=0, score=0, confidence=0;
     float rmsDry=0,rmsWet=0;
+    double fractionalLagSamples=0.0; // parabolic refinement; not applied to audio
+    float driftSamples=0.f;          // estimated lag difference across the performance
+    bool driftSuspected=false;       // advisory only, not a correction pass
 };
 inline double dot(const std::vector<float>& a,const std::vector<float>& b,int lag,bool inverted) {
     double sum=0;
@@ -56,6 +59,38 @@ inline Result analyse(const std::vector<float>& dry,const std::vector<float>& we
         if(j<0||j>=(long)wet.size())continue;
         const auto x=dry[i],y=wet[(size_t)j]*(o.inverted?-1.f:1.f);
         err+=(x*gain-y)*(x*gain-y);den+=y*y;
+    }
+    // Interpolate the local cross-correlation summit. Sub-sample alignment
+    // is a confidence/inspection cue in this phase, not hidden delay compensation.
+    const double aPrev=std::abs(dot(dry,wet,o.lagSamples-1,false));
+    const double aMid=std::abs(dot(dry,wet,o.lagSamples,false));
+    const double aNext=std::abs(dot(dry,wet,o.lagSamples+1,false));
+    const double curvature=aPrev-2*aMid+aNext;
+    const double fine=std::abs(curvature)>1e-15
+        ? std::clamp(.5*(aPrev-aNext)/curvature,-.5,.5):0.;
+    o.fractionalLagSamples=(double)o.lagSamples+fine;
+    // Compare early/late correlation peaks over short, distinct windows.
+    // Deliberately only probe close to the global alignment; time-stretching
+    // and nonlinear processing can make broader lag estimates ambiguous.
+    if (dry.size()>=4096 && wet.size()>=4096) {
+        const auto window=std::min(dry.size()/5,wet.size()/5);
+        auto localLag=[&](size_t start) {
+            int optimum=o.lagSamples;
+            double highest=-1;
+            for(int lag=o.lagSamples-24;lag<=o.lagSamples+24;lag++) {
+                double d=0;
+                for(size_t i=start;i<start+window && i<dry.size();++i) {
+                    const long j=(long)i+lag;
+                    if(j>=0&&j<(long)wet.size()) d+=(double)dry[i]*wet[(size_t)j];
+                }
+                if(std::abs(d)>highest){highest=std::abs(d);optimum=lag;}
+            }
+            return optimum;
+        };
+        const int early=localLag(dry.size()/10);
+        const int late=localLag(dry.size()*7/10);
+        o.driftSamples=(float)(late-early);
+        o.driftSuspected=std::abs(o.driftSamples)>=2.f;
     }
     o.gainDb=dsp::gainToDb((float)std::abs(gain));
     o.score=std::clamp((float)(100.*(1-std::sqrt(err/std::max(den,1e-12)))),0.f,100.f);

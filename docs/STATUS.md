@@ -1,6 +1,6 @@
 # Build and feature status
 
-As of the initial 2026-11-07 source archive:
+As of the Stage 3 testing and integration pass on 2026-11-07:
 
 | Component | State | Evidence / next gate |
 | --- | --- | --- |
@@ -10,8 +10,10 @@ As of the initial 2026-11-07 source archive:
 | Eight sound processing types | Implemented in source, not release-audited | Benchmarks & listening A/B |
 | Native factory bank browser | 24 factory settings + search | User banks / import/export / preview later |
 | Four macro controls | Connected to DSP | Dynamic mapping later |
+| Slot transition smoothing | Implemented, portable-automation test passed | Verify host automation against recordings |
+| Delay time read-head crossfade | 20 ms crossfade; portable stress test passed | Verify extreme feedback and rapid tempo automation in DAW |
 | UI 1168x688 + four sizes | Implemented in source | Visual UI/HiDPI regression on Windows |
-| MATCH alignment / gain / polarity | Portable test passed | Multi-take and noise/drift tests |
+| MATCH alignment / gain / polarity | Portable test passed; fractional lag and advisory drift diagnostics | Multi-take and real-recording drift tests |
 | MATCH 3-module restricted fitter | Portable test passed >95% on synthetic same-take fixture | Generic free-form analysis still missing |
 | MATCH wizard and real dry/wet WAV fitting | Not implemented | Worker/UI with cancel, waveform alignment |
 | Native ZIP format | Design only | Implement secure archive validation |

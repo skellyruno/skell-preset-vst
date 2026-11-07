@@ -1,18 +1,18 @@
 # SKELL-PRESET | ONE PLUGIN. EVERY SOUND.
 
-**Stage 1 / 0.1.0 source preview** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, global gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete; the VST3 has not been compiled or DAW-tested in this environment.**
+**Stage 2 / 0.2.0 source preview** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, global gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete; the VST3 has not been compiled or DAW-tested in this environment.**
 
 ## What works now
 
 - VST3 and Standalone CMake targets, dedicated IDs `SkAu`/`SkPr`, bundle `audio.skell.preset`.
 - Ten serial slots. Choose a module from the right-side dropdown or a slot's context menu, toggle it on/off, adjust four control knobs + per-slot WET, and drag a handle to reorder.
 - EQ: high-pass + one peaking band (one visible draggable EQ node). Compressor: threshold, ratio, attack/release. Gate: threshold and release. Saturator, exciter, zero-lookahead soft limiter, delay and SkellCore FDN reverb.
-- Input/output trim, global gate, dry/wet mix, delta, and 20ms ramped signal bypass. Stereo and mono audio input/output. ProcessBlock reads pre-cached atomic parameter pointers and performs no dynamic allocation.
+- Input/output trim, global gate, dry/wet mix, delta, and 20ms ramped global bypass and per-slot wet/bypass transitions. Smooth delay read-head time changes over 20ms to reduce clicks from automation. Stereo and mono audio input/output. ProcessBlock reads pre-cached atomic parameter pointers and performs no dynamic allocation.
 - Four *functioning* macros: **Tone** adjusts EQ boost, **Punch** adjusts compressor threshold, **Space** adjusts delay/reverb wet, **Grit** adjusts saturation drive. The macro destinations are presently fixed. Parameter IDs for future macros 5-8 already exist but are not routed.
 - 24 original factory preset *settings* across Main Vocals, Adlibs and Vocoding banks. Bank and name search, art cards. Vocoding bank entries currently load effect-chain settings, **not a vocoder**.
 - Screenshot-inspired navy/green vector editor, EQ display, 4 sizes (S/M/L/XL), SkellCore LookAndFeel, original six cover images.
 - DAW state serialization through APVTS + ValueTree metadata for order, name, and program.
-- MATCH offline **portable** harness tests latency alignment, polarity, gain and a restricted EQ/compressor/delay search. The restricted synthetic test scores over 95%, but **only with known band/Q and envelope priors**; this is not a demonstrated real-vocal general MATCH engine.
+- MATCH offline **portable** harness tests latency alignment, polarity, gain, invalid/silent input handling, fractional-lag and advisory drift estimation, and a restricted EQ/compressor/delay search. The restricted synthetic test scores over 95%, but **only with known band/Q and envelope priors**; this is not a demonstrated real-vocal general MATCH engine.
 
 ## Not yet implemented
 
@@ -104,3 +104,5 @@ Later a ValueTree `MacroMap` should map `{slot_id,param_id,min,max,curve,invert}
 ## Assets and licensing
 
 Six original placeholder covers and an original skull symbol are in `assets/`. The screenshot is used only as a layout reference, not embedded. The plugin uses system sans fonts (OS fallback), not redistributed font files. Use original or licensed recordings for future preview/matching packs. SkellCore third-party backend licensing remains owned/declared in the pinned upstream dependency.
+
+4. `SkellPresetAutomationTest`: 48 kHz rapidly automated delay-time changes, finite stereo output, bounded feedback, and repeatable reset.

@@ -15,6 +15,8 @@ int main() {
     const auto r=skellpreset::match::analyse(dry,wet,120);
     std::cout<<"MATCH alignment lag="<<r.lagSamples<<" gainDb="<<r.gainDb<<" score="<<r.score<<"\n";
     assert(r.lagSamples==73);assert(std::abs(r.gainDb+3.09804f)<.02f);assert(r.score>99.9f);
+    assert(std::abs(r.fractionalLagSamples-73.0)<.5);
+    assert(!r.driftSuspected);
     // Polarity inversion must be detected, not mistaken for failure.
     for(auto &x:wet)x=-x;
     const auto inv=skellpreset::match::analyse(dry,wet,120);
