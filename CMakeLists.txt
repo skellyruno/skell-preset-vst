@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkellPreset VERSION 0.1.0 LANGUAGES C CXX)
+project(SkellPreset VERSION 0.4.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -103,7 +103,7 @@ if(SKELL_PRESET_PACKAGE_TESTS)
         Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
         tests/test_preset_package.cpp)
     target_compile_definitions(SkellPresetPackageTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-    target_link_libraries(SkellPresetPackageTests PRIVATE juce::juce_core juce::juce_data_formats)
+    target_link_libraries(SkellPresetPackageTests PRIVATE juce::juce_core)
     target_compile_features(SkellPresetPackageTests PRIVATE cxx_std_17)
     add_test(NAME NativePresetPackage COMMAND SkellPresetPackageTests)
 endif()

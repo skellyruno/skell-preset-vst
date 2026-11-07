@@ -1,6 +1,6 @@
 # SKELL-PRESET | ONE PLUGIN. EVERY SOUND.
 
-**Stage 2 / 0.2.0 source preview** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, global gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete; the VST3 has not been compiled or DAW-tested in this environment.**
+**Stage 4 / 0.4.0 development build** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, global gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete. Windows VST3 and Standalone targets compiled successfully in GitHub Actions at Stage 3; Stage 4 package validation is pending. Neither build has been DAW-tested in FL Studio.**
 
 ## What works now
 
@@ -16,7 +16,7 @@
 
 ## Not yet implemented
 
-The MATCH WAV drop/capture wizard, robust cross-correlation drift correction, multistage spectral/dynamics/pitch inference, full multi-resolution optimizer/report, custom zipped `.skellpreset` import/export, user banks, favorites, audible demo auditioning, 3-lane parallel mixer, true-peak latency/PDC, host-driven vocoder, advanced adlib stack/throws, ADAPT, dynamic macro mapping, the per-slot A/B workflow and all 19 requested advanced modules. `autoGain`, `adapt`, `laneMode`, `laneX_*` and macros 5-8 are **reserved parameters with no DSP effect**. The 24 factory names/styles are included, but some names refer to future capabilities; they do not imply the unavailable functionality is present.
+The MATCH WAV drop/capture wizard, robust cross-correlation drift correction, multistage spectral/dynamics/pitch inference, full multi-resolution optimizer/report, editable user banks, favorites, audible demo auditioning, 3-lane parallel mixer, true-peak latency/PDC, host-driven vocoder, advanced adlib stack/throws, ADAPT, dynamic macro mapping, the per-slot A/B workflow and all 19 requested advanced modules. `autoGain`, `adapt`, `laneMode`, `laneX_*` and macros 5-8 are **reserved parameters with no DSP effect**. The 24 factory names/styles are included, but some names refer to future capabilities; they do not imply the unavailable functionality is present.
 
 We keep these inactive rather than simulating or mislabeling them. The current limiter is a basic zero-lookahead soft-clipper, not SkellCore's experimental true-peak module. The SkellCore FDN is the shared prototype, not the production MasteringEngine.
 
@@ -26,7 +26,7 @@ The application follows `skellyruno/skell-vst-template` (`CMakeLists.txt` / JUCE
 
 `1f759e4f6ab08d950aaccfc2dfc0415825461ff1`
 
-Current shared target: `SkellCore::DSP` and `SkellCore::UI`. JUCE is pinned at `8.0.12`. The official template's bundled reference files are not copied here; instead this project consumes the immutable SkellCore source and remains independently buildable with its **own** plugin ID. No change is made to the template repo or other SKELL plugins.
+Current shared target: `SkellCore::DSP` and `SkellCore::UI`. JUCE is pinned at `8.0.12`. The GitHub repository contains the template's bundled SkellCore source. Standalone source ZIPs without that folder fetch the immutable SkellCore revision. The plugin has its **own** plugin ID. No change is made to the template repo or other SKELL plugins.
 
 ## Windows build / packaging
 
@@ -40,7 +40,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 Alternatively download/clone JUCE 8.0.12 locally and pass `-DJUCE_PATH=C:\path\to\JUCE`. If SkellCore already lives on disk, pass `-DSKELLCORE_PATH=C:\path\to\skell-vst-template\SkellCore` to build without that network FetchContent. The CMake-generated `.vst3` is normally under `build/SkellPreset_artefacts/Release/VST3/`, the Standalone under `build/SkellPreset_artefacts/Release/Standalone/`. The actual exact folder depends on generator and JUCE version.
 
-Upload **the contents of this source ZIP** into a new GitHub repository such as `skell-preset-vst` and run **Actions → Skell-Preset / Windows VST3 → Run workflow**. The workflow runs portable tests first, then compiles VST3 and Standalone on `windows-latest`, and provides a VST3 `.zip` artifact.
+The source is already uploaded to [`skellyruno/skell-preset-vst`](https://github.com/skellyruno/skell-preset-vst); use **Actions → Skell-Preset | Windows VST3 → Run workflow**. The workflow runs portable tests first, then compiles VST3 and Standalone on `windows-latest`, and provides a VST3 `.zip` artifact.
 
 ## macOS build
 
@@ -65,6 +65,7 @@ ctest --test-dir build-test --output-on-failure
 1. `SkellPresetDSPTest`: finite EQ/compression/echo/limiter output at 44.1, 48 and 96 kHz.
 2. `SkellPresetMatchTest`: alignment, polarity inversion and gain recovery of a synthetic same-performance pair.
 3. `SkellPresetRestrictedChainFitTest`: constrained recovery of a known Biquad + Compressor + Delay render; the synthetic example score is >95 and reports estimated settings. Real-vocal field tests are **still needed**.
+4. `SkellPresetAutomationTest`: 48 kHz rapidly automated delay-time changes, finite stereo output, bounded feedback, and repeatable reset.
 
 ## Audio routing / parameters
 
@@ -72,11 +73,11 @@ ctest --test-dir build-test --output-on-failure
 
 Every processing callback reads its pre-cached atomics once per block and traverses the ordered slots. Input, output, mix and bypass are linearly smoothed over 20ms. All current modules report zero lookahead/host latency; the FDN and delay produce time effects but do not require delaying the dry path for PDC. This does **not** fulfill stage-2's dynamic latency management yet.
 
-### Preset state and planned package schema
+### Preset state and native package schema
 
-Current factory presets are defined in `Source/chain/FactoryPresets.h`. Project/host persistence uses a ValueTree snapshot containing a fixed APVTS parameter tree plus `slotOrder`, `presetName` and `program` properties. A user export ZIP is not implemented.
+Current factory presets are defined in `Source/chain/FactoryPresets.h`. Project/host persistence uses a ValueTree snapshot containing fixed APVTS parameters plus `slotOrder`, `presetName` and `program` properties.
 
-The *planned*, not yet implemented, `.skellpreset` zip will contain `preset.json` with `{schema_version, name, author, bank, tags, chain, macros, input_profile, loudness, match_report}`, optional `cover.png`, validated `ir/*.wav`, validated `samples/*.wav`, and `notes.md`. The importer will cap entry count, archive size, expanded byte count and path depth; reject absolute/traversal paths, symlinks and unknown executable content; and version-migrate schemas. Do not interpret today's DAW state blob as a portable `.skellpreset` file.
+The working Stage 4 `.skellpreset` ZIP contains exactly one `preset.json` (`schemaVersion: 1`). Save and Import buttons in the browser use `PresetPackage`, validating and applying identity, 10 ordered slots, 16 normalized parameters each, macro values, and selected global controls. See *Stage 4: native .skellpreset import/export* below for security limits. The future full schema may include `{tags,input_profile,loudness,match_report}` and optional cover, IR, samples and notes, subject to explicit version migration and asset validation. This is distinct from the host's DAW-state blob.
 
 ### Macros
 
@@ -104,8 +105,6 @@ Later a ValueTree `MacroMap` should map `{slot_id,param_id,min,max,curve,invert}
 ## Assets and licensing
 
 Six original placeholder covers and an original skull symbol are in `assets/`. The screenshot is used only as a layout reference, not embedded. The plugin uses system sans fonts (OS fallback), not redistributed font files. Use original or licensed recordings for future preview/matching packs. SkellCore third-party backend licensing remains owned/declared in the pinned upstream dependency.
-
-4. `SkellPresetAutomationTest`: 48 kHz rapidly automated delay-time changes, finite stereo output, bounded feedback, and repeatable reset.
 
 
 ## Stage 4: native .skellpreset import/export
