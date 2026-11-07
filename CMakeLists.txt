@@ -1,30 +1,94 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkellCoreVSTTemplate VERSION 1.0.0 LANGUAGES C CXX)
+project(SkellPreset VERSION 0.1.0 LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+option(SKELL_PRESET_PORTABLE_ONLY "Build portable DSP and MATCH tests without JUCE" OFF)
+enable_testing()
+add_subdirectory(tests)
+if(SKELL_PRESET_PORTABLE_ONLY)
+    return()
+endif()
+
 include(FetchContent)
 if(DEFINED JUCE_PATH AND EXISTS "${JUCE_PATH}/CMakeLists.txt")
-  add_subdirectory("${JUCE_PATH}" JUCE)
+    add_subdirectory("${JUCE_PATH}" JUCE)
 else()
-  FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.12 GIT_SHALLOW TRUE)
-  FetchContent_MakeAvailable(JUCE)
+    FetchContent_Declare(JUCE
+      GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+      GIT_TAG 8.0.12
+      GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(JUCE)
 endif()
-add_subdirectory(SkellCore)
-juce_add_plugin(SkellPlugin
-  COMPANY_NAME "Skell Audio"
-  BUNDLE_ID "audio.skell.quickstart"
-  PLUGIN_MANUFACTURER_CODE SkAu
-  PLUGIN_CODE Sk01
-  FORMATS VST3
-  PRODUCT_NAME "Skell Quickstart"
-  IS_SYNTH FALSE
-  NEEDS_MIDI_INPUT FALSE
-  NEEDS_MIDI_OUTPUT FALSE
-  IS_MIDI_EFFECT FALSE
-  COPY_PLUGIN_AFTER_BUILD FALSE)
-juce_generate_juce_header(SkellPlugin)
-target_sources(SkellPlugin PRIVATE Source/PluginProcessor.cpp Source/PluginProcessor.h Source/PluginEditor.cpp Source/PluginEditor.h)
-target_compile_features(SkellPlugin PRIVATE cxx_std_17)
-target_compile_definitions(SkellPlugin PUBLIC JUCE_VST3_CAN_REPLACE_VST2=0)
-target_compile_definitions(SkellPlugin PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-target_link_libraries(SkellPlugin PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
 
-target_link_libraries(SkellPlugin PRIVATE SkellCore::DSP SkellCore::UI)
+# Immutable SkellCore v0.2 template revision. No changing upstream main branch.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/SkellCore/CMakeLists.txt")
+    # Template checkout: use the bundled SkellCore directly (no duplicate fetch).
+    add_subdirectory(SkellCore)
+elseif(DEFINED SKELLCORE_PATH AND EXISTS "${SKELLCORE_PATH}/CMakeLists.txt")
+    add_subdirectory("${SKELLCORE_PATH}" SkellCoreLocal)
+else()
+    FetchContent_Declare(SkellCoreDependency
+      GIT_REPOSITORY https://github.com/skellyruno/skell-vst-template.git
+      GIT_TAG 1f759e4f6ab08d950aaccfc2dfc0415825461ff1
+      SOURCE_SUBDIR SkellCore)
+    FetchContent_MakeAvailable(SkellCoreDependency)
+endif()
+
+juce_add_plugin(SkellPreset
+    COMPANY_NAME "Skell Audio"
+    BUNDLE_ID "audio.skell.preset"
+    PLUGIN_MANUFACTURER_CODE SkAu
+    PLUGIN_CODE SkPr
+    FORMATS VST3 Standalone
+    PRODUCT_NAME "Skell-Preset"
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT FALSE
+    NEEDS_MIDI_OUTPUT FALSE
+    IS_MIDI_EFFECT FALSE
+    COPY_PLUGIN_AFTER_BUILD FALSE)
+juce_generate_juce_header(SkellPreset)
+
+# Regenerate original placeholder PNGs on clean source checkouts. No Pillow required.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/bg_panel.png")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_assets.py"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        RESULT_VARIABLE SKELL_ASSET_RESULT)
+    if(NOT SKELL_ASSET_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to generate the SKELL original placeholder assets")
+    endif()
+endif()
+
+juce_add_binary_data(SkellPresetAssets
+    SOURCES
+    assets/bg_panel.png
+    assets/logo_skull.png
+    assets/cover_0.png
+    assets/cover_1.png
+    assets/cover_2.png
+    assets/cover_3.png
+    assets/cover_4.png
+    assets/cover_5.png)
+
+target_sources(SkellPreset PRIVATE
+    Source/PluginProcessor.h Source/PluginProcessor.cpp
+    Source/PluginEditor.h Source/PluginEditor.cpp
+    Source/chain/BasicDSP.h Source/chain/FactoryPresets.h
+    Source/ui/Theme.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
+    Source/ui/SlotEditor.h Source/ui/SlotEditor.cpp
+    Source/ui/PresetBrowser.h Source/ui/PresetBrowser.cpp
+    Source/match/MatchCore.h)
+target_compile_definitions(SkellPreset PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+target_link_libraries(SkellPreset PRIVATE
+    SkellPresetAssets SkellCore::DSP SkellCore::UI
+    juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
+target_compile_features(SkellPreset PRIVATE cxx_std_17)
+
+if(MSVC)
+    target_compile_options(SkellPreset PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(SkellPreset PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()

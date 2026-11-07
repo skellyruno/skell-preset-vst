@@ -1,0 +1,140 @@
+{
+  "project": "Skell-Preset",
+  "version": "0.1.0-stage1",
+  "core_pin": "1f759e4f6ab08d950aaccfc2dfc0415825461ff1",
+  "status": "Portable tests passed; VST3 build not locally verified",
+  "files": [
+    {
+      "path": ".github/workflows/windows-vst3.yml",
+      "sha256": "181f8be215c874565d8aa9a9d7aea04bf82a92d9bb85d9615549dca410baf278"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "233f1b5fc0e0db1272ad19eb944cef9d9cdd6cb67f9ecc2b5b4b2a5f0765279f"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "sha256": "1d35d9387db3bb840570ddd389e4e047e6ba621f70ab78d5f4bb9cac398d1fac"
+    },
+    {
+      "path": "README.md",
+      "sha256": "b4cd34a3df6feb50b20828cae7edd9afe30d9d2d398c584e36d9a23d4ac3d1b8"
+    },
+    {
+      "path": "Source/PluginEditor.cpp",
+      "sha256": "545f096d61a996e93e7cf6028282afd8edc584d871502142eeb6e671aec79c0e"
+    },
+    {
+      "path": "Source/PluginEditor.h",
+      "sha256": "06ffd73356011d12adba473b00acff5af4e022d612a12cc2aa42a6ec4b351dc8"
+    },
+    {
+      "path": "Source/PluginProcessor.cpp",
+      "sha256": "09ab8180df6822b559ecd99bacc74a9c3c678772cbe20a5849fa06072f50ecf5"
+    },
+    {
+      "path": "Source/PluginProcessor.h",
+      "sha256": "e1abea72a81e3458c2f45c01990a051600c99940c094765ed1f813cd279b2e75"
+    },
+    {
+      "path": "Source/chain/BasicDSP.h",
+      "sha256": "a0cef184df24178c77343bdde0fb799a3266be58f5153b21e22b06f411adcf71"
+    },
+    {
+      "path": "Source/chain/FactoryPresets.h",
+      "sha256": "5e84c17457373cb08e0639a3944116c8a6bbf55161aafd6cab7cd9e7555e9d79"
+    },
+    {
+      "path": "Source/match/ChainFitter.h",
+      "sha256": "3361b86a8c9591c081d4e436e83909bcf82ae93ab049c31e31abbfdb699c982f"
+    },
+    {
+      "path": "Source/match/MatchCore.h",
+      "sha256": "9d52639d0b028ca7f79930a7aef771f579b77be4e9f2cb2adb667275b7e7663d"
+    },
+    {
+      "path": "Source/ui/ChainPanel.cpp",
+      "sha256": "d1825a3e44e4bf9a4a2577b349ab5a739d7b08f0175c7b6d88dac38537146c42"
+    },
+    {
+      "path": "Source/ui/ChainPanel.h",
+      "sha256": "36ae1b565b8eea7e99d91f5e3c3bb2788b7db4738be1d94cdb1df53c1f488083"
+    },
+    {
+      "path": "Source/ui/PresetBrowser.cpp",
+      "sha256": "697e6439fa4ea515e07e0d9c1e87323dfe6af6bf1f4a3e56a76ff8824f986c35"
+    },
+    {
+      "path": "Source/ui/PresetBrowser.h",
+      "sha256": "a6e3db0a811ed06d9b6b8a1eb38f1978475dfaed006608e8d27b23922d0d654e"
+    },
+    {
+      "path": "Source/ui/SlotEditor.cpp",
+      "sha256": "4ceadde28717be71defeceeceb24b50c1a76abeef6d0c7008e5df81dc32d9417"
+    },
+    {
+      "path": "Source/ui/SlotEditor.h",
+      "sha256": "79f417292962197b7e84e7dbfe659c045e4099522b47b76ac1b33030b70c6d8b"
+    },
+    {
+      "path": "Source/ui/Theme.h",
+      "sha256": "791c62457dc60d16b4009a4e684db0374ecfcdcfe723a15c7e8444cc80153f76"
+    },
+    {
+      "path": "assets/bg_panel.png",
+      "sha256": "3939413246b885c384694b55cc99dcf3443d922123f334d1253c9d4f14891b24"
+    },
+    {
+      "path": "assets/cover_0.png",
+      "sha256": "c30639a1734c8f7b1897ab264e59ed16a227a2e7d8a3c4f40a0ae3417c4bbed1"
+    },
+    {
+      "path": "assets/cover_1.png",
+      "sha256": "38135fe30bf63c739a5f5bfd5909305c197a64ee35fdd2968d8e0b1c8cf75afd"
+    },
+    {
+      "path": "assets/cover_2.png",
+      "sha256": "8275ea4bd4bc68055068763b875163a3a7bf57d3f69d31f8b00485253312650d"
+    },
+    {
+      "path": "assets/cover_3.png",
+      "sha256": "932aaa7846e7aa9ec6acf2ad1658a3ec5b9f8f353facabe3730c8fc0900961e2"
+    },
+    {
+      "path": "assets/cover_4.png",
+      "sha256": "710ba88c2adb05d77a8e4c9053548ee21c3b01e761e1a65f7793d624f83ae411"
+    },
+    {
+      "path": "assets/cover_5.png",
+      "sha256": "eb970fa6182c06c8e55a31d76a197dbad858a9e9566f286598d5e0f9727d3d79"
+    },
+    {
+      "path": "assets/logo_skull.png",
+      "sha256": "bf2b19a89e48c73cef450d63c5fbea6029e912cfeeda2681e3a8d2633e900395"
+    },
+    {
+      "path": "docs/STATUS.md",
+      "sha256": "99877dc66549280c1a0e7800848f3fd7c0ba5bd868cbdcc832d99c19176d0b0b"
+    },
+    {
+      "path": "docs/portable-test-results.txt",
+      "sha256": "ba5ecb4c20455ec255fa57790fb9de930226d4ae3b643c70b5879892d0daaa55"
+    },
+    {
+      "path": "tests/CMakeLists.txt",
+      "sha256": "7175a131241ca9279d86e5c60636f9e71ae77deda786daeca9bae0c22d4a9874"
+    },
+    {
+      "path": "tests/test_chain_fitter.cpp",
+      "sha256": "0efaecbf6cfc72a6456098d85ee74a9362a17f83e22eaf9ca4f9e9c93d87768e"
+    },
+    {
+      "path": "tests/test_dsp.cpp",
+      "sha256": "bb565b0f115335d3b810f40e8c41d645ef1a495f57a25e273fb032597ce08ac7"
+    },
+    {
+      "path": "tests/test_match.cpp",
+      "sha256": "fc8ab58321c84c23460065a85f6161bfd02414a3418f8681a5ac834c3811ef07"
+    }
+  ]
+}
