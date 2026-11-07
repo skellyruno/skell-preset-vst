@@ -1,0 +1,75 @@
+name: Import Skell-Preset Stage 2 and build Windows VST3
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/stage2.b64'
+      - '.github/workflows/import-stage2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Validate and expand pinned source bundle
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import base64, hashlib, io, lzma, tarfile
+          data = base64.b64decode(Path("bootstrap/stage2.b64").read_text().strip(), validate=True)
+          expected = "d981284e39711e376526e43e89185ba884a9a2e2be6b34eeaa27960cb7508462"
+          actual = hashlib.sha256(data).hexdigest()
+          if actual != expected:
+              raise SystemExit("Source bundle digest mismatch: " + actual)
+          plain = lzma.decompress(data)
+          with tarfile.open(fileobj=io.BytesIO(plain), mode="r:") as archive:
+              for item in archive:
+                  rel = Path(item.name)
+                  if item.isdir():
+                      continue
+                  if not item.isfile() or rel.is_absolute() or ".." in rel.parts:
+                      raise SystemExit("Unsafe archive member: " + item.name)
+                  dest = Path.cwd() / rel
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  with archive.extractfile(item) as source:
+                      dest.write_bytes(source.read())
+          print("Imported pinned Skell-Preset sources")
+          '@ | python -
+      - name: Persist validated source tree
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force bootstrap
+          Remove-Item .github/workflows/import-stage2.yml
+          git config user.name "skell-preset-ci[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Import Skell-Preset Stage 2 source and tests"
+          git push origin HEAD:main
+      - name: Configure portable MATCH and DSP tests
+        run: cmake -S . -B build-test -DSKELL_PRESET_PORTABLE_ONLY=ON
+      - name: Build portable tests
+        run: cmake --build build-test --config Release --parallel 2
+      - name: Run MATCH and DSP tests
+        run: ctest --test-dir build-test -C Release --output-on-failure
+      - name: Configure JUCE + bundled SkellCore
+        run: cmake -S . -B build -A x64
+      - name: Build Windows VST3 and Standalone
+        run: cmake --build build --config Release --parallel 2
+      - name: Package built VST3
+        shell: pwsh
+        run: |
+          $vst = Get-ChildItem -Path build -Directory -Recurse -Filter '*.vst3' | Select-Object -First 1
+          if (-not $vst) { throw "VST3 output missing" }
+          Compress-Archive -Path $vst.FullName -DestinationPath Skell-Preset-VST3-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Skell-Preset-Windows-VST3
+          path: Skell-Preset-VST3-Windows.zip
+          if-no-files-found: error
