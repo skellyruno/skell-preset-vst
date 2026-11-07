@@ -76,6 +76,7 @@ target_sources(SkellPreset PRIVATE
     Source/PluginProcessor.h Source/PluginProcessor.cpp
     Source/PluginEditor.h Source/PluginEditor.cpp
     Source/chain/BasicDSP.h Source/chain/FactoryPresets.h
+    Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
     Source/ui/Theme.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
     Source/ui/SlotEditor.h Source/ui/SlotEditor.cpp
     Source/ui/PresetBrowser.h Source/ui/PresetBrowser.cpp
@@ -91,4 +92,18 @@ if(MSVC)
     target_compile_options(SkellPreset PRIVATE /W4 /permissive-)
 else()
     target_compile_options(SkellPreset PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
+
+# End-to-end native package regression tests (JUCE core only; no DAW required).
+option(SKELL_PRESET_PACKAGE_TESTS "Build .skellpreset security and roundtrip tests" ON)
+if(SKELL_PRESET_PACKAGE_TESTS)
+    juce_add_console_app(SkellPresetPackageTests PRODUCT_NAME "Skell-Preset Package Tests")
+    juce_generate_juce_header(SkellPresetPackageTests)
+    target_sources(SkellPresetPackageTests PRIVATE
+        Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
+        tests/test_preset_package.cpp)
+    target_compile_definitions(SkellPresetPackageTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(SkellPresetPackageTests PRIVATE juce::juce_core juce::juce_data_formats)
+    target_compile_features(SkellPresetPackageTests PRIVATE cxx_std_17)
+    add_test(NAME NativePresetPackage COMMAND SkellPresetPackageTests)
 endif()

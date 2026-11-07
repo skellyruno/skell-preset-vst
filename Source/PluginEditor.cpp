@@ -115,7 +115,7 @@ public:
             Theme::panelBox(g,{14,90,1140.f,507.f});
             Theme::text(g,current==2?"VOCODING WORKSPACE":"SIGNAL BYPASSED",{63,143,980,70},42,current==2?Theme::pink:Theme::muted,true);
             Theme::text(g,current==2?"Vocoder / MIDI harmonizer is a future stage. Current processing remains the advanced chain.":
-                              "The internal chain is bypassed. Input and output trims remain active.",
+                              "Click-free bypass passes the original input unchanged; trims, gate and chain are bypassed.",
                         {68,222,1010,50},16,Theme::muted);
         }
         const juce::StringArray m{"TONE","PUNCH","SPACE","GRIT"};
@@ -153,7 +153,11 @@ public:
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         if(slot.isVisible()!=(m==1))refresh();
-        chain.repaint();slot.repaint();repaint();
+        // Repaint only active signal panels and the two tiny meter strips;
+        // a full-frame 30 Hz redraw was costly on integrated GPUs.
+        if(m==1){chain.repaint();slot.repaint();}
+        repaint(juce::Rectangle<int>(307,651,88,26));
+        repaint(juce::Rectangle<int>(1068,651,100,26));
     }
     void mouseDown(const juce::MouseEvent&)override{if(browser.isVisible()){browser.setVisible(false);repaint();}}
     bool keyPressed(const juce::KeyPress& key)override{

@@ -106,3 +106,12 @@ Later a ValueTree `MacroMap` should map `{slot_id,param_id,min,max,curve,invert}
 Six original placeholder covers and an original skull symbol are in `assets/`. The screenshot is used only as a layout reference, not embedded. The plugin uses system sans fonts (OS fallback), not redistributed font files. Use original or licensed recordings for future preview/matching packs. SkellCore third-party backend licensing remains owned/declared in the pinned upstream dependency.
 
 4. `SkellPresetAutomationTest`: 48 kHz rapidly automated delay-time changes, finite stereo output, bounded feedback, and repeatable reset.
+
+
+## Stage 4: native .skellpreset import/export
+
+The factory browser now has **IMPORT** and **SAVE PRESET** actions for native files. A `.skellpreset` is a ZIP archive containing exactly one UTF-8 `preset.json` document. The Stage 4 schema (`schemaVersion: 1`) stores the preset name, author, bank, 10 module slots in their signal order, per-slot enabled state/wet/16 parameters, 8 macro values, and global input/output/mix/mode controls. There is **no external plugin preset loading** or third-party asset redistribution.
+
+**Security:** The reader never extracts files, rejects any archive with extra entries, unexpected names or symlinks, caps compressed archives at 4 MiB and the single uncompressed JSON entry at 256 KiB, and requires in-range finite control values, valid unique slot IDs, and an exact version. Invalid packages are rejected transactionally before changes reach the live chain. Export uses a temporary file and atomic replacement so a failed save doesn't clobber the old file.
+
+**Known limits:** This is a small, deterministic Stage 4 package *subset* with only `preset.json`; covers, IR WAVs, samples and multi-preset banks are not implemented yet. Preset import applies parameter changes on the UI thread but the current fixed-slot architecture has not implemented module-graph hot swaps or latency reconciliation. The `.skellpreset` roundtrip and malicious ZIP test executable is registered as `NativePresetPackage` in JUCE CTest builds.

@@ -3,6 +3,7 @@
 #include "../PluginProcessor.h"
 #include <array>
 #include <functional>
+#include <memory>
 #include <vector>
 class PresetBrowser final:public juce::Component {
 public:
@@ -18,6 +19,10 @@ public:
 private:
     SkellPresetAudioProcessor& processor;
     juce::TextEditor search;
+    juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"};
+    std::unique_ptr<juce::FileChooser> fileChooser;
+    void chooseImport();
+    void chooseExport();
     std::array<juce::Image,6> covers;
     int bank=0,scroll=0;
     std::vector<int> filtered() const;

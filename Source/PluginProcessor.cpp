@@ -242,6 +242,52 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",preset.bank,nullptr);
 }
+juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) const {
+    skellpreset::package::Document doc;
+    doc.name=name;
+    doc.bank=state.state.getProperty("presetBank","My Presets").toString();
+    doc.mode=juce::jlimit(0,3,(int)value("mode"));
+    doc.inputDb=value("input");doc.mix=value("mix");doc.outputDb=value("output");
+    for(int i=0;i<8;++i)doc.macros[(size_t)i]=value("macro"+juce::String(i+1));
+    for(int position=0;position<slotCount;++position){
+        auto& dst=doc.slots[(size_t)position];
+        dst.slotId=slotIdAt(position);
+        const auto prefix=slotPrefix(dst.slotId);
+        dst.type=juce::jlimit(0,NumberOfModules-1,(int)value(prefix+"type"));
+        dst.enabled=value(prefix+"on")>.5f;
+        dst.wet=value(prefix+"wet");
+        for(int k=0;k<16;++k)dst.params[(size_t)k]=getSlotParam(dst.slotId,k);
+    }
+    return skellpreset::package::write(file,doc);
+}
+juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
+    skellpreset::package::Document doc;
+    if(const auto result=skellpreset::package::read(file,doc);result.failed())return result;
+    // The entire document is validated before touching live parameters.
+    for(const auto& slot:doc.slots){
+        const auto prefix=slotPrefix(slot.slotId);
+        setSlotOn(slot.slotId,false);
+        setSlotType(slot.slotId,slot.type);
+        setReal(prefix+"wet",slot.wet);
+        for(int k=0;k<16;++k)setSlotParam(slot.slotId,k,slot.params[(size_t)k]);
+    }
+    std::uint64_t next=0;
+    for(int position=0;position<slotCount;++position){
+        const auto& slot=doc.slots[(size_t)position];
+        next|=(std::uint64_t)slot.slotId << (4*position);
+        setSlotOn(slot.slotId,slot.enabled);
+    }
+    packedOrder.store(next,std::memory_order_release);
+    setReal("input",doc.inputDb);setReal("mix",doc.mix);setReal("output",doc.outputDb);
+    setReal("mode",(float)doc.mode);
+    for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
+    name=doc.name;
+    selectedProgram=-1; // Imported sound is not a factory preset.
+    state.state.setProperty("presetName",name,nullptr);
+    state.state.setProperty("presetBank",doc.bank,nullptr);
+    return juce::Result::ok();
+}
+
 void SkellPresetAudioProcessor::reorderSlot(int from,int to) {
     if(from<0||from>=slotCount||to<0||to>=slotCount||from==to)return;
     std::array<int,slotCount> seq{};
@@ -280,7 +326,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             if(valid){std::uint64_t next=0;for(int i=0;i<slotCount;i++)next|=(std::uint64_t)proposed[(size_t)i]<<(4*i);packedOrder.store(next,std::memory_order_release);}
         }
         name=loaded.getProperty("presetName","Custom").toString();
-        selectedProgram=juce::jlimit(0,(int)factoryPresets.size()-1,(int)loaded.getProperty("program",0));
+        selectedProgram=juce::jlimit(-1,(int)factoryPresets.size()-1,(int)loaded.getProperty("program",0));
         state.replaceState(loaded);
     }
 }

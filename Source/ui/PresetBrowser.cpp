@@ -13,6 +13,15 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.onTextChange=[this]{scroll=0;repaint();};
     search.onEscapeKey=[this]{setVisible(false);if(onClose)onClose();};
     addAndMakeVisible(search);
+    for (auto* button : {&importButton,&exportButton}) {
+        button->setColour(juce::TextButton::buttonColourId,Theme::bg);
+        button->setColour(juce::TextButton::textColourOffId,Theme::white);
+        addAndMakeVisible(*button);
+    }
+    importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
+    exportButton.setTooltip("Save the active chain, slot order, macros and global controls");
+    importButton.onClick=[this] {chooseImport();};
+    exportButton.onClick=[this] {chooseExport();};
     const void* data[]={BinaryData::cover_0_png,BinaryData::cover_1_png,BinaryData::cover_2_png,
                         BinaryData::cover_3_png,BinaryData::cover_4_png,BinaryData::cover_5_png};
     const int size[]={BinaryData::cover_0_pngSize,BinaryData::cover_1_pngSize,BinaryData::cover_2_pngSize,
@@ -21,7 +30,44 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     setWantsKeyboardFocus(true);
 }
 void PresetBrowser::open(){bank=0;scroll=0;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);grabKeyboardFocus();repaint();}
-void PresetBrowser::resized(){search.setBounds(19,17,getWidth()-38,42);}
+void PresetBrowser::resized(){
+    search.setBounds(19,17,getWidth()-38,42);
+    importButton.setBounds(17,470,168,27);
+    exportButton.setBounds(17,502,168,27);
+}
+void PresetBrowser::chooseImport() {
+    fileChooser=std::make_unique<juce::FileChooser>("Import native Skell-Preset", juce::File{}, "*.skellpreset");
+    fileChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this](const juce::FileChooser& chooser) {
+            const auto file=chooser.getResult();
+            if(file==juce::File{})return;
+            const auto result=processor.importPreset(file);
+            if(result.failed()) {
+                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot import preset",result.getErrorMessage());
+                return;
+            }
+            if(onLoaded)onLoaded();
+            setVisible(false);
+            if(onClose)onClose();
+        });
+}
+void PresetBrowser::chooseExport() {
+    const auto base=juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+    const auto initial=base.getChildFile(juce::File::createLegalFileName(processor.presetName())+".skellpreset");
+    fileChooser=std::make_unique<juce::FileChooser>("Save native Skell-Preset",initial,"*.skellpreset");
+    fileChooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+        [this](const juce::FileChooser& chooser) {
+            auto file=chooser.getResult();
+            if(file==juce::File{})return;
+            if(!file.hasFileExtension(".skellpreset"))file=file.withFileExtension(".skellpreset");
+            const auto result=processor.exportPreset(file);
+            if(result.failed()) {
+                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot save preset",result.getErrorMessage());
+                return;
+            }
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"Preset saved",file.getFullPathName());
+        });
+}
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
     auto q=search.getText().toLowerCase().trim();

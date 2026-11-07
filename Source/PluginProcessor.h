@@ -3,6 +3,7 @@
 #include <SkellCore/Core.h>
 #include "chain/BasicDSP.h"
 #include "chain/FactoryPresets.h"
+#include "chain/PresetPackage.h"
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -25,7 +26,7 @@ public:
     bool isMidiEffect() const override {return false;}
     double getTailLengthSeconds() const override {return 8.0;}
     int getNumPrograms() override {return (int)skellpreset::factoryPresets.size();}
-    int getCurrentProgram() override {return selectedProgram;}
+    int getCurrentProgram() override {return juce::jmax(0,selectedProgram);}
     void setCurrentProgram(int) override;
     const juce::String getProgramName(int) override;
     void changeProgramName(int,const juce::String&) override {}
@@ -34,6 +35,9 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState state;
     void loadFactoryPreset(int index);
+    // Message-thread only, validated native .skellpreset ZIP packages.
+    juce::Result exportPreset(const juce::File& file) const;
+    juce::Result importPreset(const juce::File& file);
     void reorderSlot(int from,int to);
     int slotIdAt(int position) const noexcept {return (int)((packedOrder.load(std::memory_order_acquire) >> (4*juce::jlimit(0,9,position)))&0x0fU);}
     juce::String presetName() const {return name;}

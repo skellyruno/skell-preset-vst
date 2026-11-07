@@ -38,6 +38,8 @@ jobs:
         run: cmake -S . -B build -A x64
       - name: Compile VST3 and Standalone
         run: cmake --build build --config Release --parallel 2
+      - name: Validate native preset ZIP import/export and security
+        run: ctest --test-dir build -C Release --output-on-failure
       - name: Bundle VST3
         shell: pwsh
         run: |

@@ -22,3 +22,6 @@ As of the Stage 3 testing and integration pass on 2026-11-07:
 | Host/plugin release validation | Not performed | Windows CI and FL Studio/Reaper tests |
 
 Supported bus layouts in source: mono→mono, mono→stereo, and stereo→stereo. Stereo→mono is unsupported. In mono→stereo, the mono input feeds both effect channels. Host verification is pending.
+
+
+Stage 4: reduced idle GUI overdraw (meter-only canvas redraw) and clarified true bypass semantics; added zipped `.skellpreset` roundtrip I/O, browser Import/Save controls, validation caps and a Windows `NativePresetPackage` CTest target. Status: code integrated; Windows CI validation pending. Covers / IR / sample embedding are not yet supported.
