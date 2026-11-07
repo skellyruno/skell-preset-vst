@@ -46,7 +46,9 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force bootstrap
-          Remove-Item .github/workflows/import-stage2.yml
+          # This workflow token cannot add/remove workflow files. Keep this
+          # importer workflow intact and omit the generated Windows workflow.
+          Remove-Item .github/workflows/windows-vst3.yml
           git config user.name "skell-preset-ci[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
