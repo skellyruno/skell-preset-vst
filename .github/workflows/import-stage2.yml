@@ -72,6 +72,7 @@ jobs:
           Compress-Archive -Path $vst.FullName -DestinationPath Skell-Preset-VST3-Windows.zip
       - uses: actions/upload-artifact@v4
         with:
+          retention-days: 1
           name: Skell-Preset-Windows-VST3
           path: Skell-Preset-VST3-Windows.zip
           if-no-files-found: error
