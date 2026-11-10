@@ -113,6 +113,7 @@ struct Compressor {
         const auto val=std::isfinite(detector)?std::min(10000.f,std::abs(detector)):0.f;
         const auto a=std::exp(-1./(sampleRate*.001*(val>envelope?attackMs:releaseMs)));
         envelope=a*envelope+(1-a)*val;
+        if(envelope<1.e-20)envelope=0.; // no persistent denormal detector state
         const auto lvl=gainToDb(static_cast<float>(envelope));
         const auto gr=lvl>smoothedThreshold?(lvl-smoothedThreshold)*(1.-1./smoothedRatio):0.;
         return dbToGain((float)(smoothedMakeup-gr));
@@ -130,6 +131,7 @@ struct Gate {
         const auto a=std::exp(-1./(sr*.004));
         const double input=std::isfinite(detector)?std::abs((double)detector):0.;
         envelope=a*envelope+(1-a)*input;
+        if(envelope<1.e-20)envelope=0.;
         const float level=gainToDb((float)envelope);
         if(level>=threshold){open=true;holdRemaining=(int)(sr*.001*clamp(holdMs,0.f,250.f));}
         else if(open && level<threshold-clamp(hysteresisDb,0.f,12.f)) {
@@ -139,6 +141,7 @@ struct Gate {
         const float goal=open?1.f:0.f;
         const auto smooth=std::exp(-1./(sr*.001*(goal>gain?4.:std::max(20.f,release))));
         gain=smooth*gain+(1-smooth)*goal;
+        if(gain<1.e-20)gain=0.;
         return clamp((float)gain,0.f,1.f);
     }
 };
@@ -182,8 +185,10 @@ struct Delay {
         const float blend=std::clamp(transition,0.f,1.f);
         const float dl=memory[0][oldRead]*(1.f-blend)+memory[0][read]*blend;
         const float dr=memory[1][oldRead]*(1.f-blend)+memory[1][read]*blend;
-        memory[0][pos]=(std::isfinite(l)?l:0.f)+dl*feedback;
-        memory[1][pos]=(std::isfinite(r)?r:0.f)+dr*feedback;
+        const float nextL=(std::isfinite(l)?l:0.f)+dl*feedback;
+        const float nextR=(std::isfinite(r)?r:0.f)+dr*feedback;
+        memory[0][pos]=std::abs(nextL)>1.e-20f?nextL:0.f;
+        memory[1][pos]=std::abs(nextR)>1.e-20f?nextR:0.f;
         if(++pos==cap)pos=0;
         transition=std::min(1.f,transition+transitionStep);
         return {dl,dr};
@@ -235,8 +240,8 @@ struct AdlibDoubler {
         const float modMs=(1.f+4.f*std::clamp(width,0.f,1.f))*(.3f+1.4f*std::clamp(intensity,0.f,1.f));
         phase+=2.*pi*(.13+2.*std::clamp((double)rateControl,0.,1.))/rate;
         if(phase>=2*pi)phase-=2*pi;
-        memory[0][head]=std::isfinite(l)?l:0.f;
-        memory[1][head]=std::isfinite(r)?r:0.f;
+        memory[0][head]=std::isfinite(l)&&std::abs(l)>1.e-20f?l:0.f;
+        memory[1][head]=std::isfinite(r)&&std::abs(r)>1.e-20f?r:0.f;
         std::array<float,2> out{};
         for(int c=0;c<2;++c) {
             const double delay=rate*.001*(baseMs+modMs*std::sin(phase+(c==0?0.:pi*.78)));

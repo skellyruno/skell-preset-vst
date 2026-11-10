@@ -74,7 +74,27 @@ static void stressRate(double sr) {
     assert(derivative<.7f); // guard against obvious automation discontinuities
 }
 
+static void testDenormalDrain() {
+    Compressor compressor;compressor.prepare(48000.);
+    compressor.set(-22.f,3.f,2.f,100.f,0.f);
+    Gate gate;gate.prepare(48000.);gate.threshold=-40.f;
+    Delay delay;delay.prepare(48000.);delay.configure(100,.38f);
+    const auto tiny=std::numeric_limits<float>::denorm_min();
+    for(int i=0;i<48000*7;++i) {
+        const float v=(i==0)?.2f:tiny;
+        const float gain=compressor.gain(v);
+        const float gated=gate.processGain(v);
+        const auto echoes=delay.process(v,v);
+        assert(std::isfinite(gain)&&std::isfinite(gated));
+        assert(std::fpclassify(echoes[0])!=FP_SUBNORMAL);
+    }
+    assert(compressor.envelope==0.);
+    assert(gate.envelope==0. && gate.gain==0.);
+    for(const auto& line:delay.memory)
+        for(float v:line)assert(std::fpclassify(v)!=FP_SUBNORMAL);
+}
 int main(){
+    testDenormalDrain();
     testCompressorAutomation();
     for(double sr:{44100.,48000.,96000.})stressRate(sr);
     std::cout<<"PASS realtime coefficient/parameter smoothing, finite output, headroom and latency fixtures\n";

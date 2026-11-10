@@ -37,3 +37,8 @@ This stage intentionally keeps the plugin manufacturer/code (`SkAu`/`SkPr`), exi
 - Prevent simultaneous native chooser launches by disabling Import/Export during a dialog.
 - SkellCore's consumer-project CI runs core tests and sanitizers; the quickstart plugin *generator* test stays with its template repo, because Skell-Preset deliberately replaces the demo processor.
 - GitHub Actions Node 24 runner compatibility: `checkout@v5`, `upload-artifact@v5`.
+
+## Denormal drain guard (Stage 8.3)
+- Compressor and Gate envelopes/gains drain tiny persistent states to zero; delay feedback and doubler ring buffers avoid writing subnormal samples.
+- The new long-silence regression injects `float::denorm_min` and checks finite output and absence of subnormal feedback/state values.
+- Portable Release plus ASan/UBSan suites: 7/7 tests passing locally.
