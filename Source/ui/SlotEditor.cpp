@@ -180,13 +180,13 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::amber.withAlpha(.8f));
         g.drawVerticalLine((int)xFor(cutoff),plot.getY(),plot.getBottom());
         g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.8f));
-        Theme::text(g,"SIBILANCE REGION  •  "+juce::String(cutoff,0)+" Hz",
+        Theme::text(g,"SIBILANCE REGION  /  "+juce::String(cutoff,0)+" Hz",
             {47,163,500,20},12,Theme::green,true);
-        Theme::text(g,juce::String(threshold,1)+" dB THRESHOLD  •  UP TO "
+        Theme::text(g,juce::String(threshold,1)+" dB THRESHOLD  /  UP TO "
             +juce::String(maxReduction,1)+" dB REDUCTION",
-            {47,186,600,18},11,Theme::muted);
-        Theme::text(g,"ILLUSTRATIVE MAX REDUCTION  •  ACTUAL GAIN IS LEVEL-DEPENDENT",
-            {43,327,790,17},10,Theme::muted);
+            {47,186,650,21},13,Theme::white);
+        Theme::text(g,"ILLUSTRATIVE MAX REDUCTION  /  ACTUAL GAIN IS LEVEL-DEPENDENT",
+            {43,327,790,17},11,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::Compressor){
         // Steady-state input/output transfer, derived from compressor controls.
         const auto* punch=processor.state.getRawParameterValue("macro2");
@@ -205,7 +205,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::green);g.strokePath(compressed,juce::PathStrokeType(2.6f));
         const float tx=plot.getX()+(threshold+60.f)/60.f*plot.getWidth();
         g.setColour(Theme::amber.withAlpha(.7f));g.drawVerticalLine((int)tx,plot.getY(),plot.getBottom());
-        Theme::text(g,"STEADY-STATE TRANSFER  •  "+juce::String(threshold,1)+" dB  /  "+juce::String(ratio,1)+":1",
+        Theme::text(g,"STEADY-STATE TRANSFER  /  "+juce::String(threshold,1)+" dB  /  "+juce::String(ratio,1)+":1",
                     {45,163,670,18},11,Theme::muted,true);
     } else if(type==SkellPresetAudioProcessor::Gate){
         const float threshold=-75.f+processor.getSlotParam(slot,0)*70.f;
@@ -220,7 +220,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"OPEN  "+juce::String(threshold,1)+" dB",{45,163,270,20},12,Theme::green,true);
         Theme::text(g,"CLOSE  "+juce::String(threshold-hysteresis,1)+" dB",{45,187,270,20},12,Theme::muted);
         Theme::text(g,"HOLD  "+juce::String(hold,0)+" ms",{45,211,270,20},12,Theme::muted);
-        Theme::text(g,"HYSTERESIS THRESHOLDS  •  INPUT LEVEL -80 TO 0 dB",{42,327,700,17},10,Theme::muted);
+        Theme::text(g,"HYSTERESIS THRESHOLDS  /  INPUT LEVEL -80 TO 0 dB",{42,327,700,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::Delay || type==SkellPresetAudioProcessor::AdlibThrow){
         const bool throwing=type==SkellPresetAudioProcessor::AdlibThrow;
         const float seconds=throwing?(.16f+.48f*processor.getSlotParam(slot,0)):(.055f+.85f*processor.getSlotParam(slot,0));
@@ -233,13 +233,13 @@ void SlotEditor::paint(juce::Graphics&g) {
             g.fillRoundedRectangle(x,plot.getBottom()-amplitude*133.f,10.f,amplitude*133.f,3.f);
             Theme::text(g,juce::String(tap+1),{(int)x-7,(int)plot.getBottom()-20,26,16},9,Theme::muted,false,juce::Justification::centred);
         }
-        Theme::text(g,juce::String(throwing?"PHRASE THROW":"DELAY")+"  "+juce::String(seconds*1000.f,0)+" ms  •  FEEDBACK "+juce::String(feedback*100.f,0)+"%",
+        Theme::text(g,juce::String(throwing?"PHRASE THROW":"DELAY")+"  "+juce::String(seconds*1000.f,0)+" ms  /  FEEDBACK "+juce::String(feedback*100.f,0)+"%",
                     {45,163,700,20},12,Theme::green,true);
-        Theme::text(g,"RELATIVE TAP DECAY  •  NOT AN AUDIO WAVEFORM",{43,326,650,17},10,Theme::muted);
+        Theme::text(g,"RELATIVE TAP DECAY  /  NOT AN AUDIO WAVEFORM",{43,326,650,17},10,Theme::muted);
     } else if(type!=SkellPresetAudioProcessor::Empty){
         // Show configuration rather than inventing a live audio analyzer.
         Theme::text(g,processor.moduleName(type).toUpperCase(),{65,198,740,40},25,Theme::green,true,juce::Justification::centred);
-        Theme::text(g,"ADJUST THE CONTROLS BELOW  •  AUDIO IS PROCESSED IN REAL TIME",{120,249,600,22},12,Theme::muted,false,juce::Justification::centred);
+        Theme::text(g,"ADJUST THE CONTROLS BELOW  /  AUDIO IS PROCESSED IN REAL TIME",{120,249,600,22},12,Theme::muted,false,juce::Justification::centred);
     } else {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }
@@ -276,11 +276,11 @@ void SlotEditor::paint(juce::Graphics&g) {
     }
     const auto labels=titles(type);
     for(int i=0;i<4;i++)Theme::text(g,labels[(size_t)i].toUpperCase(),{133+211*i,459,98,19},11,Theme::muted,true);
-    Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW • REPEATS CONTINUE THROUGH SILENCE" :
-                  type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING • MONO INPUT REMAINS COMPATIBLE" :
+    Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
+                  type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
-                  type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  •  STEREO-LINKED CONSONANT CONTROL" :
-                  "SLOT CONTROL • 20 MS WET/BYPASS FADES",{30,395,700,17},10,Theme::muted);
+                  type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
+                  "SLOT CONTROL / 20 MS WET/BYPASS FADES",{30,395,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(const juce::MouseEvent& e){
     const auto x=juce::jlimit(0.f,1.f,(e.position.x-33.f)/835.f);
