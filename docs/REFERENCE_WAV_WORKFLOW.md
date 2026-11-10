@@ -25,3 +25,19 @@ from a single dry/wet pair.
 and native .skellpreset import/export exist. Automated WAV-driven full-chain
 fitting, FL .fst parsing, reference-file UI import and sound-equivalence claims
 are *not* implemented yet. Keep this note accurate until wired and tested.
+
+## Offline WAV intake diagnostic
+
+The first validated preparation utility is `tools/reference_wav_inspect.py`.
+It supports RIFF PCM16/24/32 and float32 (mono or stereo), verifies rate/chunk
+integrity, checks peak/RMS and approximate polarity-agnostic sample alignment,
+and writes a JSON report. It does **not** load sounds inside the plugin.
+
+```sh
+python tools/reference_wav_inspect.py Dry_Main.wav Wet_Main.wav --output main-reference.json
+python -m unittest discover -s tests -p test_reference_wav_inspect.py -v
+```
+
+A low waveform correlation can be completely legitimate for pitch-shifted,
+formant-changed, highly nonlinear or layered adlibs. This tool is a quality
+screen before fitting, not a fidelity percentage or automatic chain creator.

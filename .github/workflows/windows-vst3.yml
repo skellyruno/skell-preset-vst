@@ -28,6 +28,8 @@ jobs:
         run: cmake --build build-test --parallel 2
       - name: Run portable regression suite
         run: ctest --test-dir build-test --output-on-failure
+      - name: Test offline reference WAV diagnostics
+        run: python3 -m unittest discover -s tests -p test_reference_wav_inspect.py -v
 
   windows-vst3:
     runs-on: windows-latest
