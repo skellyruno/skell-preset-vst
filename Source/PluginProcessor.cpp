@@ -123,7 +123,9 @@ void SkellPresetAudioProcessor::updateHostLatency() {
 }
 
 void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int) {
-    rate=sampleRate;for(auto& e:engines)e.prepare(rate);
+    rate=(std::isfinite(sampleRate)&&sampleRate>=8000.)?sampleRate:48000.;
+    displayedRate.store(rate,std::memory_order_release);
+    for(auto& e:engines)e.prepare(rate);
     const auto lookahead=engines[0].limiter.latencySamples();
     limiterLookahead.store(lookahead,std::memory_order_release);
     dryPdc.prepare(slotCount*lookahead);bypassPdc.prepare(slotCount*lookahead);

@@ -54,7 +54,9 @@ public:
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
-    double preparedAudioRate() const noexcept {return rate;}
+    double preparedAudioRate() const noexcept {
+        return displayedRate.load(std::memory_order_acquire);
+    }
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
@@ -99,6 +101,7 @@ private:
     std::array<std::atomic<float>,slotCount> slotPeaks;
     std::atomic<float> inputPeak{0},outputPeak{0};
     double rate=48000;
+    std::atomic<double> displayedRate{48000.}; // message-thread PDC readout
     int selectedProgram=0;
     juce::String name="Clean Lead";
     skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc;
