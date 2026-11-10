@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace {const juce::StringArray banks{"All presets","Main Vocals","Adlibs"};}
+namespace {const juce::StringArray banks{"All presets","Main Vocals","Adlibs","My Presets"};}
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.setMultiLine(false);
     search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
@@ -13,7 +13,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     // Enter auditions the first filtered result without dismissing the browser.
     search.onReturnKey=[this]{
         const auto entries=filtered();
-        if(!entries.empty())loadFactoryFromBrowser(entries[(size_t)std::min(scroll,(int)entries.size()-1)]);
+        if(!entries.empty())auditionEntry(entries[(size_t)std::min(scroll,(int)entries.size()-1)]);
     };
     addAndMakeVisible(search);
     for (auto* button : {&importButton,&exportButton}) {
@@ -37,7 +37,39 @@ void PresetBrowser::applyTheme() {
     }
     repaint();
 }
-void PresetBrowser::open(){bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
+juce::File PresetBrowser::libraryDirectory() const {
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+        .getChildFile("Skell Audio").getChildFile("Skell-Preset")
+        .getChildFile("Presets");
+}
+void PresetBrowser::scanLibrary() {
+    userPresets.clear();
+    const auto folder=libraryDirectory();
+    if(folder.createDirectory().failed())return;
+    juce::Array<juce::File> files;
+    folder.findChildFiles(files,juce::File::findFiles,false,"*.skellpreset");
+    for(const auto& item:files)
+        if(item.getSize()>0 && item.getSize()<=4*1024*1024)
+            userPresets.push_back(item);
+    std::sort(userPresets.begin(),userPresets.end(),
+        [](const juce::File& a,const juce::File& b) {
+            return a.getFileName().compareIgnoreCase(b.getFileName())<0;
+        });
+    if(userPresets.size()>200)userPresets.resize(200);
+}
+void PresetBrowser::copyToLibrary(const juce::File& source) {
+    const auto folder=libraryDirectory();
+    if(folder.createDirectory().failed())return;
+    if(source.getParentDirectory()==folder) {
+        activeUserPreset=source;scanLibrary();return;
+    }
+    const auto dest=folder.getNonexistentChildFile(
+        juce::File::createLegalFileName(source.getFileNameWithoutExtension()),
+        ".skellpreset",true);
+    if(source.copyFileTo(dest))activeUserPreset=dest;
+    scanLibrary();
+}
+void PresetBrowser::open(){scanLibrary();bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
     importButton.setBounds(17,470,168,27);
@@ -64,6 +96,7 @@ void PresetBrowser::chooseImport() {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot import preset",result.getErrorMessage());
                 return;
             }
+            safe->copyToLibrary(file);
             if(safe->onLoaded)safe->onLoaded();
             safe->repaint();
         });
@@ -87,23 +120,40 @@ void PresetBrowser::chooseExport() {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot save preset",result.getErrorMessage());
                 return;
             }
+            safe->copyToLibrary(file);
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"Preset saved",file.getFullPathName());
         });
 }
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
-    auto q=search.getText().toLowerCase().trim();
-    for(int i=0;i<(int)skellpreset::factoryPresets.size();i++) {
+    const auto q=search.getText().toLowerCase().trim();
+    if(bank!=3)for(int i=0;i<(int)skellpreset::factoryPresets.size();++i) {
         const auto& item=skellpreset::factoryPresets[(size_t)i];
-        const juce::String name(item.name), b(item.bank),desc(item.description);
-        if(b=="Vocoding")continue; // Preserve existing preset IDs; hide unfinished vocoder content.
+        const juce::String name(item.name),b(item.bank),desc(item.description);
+        if(b=="Vocoding")continue; // Reserved/unfinished source presets are hidden.
         if(bank>0 && b!=banks[bank])continue;
-        bool found=q.isEmpty() || name.containsIgnoreCase(q) || b.containsIgnoreCase(q) || desc.containsIgnoreCase(q);
-        if(q.startsWith("bank:"))found=b.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
-        if(q.startsWith("tag:"))found=desc.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
-        if(q.startsWith("author:"))found=juce::String("skell audio").containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
-        if(q.startsWith("fav:")||q.startsWith("match:"))found=false; // no synthetic user favourites/matches
+        bool found=q.isEmpty() || name.containsIgnoreCase(q) ||
+                   b.containsIgnoreCase(q) || desc.containsIgnoreCase(q);
+        if(q.startsWith("bank:"))
+            found=b.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
+        if(q.startsWith("tag:"))
+            found=desc.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
+        if(q.startsWith("author:"))
+            found=juce::String("skell audio").containsIgnoreCase(
+                q.fromFirstOccurrenceOf(":",false,false).trim());
+        if(q.startsWith("fav:")||q.startsWith("match:"))found=false;
         if(found)list.push_back(i);
+    }
+    if(bank==0 || bank==3)for(int i=0;i<(int)userPresets.size();++i) {
+        const auto label=userPresets[(size_t)i].getFileNameWithoutExtension();
+        bool found=q.isEmpty() || label.containsIgnoreCase(q) ||
+                   juce::String("My Presets").containsIgnoreCase(q);
+        if(q.startsWith("bank:"))
+            found=juce::String("My Presets").containsIgnoreCase(
+                q.fromFirstOccurrenceOf(":",false,false).trim());
+        if(q.startsWith("author:")||q.startsWith("fav:")||
+           q.startsWith("match:")||q.startsWith("tag:"))found=false;
+        if(found)list.push_back(-i-1);
     }
     return list;
 }
@@ -127,20 +177,27 @@ void PresetBrowser::paint(juce::Graphics&g) {
     }
     if(processor.loadedFactoryPresetIndex()<0)
         Theme::text(g,"CUSTOM CHAIN ACTIVE",{18,341,177,20},10,Theme::green,true);
-    Theme::text(g,"ORIGINAL SKELL FACTORY BANKS",{18,369,175,30},9,Theme::muted);
+    Theme::text(g,"FACTORY + YOUR NATIVE PRESETS",{18,369,175,30},9,Theme::muted);
     Theme::text(g,"Select a sound to audition.",{18,405,172,19},11,Theme::muted);
-    Theme::text(g,"Native preset import / export",{18,425,172,19},10,Theme::amber);
+    Theme::text(g,juce::String((int)userPresets.size())+" SAVED IN MY PRESETS",{18,425,172,19},10,Theme::amber);
     Theme::text(g,"Browser stays open on load.",{18,441,172,19},10,Theme::muted);
     for(int i=0;i<6;i++){
         const int itemIndex=i+scroll;
         if(itemIndex>=(int)entries.size())break;
-        const auto& item=skellpreset::factoryPresets[(size_t)entries[(size_t)itemIndex]];
+        const int entry=entries[(size_t)itemIndex];
+        const bool custom=entry<0;
+        const juce::String itemName=custom
+            ?userPresets[(size_t)(-entry-1)].getFileNameWithoutExtension()
+            :juce::String(skellpreset::factoryPresets[(size_t)entry].name);
+        const juce::String itemBank=custom?"My Presets":
+            juce::String(skellpreset::factoryPresets[(size_t)entry].bank);
+        const int itemColour=custom?2:skellpreset::factoryPresets[(size_t)entry].colour;
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         g.setColour(Theme::bg);g.fillRoundedRectangle(rect,6);
         // A restrained themed gradient and original signal trace replace the
         // repeated raster skull on every single card.
-        const auto bankTint=juce::String(item.bank)=="Adlibs"?Theme::green:Theme::blue;
+        const auto bankTint=(custom || itemBank=="Adlibs")?Theme::green:Theme::blue;
         juce::ColourGradient fade(Theme::panelAlt.withAlpha(.03f),rect.getRight()-230.f,rect.getCentreY(),
                                   bankTint.withAlpha(.20f),rect.getRight(),rect.getCentreY(),false);
         g.setGradientFill(fade);g.fillRoundedRectangle(rect.reduced(.6f),5.f);
@@ -148,17 +205,19 @@ void PresetBrowser::paint(juce::Graphics&g) {
         for(int px=0;px<154;px+=4) {
             const float x=rect.getRight()-173.f+px;
             const float decay=1.f-std::abs(px-77.f)/77.f;
-            const float waveY=rect.getCentreY()+std::sin(px*.19f+item.colour*2.f)*decay*(9.f+item.colour);
+            const float waveY=rect.getCentreY()+std::sin(px*.19f+itemColour*2.f)*decay*(9.f+itemColour);
             if(px==0)wave.startNewSubPath(x,waveY);else wave.lineTo(x,waveY);
         }
         g.setColour(bankTint.withAlpha(.37f));g.strokePath(wave,juce::PathStrokeType(1.6f));
-        const bool loaded=entries[(size_t)itemIndex]==processor.loadedFactoryPresetIndex();
+        const bool loaded=custom
+            ?activeUserPreset==userPresets[(size_t)(-entry-1)]
+            :entry==processor.loadedFactoryPresetIndex();
         const bool hovered=itemIndex==hoveredCard;
         g.setColour(loaded?Theme::green:hovered?Theme::blue:Theme::stroke);
         g.drawRoundedRectangle(rect,6,hovered?1.8f:1.2f);
-        Theme::text(g,item.name,{221,y+8,240,23},16,Theme::white,true);
-        const auto bankColour=juce::String(item.bank)=="Adlibs"?Theme::green:juce::String(item.bank)=="Vocoding"?Theme::pink:Theme::blue;
-        Theme::text(g,item.bank,{222,y+34,230,13},10,bankColour,true);
+        Theme::text(g,itemName,{221,y+8,240,23},16,Theme::white,true);
+        const auto bankColour=(custom || itemBank=="Adlibs")?Theme::green:Theme::blue;
+        Theme::text(g,itemBank,{222,y+34,230,13},10,bankColour,true);
         if(loaded)Theme::text(g,"ACTIVE",{getWidth()-99,y+19,68,16},9,Theme::green,true,juce::Justification::centredRight);
     }
     if(entries.empty())Theme::text(g,"NO MATCHING PRESETS",{246,222,350,40},15,Theme::muted,true);
@@ -176,6 +235,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
 }
 void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;
+    activeUserPreset=juce::File{};
     const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
     processor.loadFactoryPreset(index);
     // Preserve Simple workspace and bypass while A/B auditioning.
@@ -186,6 +246,27 @@ void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(onLoaded)onLoaded();
     repaint();
 }
+void PresetBrowser::loadUserFromBrowser(int index) {
+    if(index<0 || index>=(int)userPresets.size())return;
+    const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
+    const auto file=userPresets[(size_t)index];
+    const auto result=processor.importPreset(file);
+    if(result.failed()) {
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+            "Cannot load saved preset",result.getErrorMessage());
+        return;
+    }
+    if(previousMode==0 || previousMode==3)
+        if(auto* mode=processor.state.getParameter("mode"))
+            mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
+    activeUserPreset=file;
+    if(onLoaded)onLoaded();
+    repaint();
+}
+void PresetBrowser::auditionEntry(int entry) {
+    if(entry>=0)loadFactoryFromBrowser(entry);
+    else loadUserFromBrowser(-entry-1);
+}
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(e.y>=111 && e.x>=17 && e.x<=185){
         const int idx=(e.y-111)/60;
@@ -194,7 +275,7 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(e.y>=110&&e.x>=207&&e.y<476){
         const auto entries=filtered();const int row=(e.y-110)/61;
         if(row>=0&&row<6 && scroll+row<(int)entries.size()){
-            loadFactoryFromBrowser(entries[(size_t)(scroll+row)]);
+            auditionEntry(entries[(size_t)(scroll+row)]);
             // Keep bank, scroll position and query visible for fast A/B.
         }
     }

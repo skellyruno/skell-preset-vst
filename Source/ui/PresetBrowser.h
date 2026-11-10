@@ -29,6 +29,13 @@ private:
     void chooseImport();
     void chooseExport();
     int bank=0,scroll=0,hoveredCard=-1;
-    std::vector<int> filtered() const;
+    std::vector<juce::File> userPresets;
+    juce::File activeUserPreset;
+    std::vector<int> filtered() const; // >=0 factory ID; <0 user library index (-i-1)
+    juce::File libraryDirectory() const;
+    void scanLibrary();
+    void copyToLibrary(const juce::File& file);
     void loadFactoryFromBrowser(int index);
+    void loadUserFromBrowser(int index);
+    void auditionEntry(int entry);
 };
