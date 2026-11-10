@@ -234,6 +234,53 @@ struct StereoSampleDelay {
     }
 };
 
+
+// Zero-lookahead stereo-linked split-band de-esser. The dry sample is
+// reconstructed from low + high, so a 0 dB reduction is sample-exact unity.
+// A first-order crossover costs little CPU, and attack/release smoothing
+// prevents hard switching. Not a neural or phrase-aware detector.
+struct SplitDeEsser {
+    double sampleRate=48000.0;
+    double lowPole=.5, attackPole=.9, releasePole=.999;
+    double envelope=0.0, reductionGain=1.0;
+    double lowL=0.0,lowR=0.0;
+    double threshold=0.018,minimumGain=.25;
+    void prepare(double sr) noexcept {
+        sampleRate=std::clamp(sr,8000.,192000.);
+        lowL=lowR=envelope=0.0;reductionGain=1.0;
+        set(6500.f,-33.f,12.f,80.f);
+    }
+    void reset() noexcept {lowL=lowR=envelope=0.0;reductionGain=1.0;}
+    void set(float frequency,float thresholdDb,float maxReductionDb,float releaseMs) noexcept {
+        const double cutoff=std::clamp((double)frequency,1500.,sampleRate*.45);
+        lowPole=std::exp(-2.*pi*cutoff/sampleRate);
+        threshold=dbToGain(clamp(thresholdDb,-60.f,-6.f));
+        minimumGain=dbToGain(-clamp(maxReductionDb,0.f,24.f));
+        attackPole=std::exp(-1./(sampleRate*.0015));
+        releasePole=std::exp(-1./(sampleRate*.001*clamp(releaseMs,10.f,600.f)));
+    }
+    std::array<float,2> process(float left,float right) noexcept {
+        const double l=clamp(left,-8.f,8.f),r=clamp(right,-8.f,8.f);
+        lowL=lowPole*lowL+(1.-lowPole)*l;
+        lowR=lowPole*lowR+(1.-lowPole)*r;
+        const double highL=l-lowL,highR=r-lowR;
+        const double detector=std::max(std::abs(highL),std::abs(highR));
+        const double detectorPole=detector>envelope?attackPole:releasePole;
+        envelope=detectorPole*envelope+(1.-detectorPole)*detector;
+        const double target=envelope>threshold
+            ?std::max(minimumGain,threshold/std::max(envelope,1.e-12)):1.0;
+        const double pole=target<reductionGain?attackPole:releasePole;
+        reductionGain=pole*reductionGain+(1.-pole)*target;
+        if(std::abs(lowL)<1.e-25)lowL=0.;
+        if(std::abs(lowR)<1.e-25)lowR=0.;
+        if(envelope<1.e-25)envelope=0.;
+        const double outL=l-highL*(1.-reductionGain);
+        const double outR=r-highR*(1.-reductionGain);
+        return {std::isfinite(outL)?(float)outL:0.f,
+                std::isfinite(outR)?(float)outR:0.f};
+    }
+};
+
 // A modest decorrelated stereo double for isolated adlibs. It is NOT a true pitch shifter.
 struct AdlibDoubler {
     std::array<std::vector<float>,2> memory;

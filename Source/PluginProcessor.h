@@ -10,7 +10,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
@@ -62,6 +62,7 @@ private:
         skellpreset::dsp::SmoothedBiquad peak, highpass;
         skellpreset::dsp::Compressor comp;
         skellpreset::dsp::Gate gate;
+        skellpreset::dsp::SplitDeEsser deesser;
         skellpreset::dsp::Delay delay;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry;

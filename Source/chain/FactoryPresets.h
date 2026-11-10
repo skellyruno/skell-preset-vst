@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,24> factoryPresets {{
+inline constexpr std::array<FactoryPreset,25> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -35,5 +35,6 @@ inline constexpr std::array<FactoryPreset,24> factoryPresets {{
     {"Digital Formant","Vocoding","Resonant vocal colour",3,.35f,.74f,.35f,.61f},
     {"Phase Broadcast","Vocoding","Filtered broadcast",0,.28f,.85f,.38f,.67f},
     {"Spectral Glow","Vocoding","Soft futuristic layers",4,.83f,.35f,.91f,.32f},
+    {"Skell Vocal Polish","Main Vocals","Natural de-essing and smooth finish",2,.58f,.48f,.22f,.08f},
 }};
 }

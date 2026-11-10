@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -70,6 +70,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     peak.prepare(sampleRate);highpass.prepare(sampleRate);comp.prepare(sampleRate);gate.prepare(sampleRate);
+    deesser.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -203,6 +204,11 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 e.gate.holdMs=c.p[2]*120.f;
                 e.gate.hysteresisDb=c.p[3]*8.f;
                 break;
+            case DeEsser:
+                // Zero extra latency: suitable for recording/monitoring vocals.
+                e.deesser.set(3500.f+c.p[0]*8000.f,-53.f+c.p[1]*39.f,
+                    2.f+c.p[2]*20.f,35.f+c.p[3]*245.f);
+                break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f);
                 break;
@@ -278,6 +284,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     case Gate: {
                         float gain=e.gate.processGain(std::max(std::abs(l),std::abs(r)));
                         wL=l*gain;wR=r*gain;break;}
+                    case DeEsser: {
+                        const auto d=e.deesser.process(l,r);
+                        wL=d[0];wR=d[1];break;}
                     case Saturator: {
                         float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f)),blend=(.5f+c.p[1]);
                         wL=std::tanh(l*drive*blend)/std::max(.5f,drive*.6f);
@@ -342,6 +351,20 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     setSlotParam(4,0,.35f);setSlotParam(4,1,.31f);setReal("s5_wet",preset.space*.30f);
     setSlotParam(5,0,.24f+preset.space*.5f);setSlotParam(5,1,.65f);setReal("s6_wet",preset.space*.35f);
     setSlotParam(6,0,.89f);setSlotParam(6,1,.05f);setReal("s7_wet",.65f);
+    if(index==24) {
+        // Original v1 factory IDs remain stable. Add de-essing before the
+        // compressor in the new Vocal Polish factory chain.
+        setSlotType(9,DeEsser);setSlotOn(9,true);
+        setSlotParam(9,0,.39f);setSlotParam(9,1,.52f);
+        setSlotParam(9,2,.48f);setSlotParam(9,3,.36f);
+        setReal("s10_wet",.88f);
+        // Positions 0 EQ, 1 De-Esser, then previous modules.
+        std::uint64_t order=0;
+        const int ids[]{0,9,1,2,3,4,5,6,7,8,10,11,12,13,14,15};
+        for(int pos=0;pos<slotCount;++pos)
+            order|=(std::uint64_t)ids[pos] << (4*pos);
+        packedOrder.store(order,std::memory_order_release);
+    }
     if(juce::String(preset.bank)=="Adlibs") {
         // Actual phrase throws and decorrelated doubling in the Adlibs bank.
         setSlotType(4,AdlibThrow);setSlotOn(4,true);

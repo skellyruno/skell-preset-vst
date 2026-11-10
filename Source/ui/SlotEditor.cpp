@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include <cmath>
 namespace {
-const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler"};
+const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser"};
 std::array<juce::String,4> titles(int type) {
     switch(type){
         case 1:return {"Frequency","Gain","Q","Low Cut"};
@@ -15,6 +15,7 @@ std::array<juce::String,4> titles(int type) {
         case 8:return {"Excite","Colour","Focus","Mix"};
         case 9:return {"Throw Time","Feedback","Tone","Trigger"};
         case 10:return {"Width","Timing","Motion","Depth"};
+        case 11:return {"Sib. Freq","Threshold","Reduction","Release"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
