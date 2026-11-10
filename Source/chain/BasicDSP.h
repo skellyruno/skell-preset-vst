@@ -134,9 +134,12 @@ struct Gate {
         if(envelope<1.e-20)envelope=0.;
         const float level=gainToDb((float)envelope);
         if(level>=threshold){open=true;holdRemaining=(int)(sr*.001*clamp(holdMs,0.f,250.f));}
-        else if(open && level<threshold-clamp(hysteresisDb,0.f,12.f)) {
+        else {
+            // Count real elapsed hold samples even inside the hysteresis band.
+            // Otherwise an intermediate-level signal pauses the hold timer.
             if(holdRemaining>0)--holdRemaining;
-            else open=false;
+            if(open && holdRemaining==0 && level<threshold-clamp(hysteresisDb,0.f,12.f))
+                open=false;
         }
         const float goal=open?1.f:0.f;
         const auto smooth=std::exp(-1./(sr*.001*(goal>gain?4.:std::max(20.f,release))));
@@ -151,28 +154,30 @@ struct Delay {
     size_t pos=0;
     int samples=4000;
     int previousSamples=4000;
+    int requestedSamples=4000; // latest automation target; queued during an active fade
     float feedback=.25f;
     float transition=1.f;
     float transitionStep=.001f;
     void prepare(double sampleRate,float maxSeconds=2.0f) {
         auto capacity=std::max<size_t>(32,(size_t)(sampleRate*maxSeconds)+2);
         for(auto &x:memory)x.assign(capacity,0);
-        pos=0; samples=previousSamples=std::min<int>(samples,(int)capacity-1);
+        pos=0; samples=previousSamples=requestedSamples=std::clamp(samples,1,(int)capacity-1);
         transition=1.f;
         transitionStep=1.f/std::max(1.f,(float)(sampleRate*.020));
     }
     void reset() noexcept {
         for(auto &v:memory)std::fill(v.begin(),v.end(),0.f);
-        pos=0;transition=1.f;previousSamples=samples;
+        pos=0;transition=1.f;previousSamples=requestedSamples=samples;
     }
     void configure(int delaySamples,float fb) noexcept {
         if(memory[0].empty())return;
-        const int target=std::clamp(delaySamples,1,(int)memory[0].size()-1);
-        if(target!=samples) {
-            // A new time change starts at the current dominant tap. Crossfade
-            // the read heads so automation does not cause an instantaneous jump.
-            previousSamples=(transition<.5f)?previousSamples:samples;
-            samples=target;
+        // Do not restart an unfinished crossfade. Rapid host automation would
+        // otherwise hold the blend near zero indefinitely. Queue the latest
+        // time and switch after the current 20 ms transition finishes.
+        requestedSamples=std::clamp(delaySamples,1,(int)memory[0].size()-1);
+        if(transition>=1.f && requestedSamples!=samples) {
+            previousSamples=samples;
+            samples=requestedSamples;
             transition=0.f;
         }
         feedback=clamp(fb,0,.9f);
@@ -185,12 +190,17 @@ struct Delay {
         const float blend=std::clamp(transition,0.f,1.f);
         const float dl=memory[0][oldRead]*(1.f-blend)+memory[0][read]*blend;
         const float dr=memory[1][oldRead]*(1.f-blend)+memory[1][read]*blend;
-        const float nextL=(std::isfinite(l)?l:0.f)+dl*feedback;
-        const float nextR=(std::isfinite(r)?r:0.f)+dr*feedback;
+        const float nextL=clamp(clamp(l,-8.f,8.f)+dl*feedback,-8.f,8.f);
+        const float nextR=clamp(clamp(r,-8.f,8.f)+dr*feedback,-8.f,8.f);
         memory[0][pos]=std::abs(nextL)>1.e-20f?nextL:0.f;
         memory[1][pos]=std::abs(nextR)>1.e-20f?nextR:0.f;
         if(++pos==cap)pos=0;
         transition=std::min(1.f,transition+transitionStep);
+        if(transition>=1.f && requestedSamples!=samples) {
+            previousSamples=samples;
+            samples=requestedSamples;
+            transition=0.f;
+        }
         return {dl,dr};
     }
 };

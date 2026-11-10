@@ -41,6 +41,9 @@ public:
     void reorderSlot(int from,int to);
     int slotIdAt(int position) const noexcept {return (int)((packedOrder.load(std::memory_order_acquire) >> (4*juce::jlimit(0,9,position)))&0x0fU);}
     juce::String presetName() const {return name;}
+    // -1 denotes an imported/custom chain; getCurrentProgram() is clamped for
+    // host API compatibility and must not drive the browser's ACTIVE indicator.
+    int loadedFactoryPresetIndex() const noexcept {return selectedProgram;}
     juce::String moduleName(int type) const;
     void setSlotType(int slot,int type);
     float getSlotParam(int slot,int param) const noexcept;

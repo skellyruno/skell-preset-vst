@@ -30,4 +30,5 @@ private:
     void chooseExport();
     int bank=0,scroll=0,hoveredCard=-1;
     std::vector<int> filtered() const;
+    void loadFactoryFromBrowser(int index);
 };

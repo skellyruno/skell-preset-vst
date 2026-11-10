@@ -10,6 +10,11 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     applyTheme();
     search.onTextChange=[this]{scroll=0;hoveredCard=-1;repaint();};
     search.onEscapeKey=[this]{setVisible(false);if(onClose)onClose();};
+    // Enter auditions the first filtered result without dismissing the browser.
+    search.onReturnKey=[this]{
+        const auto entries=filtered();
+        if(!entries.empty())loadFactoryFromBrowser(entries[(size_t)std::min(scroll,(int)entries.size()-1)]);
+    };
     addAndMakeVisible(search);
     for (auto* button : {&importButton,&exportButton}) {
         addAndMakeVisible(*button);
@@ -120,6 +125,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
                                         b.getRight()-56.f+j*8.f,b.getBottom()-9.f,1.3f);
         Theme::text(g,banks[i],{29,(int)b.getY()+14,133,22},13,Theme::white,i==bank);
     }
+    if(processor.loadedFactoryPresetIndex()<0)
+        Theme::text(g,"CUSTOM CHAIN ACTIVE",{18,341,177,20},10,Theme::green,true);
     Theme::text(g,"ORIGINAL SKELL FACTORY BANKS",{18,369,175,30},9,Theme::muted);
     Theme::text(g,"Select a sound to audition.",{18,405,172,19},11,Theme::muted);
     Theme::text(g,"Native preset import / export",{18,425,172,19},10,Theme::amber);
@@ -145,7 +152,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
             if(px==0)wave.startNewSubPath(x,waveY);else wave.lineTo(x,waveY);
         }
         g.setColour(bankTint.withAlpha(.37f));g.strokePath(wave,juce::PathStrokeType(1.6f));
-        const bool loaded=entries[(size_t)itemIndex]==processor.getCurrentProgram();
+        const bool loaded=entries[(size_t)itemIndex]==processor.loadedFactoryPresetIndex();
         const bool hovered=itemIndex==hoveredCard;
         g.setColour(loaded?Theme::green:hovered?Theme::blue:Theme::stroke);
         g.drawRoundedRectangle(rect,6,hovered?1.8f:1.2f);
@@ -167,6 +174,18 @@ void PresetBrowser::paint(juce::Graphics&g) {
         Theme::text(g,"SCROLL TO SEE MORE",{260,getHeight()-20,300,16},10,Theme::muted);
     }
 }
+void PresetBrowser::loadFactoryFromBrowser(int index) {
+    if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;
+    const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
+    processor.loadFactoryPreset(index);
+    // Preserve Simple workspace and bypass while A/B auditioning.
+    if(previousMode==0 || previousMode==3) {
+        if(auto* mode=processor.state.getParameter("mode"))
+            mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
+    }
+    if(onLoaded)onLoaded();
+    repaint();
+}
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(e.y>=111 && e.x>=17 && e.x<=185){
         const int idx=(e.y-111)/60;
@@ -175,17 +194,8 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(e.y>=110&&e.x>=207&&e.y<476){
         const auto entries=filtered();const int row=(e.y-110)/61;
         if(row>=0&&row<6 && scroll+row<(int)entries.size()){
-            const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
-            processor.loadFactoryPreset(entries[(size_t)(scroll+row)]);
-            // Loading a sound should not unexpectedly switch a Simple audition
-            // into Advanced or disable the user's existing global bypass.
-            if(previousMode==0 || previousMode==3) {
-                if(auto* mode=processor.state.getParameter("mode"))
-                    mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
-            }
-            if(onLoaded)onLoaded();
-            // Keep bank, scroll position, and search query visible for fast A/B.
-            repaint();
+            loadFactoryFromBrowser(entries[(size_t)(scroll+row)]);
+            // Keep bank, scroll position and query visible for fast A/B.
         }
     }
 }

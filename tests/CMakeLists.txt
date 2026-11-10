@@ -30,3 +30,13 @@ foreach(test_target IN LISTS skell_test_targets)
         target_compile_options(${test_target} PRIVATE -UNDEBUG)
     endif()
 endforeach()
+
+# Regression for faster-than-crossfade delay automation and gate hold semantics.
+add_executable(SkellPresetDelayGateRegressionTest test_delay_gate_automation.cpp)
+target_compile_features(SkellPresetDelayGateRegressionTest PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(SkellPresetDelayGateRegressionTest PRIVATE /UNDEBUG)
+else()
+    target_compile_options(SkellPresetDelayGateRegressionTest PRIVATE -UNDEBUG)
+endif()
+add_test(NAME SkellPresetDelayGateRegressionTest COMMAND SkellPresetDelayGateRegressionTest)
