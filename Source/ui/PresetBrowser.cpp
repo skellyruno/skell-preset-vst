@@ -38,31 +38,46 @@ void PresetBrowser::resized(){
     importButton.setBounds(17,470,168,27);
     exportButton.setBounds(17,502,168,27);
 }
+void PresetBrowser::setChooserActive(bool active) {
+    chooserActive=active;
+    importButton.setEnabled(!active);
+    exportButton.setEnabled(!active);
+}
 void PresetBrowser::chooseImport() {
+    if(chooserActive)return;
+    setChooserActive(true);
     fileChooser=std::make_unique<juce::FileChooser>("Import native Skell-Preset", juce::File{}, "*.skellpreset");
+    juce::Component::SafePointer<PresetBrowser> safe(this);
     fileChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-        [this](const juce::FileChooser& chooser) {
+        [safe](const juce::FileChooser& chooser) {
+            if(!safe)return; // editor/plugin may have closed while native dialog was open
+            safe->setChooserActive(false);
             const auto file=chooser.getResult();
             if(file==juce::File{})return;
-            const auto result=processor.importPreset(file);
+            const auto result=safe->processor.importPreset(file);
             if(result.failed()) {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot import preset",result.getErrorMessage());
                 return;
             }
-            if(onLoaded)onLoaded();
-            repaint();
+            if(safe->onLoaded)safe->onLoaded();
+            safe->repaint();
         });
 }
 void PresetBrowser::chooseExport() {
+    if(chooserActive)return;
+    setChooserActive(true);
     const auto base=juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
     const auto initial=base.getChildFile(juce::File::createLegalFileName(processor.presetName())+".skellpreset");
     fileChooser=std::make_unique<juce::FileChooser>("Save native Skell-Preset",initial,"*.skellpreset");
+    juce::Component::SafePointer<PresetBrowser> safe(this);
     fileChooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
-        [this](const juce::FileChooser& chooser) {
+        [safe](const juce::FileChooser& chooser) {
+            if(!safe)return;
+            safe->setChooserActive(false);
             auto file=chooser.getResult();
             if(file==juce::File{})return;
             if(!file.hasFileExtension(".skellpreset"))file=file.withFileExtension(".skellpreset");
-            const auto result=processor.exportPreset(file);
+            const auto result=safe->processor.exportPreset(file);
             if(result.failed()) {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot save preset",result.getErrorMessage());
                 return;

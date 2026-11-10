@@ -24,6 +24,8 @@ private:
     juce::TextEditor search;
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"};
     std::unique_ptr<juce::FileChooser> fileChooser;
+    bool chooserActive=false;
+    void setChooserActive(bool active);
     void chooseImport();
     void chooseExport();
     int bank=0,scroll=0,hoveredCard=-1;

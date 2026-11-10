@@ -19,7 +19,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure
         run: cmake -S SkellCore -B build-core -DSKELLCORE_BUILD_TESTS=ON -DSKELLCORE_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -28,14 +28,14 @@ jobs:
         run: ctest --test-dir build-core --build-config Release --output-on-failure
       - name: CPU benchmark (non-gating measurements)
         run: ctest --test-dir build-core --build-config Release -R SkellCoreBenchmark -V
-      - name: Verify plugin generator
-        run: python tools/test_new_plugin.py
+      # Generator self-tests belong to skell-vst-template, not this consumer plugin.
+      # This repository replaces the quickstart processor by design.
 
   core-sanitizers:
     name: Linux ASan + UBSan DSP tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure sanitizers
         run: cmake -S SkellCore -B build-sanitize -DCMAKE_BUILD_TYPE=Debug -DSKELLCORE_BUILD_TESTS=ON -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
       - name: Build sanitizer tests

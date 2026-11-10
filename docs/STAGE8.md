@@ -31,3 +31,9 @@ This stage intentionally keeps the plugin manufacturer/code (`SkAu`/`SkPr`), exi
 - Rename the preset-card waveform Y coordinate to avoid shadowing the card position (`C4456`).
 - Change float-buffer initialization in shared SkellCore FDN reset from integer `0` to float `0.0f` (STL `C4244`).
 - Enable MSVC `/WX` for Skell-Preset's production target so new project compilation warnings fail CI.
+
+## UI safety / CI integration (Stage 8.2)
+- Native preset file-chooser callbacks use a `SafePointer` so closing the editor while a chooser is open cannot dereference an obsolete `PresetBrowser`.
+- Prevent simultaneous native chooser launches by disabling Import/Export during a dialog.
+- SkellCore's consumer-project CI runs core tests and sanitizers; the quickstart plugin *generator* test stays with its template repo, because Skell-Preset deliberately replaces the demo processor.
+- GitHub Actions Node 24 runner compatibility: `checkout@v5`, `upload-artifact@v5`.
