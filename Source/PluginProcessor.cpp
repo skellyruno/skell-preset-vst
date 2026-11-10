@@ -106,10 +106,18 @@ void SkellPresetAudioProcessor::EngineSlot::processThrow(float l,float r,float& 
     throwWrite=(throwWrite+1)%cap;
 }
 void SkellPresetAudioProcessor::updateHostLatency() {
+    // Only slots on the audible chain contribute to host PDC. An invisible
+    // expanded slot must never add reported latency.
     const int latency=limiterLookahead.load(std::memory_order_acquire);
+    const int count=activeSlotCount();
+    const auto order=packedOrder.load(std::memory_order_acquire);
     int total=0;
-    for(const auto& slot:rawSlots)
-        if(slot.type && (int)slot.type->load(std::memory_order_relaxed)==Limiter)total+=latency;
+    for(int position=0;position<count;++position) {
+        const int id=(int)((order >> (4*position)) & 0x0fU);
+        if(id>=0 && id<slotCount && rawSlots[(size_t)id].type &&
+           (int)rawSlots[(size_t)id].type->load(std::memory_order_relaxed)==Limiter)
+            total+=latency;
+    }
     if(total!=currentReportedLatency){currentReportedLatency=total;setLatencySamples(total);}
 }
 
@@ -218,13 +226,18 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         const float fx=(c.type==Reverb||c.type==Delay)?(.5f+macroSpace):1.f;
         slotWetSmooth[(size_t)s].setTargetValue(juce::jlimit(0.f,1.f,c.wet*fx)*(c.on?1.f:0.f));
     }
+    const int chainCount=activeSlotCount();
     std::array<int,slotCount> sequence{};
     const auto packed=packedOrder.load(std::memory_order_acquire);
     for(int i=0;i<slotCount;i++)sequence[(size_t)i]=(int)((packed>>(4*i))&0x0fU);
     std::array<float,slotCount> meter{};
     const auto lookahead=limiterLookahead.load(std::memory_order_acquire);
     int blockLatency=0;
-    for(int s=0;s<slotCount;++s)if(controlCache[(size_t)s].type==Limiter)blockLatency+=lookahead;
+    for(int position=0;position<chainCount;++position) {
+        const int id=sequence[(size_t)position];
+        if(id>=0 && id<slotCount && controlCache[(size_t)id].type==Limiter)
+            blockLatency+=lookahead;
+    }
     float inPeak=0,outPeak=0;
     for(int n=0;n<size;n++) {
         float l=std::isfinite(left[n])?left[n]:0.f;
@@ -238,7 +251,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         const auto delayedDry=dryPdc.process(l,r,blockLatency);
         const float dryL=delayedDry[0],dryR=delayedDry[1];
         {
-            for(int ix=0;ix<slotCount;ix++) {
+            for(int ix=0;ix<chainCount;ix++) {
                 const int s=sequence[(size_t)ix];if(s<0||s>=slotCount)continue;
                 const auto& c=controlCache[(size_t)s];
                 if(c.type==Empty)continue;
@@ -297,9 +310,19 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     for(int s=0;s<slotCount;s++)slotPeaks[(size_t)s].store(meter[(size_t)s]);
 }
 
+int SkellPresetAudioProcessor::appendRackSlot() {
+    const int count=activeSlotCount();
+    if(count>=slotCount)return -1;
+    activeSlots.store(count+1,std::memory_order_release);
+    state.state.setProperty("rackSlots",count+1,nullptr);
+    updateHostLatency();
+    return slotIdAt(count);
+}
 void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     if(index<0||index>=(int)factoryPresets.size())return;
     selectedProgram=index;const auto& preset=factoryPresets[(size_t)index];name=preset.name;
+    activeSlots.store(defaultSlotCount,std::memory_order_release);
+    state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
     for(int s=0;s<slotCount;s++){
         setSlotType(s,Empty);setSlotOn(s,false);setReal(slotPrefix(s)+"wet",1);
         for(int k=0;k<16;k++)setSlotParam(s,k,.5f);
@@ -340,6 +363,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
 juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) const {
     skellpreset::package::Document doc;
     doc.name=name;
+    doc.activeSlotCount=activeSlotCount();
     doc.bank=state.state.getProperty("presetBank","My Presets").toString();
     doc.mode=juce::jlimit(0,3,(int)value("mode"));
     doc.inputDb=value("input");doc.mix=value("mix");doc.outputDb=value("output");
@@ -373,6 +397,8 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
         setSlotOn(slot.slotId,slot.enabled);
     }
     packedOrder.store(next,std::memory_order_release);
+    activeSlots.store(doc.activeSlotCount,std::memory_order_release);
+    state.state.setProperty("rackSlots",doc.activeSlotCount,nullptr);
     setReal("input",doc.inputDb);setReal("mix",doc.mix);setReal("output",doc.outputDb);
     setReal("mode",(float)doc.mode);
     for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
@@ -385,7 +411,8 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
 }
 
 void SkellPresetAudioProcessor::reorderSlot(int from,int to) {
-    if(from<0||from>=slotCount||to<0||to>=slotCount||from==to)return;
+    const int count=activeSlotCount();
+    if(from<0||from>=count||to<0||to>=count||from==to)return;
     std::array<int,slotCount> seq{};
     const auto packed=packedOrder.load(std::memory_order_acquire);
     for(int i=0;i<slotCount;i++)seq[(size_t)i]=(int)((packed>>(4*i))&0x0fU);
@@ -406,6 +433,7 @@ void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     juce::String sequence;
     for(int i=0;i<slotCount;i++)sequence+=juce::String(slotIdAt(i))+(i==slotCount-1?"":",");
     snapshot.setProperty("slotOrder",sequence,nullptr);
+    snapshot.setProperty("rackSlots",activeSlotCount(),nullptr);
     snapshot.setProperty("presetName",name,nullptr);
     snapshot.setProperty("program",selectedProgram,nullptr);
     if(auto xml=snapshot.createXml())copyXmlToBinary(*xml,dest);
@@ -416,11 +444,29 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         if(!loaded.isValid()||loaded.getType()!=state.state.getType())return;
         const auto sequence=loaded.getProperty("slotOrder").toString();
         juce::StringArray items;items.addTokens(sequence,",","");
-        if(items.size()==slotCount){
-            std::array<bool,slotCount> seen{};std::array<int,slotCount> proposed{};bool valid=true;
-            for(int i=0;i<slotCount;i++){int v=items[i].getIntValue();if(v<0||v>=slotCount||seen[(size_t)v]){valid=false;break;}seen[(size_t)v]=true;proposed[(size_t)i]=v;}
-            if(valid){std::uint64_t next=0;for(int i=0;i<slotCount;i++)next|=(std::uint64_t)proposed[(size_t)i]<<(4*i);packedOrder.store(next,std::memory_order_release);}
+        // Stage 8 states had ten positions; append six default identities when
+        // reading them. A malformed order leaves the current permutation intact.
+        if(items.size()==defaultSlotCount || items.size()==slotCount) {
+            std::array<bool,slotCount> seen{};
+            std::array<int,slotCount> proposed{};
+            bool valid=true;
+            const int oldCount=items.size();
+            for(int i=0;i<oldCount;++i) {
+                const int v=items[i].getIntValue();
+                if(v<0 || v>=oldCount || seen[(size_t)v]){valid=false;break;}
+                seen[(size_t)v]=true;proposed[(size_t)i]=v;
+            }
+            if(valid){
+                for(int i=oldCount;i<slotCount;++i)proposed[(size_t)i]=i;
+                std::uint64_t next=0;
+                for(int i=0;i<slotCount;++i)
+                    next|=(std::uint64_t)proposed[(size_t)i] << (4*i);
+                packedOrder.store(next,std::memory_order_release);
+            }
         }
+        const int restoredCount=juce::jlimit(defaultSlotCount,slotCount,
+            (int)loaded.getProperty("rackSlots",defaultSlotCount));
+        activeSlots.store(restoredCount,std::memory_order_release);
         name=loaded.getProperty("presetName","Custom").toString();
         selectedProgram=juce::jlimit(-1,(int)factoryPresets.size()-1,(int)loaded.getProperty("program",0));
         state.replaceState(loaded);

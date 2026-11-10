@@ -16,23 +16,32 @@ namespace {
 constexpr int rowStart=47, rowStep=42, rowHeight=38;
 constexpr int addTop=472, addHeight=33;
 }
-int ChainPanel::rowAt(int y) {
+void ChainPanel::clampScroll() {
+    scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-10),scrollOffset);
+}
+int ChainPanel::rowAt(int y) const {
     const int relative=y-rowStart;
     if(relative<0||relative>=rowStep*SkellPresetAudioProcessor::slotCount)return -1;
-    return relative%rowStep<rowHeight?relative/rowStep:-1;
+    if(relative%rowStep>=rowHeight || relative/rowStep>=10)return -1;
+    const int idx=scrollOffset+relative/rowStep;
+    return idx<processor.activeSlotCount()?idx:-1;
 }
 void ChainPanel::paint(juce::Graphics& g) {
     Theme::selectFor(processor.state);
     Theme::panelBox(g,getLocalBounds().toFloat());
+    clampScroll();
+    const int active=processor.activeSlotCount();
     int used=0;
-    for(int row=0;row<SkellPresetAudioProcessor::slotCount;row++) {
+    for(int row=0;row<active;row++) {
         auto* pv=processor.state.getRawParameterValue("s"+juce::String(row+1)+"_type");
         if(pv && (int)pv->load()!=SkellPresetAudioProcessor::Empty)++used;
     }
     Theme::text(g,"SIGNAL CHAIN",{15,11,148,22},14,Theme::white,true);
-    Theme::text(g,juce::String(used)+" / 10",{157,13,48,19},10,Theme::muted,true,juce::Justification::centredRight);
-    for(int row=0;row<SkellPresetAudioProcessor::slotCount;row++) {
-        const int slot=processor.slotIdAt(row),top=rowStart+rowStep*row;
+    Theme::text(g,juce::String(used)+" FX",{142,13,50,19},10,Theme::muted,true,juce::Justification::centredRight);
+    Theme::text(g,juce::String(active)+"/16",{145,29,49,14},9,Theme::green,true,juce::Justification::centredRight);
+    for(int visual=0;visual<10 && scrollOffset+visual<active;++visual) {
+        const int row=scrollOffset+visual;
+        const int slot=processor.slotIdAt(row),top=rowStart+rowStep*visual;
         auto box=juce::Rectangle<float>(10.f,(float)top,196.f,(float)rowHeight);
         auto* pv=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
         auto* on=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");
@@ -58,14 +67,19 @@ void ChainPanel::paint(juce::Graphics& g) {
         }
     }
     const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
-    g.setColour(used==10?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
-    g.setColour(used==10?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
-    Theme::text(g,used==10?"RACK FULL  (10 / 10)":"+   ADD MODULE",{24,addTop+5,173,23},12,used==10?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,"DRAG ANYWHERE ON A ROW",{13,511,193,18},9,Theme::muted,false,juce::Justification::centred);
+    g.setColour(active==16?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
+    g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
+    Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
+        {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
+    Theme::text(g,active>10?"SCROLL TO SEE MORE  /  DRAG TO ORDER":"DRAG ANYWHERE ON A ROW",
+        {13,511,193,18},9,Theme::muted,false,juce::Justification::centred);
 }
 void ChainPanel::refreshIfChanged() {
-    bool changed=!visualSnapshotValid;
-    for(int row=0;row<SkellPresetAudioProcessor::slotCount;++row) {
+    const int currentSlots=processor.activeSlotCount();
+    bool changed=!visualSnapshotValid || currentSlots!=lastSlotCount;
+    lastSlotCount=currentSlots;
+    clampScroll();
+    for(int row=0;row<currentSlots;++row) {
         const int slot=processor.slotIdAt(row);
         const auto prefix="s"+juce::String(slot+1)+"_";
         const auto* type=processor.state.getRawParameterValue(prefix+"type");
@@ -96,21 +110,15 @@ void ChainPanel::popupFor(int physicalSlot) {
     });
 }
 void ChainPanel::addModule() {
-    int firstEmpty=-1,lastUsed=-1;
-    for(int row=0;row<SkellPresetAudioProcessor::slotCount;row++) {
-        const int slot=processor.slotIdAt(row);
-        auto* type=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
-        if(type && (int)type->load()!=SkellPresetAudioProcessor::Empty)lastUsed=row;
-        else if(firstEmpty<0)firstEmpty=row;
-    }
-    if(firstEmpty<0)return;
-    // Append after the last populated row even if a user left a gap earlier
-    // in the chain. This keeps "+" intuitive without creating new APVTS IDs.
-    const int destination=juce::jmin(SkellPresetAudioProcessor::slotCount-1,lastUsed+1);
-    if(firstEmpty!=destination)processor.reorderSlot(firstEmpty,destination);
-    const int slot=processor.slotIdAt(destination);
-    selected=slot;if(onSelection)onSelection(slot);
-    popupFor(slot);repaint();
+    // A new slot is real: a preallocated DSP engine plus stable s11..s16
+    // automation parameters. The UI scrolls to reveal it.
+    const int slot=processor.appendRackSlot();
+    if(slot<0)return;
+    scrollOffset=juce::jmax(0,processor.activeSlotCount()-10);
+    selected=slot;
+    if(onSelection)onSelection(slot);
+    popupFor(slot);
+    repaint();
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     if(e.x>=10 && e.x<=206 && e.y>=addTop && e.y<addTop+addHeight) {
@@ -133,7 +141,7 @@ void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
         dragging=true;dragFrom=pendingFrom;dragTo=pendingFrom;
     }
     if(dragging) {
-        dragTo=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,(e.y-rowStart)/rowStep);
+        dragTo=juce::jlimit(0,processor.activeSlotCount()-1,scrollOffset+(e.y-rowStart)/rowStep);
         repaint();
     }
 }
@@ -159,4 +167,10 @@ void ChainPanel::mouseExit(const juce::MouseEvent&) {
     hoveredRow=-1;
     setMouseCursor(juce::MouseCursor::NormalCursor);
     repaint();
+}
+
+void ChainPanel::mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails& wheel) {
+    const int change=wheel.deltaY<0?2:-2;
+    const int next=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-10),scrollOffset+change);
+    if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;visualSnapshotValid=false;repaint();}
 }

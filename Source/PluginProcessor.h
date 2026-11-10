@@ -11,7 +11,8 @@
 class SkellPresetAudioProcessor final : public juce::AudioProcessor {
 public:
     enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, NumberOfModules };
-    static constexpr int slotCount=10;
+    static constexpr int slotCount=16;
+    static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
     ~SkellPresetAudioProcessor() override = default;
     void prepareToPlay(double sampleRate,int samplesPerBlock) override;
@@ -39,7 +40,11 @@ public:
     juce::Result exportPreset(const juce::File& file) const;
     juce::Result importPreset(const juce::File& file);
     void reorderSlot(int from,int to);
-    int slotIdAt(int position) const noexcept {return (int)((packedOrder.load(std::memory_order_acquire) >> (4*juce::jlimit(0,9,position)))&0x0fU);}
+    // Message-thread operation: expands the real processing rack, not just a placeholder.
+    // Returns the new physical slot ID, or -1 when all sixteen slots are visible.
+    int appendRackSlot();
+    int activeSlotCount() const noexcept {return activeSlots.load(std::memory_order_acquire);}
+    int slotIdAt(int position) const noexcept {return (int)((packedOrder.load(std::memory_order_acquire) >> (4*juce::jlimit(0,slotCount-1,position)))&0x0fU);}
     juce::String presetName() const {return name;}
     // -1 denotes an imported/custom chain; getCurrentProgram() is clamped for
     // host API compatibility and must not drive the browser's ACTIVE indicator.
@@ -51,7 +56,7 @@ public:
     void setSlotOn(int slot,bool on);
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
-    float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,9,slot)].load();}
+    float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
 private:
     struct EngineSlot {
         skellpreset::dsp::SmoothedBiquad peak, highpass;
@@ -75,6 +80,7 @@ private:
     struct Controls {int type=0;bool on=false;float wet=1;std::array<float,16> p{};};
     std::array<Controls,slotCount> controlCache;
     std::atomic<std::uint64_t> packedOrder{0};
+    std::atomic<int> activeSlots{defaultSlotCount};
     struct RawSlot {
         std::atomic<float>* type=nullptr;std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
