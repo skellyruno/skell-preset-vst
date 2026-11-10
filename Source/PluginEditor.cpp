@@ -112,6 +112,14 @@ public:
         addMouseListener(this,true); // Outside clicks on child panels dismiss the overlay.
         resized();refresh();startTimerHz(30);
     }
+    void syncSizeControl(float scale) {
+        constexpr float sizes[]{.70f,.85f,1.f,1.25f};
+        int nearest=0;
+        for(int i=1;i<4;++i)
+            if(std::abs(scale-sizes[i])<std::abs(scale-sizes[nearest]))nearest=i;
+        if(sizeSelect.getSelectedId()!=nearest+1)
+            sizeSelect.setSelectedId(nearest+1,juce::dontSendNotification);
+    }
     ~Canvas()override {stopTimer();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
@@ -291,12 +299,7 @@ public:
     void timerCallback() override{
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
-        const float currentScale=(float)outer.getWidth()/Theme::width;
-        constexpr float sizes[]{.70f,.85f,1.f,1.25f};
-        int nearest=0;
-        for(int i=1;i<4;++i)
-            if(std::abs(currentScale-sizes[i])<std::abs(currentScale-sizes[nearest]))nearest=i;
-        if(sizeSelect.getSelectedId()!=nearest+1)sizeSelect.setSelectedId(nearest+1,juce::dontSendNotification);
+        syncSizeControl((float)outer.getWidth()/Theme::width);
         const auto n=processor.presetName().toUpperCase()+"  v";
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
@@ -353,6 +356,7 @@ void SkellPresetAudioProcessorEditor::resized(){
         processor.state.state.setProperty("uiScale",scale,nullptr);
     canvas->setTransform(juce::AffineTransform::scale(scale));
     canvas->setBounds(0,0,Theme::width,Theme::height);
+    canvas->syncSizeControl(scale);
 }
 
 juce::AudioProcessorEditor* SkellPresetAudioProcessor::createEditor(){return new SkellPresetAudioProcessorEditor(*this);}
