@@ -1,3 +1,11 @@
+# Keep C++ assert() enabled in test Release builds without causing MSVC
+# warning D9025 by passing /UNDEBUG after the global /DNDEBUG.
+# Flags in this subdirectory do not affect the shipping plugin.
+foreach(_config RELEASE RELWITHDEBINFO MINSIZEREL)
+    string(REPLACE "/DNDEBUG" "" CMAKE_CXX_FLAGS_${_config} "${CMAKE_CXX_FLAGS_${_config}}")
+    string(REPLACE "-DNDEBUG" "" CMAKE_CXX_FLAGS_${_config} "${CMAKE_CXX_FLAGS_${_config}}")
+endforeach()
+
 add_executable(SkellPresetMatchTest test_match.cpp)
 target_compile_features(SkellPresetMatchTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetMatchTest COMMAND SkellPresetMatchTest)
@@ -20,41 +28,18 @@ add_test(NAME SkellPresetGateEqTest COMMAND SkellPresetGateEqTest)
 add_executable(SkellPresetRealtimeStressTest test_realtime_stress.cpp)
 target_compile_features(SkellPresetRealtimeStressTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetRealtimeStressTest COMMAND SkellPresetRealtimeStressTest)
-# Regression checks must execute in Release as well as Debug. Plain assert()
-# disappears under -DNDEBUG unless the test targets explicitly undefine it.
-get_property(skell_test_targets DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY BUILDSYSTEM_TARGETS)
-foreach(test_target IN LISTS skell_test_targets)
-    if(MSVC)
-        target_compile_options(${test_target} PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(${test_target} PRIVATE -UNDEBUG)
-    endif()
-endforeach()
-
 # Regression for faster-than-crossfade delay automation and gate hold semantics.
 add_executable(SkellPresetDelayGateRegressionTest test_delay_gate_automation.cpp)
 target_compile_features(SkellPresetDelayGateRegressionTest PRIVATE cxx_std_17)
-if(MSVC)
-    target_compile_options(SkellPresetDelayGateRegressionTest PRIVATE /UNDEBUG)
-else()
-    target_compile_options(SkellPresetDelayGateRegressionTest PRIVATE -UNDEBUG)
-endif()
+
 add_test(NAME SkellPresetDelayGateRegressionTest COMMAND SkellPresetDelayGateRegressionTest)
 
 add_executable(SkellPresetDoublerModulationTest test_doubler_modulation.cpp)
 target_compile_features(SkellPresetDoublerModulationTest PRIVATE cxx_std_17)
-if(MSVC)
-    target_compile_options(SkellPresetDoublerModulationTest PRIVATE /UNDEBUG)
-else()
-    target_compile_options(SkellPresetDoublerModulationTest PRIVATE -UNDEBUG)
-endif()
+
 add_test(NAME SkellPresetDoublerModulationTest COMMAND SkellPresetDoublerModulationTest)
 
 add_executable(SkellPresetDeEsserTest test_deesser.cpp)
 target_compile_features(SkellPresetDeEsserTest PRIVATE cxx_std_17)
-if(MSVC)
-    target_compile_options(SkellPresetDeEsserTest PRIVATE /UNDEBUG)
-else()
-    target_compile_options(SkellPresetDeEsserTest PRIVATE -UNDEBUG)
-endif()
+
 add_test(NAME SkellPresetDeEsserTest COMMAND SkellPresetDeEsserTest)
