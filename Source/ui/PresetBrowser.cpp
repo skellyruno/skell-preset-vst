@@ -8,7 +8,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.setMultiLine(false);
     search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
     applyTheme();
-    search.onTextChange=[this]{scroll=0;repaint();};
+    search.onTextChange=[this]{scroll=0;hoveredCard=-1;repaint();};
     search.onEscapeKey=[this]{setVisible(false);if(onClose)onClose();};
     addAndMakeVisible(search);
     for (auto* button : {&importButton,&exportButton}) {
@@ -32,7 +32,7 @@ void PresetBrowser::applyTheme() {
     }
     repaint();
 }
-void PresetBrowser::open(){bank=0;scroll=0;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
+void PresetBrowser::open(){bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
     importButton.setBounds(17,470,168,27);
@@ -131,8 +131,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
         }
         g.setColour(bankTint.withAlpha(.37f));g.strokePath(wave,juce::PathStrokeType(1.6f));
         const bool loaded=entries[(size_t)itemIndex]==processor.getCurrentProgram();
-        g.setColour(loaded?Theme::green:Theme::stroke);
-        g.drawRoundedRectangle(rect,6,1.2f);
+        const bool hovered=itemIndex==hoveredCard;
+        g.setColour(loaded?Theme::green:hovered?Theme::blue:Theme::stroke);
+        g.drawRoundedRectangle(rect,6,hovered?1.8f:1.2f);
         Theme::text(g,item.name,{221,y+8,240,23},16,Theme::white,true);
         const auto bankColour=juce::String(item.bank)=="Adlibs"?Theme::green:juce::String(item.bank)=="Vocoding"?Theme::pink:Theme::blue;
         Theme::text(g,item.bank,{222,y+34,230,13},10,bankColour,true);
@@ -140,6 +141,14 @@ void PresetBrowser::paint(juce::Graphics&g) {
     }
     if(entries.empty())Theme::text(g,"NO MATCHING PRESETS",{246,222,350,40},15,Theme::muted,true);
     if((int)entries.size()>6){
+        const float railTop=110.f,railHeight=361.f;
+        const float thumbHeight=juce::jmax(30.f,railHeight*6.f/(float)entries.size());
+        const float travel=railHeight-thumbHeight;
+        const float thumbY=railTop+travel*(float)scroll/(float)(entries.size()-6);
+        g.setColour(Theme::stroke.withAlpha(.6f));
+        g.fillRoundedRectangle(juce::Rectangle<float>((float)getWidth()-12.f,railTop,3.f,railHeight),1.5f);
+        g.setColour(Theme::green.withAlpha(.85f));
+        g.fillRoundedRectangle(juce::Rectangle<float>((float)getWidth()-12.f,thumbY,3.f,thumbHeight),1.5f);
         Theme::text(g,"SCROLL TO SEE MORE",{260,getHeight()-20,300,16},10,Theme::muted);
     }
 }
@@ -165,9 +174,18 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
         }
     }
 }
-void PresetBrowser::mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails& wheel){
+void PresetBrowser::mouseMove(const juce::MouseEvent& e){
+    const int candidate=e.x>=207&&e.y>=110&&e.y<476 ? (e.y-110)/61+scroll : -1;
+    const int next=candidate>=0&&candidate<(int)filtered().size()?candidate:-1;
+    if(next!=hoveredCard){hoveredCard=next;repaint();}
+    setMouseCursor(next>=0?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor);
+}
+void PresetBrowser::mouseExit(const juce::MouseEvent&){hoveredCard=-1;repaint();}
+void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel){
+    if(e.x<197 || e.y<102 || e.y>486)return;
     const int maxScroll=std::max(0,(int)filtered().size()-6);
-    scroll=juce::jlimit(0,maxScroll,scroll+(wheel.deltaY<0?2:-2));repaint();
+    const int next=juce::jlimit(0,maxScroll,scroll+(wheel.deltaY<0?2:-2));
+    if(scroll!=next){scroll=next;hoveredCard=-1;repaint();}
 }
 bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     if(key==juce::KeyPress::escapeKey){setVisible(false);if(onClose)onClose();return true;}

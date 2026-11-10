@@ -11,6 +11,8 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
     bool keyPressed(const juce::KeyPress&) override;
     void open();
@@ -24,6 +26,6 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
     void chooseImport();
     void chooseExport();
-    int bank=0,scroll=0;
+    int bank=0,scroll=0,hoveredCard=-1;
     std::vector<int> filtered() const;
 };

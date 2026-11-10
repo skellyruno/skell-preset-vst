@@ -106,25 +106,33 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.drawHorizontalLine((int)y,plot.getX(),plot.getRight());
     }
     if(type==SkellPresetAudioProcessor::EQ) {
-        const float normalizedF=processor.getSlotParam(slot,0),gain=(processor.getSlotParam(slot,1)-.5f)*24;
+        const float normalizedF=processor.getSlotParam(slot,0);
+        const auto* tone=processor.state.getRawParameterValue("macro1");
+        const float macroTone=tone?tone->load():.5f;
+        const float gain=(processor.getSlotParam(slot,1)-.5f)*24.f+8.f*(macroTone-.5f);
         const float freq=40.f*std::pow(300.f,normalizedF);
         const float x0=(float)(plot.getX()+plot.getWidth()*std::log(freq/20.f)/std::log(1000.f));
         const float y0=plot.getCentreY()-gain*(plot.getHeight()/72.f);
-        juce::Path line;
+        const double sr=juce::jmax(8000.,processor.getSampleRate());
         const float q=.3f+7.f*processor.getSlotParam(slot,2);
-        for(int px=0;px<836;px+=3){
-            float f=20.f*std::pow(1000.f,px/835.f);
-            float oct=std::log2(f/freq);
-            float gdb=gain*std::exp(-oct*oct*(q*.35f+.35f));
-            float curveY=plot.getCentreY()-gdb*(plot.getHeight()/72.f);
-            if(px==0)line.startNewSubPath(plot.getX(),curveY);else line.lineTo(plot.getX()+px,curveY);
+        skellpreset::dsp::Biquad bell,cut;
+        bell.setPeak(sr,freq,gain,q);
+        cut.setHighPass(sr,20.+processor.getSlotParam(slot,3)*250.);
+        juce::Path line;
+        for(int px=0;px<=835;px+=3){
+            const double f=20.*std::pow(1000.,(double)px/835.);
+            const double response=bell.magnitudeDb(f,sr)+cut.magnitudeDb(f,sr);
+            const float curveY=juce::jlimit(plot.getY(),plot.getBottom(),
+                plot.getCentreY()-(float)response*(plot.getHeight()/72.f));
+            if(px==0)line.startNewSubPath(plot.getX(),curveY);
+            else line.lineTo(plot.getX()+px,curveY);
         }
         g.setColour(Theme::green.withAlpha(.10f));
         juce::Path filled=line;filled.lineTo(plot.getRight(),plot.getBottom());filled.lineTo(plot.getX(),plot.getBottom());filled.closeSubPath();g.fillPath(filled);
         g.setColour(Theme::blue);g.strokePath(line,juce::PathStrokeType(2.8f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         g.setColour(Theme::blue);g.fillEllipse(x0-6,y0-6,12,12);
         g.setColour(Theme::white);g.drawEllipse(x0-6,y0-6,12,12,1.3f);
-        Theme::text(g,juce::String(freq,0)+" Hz / "+juce::String(gain,1)+" dB",{540,120,285,20},12,Theme::green,false,juce::Justification::centredRight);
+        Theme::text(g,juce::String(freq,0)+" Hz  |  "+juce::String(gain,1)+" dB",{540,120,285,20},12,Theme::green,false,juce::Justification::centredRight);
     } else if(type!=SkellPresetAudioProcessor::Empty){
         juce::Path env;
         const float amount=processor.getSlotParam(slot,0);
@@ -143,8 +151,8 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
         g.setColour(Theme::green.withAlpha(.7f));g.drawRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f,1.f);
-        Theme::text(g,"BAND 01  /  ACTIVE",{44,99,130,23},11,Theme::green,true);
-        Theme::text(g,"1-BAND EQ  |  ADDITIONAL BANDS PLANNED",{205,100,390,22},11,Theme::muted);
+        Theme::text(g,"BELL + LOW CUT",{44,99,130,23},11,Theme::green,true);
+        Theme::text(g,"RESPONSE FROM LIVE DSP COEFFICIENTS",{205,100,390,22},11,Theme::muted);
     }
     const juce::StringArray ticks{"20","50","100","200","500","1k","2k","5k","10k","20k"};
     constexpr float tickHz[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
