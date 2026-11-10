@@ -33,6 +33,17 @@ int main(int argc, char** argv) {
     int failures = 0;
     {
         SkellPresetAudioProcessorEditor editor(processor);
+        processor.loadFactoryPreset(25);
+        if(processor.getLatencySamples()!=0) {
+            std::fprintf(stderr,"Live Lead must report zero added PDC samples\n");
+            ++failures;
+        }
+        processor.loadFactoryPreset(24);
+        if(processor.getLatencySamples()<=0) {
+            std::fprintf(stderr,"Vocal Polish limiter must report positive PDC\n");
+            ++failures;
+        }
+        processor.loadFactoryPreset(0);
         for (const auto& issue : editor.runScreenshotInteractionTests()) {
             std::fprintf(stderr, "UI interaction: %s\n", issue.toRawUTF8());
             ++failures;
@@ -54,6 +65,7 @@ int main(int argc, char** argv) {
                 }
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
+        options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
         options.configure = [&](const auto& scene) {
             if(scene.id=="obsidian-expanded-70") {
                 processor.loadFactoryPreset(0);
@@ -62,6 +74,8 @@ int main(int argc, char** argv) {
                 processor.setSlotOn(15,true);
             } else if(scene.id=="cream-deesser-70") {
                 processor.loadFactoryPreset(24); // Skell Vocal Polish
+            } else if(scene.id=="obsidian-live-70") {
+                processor.loadFactoryPreset(25); // Skell Live Lead, 0 PDC
             }
             editor.configureForScreenshot(scene.theme, scene.mode, scene.browser);
             if(scene.id=="obsidian-expanded-70")
@@ -77,15 +91,16 @@ int main(int argc, char** argv) {
             {"obsidian-advanced-70", "cream-advanced-70"},
             {"cream-advanced-70", "crimson-advanced-70"},
             {"obsidian-advanced-70", "obsidian-expanded-70"},
-            {"cream-advanced-70", "cream-deesser-70"}
+            {"cream-advanced-70", "cream-deesser-70"},
+            {"obsidian-advanced-70", "obsidian-live-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 50) {
-            std::fprintf(stderr, "Expected 50 PNGs, captured %d\n", report.captured);
+        if (report.captured != 51) {
+            std::fprintf(stderr, "Expected 51 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 

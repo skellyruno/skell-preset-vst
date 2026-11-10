@@ -353,9 +353,9 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     setSlotParam(4,0,.35f);setSlotParam(4,1,.31f);setReal("s5_wet",preset.space*.30f);
     setSlotParam(5,0,.24f+preset.space*.5f);setSlotParam(5,1,.65f);setReal("s6_wet",preset.space*.35f);
     setSlotParam(6,0,.89f);setSlotParam(6,1,.05f);setReal("s7_wet",.65f);
-    if(index==24) {
+    if(index==24 || index==25) {
         // Original v1 factory IDs remain stable. Add de-essing before the
-        // compressor in the new Vocal Polish factory chain.
+        // compressor in the new Vocal Polish and zero-PDC Live Lead chains.
         setSlotType(9,DeEsser);setSlotOn(9,true);
         setSlotParam(9,0,.39f);setSlotParam(9,1,.52f);
         setSlotParam(9,2,.48f);setSlotParam(9,3,.36f);
@@ -366,6 +366,13 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         for(int pos=0;pos<slotCount;++pos)
             order|=(std::uint64_t)ids[pos] << (4*pos);
         packedOrder.store(order,std::memory_order_release);
+        if(index==25) {
+            // Recording/monitoring preset: only the 3ms SkellCore lookahead
+            // limiter is omitted, while EQ, compression, gate and de-essing
+            // remain in the original zero-PDC processing path.
+            setSlotOn(6,false);
+            setSlotType(6,Empty);
+        }
     }
     if(juce::String(preset.bank)=="Adlibs") {
         // Actual phrase throws and decorrelated doubling in the Adlibs bank.
