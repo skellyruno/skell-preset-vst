@@ -119,8 +119,11 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
     add_executable(SkellPresetUIRenderer tests/ui_renderer.cpp)
     target_include_directories(SkellPresetUIRenderer PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
+    # The plugin's include dependencies are PRIVATE, so the renderer also
+    # links the two SkellCore interface targets to find Core.h and UI.h.
     target_link_libraries(SkellPresetUIRenderer PRIVATE SkellPreset
-        SkellPresetAssets juce::juce_audio_utils juce::juce_gui_extra)
+        SkellPresetAssets SkellCore::DSP SkellCore::UI
+        juce::juce_audio_utils juce::juce_gui_extra)
     target_compile_definitions(SkellPresetUIRenderer PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_compile_features(SkellPresetUIRenderer PRIVATE cxx_std_17)
 endif()
