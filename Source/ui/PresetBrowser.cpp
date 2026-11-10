@@ -1,33 +1,36 @@
 #include "PresetBrowser.h"
 #include "Theme.h"
-#include <BinaryData.h>
 #include <algorithm>
+#include <cmath>
 
 namespace {const juce::StringArray banks{"All presets","Main Vocals","Adlibs"};}
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.setMultiLine(false);
     search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
-    search.setColour(juce::TextEditor::backgroundColourId,Theme::bg);
-    search.setColour(juce::TextEditor::textColourId,Theme::white);
-    search.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
+    applyTheme();
     search.onTextChange=[this]{scroll=0;repaint();};
     search.onEscapeKey=[this]{setVisible(false);if(onClose)onClose();};
     addAndMakeVisible(search);
     for (auto* button : {&importButton,&exportButton}) {
-        button->setColour(juce::TextButton::buttonColourId,Theme::bg);
-        button->setColour(juce::TextButton::textColourOffId,Theme::white);
         addAndMakeVisible(*button);
     }
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
     exportButton.setTooltip("Save the active chain, slot order, macros and global controls");
     importButton.onClick=[this] {chooseImport();};
     exportButton.onClick=[this] {chooseExport();};
-    const void* data[]={BinaryData::cover_0_png,BinaryData::cover_1_png,BinaryData::cover_2_png,
-                        BinaryData::cover_3_png,BinaryData::cover_4_png,BinaryData::cover_5_png};
-    const int size[]={BinaryData::cover_0_pngSize,BinaryData::cover_1_pngSize,BinaryData::cover_2_pngSize,
-                      BinaryData::cover_3_pngSize,BinaryData::cover_4_pngSize,BinaryData::cover_5_pngSize};
-    for(size_t k=0;k<covers.size();k++)covers[k]=juce::ImageCache::getFromMemory(data[k],size[k]);
     setWantsKeyboardFocus(true);
+}
+void PresetBrowser::applyTheme() {
+    Theme::selectFor(processor.state);
+    search.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
+    search.setColour(juce::TextEditor::textColourId,Theme::white);
+    search.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
+    search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
+    for(auto* button:{&importButton,&exportButton}) {
+        button->setColour(juce::TextButton::buttonColourId,Theme::panel);
+        button->setColour(juce::TextButton::textColourOffId,Theme::white);
+    }
+    repaint();
 }
 void PresetBrowser::open(){bank=0;scroll=0;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
 void PresetBrowser::resized(){
@@ -47,8 +50,7 @@ void PresetBrowser::chooseImport() {
                 return;
             }
             if(onLoaded)onLoaded();
-            setVisible(false);
-            if(onClose)onClose();
+            repaint();
         });
 }
 void PresetBrowser::chooseExport() {
@@ -86,6 +88,7 @@ std::vector<int> PresetBrowser::filtered() const {
     return list;
 }
 void PresetBrowser::paint(juce::Graphics&g) {
+    Theme::selectFor(processor.state);
     g.setColour(Theme::panelAlt);g.fillRoundedRectangle(getLocalBounds().toFloat(),11);
     g.setColour(Theme::stroke.brighter(.5f));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),11,1.4f);
     Theme::text(g,"BANKS",{19,75,174,20},10,Theme::muted,true);
@@ -95,19 +98,17 @@ void PresetBrowser::paint(juce::Graphics&g) {
     g.setColour(Theme::stroke);g.drawVerticalLine(195,84.f,(float)getHeight()-20);
     for(int i=0;i<banks.size();i++){
         auto b=juce::Rectangle<float>(17.f,111.f+i*60.f,168.f,52.f);
-        g.setColour(i==bank?Theme::green.withAlpha(.13f):Theme::bg);g.fillRoundedRectangle(b,6);
+        g.setColour(i==bank?Theme::green.withAlpha(.11f):Theme::panel);g.fillRoundedRectangle(b,6);
         g.setColour(i==bank?Theme::green.withAlpha(.7f):Theme::stroke);g.drawRoundedRectangle(b,6,1);
-        const auto& image=covers[(size_t)(i%6)];
-        if(image.isValid()){
-            g.saveState();g.reduceClipRegion(juce::Rectangle<int>((int)b.getRight()-56,(int)b.getY()+1,55,50));
-            g.drawImage(image,juce::Rectangle<float>(b.getRight()-92,b.getY(),140,52),juce::RectanglePlacement::fillDestination);g.restoreState();
-        }
+        g.setColour((i==bank?Theme::green:Theme::blue).withAlpha(.20f));
+        for(int j=0;j<4;j++)g.drawLine(b.getRight()-44.f+j*8.f,b.getY()+12.f,
+                                        b.getRight()-56.f+j*8.f,b.getBottom()-9.f,1.3f);
         Theme::text(g,banks[i],{29,(int)b.getY()+14,133,22},13,Theme::white,i==bank);
     }
     Theme::text(g,"ORIGINAL SKELL FACTORY BANKS",{18,369,175,30},9,Theme::muted);
-    Theme::text(g,"Click any preset to load.",{18,405,172,19},11,Theme::muted);
+    Theme::text(g,"Select a sound to audition.",{18,405,172,19},11,Theme::muted);
     Theme::text(g,"Native preset import / export",{18,425,172,19},10,Theme::amber);
-    Theme::text(g,"Use WAV pairs for MATCH later.",{18,441,172,19},10,Theme::muted);
+    Theme::text(g,"Browser stays open on load.",{18,441,172,19},10,Theme::muted);
     for(int i=0;i<6;i++){
         const int itemIndex=i+scroll;
         if(itemIndex>=(int)entries.size())break;
@@ -115,17 +116,27 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         g.setColour(Theme::bg);g.fillRoundedRectangle(rect,6);
-        const auto& image=covers[(size_t)(item.colour%6)];
-        if(image.isValid()) {
-            g.saveState();g.reduceClipRegion(juce::Rectangle<int>(getWidth()-214,y+1,196,54));
-            g.drawImage(image,juce::Rectangle<float>((float)getWidth()-260.f,(float)y,244.f,56.f),juce::RectanglePlacement::fillDestination);
-            g.restoreState();
+        // A restrained themed gradient and original signal trace replace the
+        // repeated raster skull on every single card.
+        const auto bankTint=juce::String(item.bank)=="Adlibs"?Theme::green:Theme::blue;
+        juce::ColourGradient fade(Theme::panelAlt.withAlpha(.03f),rect.getRight()-230.f,rect.getCentreY(),
+                                  bankTint.withAlpha(.20f),rect.getRight(),rect.getCentreY(),false);
+        g.setGradientFill(fade);g.fillRoundedRectangle(rect.reduced(.6f),5.f);
+        juce::Path wave;
+        for(int px=0;px<154;px+=4) {
+            const float x=rect.getRight()-173.f+px;
+            const float decay=1.f-std::abs(px-77.f)/77.f;
+            const float y=rect.getCentreY()+std::sin(px*.19f+item.colour*2.f)*decay*(9.f+item.colour);
+            if(px==0)wave.startNewSubPath(x,y);else wave.lineTo(x,y);
         }
-        g.setColour(entries[(size_t)itemIndex]==processor.getCurrentProgram()?Theme::green:Theme::stroke);
+        g.setColour(bankTint.withAlpha(.37f));g.strokePath(wave,juce::PathStrokeType(1.6f));
+        const bool loaded=entries[(size_t)itemIndex]==processor.getCurrentProgram();
+        g.setColour(loaded?Theme::green:Theme::stroke);
         g.drawRoundedRectangle(rect,6,1.2f);
         Theme::text(g,item.name,{221,y+8,240,23},16,Theme::white,true);
         const auto bankColour=juce::String(item.bank)=="Adlibs"?Theme::green:juce::String(item.bank)=="Vocoding"?Theme::pink:Theme::blue;
         Theme::text(g,item.bank,{222,y+34,230,13},10,bankColour,true);
+        if(loaded)Theme::text(g,"ACTIVE",{getWidth()-99,y+19,68,16},9,Theme::green,true,juce::Justification::centredRight);
     }
     if(entries.empty())Theme::text(g,"NO MATCHING PRESETS",{246,222,350,40},15,Theme::muted,true);
     if((int)entries.size()>6){
@@ -141,7 +152,9 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
         const auto entries=filtered();const int row=(e.y-110)/61;
         if(row>=0&&row<6 && scroll+row<(int)entries.size()){
             processor.loadFactoryPreset(entries[(size_t)(scroll+row)]);
-            if(onLoaded)onLoaded();setVisible(false);if(onClose)onClose();
+            if(onLoaded)onLoaded();
+            // Keep bank, scroll position, and search query visible for fast A/B.
+            repaint();
         }
     }
 }

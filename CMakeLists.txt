@@ -77,7 +77,7 @@ target_sources(SkellPreset PRIVATE
     Source/PluginEditor.h Source/PluginEditor.cpp
     Source/chain/BasicDSP.h Source/chain/FactoryPresets.h
     Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
-    Source/ui/Theme.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
+    Source/ui/Theme.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
     Source/ui/SlotEditor.h Source/ui/SlotEditor.cpp
     Source/ui/PresetBrowser.h Source/ui/PresetBrowser.cpp
     Source/match/MatchCore.h)

@@ -9,6 +9,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void select(int newSlot);
+    void applyTheme();
     int selectedSlot()const noexcept{return slot;}
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;

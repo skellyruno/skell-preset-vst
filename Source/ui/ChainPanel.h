@@ -13,7 +13,10 @@ public:
     std::function<void(int)> onSelection;
 private:
     SkellPresetAudioProcessor& processor;
-    int selected=0,dragFrom=-1,dragTo=-1;
+    int selected=0,dragFrom=-1,dragTo=-1,pendingFrom=-1;
+    juce::Point<int> pressPoint;
+    bool dragging=false;
     static int rowAt(int y);
+    void addModule();
     void popupFor(int physicalSlot);
 };

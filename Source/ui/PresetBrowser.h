@@ -14,6 +14,7 @@ public:
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
     bool keyPressed(const juce::KeyPress&) override;
     void open();
+    void applyTheme();
     std::function<void()> onClose;
     std::function<void()> onLoaded;
 private:
@@ -23,7 +24,6 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
     void chooseImport();
     void chooseExport();
-    std::array<juce::Image,6> covers;
     int bank=0,scroll=0;
     std::vector<int> filtered() const;
 };

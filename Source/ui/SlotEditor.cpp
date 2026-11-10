@@ -46,7 +46,25 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):processor(p) {
         if(next>=0)processor.setSlotType(slot,next);
         repaint();
     };
+    applyTheme();
     select(0);
+}
+void SlotEditor::applyTheme() {
+    Theme::selectFor(processor.state);
+    moduleBox.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
+    moduleBox.setColour(juce::ComboBox::textColourId,Theme::white);
+    moduleBox.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
+    activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
+    activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);
+    for(auto* s:{&wetKnob,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
+        s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
+        s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
+        s->setColour(juce::Slider::thumbColourId,Theme::white);
+        s->setColour(juce::Slider::textBoxTextColourId,Theme::white);
+        s->setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
+        s->setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
+    }
+    repaint();
 }
 void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
@@ -66,6 +84,7 @@ void SlotEditor::resized() {
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(42+211*k,437,83,70);
 }
 void SlotEditor::paint(juce::Graphics&g) {
+    Theme::selectFor(processor.state);
     Theme::panelBox(g,{0,0,906.f,425.f});
     Theme::panelBox(g,{0,421.f,906.f,98.f});
     const int type=(int)processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type")->load();
@@ -74,11 +93,12 @@ void SlotEditor::paint(juce::Graphics&g) {
     Theme::text(g,"MODULE",{552,9,140,15},9,Theme::muted,true);
     Theme::text(g,"WET",{832,3,50,15},9,Theme::muted,true);
     const auto plot=juce::Rectangle<float>(33,151,835,206);
-    g.setColour(juce::Colour(0xff0a1524));g.fillRoundedRectangle(plot,6);
+    g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
-    for(int i=0;i<=8;i++){
-        const auto x=plot.getX()+plot.getWidth()*i/8.f;
-        g.setColour(Theme::stroke);g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
+    constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
+    for(float freq:frequencies){
+        const auto x=plot.getX()+plot.getWidth()*std::log(freq/20.f)/std::log(1000.f);
+        g.setColour(Theme::stroke.withAlpha(.75f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
     }
     for(int i=0;i<=6;i++){
         const auto y=plot.getY()+plot.getHeight()*i/6.f;
@@ -121,22 +141,23 @@ void SlotEditor::paint(juce::Graphics&g) {
     }
     g.restoreState();
     if(type==SkellPresetAudioProcessor::EQ){
-        Theme::text(g,"BAND 1 / 8",{34,98,110,17},10,Theme::muted,true);
-        for(int i=0;i<8;i++){
-            auto cell=juce::Rectangle<float>(102.f+i*38.f,97.f,31.f,27.f);
-            g.setColour(i==0?Theme::green.withAlpha(.16f):Theme::panelAlt.withAlpha(.35f));g.fillRoundedRectangle(cell,4);
-            g.setColour(i==0?Theme::green:Theme::stroke);g.drawRoundedRectangle(cell,4,1);
-            Theme::text(g,juce::String(i+1),cell.toNearestInt(),11,i==0?Theme::green:Theme::muted,false,juce::Justification::centred);
-        }
+        g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
+        g.setColour(Theme::green.withAlpha(.7f));g.drawRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f,1.f);
+        Theme::text(g,"BAND 01  /  ACTIVE",{44,99,130,23},11,Theme::green,true);
+        Theme::text(g,"1-BAND EQ  |  ADDITIONAL BANDS PLANNED",{205,100,390,22},11,Theme::muted);
     }
     const juce::StringArray ticks{"20","50","100","200","500","1k","2k","5k","10k","20k"};
-    for(int i=0;i<ticks.size();i++)Theme::text(g,ticks[i],{24+(int)(i*91.5f),360,43,17},10,Theme::muted,false,juce::Justification::centred);
+    constexpr float tickHz[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
+    for(int i=0;i<ticks.size();i++){
+        const auto x=plot.getX()+plot.getWidth()*std::log(tickHz[i]/20.f)/std::log(1000.f);
+        Theme::text(g,ticks[i],{(int)x-24,360,48,17},10,Theme::muted,false,juce::Justification::centred);
+    }
     Theme::text(g,"+36",{5,142,30,15},9,Theme::muted);Theme::text(g,"0",{13,245,22,14},9,Theme::muted);Theme::text(g,"-36",{5,341,30,15},9,Theme::muted);
     const auto labels=titles(type);
     for(int i=0;i<4;i++)Theme::text(g,labels[(size_t)i].toUpperCase(),{133+211*i,459,98,19},11,Theme::muted,true);
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW • REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING • MONO INPUT REMAINS COMPATIBLE" :
-                  type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE • BANDS 2–8 ARE PLANNED" :
+                  type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
                   "SLOT CONTROL • 20 MS WET/BYPASS FADES",{30,395,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(const juce::MouseEvent& e){

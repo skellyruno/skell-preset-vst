@@ -3,8 +3,8 @@
 #include "ui/ChainPanel.h"
 #include "ui/SlotEditor.h"
 #include "ui/PresetBrowser.h"
+#include "ui/SkullThemeButton.h"
 #include <SkellCore/UI.h>
-#include <BinaryData.h>
 #include <array>
 #include <memory>
 
@@ -17,13 +17,25 @@ void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical
 class SkellPresetAudioProcessorEditor::Canvas final:public juce::Component,private juce::Timer {
 public:
     Canvas(SkellPresetAudioProcessorEditor& owner,SkellPresetAudioProcessor& p)
-    : outer(owner),processor(p),chain(p),slot(p),browser(p),skin(skellcore::ui::Theme::neon()) {
-        setLookAndFeel(&skin);
+    : outer(owner),processor(p),chain(p),slot(p),browser(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
+        Theme::selectFor(processor.state);
+        setLookAndFeel(skin.get());
         setSize(Theme::width,Theme::height);
         setWantsKeyboardFocus(true);
-        bg=juce::ImageCache::getFromMemory(BinaryData::bg_panel_png,BinaryData::bg_panel_pngSize);
-        logo=juce::ImageCache::getFromMemory(BinaryData::logo_skull_png,BinaryData::logo_skull_pngSize);
         addAndMakeVisible(chain);addAndMakeVisible(slot);
+        themeButton.onClick=[this]{
+            juce::PopupMenu menu;
+            menu.addSectionHeader("SKELL THEMES");
+            menu.addItem(1,"Obsidian  /  Neon Green",true,selectedTheme==Theme::Obsidian);
+            menu.addItem(2,"Ivory  /  Cream",true,selectedTheme==Theme::Cream);
+            menu.addItem(3,"Crimson  /  Red",true,selectedTheme==Theme::Crimson);
+            juce::Component::SafePointer<Canvas> safe(this);
+            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&themeButton),
+                [safe](int id){if(safe && id>=1 && id<=3)safe->setTheme(id-1);});
+        };
+        addAndMakeVisible(themeButton);
+        previousMode=juce::jlimit(0,1,(int)processor.state.state.getProperty("uiPreviousMode",1));
+
         chain.onSelection=[this](int s){slot.select(s);chain.setSelectedSlot(s);};
 
         preset.setButtonText(p.presetName().toUpperCase()+"   v");
@@ -39,7 +51,24 @@ public:
         for(int i=0;i<3;i++){
             mode[(size_t)i].setButtonText(juce::StringArray{"SIMPLE","ADVANCED","BYPASS"}[i]);
             style(mode[(size_t)i]);addAndMakeVisible(mode[(size_t)i]);
-            mode[(size_t)i].onClick=[this,i]{browser.setVisible(false);setParam(processor,"mode",(float)(i==2?3:i));refresh();};
+            mode[(size_t)i].onClick=[this,i]{
+                browser.setVisible(false);
+                const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
+                if(i==2){
+                    // Bypass is a toggle; returning keeps the previous workspace.
+                    if(current==3)setParam(processor,"mode",(float)previousMode);
+                    else {
+                        previousMode=current==0?0:1;
+                        processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
+                        setParam(processor,"mode",3.f);
+                    }
+                } else {
+                    previousMode=i;
+                    processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
+                    setParam(processor,"mode",(float)i);
+                }
+                refresh();
+            };
         }
         for(int k=0;k<4;k++){
             auto& s=macro[(size_t)k];
@@ -72,11 +101,48 @@ public:
         addAndMakeVisible(sizeSelect);
         browser.onLoaded=[this]{slot.select(0);chain.setSelectedSlot(0);refresh();};
         browser.onClose=[this]{preset.repaint();};
+        addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
         addAndMakeVisible(browser);browser.setVisible(false);
+        setTheme((int)processor.state.state.getProperty("uiTheme",0),false);
         addMouseListener(this,true); // Outside clicks on child panels dismiss the overlay.
         resized();refresh();startTimerHz(30);
     }
     ~Canvas()override {stopTimer();setLookAndFeel(nullptr);}
+    struct BypassShade final:juce::Component {
+        void paint(juce::Graphics& g)override {
+            g.setColour(Theme::bg.withAlpha(.57f));g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
+            auto centre=getLocalBounds().getCentre();
+            Theme::text(g,"BYPASSED",{centre.x-190,centre.y-38,380,50},34,Theme::muted,true,juce::Justification::centred);
+            Theme::text(g,"CLICK BYPASS AGAIN TO RESTORE",{centre.x-220,centre.y+15,440,23},12,Theme::muted,true,juce::Justification::centred);
+        }
+    };
+    void setTheme(int v,bool persist=true){
+        selectedTheme=Theme::clampVariant(v);
+        if(persist)processor.state.state.setProperty("uiTheme",selectedTheme,nullptr);
+        Theme::select(selectedTheme);
+        themeButton.setVariant(selectedTheme);
+        setLookAndFeel(nullptr);
+        skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
+            Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
+        setLookAndFeel(skin.get());
+        for(auto* b:{&preset,&match,&mode[0],&mode[1],&mode[2]})style(*b);
+        for(auto& s:macro){
+            s.setColour(juce::Slider::trackColourId,Theme::green);
+            s.setColour(juce::Slider::thumbColourId,Theme::white);
+        }
+        for(auto* s:{&input,&mix,&output}){
+            s->setColour(juce::Slider::trackColourId,Theme::blue);
+            s->setColour(juce::Slider::thumbColourId,Theme::white);
+            s->setColour(juce::Slider::textBoxTextColourId,Theme::white);
+            s->setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
+            s->setColour(juce::Slider::textBoxOutlineColourId,juce::Colours::transparentBlack);
+        }
+        sizeSelect.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
+        sizeSelect.setColour(juce::ComboBox::textColourId,Theme::white);
+        sizeSelect.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
+        chain.repaint();slot.applyTheme();browser.applyTheme();
+        refresh();
+    }
     void style(juce::TextButton& b){
         b.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         b.setColour(juce::TextButton::textColourOffId,Theme::white);
@@ -84,15 +150,14 @@ public:
         b.setColour(juce::TextButton::textColourOnId,Theme::white);
     }
     void paint(juce::Graphics& g) override {
+        Theme::select(selectedTheme);
         g.fillAll(Theme::bg);
-        if(bg.isValid())g.drawImage(bg,getLocalBounds().toFloat());
-        g.setColour(juce::Colour(0xf10a1220));g.fillRect(0,0,Theme::width,76);
-        g.setColour(Theme::stroke);g.drawHorizontalLine(75,0.f,1168.f);
-        if(logo.isValid())g.drawImage(logo,juce::Rectangle<float>(16.f,15.f,52.f,52.f),juce::RectanglePlacement::centred);
-        Theme::text(g,"SKELL-PRESET",{73,19,235,35},26,Theme::white,true);
-        Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{75,54,230,16},10,Theme::muted,true);
+        g.setColour(Theme::panel);g.fillRect(0,0,Theme::width,76);
+        g.setColour(Theme::stroke);g.drawHorizontalLine(75,0.f,(float)Theme::width);
+        Theme::text(g,"SKELL-PRESET",{75,18,247,36},27,Theme::white,true);
+        Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{76,54,239,17},10,Theme::muted,true);
         Theme::text(g,processor.state.state.getProperty("presetBank","Main Vocals").toString().toUpperCase(),{356,12,332,14},10,Theme::muted,true);
-        g.setColour(Theme::stroke);g.drawHorizontalLine(633,0.f,1168.f);
+        g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
         g.setColour(Theme::panel);g.fillRect(0,640,Theme::width,48);
         Theme::text(g,"INPUT",{22,652,68,23},12,Theme::muted);
         Theme::text(g,"MIX",{398,652,68,23},12,Theme::muted);
@@ -103,58 +168,76 @@ public:
             g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getOutputPeak())?Theme::green:Theme::stroke);
             g.fillRect(1023+ix*6,657,4,10);
         }
-        const int current=(int)processor.state.getRawParameterValue("mode")->load();
-        if(current==0){
-            Theme::panelBox(g,{14,90,1140.f,507.f});
-            Theme::text(g,"SIMPLE / VOCAL FINISHING",{55,110,510,24},13,Theme::green,true);
-            Theme::text(g,processor.presetName(),{75,165,990,73},49,Theme::white,true);
-            Theme::text(g,"FOUR MACROS. ONE SOUND.",{79,249,500,24},14,Theme::muted,true);
-            Theme::text(g,"Tone, punch, space and grit use the same processing chain as Advanced mode.",{79,278,900,24},13,Theme::muted);
+        const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
+        const int viewMode=current==3?previousMode:(current==0?0:1);
+        if(viewMode==0){
+            Theme::panelBox(g,{14.f,90.f,1140.f,507.f});
+            Theme::text(g,"SIMPLE  /  VOCAL FINISHING",{54,115,520,25},13,Theme::green,true);
+            Theme::text(g,processor.presetName(),{74,166,988,73},49,Theme::white,true);
+            Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,247,900,24},14,Theme::muted,true);
+            Theme::text(g,"Four macros control the same rack heard in Advanced.",{79,277,900,24},13,Theme::muted);
+            g.setColour(Theme::stroke);g.drawHorizontalLine(320,74.f,1084.f);
         }
-        if(current==3){
-            Theme::panelBox(g,{14,90,1140.f,507.f});
-            Theme::text(g,"SIGNAL BYPASSED",{63,143,980,70},42,Theme::muted,true);
-            Theme::text(g,"Click-free bypass preserves the latency-aligned dry signal.",
-                        {68,222,1010,50},16,Theme::muted);
-        }
-        const juce::StringArray m{"TONE","PUNCH","SPACE","GRIT"};
+        const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
         for(int k=0;k<4;k++){
-            const int x=current==0?96+k*254:260+k*222;
-            Theme::text(g,m[k],{x,current==0?363:611,current==0?200:80,18},11,Theme::muted,true);
+            const int x=viewMode==0?96+k*254:260+k*222;
+            Theme::text(g,labels[k],{x,viewMode==0?365:611,viewMode==0?200:80,18},11,
+                        current==3?Theme::muted.withAlpha(.5f):Theme::muted,true);
         }
         Theme::text(g,"UI SIZE",{1057,637,80,10},8,Theme::muted);
     }
     void resized() override {
+        themeButton.setBounds(15,12,53,56);
         chain.setBounds(13,90,216,535);
         slot.setBounds(247,90,906,519);
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
         for(int k=0;k<3;k++)mode[(size_t)k].setBounds(796+k*119,27,115,37);
-        const int m=(int)processor.state.getRawParameterValue("mode")->load();
-        for(int i=0;i<4;i++)macro[(size_t)i].setBounds(m==0?96+i*254:333+i*222,m==0?399:614,m==0?192:120,m==0?49:19);
-        input.setBounds(80,648,228,34);mix.setBounds(433,648,241,34);output.setBounds(845,648,172,34);
+        const int raw=(int)processor.state.getRawParameterValue("mode")->load();
+        const int display=raw==3?previousMode:(raw==0?0:1);
+        for(int i=0;i<4;i++)macro[(size_t)i].setBounds(display==0?96+i*254:333+i*222,display==0?399:614,display==0?192:120,display==0?49:19);
+        input.setBounds(80,648,228,34);
+        mix.setBounds(433,648,241,34);
+        output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
         browser.setBounds(445,77,650,538);
+        bypassShade.setBounds(display==0?14:247,90,display==0?1140:906,display==0?507:519);
     }
     void refresh(){
-        int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
-        chain.setVisible(m==1 || m==2);slot.setVisible(m==1 || m==2);
+        Theme::select(selectedTheme);
+        const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
+        if(m==0 || m==1) {
+            previousMode=m;
+            if((int)processor.state.state.getProperty("uiPreviousMode",-1)!=previousMode)
+                processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
+        }
+        const bool bypass=m==3;
+        const int display=bypass?previousMode:(m==0?0:1);
+        chain.setVisible(display==1);slot.setVisible(display==1);
+        chain.setAlpha(bypass?.30f:1.f);slot.setAlpha(bypass?.30f:1.f);
+        chain.setEnabled(!bypass);slot.setEnabled(!bypass);
+        for(auto& s:macro){s.setEnabled(!bypass);s.setAlpha(bypass?.35f:1.f);}
+        for(auto* s:{&input,&mix,&output}){s->setEnabled(!bypass);s->setAlpha(bypass?.35f:1.f);}
+        bypassShade.setVisible(bypass);
+        if(bypass)bypassShade.toFront(false);
+        if(browser.isVisible())browser.toFront(false);
         preset.setButtonText(processor.presetName().toUpperCase()+"  v");
         for(int i=0;i<3;i++){
             const int mapped=i==2?3:i;
             mode[(size_t)i].setColour(juce::TextButton::buttonColourId,
-                mapped==m || (m==2 && i==1)?(i==2?Theme::muted.withAlpha(.28f):Theme::green.withAlpha(.20f)):Theme::panelAlt);
+                mapped==m?(bypass?Theme::muted.withAlpha(.32f):Theme::green.withAlpha(.24f)):Theme::panelAlt);
         }
         resized();repaint();
     }
     void timerCallback() override{
+        const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
+        if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
         const auto n=processor.presetName().toUpperCase()+"  v";
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
-        if(slot.isVisible()!=(m==1 || m==2))refresh();
-        // Repaint only active signal panels and the two tiny meter strips;
-        // a full-frame 30 Hz redraw was costly on integrated GPUs.
-        if(m==1){chain.repaint();slot.repaint();}
+        const int display=m==3?previousMode:(m==0?0:1);
+        if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
+        if(display==1){chain.repaint();slot.repaint();}
         repaint(juce::Rectangle<int>(307,651,88,26));
         repaint(juce::Rectangle<int>(1021,651,75,26));
     }
@@ -170,9 +253,11 @@ public:
 private:
     SkellPresetAudioProcessorEditor& outer;
     SkellPresetAudioProcessor& processor;
-    juce::Image bg,logo;
     ChainPanel chain;SlotEditor slot;PresetBrowser browser;
-    skellcore::ui::LookAndFeel skin;
+    SkullThemeButton themeButton;
+    BypassShade bypassShade;
+    std::unique_ptr<skellcore::ui::LookAndFeel> skin;
+    int selectedTheme=Theme::Obsidian,previousMode=1;
     juce::TextButton preset,match;
     std::array<juce::TextButton,3> mode;
     std::array<juce::Slider,4> macro;

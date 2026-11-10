@@ -11,30 +11,56 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
 ChainPanel::ChainPanel(SkellPresetAudioProcessor& p):processor(p) {}
-int ChainPanel::rowAt(int y) {const int relative=y-49;return relative>=0&&relative<470?relative/47:-1;}
-void ChainPanel::paint(juce::Graphics&g) {
+namespace {
+constexpr int rowStart=47, rowStep=42, rowHeight=38;
+constexpr int addTop=472, addHeight=33;
+}
+int ChainPanel::rowAt(int y) {
+    const int relative=y-rowStart;
+    if(relative<0||relative>=rowStep*SkellPresetAudioProcessor::slotCount)return -1;
+    return relative%rowStep<rowHeight?relative/rowStep:-1;
+}
+void ChainPanel::paint(juce::Graphics& g) {
+    Theme::selectFor(processor.state);
     Theme::panelBox(g,getLocalBounds().toFloat());
-    Theme::text(g,"Signal chain",{15,13,155,22},15,Theme::white,true);
-    Theme::text(g,"10 SLOTS",{153,13,48,22},10,Theme::muted,false,juce::Justification::centredRight);
-    for(int row=0;row<10;row++) {
-        const int slot=processor.slotIdAt(row),top=49+47*row;
-        auto box=juce::Rectangle<float>(10.f,(float)top,196.f,43.f);
+    int used=0;
+    for(int row=0;row<SkellPresetAudioProcessor::slotCount;row++) {
+        auto* pv=processor.state.getRawParameterValue("s"+juce::String(row+1)+"_type");
+        if(pv && (int)pv->load()!=SkellPresetAudioProcessor::Empty)++used;
+    }
+    Theme::text(g,"SIGNAL CHAIN",{15,11,148,22},14,Theme::white,true);
+    Theme::text(g,juce::String(used)+" / 10",{157,13,48,19},10,Theme::muted,true,juce::Justification::centredRight);
+    for(int row=0;row<SkellPresetAudioProcessor::slotCount;row++) {
+        const int slot=processor.slotIdAt(row),top=rowStart+rowStep*row;
+        auto box=juce::Rectangle<float>(10.f,(float)top,196.f,(float)rowHeight);
         auto* pv=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
         auto* on=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");
-        const int type=pv?(int)pv->load():0;const bool enabled=on&&on->load()>.5f;
-        g.setColour(row%2?juce::Colour(0xff132137):juce::Colour(0xff15253a));g.fillRoundedRectangle(box,5.f);
-        if(selected==slot) {g.setColour(Theme::blue);g.drawRoundedRectangle(box,6.f,1.6f);}
-        if(dragFrom>=0 && dragTo==row) {g.setColour(Theme::green);g.fillRect(10,top-1,196,2);}
-        g.setColour(Theme::muted.withAlpha(.5f));
-        for(int dot=0;dot<6;dot++)g.fillEllipse(19.f+(dot%2)*4.f,(float)top+18.f+(dot/2)*4.f,1.5f,1.5f);
-        Theme::text(g,juce::String(row+1).paddedLeft('0',2),{37,top+10,22,18},10,Theme::muted);
-        drawIcon(g,type,71,top+13);
-        Theme::text(g,processor.moduleName(type),{99,top+9,90,21},12,type==0?Theme::muted:Theme::white,selected==slot);
-        g.setColour(enabled?Theme::green:Theme::muted.withAlpha(.35f));g.fillEllipse(189.f,(float)top+17.f,7,7);
+        const int type=pv?(int)pv->load():0;
+        const bool enabled=on && on->load()>.5f && type!=0;
+        g.setColour(selected==slot?Theme::panelAlt.brighter(.1f):Theme::panelAlt.withMultipliedAlpha(row%2?.78f:.96f));
+        g.fillRoundedRectangle(box,6.f);
+        if(selected==slot) {g.setColour(Theme::green.withAlpha(.88f));g.drawRoundedRectangle(box.reduced(.5f),6.f,1.5f);}
+        if(dragging && dragTo==row) {
+            g.setColour(Theme::green);g.fillRoundedRectangle(10.f,(float)top-2.f,196.f,2.5f,1.f);
+        }
+        g.setColour(Theme::muted.withAlpha(.38f));
+        for(int dot=0;dot<6;dot++)g.fillEllipse(18.f+(dot%2)*4.f,(float)top+12.f+(dot/2)*4.f,1.6f,1.6f);
+        Theme::text(g,juce::String(row+1).paddedLeft('0',2),{35,top+9,23,18},10,Theme::muted);
+        drawIcon(g,type,69,top+9);
+        Theme::text(g,processor.moduleName(type),{97,top+8,88,19},12,type==0?Theme::muted:Theme::white,selected==slot);
+        g.setColour(enabled?Theme::green:Theme::muted.withAlpha(.37f));
+        g.fillEllipse(188.f,(float)top+15.f,8.f,8.f);
         const auto peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
-        g.setColour(Theme::green.withAlpha(enabled?.67f:.16f));g.fillRoundedRectangle(juce::Rectangle<float>(11.f,(float)top+40.f,194.f*peak,1.5f),.5f);
+        if(peak>0.002f) {
+            g.setColour(Theme::green.withAlpha(enabled?.72f:.18f));
+            g.fillRoundedRectangle(juce::Rectangle<float>(12.f,(float)top+35.f,191.f*peak,2.f),.8f);
+        }
     }
-    Theme::text(g,"SKELL ORIGINALS",{15,518,150,14},9,Theme::muted);
+    const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
+    g.setColour(used==10?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.06f));g.fillRoundedRectangle(add,6.f);
+    g.setColour(used==10?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
+    Theme::text(g,used==10?"RACK FULL  (10 / 10)":"+   ADD MODULE",{24,addTop+5,173,23},12,used==10?Theme::muted:Theme::green,true,juce::Justification::centred);
+    Theme::text(g,"DRAG ANYWHERE ON A ROW",{13,511,193,18},9,Theme::muted,false,juce::Justification::centred);
 }
 void ChainPanel::popupFor(int physicalSlot) {
     juce::PopupMenu menu;
@@ -47,22 +73,51 @@ void ChainPanel::popupFor(int physicalSlot) {
         if(id>=1&&id<=SkellPresetAudioProcessor::NumberOfModules){safe->processor.setSlotType(physicalSlot,id-1);safe->processor.setSlotOn(physicalSlot,id!=1);}
         if(id==101){safe->processor.setSlotType(physicalSlot,0);safe->processor.setSlotOn(physicalSlot,false);}
         if(id==102){auto v=safe->processor.state.getRawParameterValue("s"+juce::String(physicalSlot+1)+"_on");safe->processor.setSlotOn(physicalSlot,!(v&&v->load()>.5f));}
+        if(safe->onSelection && id!=0)safe->onSelection(physicalSlot);
         safe->repaint();
     });
 }
+void ChainPanel::addModule() {
+    for(int row=0;row<SkellPresetAudioProcessor::slotCount;row++) {
+        const int slot=processor.slotIdAt(row);
+        auto* type=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
+        if(type && (int)type->load()==SkellPresetAudioProcessor::Empty) {
+            selected=slot;if(onSelection)onSelection(slot);
+            popupFor(slot);repaint();return;
+        }
+    }
+}
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
-    const int index=rowAt(e.y);if(index<0)return;
+    if(e.x>=10 && e.x<=206 && e.y>=addTop && e.y<addTop+addHeight) {
+        if(!e.mods.isPopupMenu())addModule();return;
+    }
+    const int index=rowAt(e.y);
+    if(index<0 || e.x<10 || e.x>206)return;
     const auto slot=processor.slotIdAt(index);
     if(e.mods.isPopupMenu()){popupFor(slot);return;}
-    if(e.x>=181){auto*v=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");processor.setSlotOn(slot,!(v&&v->load()>.5f));repaint();return;}
-    selected=slot; if(onSelection)onSelection(slot);
-    if(e.x<34){dragFrom=index;dragTo=index;}
-    repaint();
+    if(e.x>=181 && e.x<=206) {
+        auto* v=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");
+        processor.setSlotOn(slot,!(v&&v->load()>.5f));repaint();return;
+    }
+    selected=slot;if(onSelection)onSelection(slot);
+    pendingFrom=index;dragFrom=dragTo=-1;dragging=false;pressPoint=e.getPosition();repaint();
 }
 void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
-    if(dragFrom>=0){dragTo=juce::jlimit(0,9,(e.y-49)/47);repaint();}
+    if(pendingFrom<0)return;
+    if(!dragging && e.getPosition().getDistanceFrom(pressPoint)>6) {
+        dragging=true;dragFrom=pendingFrom;dragTo=pendingFrom;
+    }
+    if(dragging) {
+        dragTo=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,(e.y-rowStart)/rowStep);
+        repaint();
+    }
 }
 void ChainPanel::mouseUp(const juce::MouseEvent&) {
-    if(dragFrom>=0&&dragTo>=0&&dragFrom!=dragTo)processor.reorderSlot(dragFrom,dragTo);
-    dragFrom=dragTo=-1;repaint();
+    if(pendingFrom<0)return;
+    if(dragging && dragTo>=0 && dragTo!=dragFrom)processor.reorderSlot(dragFrom,dragTo);
+    const int slot=processor.slotIdAt(dragging && dragTo>=0 ? dragTo : pendingFrom);
+    auto* type=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
+    const bool emptyClick=!dragging && type && (int)type->load()==SkellPresetAudioProcessor::Empty;
+    pendingFrom=dragFrom=dragTo=-1;dragging=false;repaint();
+    if(emptyClick)popupFor(slot);
 }
