@@ -112,11 +112,15 @@ endif()
 # dependency; Linux execution needs an X server such as xvfb-run.
 option(SKELL_PRESET_BUILD_UI_RENDERER "Build real JUCE editor PNG capture harness" OFF)
 if(SKELL_PRESET_BUILD_UI_RENDERER)
-    juce_add_console_app(SkellPresetUIRenderer PRODUCT_NAME "Skell-Preset UI Renderer")
-    juce_generate_juce_header(SkellPresetUIRenderer)
-    target_sources(SkellPresetUIRenderer PRIVATE tests/ui_renderer.cpp)
+    # This must be a plain executable. juce_add_console_app sets
+    # JUCE_STANDALONE_APPLICATION=1, which conflicts with the plugin SharedCode
+    # target's definitions. Reuse the plugin-generated JuceHeader and asset
+    # include directories explicitly instead of creating a second JUCE app.
+    add_executable(SkellPresetUIRenderer tests/ui_renderer.cpp)
+    target_include_directories(SkellPresetUIRenderer PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
     target_link_libraries(SkellPresetUIRenderer PRIVATE SkellPreset
-        juce::juce_audio_utils juce::juce_gui_extra)
+        SkellPresetAssets juce::juce_audio_utils juce::juce_gui_extra)
     target_compile_definitions(SkellPresetUIRenderer PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_compile_features(SkellPresetUIRenderer PRIVATE cxx_std_17)
 endif()
