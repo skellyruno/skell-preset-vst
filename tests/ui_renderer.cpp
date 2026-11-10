@@ -28,7 +28,9 @@ bool writePng(const juce::Image& image, const juce::File& file) {
     juce::FileOutputStream output(file);
     if (!output.openedOk()) return false;
     juce::PNGImageFormat png;
-    return png.writeImageToStream(image, output) && output.flush();
+    const bool written = png.writeImageToStream(image, output);
+    output.flush();
+    return written && file.getSize() > 1024;
 }
 
 bool hasVisibleContent(const juce::Image& image) {
