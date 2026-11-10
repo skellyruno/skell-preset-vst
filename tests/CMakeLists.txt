@@ -13,3 +13,7 @@ add_test(NAME SkellPresetAutomationTest COMMAND SkellPresetAutomationTest)
 add_executable(SkellPresetLatencyAdlibTest test_latency_adlib.cpp)
 target_compile_features(SkellPresetLatencyAdlibTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetLatencyAdlibTest COMMAND SkellPresetLatencyAdlibTest)
+
+add_executable(SkellPresetGateEqTest test_gate_eq.cpp)
+target_compile_features(SkellPresetGateEqTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetGateEqTest COMMAND SkellPresetGateEqTest)

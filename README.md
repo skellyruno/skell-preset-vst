@@ -134,3 +134,13 @@ The factory browser now has **IMPORT** and **SAVE PRESET** actions for native fi
 - Adlib Throw's third control now filters the echo, and the fourth triggers a replay on a rising threshold crossing (manual automation possible).
 - Adlib Doubler's fourth control now changes stereo modulation depth instead of being inert.
 - This still needs a real-world FL Studio audition on mono/stereo vocals and preset changes to judge transitions.
+
+## Stage 7 — Gate and EQ fidelity / browser polish
+
+- **Gate:** Hold (0–120 ms) and Hysteresis (0–8 dB) now control audio processing, with a hold timer and separate open/close thresholds.
+- **EQ graph:** displays the same bell and high-pass coefficients as the audio engine, including the Tone macro, rather than an illustrative curve.
+- **Time FX:** bypassed Delay, Reverb and Adlib Throw/Doubler continue advancing their state instead of freezing tails.
+- **Preset browser:** hover emphasis, visible scrollbar and preset-only wheel scrolling; selection still leaves the browser open.
+- **Testing:** six portable regression tests passed locally at 44.1, 48 and 96 kHz. Windows VST3 and FL Studio checks are independent build/runtime milestones.
+
+Next: per-module visualization, graph replacement crossfades, parallel-lane PDC and better pitch/formant adlib quality. Existing plugin identity, preset IDs and automation parameter names remain unchanged.

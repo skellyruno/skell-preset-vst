@@ -29,6 +29,16 @@ struct Biquad {
         const auto a=std::sin(w)/(2*q), c=std::cos(w), norm=1/(1+a);
         b0=(1+c)*.5*norm;b1=-(1+c)*norm;b2=b0;a1=-2*c*norm;a2=(1-a)*norm;
     }
+    // Exact magnitude response of the coefficients used in realtime processing.
+    double magnitudeDb(double frequency,double sampleRate) const noexcept {
+        if(!(sampleRate>0) || !std::isfinite(frequency))return 0.;
+        const double w=2*pi*std::clamp(frequency,0.,sampleRate*.5)/sampleRate;
+        const double c=std::cos(w),s=std::sin(w),c2=std::cos(2*w),s2=std::sin(2*w);
+        const double nr=b0+b1*c+b2*c2,ni=-b1*s-b2*s2;
+        const double dr=1+a1*c+a2*c2,di=-a1*s-a2*s2;
+        const double num=nr*nr+ni*ni,den=dr*dr+di*di;
+        return 10.*std::log10(std::max(1.e-24,num)/std::max(1.e-24,den));
+    }
     float process(float s,int channel) noexcept {
         auto x=std::isfinite(s)?static_cast<double>(s):0.;
         const auto y=b0*x+z1[(size_t)channel];
@@ -59,15 +69,26 @@ struct Compressor {
 };
 
 struct Gate {
-    double sr=48000,envelope=0,gain=1;
-    float threshold=-45.f,release=90.f;
-    void prepare(double rate) noexcept {sr=std::max(8000.,rate);envelope=0;gain=1;}
+    double sr=48000,envelope=0,gain=0;
+    float threshold=-45.f,release=90.f,holdMs=55.f,hysteresisDb=3.f;
+    int holdRemaining=0;
+    bool open=false;
+    void prepare(double rate) noexcept {sr=std::max(8000.,rate);envelope=0;gain=0;holdRemaining=0;open=false;}
     float processGain(float detector) noexcept {
+        // Schmitt thresholds and a hold timer prevent quiet-consonant chatter.
         const auto a=std::exp(-1./(sr*.004));
-        envelope=a*envelope+(1-a)*std::abs(detector);
-        const float goal=gainToDb((float)envelope)>=threshold?1.f:0.f;
+        const double input=std::isfinite(detector)?std::abs((double)detector):0.;
+        envelope=a*envelope+(1-a)*input;
+        const float level=gainToDb((float)envelope);
+        if(level>=threshold){open=true;holdRemaining=(int)(sr*.001*clamp(holdMs,0.f,250.f));}
+        else if(open && level<threshold-clamp(hysteresisDb,0.f,12.f)) {
+            if(holdRemaining>0)--holdRemaining;
+            else open=false;
+        }
+        const float goal=open?1.f:0.f;
         const auto smooth=std::exp(-1./(sr*.001*(goal>gain?4.:std::max(20.f,release))));
-        gain=smooth*gain+(1-smooth)*goal;return (float)gain;
+        gain=smooth*gain+(1-smooth)*goal;
+        return clamp((float)gain,0.f,1.f);
     }
 };
 

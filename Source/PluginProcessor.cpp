@@ -179,6 +179,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         e.highpass.setHighPass(rate,20.+c.p[3]*250.);
         e.comp.set(-48.f+c.p[0]*42.f-12.f*(macroPunch-.5f),1.f+c.p[1]*11.f,2.f+c.p[2]*98.f,20.f+c.p[3]*480.f,(c.p[4]-.5f)*24.f);
         e.gate.threshold=-75.f+c.p[0]*70.f;e.gate.release=40.f+c.p[1]*600.f;
+        // Hold and hysteresis were shown in the UI but previously not wired.
+        e.gate.holdMs=c.p[2]*120.f;e.gate.hysteresisDb=c.p[3]*8.f;
         e.delay.configure((int)(rate*(c.type==AdlibThrow ? (.16+.48*c.p[0]) : (.055+.85*c.p[0]))),c.type==AdlibThrow ? (.2f+.68f*c.p[1]) : (c.p[1]*.8f));
         e.reverb[0].setParameters(.15f+6.f*c.p[0],.12f+c.p[1]*.8f,1.f);
         if(c.type==Limiter)e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
@@ -214,7 +216,11 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 const auto& c=controlCache[(size_t)s];
                 if(c.type==Empty)continue;
                 const float slotWet=slotWetSmooth[(size_t)s].getNextValue();
-                if(c.type!=Limiter && slotWet<.000001f && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
+                // Advance delay/tail state even while bypassed: no frozen echoes.
+                const bool keepTailRunning=c.type==Limiter || c.type==Delay ||
+                    c.type==Reverb || c.type==AdlibThrow || c.type==AdlibDoubler;
+                if(!keepTailRunning && slotWet<.000001f &&
+                   slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
                 auto& e=engines[(size_t)s];float wL=l,wR=r;
                 switch(c.type) {
                     case EQ:
