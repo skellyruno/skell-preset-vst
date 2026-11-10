@@ -1,5 +1,6 @@
 #include "ChainPanel.h"
 #include "Theme.h"
+#include <cmath>
 namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
     g.setColour(Theme::blue.withAlpha(.86f));
     juce::Path p;
@@ -61,6 +62,23 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(used==10?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,used==10?"RACK FULL  (10 / 10)":"+   ADD MODULE",{24,addTop+5,173,23},12,used==10?Theme::muted:Theme::green,true,juce::Justification::centred);
     Theme::text(g,"DRAG ANYWHERE ON A ROW",{13,511,193,18},9,Theme::muted,false,juce::Justification::centred);
+}
+void ChainPanel::refreshIfChanged() {
+    bool changed=!visualSnapshotValid;
+    for(int row=0;row<SkellPresetAudioProcessor::slotCount;++row) {
+        const int slot=processor.slotIdAt(row);
+        const auto prefix="s"+juce::String(slot+1)+"_";
+        const auto* type=processor.state.getRawParameterValue(prefix+"type");
+        const auto* enabled=processor.state.getRawParameterValue(prefix+"on");
+        const int value=slot*4096+(type?(int)type->load():0)*128
+            +(enabled && enabled->load()>.5f?64:0)
+            +(std::isfinite(processor.getSlotPeak(slot))
+                ? juce::jlimit(0,63,(int)(processor.getSlotPeak(slot)*64.f)) : 0);
+        if(value!=lastVisual[(size_t)row])changed=true;
+        lastVisual[(size_t)row]=value;
+    }
+    visualSnapshotValid=true;
+    if(changed)repaint();
 }
 void ChainPanel::popupFor(int physicalSlot) {
     juce::PopupMenu menu;

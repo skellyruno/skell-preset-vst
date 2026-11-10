@@ -10,6 +10,7 @@ public:
     void resized() override;
     void select(int newSlot);
     void applyTheme();
+    void refreshIfChanged(); // only redraw when DSP controls or type change
     int selectedSlot()const noexcept{return slot;}
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -25,5 +26,8 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> wetAttachment;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> knobAttachment;
     bool draggingGraph=false;
+    bool graphSnapshotValid=false;
+    int lastType=-1;
+    std::array<float,6> lastControls{};
     void updateGraphNode(const juce::MouseEvent&);
 };

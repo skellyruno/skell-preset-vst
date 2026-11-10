@@ -92,7 +92,12 @@ public:
         mixAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"mix",mix);
         outputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"output",output);
         sizeSelect.addItemList({"70%","85%","100%","125%"},1);
-        sizeSelect.setSelectedId(1,juce::dontSendNotification);
+        const float restored=(float)processor.state.state.getProperty("uiScale",.70f);
+        const float available[]{.70f,.85f,1.f,1.25f};
+        int nearest=0;
+        for(int k=1;k<4;++k)
+            if(std::abs(restored-available[k])<std::abs(restored-available[nearest]))nearest=k;
+        sizeSelect.setSelectedId(nearest+1,juce::dontSendNotification);
         sizeSelect.onChange=[this]{
             const int index=sizeSelect.getSelectedId()-1;
             constexpr float scales[]{.70f,.85f,1.f,1.25f};
@@ -232,14 +237,22 @@ public:
     void timerCallback() override{
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
+        const float currentScale=(float)outer.getWidth()/Theme::width;
+        constexpr float sizes[]{.70f,.85f,1.f,1.25f};
+        int nearest=0;
+        for(int i=1;i<4;++i)
+            if(std::abs(currentScale-sizes[i])<std::abs(currentScale-sizes[nearest]))nearest=i;
+        if(sizeSelect.getSelectedId()!=nearest+1)sizeSelect.setSelectedId(nearest+1,juce::dontSendNotification);
         const auto n=processor.presetName().toUpperCase()+"  v";
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
-        if(display==1 && m!=3){chain.repaint();slot.repaint();}
-        repaint(juce::Rectangle<int>(307,651,88,26));
-        repaint(juce::Rectangle<int>(1021,651,75,26));
+        if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
+        const int inLevel=juce::jlimit(0,12,(int)(processor.getInputPeak()*12.f));
+        const int outLevel=juce::jlimit(0,12,(int)(processor.getOutputPeak()*12.f));
+        if(inLevel!=lastInputMeter){lastInputMeter=inLevel;repaint(juce::Rectangle<int>(307,651,88,26));}
+        if(outLevel!=lastOutputMeter){lastOutputMeter=outLevel;repaint(juce::Rectangle<int>(1021,651,75,26));}
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
@@ -258,6 +271,7 @@ private:
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
     int selectedTheme=Theme::Obsidian,previousMode=1;
+    int lastInputMeter=-1,lastOutputMeter=-1;
     juce::TextButton preset,match;
     std::array<juce::TextButton,3> mode;
     std::array<juce::Slider,4> macro;
@@ -274,11 +288,15 @@ SkellPresetAudioProcessorEditor::SkellPresetAudioProcessorEditor(SkellPresetAudi
     setResizable(true,true);
     setResizeLimits(818,482,1460,860);
     getConstrainer()->setFixedAspectRatio((double)Theme::width/Theme::height);
-    setSize(818,482);
+    const float restored=juce::jlimit(.70f,1.25f,(float)processor.state.state.getProperty("uiScale",.70f));
+    setSize(juce::roundToInt(Theme::width*restored),juce::roundToInt(Theme::height*restored));
 }
 SkellPresetAudioProcessorEditor::~SkellPresetAudioProcessorEditor(){canvas.reset();}
 void SkellPresetAudioProcessorEditor::resized(){
     const float scale=(float)getWidth()/Theme::width;
+    const float previous=(float)processor.state.state.getProperty("uiScale",.70f);
+    if(std::abs(previous-scale)>.001f)
+        processor.state.state.setProperty("uiScale",scale,nullptr);
     canvas->setTransform(juce::AffineTransform::scale(scale));
     canvas->setBounds(0,0,Theme::width,Theme::height);
 }

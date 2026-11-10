@@ -144,3 +144,7 @@ The factory browser now has **IMPORT** and **SAVE PRESET** actions for native fi
 - **Testing:** six portable regression tests passed locally at 44.1, 48 and 96 kHz. Windows VST3 and FL Studio checks are independent build/runtime milestones.
 
 Next: per-module visualization, graph replacement crossfades, parallel-lane PDC and better pitch/formant adlib quality. Existing plugin identity, preset IDs and automation parameter names remain unchanged.
+
+
+### Stage 8 (0.5.1) development update
+Portable EQ coefficient smoothing, compressor automation de-zippering, safer feedback input validation, non-EQ graph labels, idle repaint reduction and saved UI scale. See [docs/STAGE8.md](docs/STAGE8.md) for test evidence and remaining limitations. **Portable tests passing is not proof of FL Studio compatibility.**

@@ -50,21 +50,72 @@ struct Biquad {
     }
 };
 
+// Slews biquad coefficients without reallocating or interpolating audio buffers.
+// The Schur-stable denominator region of a second-order biquad is convex,
+// so a linear transition between stable filters remains stable.
+// Coefficients advance ONCE PER STEREO FRAME, not once per channel.
+struct SmoothedBiquad {
+    Biquad current, target;
+    int remaining = 0, rampSamples = 480;
+    void prepare(double sr) noexcept {
+        rampSamples = std::max(1, (int)(std::max(8000.,sr) * .012));
+        current = Biquad{}; target = Biquad{}; remaining = 0;
+    }
+    void reset() noexcept {current.reset();}
+    void aim(const Biquad& next) noexcept {
+        const double diff = std::abs(next.b0-target.b0)+std::abs(next.b1-target.b1)
+            +std::abs(next.b2-target.b2)+std::abs(next.a1-target.a1)+std::abs(next.a2-target.a2);
+        if(diff < 1e-11) return;
+        target.b0=next.b0; target.b1=next.b1; target.b2=next.b2;
+        target.a1=next.a1; target.a2=next.a2;
+        remaining=rampSamples;
+    }
+    void setPeak(double sr,double f,double db,double q) noexcept {
+        Biquad next;next.setPeak(sr,f,db,q);aim(next);
+    }
+    void setHighPass(double sr,double f) noexcept {
+        Biquad next;next.setHighPass(sr,f);aim(next);
+    }
+    void tick() noexcept {
+        if(remaining<=0)return;
+        const double a=1. / remaining;
+        current.b0+=(target.b0-current.b0)*a;
+        current.b1+=(target.b1-current.b1)*a;
+        current.b2+=(target.b2-current.b2)*a;
+        current.a1+=(target.a1-current.a1)*a;
+        current.a2+=(target.a2-current.a2)*a;
+        --remaining;
+    }
+    std::array<float,2> process(float left,float right) noexcept {
+        tick();return {current.process(left,0),current.process(right,1)};
+    }
+};
+
 struct Compressor {
     double sampleRate=48000, envelope=0;
     float threshold=-18,ratio=3,attackMs=12,releaseMs=90,makeupDb=0;
-    void prepare(double sr) noexcept {sampleRate=std::max(8000.,sr); reset();}
+    // Parameter smoothing guards against clicks when the host writes automation
+    // at block boundaries. Envelope smoothing remains independent.
+    double smoothedThreshold=-18,smoothedRatio=3,smoothedMakeup=0,paramPole=.998;
+    void prepare(double sr) noexcept {
+        sampleRate=std::max(8000.,sr);
+        paramPole=std::exp(-1. / (sampleRate*.012));
+        smoothedThreshold=threshold;smoothedRatio=ratio;smoothedMakeup=makeupDb;reset();
+    }
     void reset() noexcept {envelope=0;}
     void set(float thr,float r,float attack,float release,float makeup) noexcept {
         threshold=clamp(thr,-60,0); ratio=clamp(r,1,20);attackMs=clamp(attack,.2f,200);releaseMs=clamp(release,5,2000);makeupDb=clamp(makeup,-24,24);
     }
     float gain(float detector) noexcept {
-        const auto val=std::max(0.f,std::abs(detector));
+        smoothedThreshold=paramPole*smoothedThreshold+(1.-paramPole)*threshold;
+        smoothedRatio=paramPole*smoothedRatio+(1.-paramPole)*ratio;
+        smoothedMakeup=paramPole*smoothedMakeup+(1.-paramPole)*makeupDb;
+        const auto val=std::isfinite(detector)?std::min(10000.f,std::abs(detector)):0.f;
         const auto a=std::exp(-1./(sampleRate*.001*(val>envelope?attackMs:releaseMs)));
         envelope=a*envelope+(1-a)*val;
         const auto lvl=gainToDb(static_cast<float>(envelope));
-        const auto gr=lvl>threshold?(lvl-threshold)*(1-1/ratio):0.f;
-        return dbToGain(makeupDb-gr);
+        const auto gr=lvl>smoothedThreshold?(lvl-smoothedThreshold)*(1.-1./smoothedRatio):0.;
+        return dbToGain((float)(smoothedMakeup-gr));
     }
 };
 
@@ -131,7 +182,8 @@ struct Delay {
         const float blend=std::clamp(transition,0.f,1.f);
         const float dl=memory[0][oldRead]*(1.f-blend)+memory[0][read]*blend;
         const float dr=memory[1][oldRead]*(1.f-blend)+memory[1][read]*blend;
-        memory[0][pos]=l+dl*feedback;memory[1][pos]=r+dr*feedback;
+        memory[0][pos]=(std::isfinite(l)?l:0.f)+dl*feedback;
+        memory[1][pos]=(std::isfinite(r)?r:0.f)+dr*feedback;
         if(++pos==cap)pos=0;
         transition=std::min(1.f,transition+transitionStep);
         return {dl,dr};
@@ -183,7 +235,8 @@ struct AdlibDoubler {
         const float modMs=(1.f+4.f*std::clamp(width,0.f,1.f))*(.3f+1.4f*std::clamp(intensity,0.f,1.f));
         phase+=2.*pi*(.13+2.*std::clamp((double)rateControl,0.,1.))/rate;
         if(phase>=2*pi)phase-=2*pi;
-        memory[0][head]=l;memory[1][head]=r;
+        memory[0][head]=std::isfinite(l)?l:0.f;
+        memory[1][head]=std::isfinite(r)?r:0.f;
         std::array<float,2> out{};
         for(int c=0;c<2;++c) {
             const double delay=rate*.001*(baseMs+modMs*std::sin(phase+(c==0?0.:pi*.78)));

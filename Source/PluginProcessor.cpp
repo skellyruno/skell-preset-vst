@@ -69,7 +69,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
-    peak.reset();highpass.reset();comp.prepare(sampleRate);gate.prepare(sampleRate);
+    peak.prepare(sampleRate);highpass.prepare(sampleRate);comp.prepare(sampleRate);gate.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -223,9 +223,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                    slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
                 auto& e=engines[(size_t)s];float wL=l,wR=r;
                 switch(c.type) {
-                    case EQ:
-                        wL=e.peak.process(e.highpass.process(l,0),0);
-                        wR=e.peak.process(e.highpass.process(r,1),1);break;
+                    case EQ: {
+                        const auto cut=e.highpass.process(l,r);
+                        const auto filtered=e.peak.process(cut[0],cut[1]);
+                        wL=filtered[0];wR=filtered[1];break;}
                     case Compressor: {
                         auto gain=e.comp.gain(std::max(std::abs(l),std::abs(r)));
                         wL=l*gain;wR=r*gain;break;}

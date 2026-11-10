@@ -1,0 +1,81 @@
+#include "../Source/chain/BasicDSP.h"
+#include <cassert>
+#if defined(NDEBUG)
+#error "DSP stress assertions must remain enabled in release builds"
+#endif
+#include <chrono>
+#include <cmath>
+#include <iostream>
+#include <limits>
+
+using namespace skellpreset::dsp;
+
+static void testCompressorAutomation() {
+    Compressor c;
+    c.prepare(48000);
+    c.set(-16.f,2.5f,5.f,70.f,0.f);
+    for(int i=0;i<24000;++i) (void)c.gain(.2f);
+    const float baseline=c.gain(.2f);
+    c.set(-16.f,2.5f,5.f,70.f,24.f);
+    const float first=c.gain(.2f);
+    assert(first>0 && first<baseline*1.04f); // no instant 24dB jump
+    for(int i=0;i<24000;++i) (void)c.gain(.2f);
+    const float settled=c.gain(.2f);
+    assert(std::isfinite(settled) && settled>baseline*10.f);
+    assert(std::isfinite(c.gain(std::numeric_limits<float>::quiet_NaN())));
+    assert(std::isfinite(c.gain(std::numeric_limits<float>::infinity())));
+}
+
+static void stressRate(double sr) {
+    SmoothedBiquad eq, highpass;
+    eq.prepare(sr); highpass.prepare(sr);
+    Compressor comp; comp.prepare(sr);
+    Gate gate;gate.prepare(sr);
+    Delay delay;delay.prepare(sr);
+    AdlibDoubler doubler;doubler.prepare(sr);
+    StereoSampleDelay dry;dry.prepare((int)(sr*.04));
+    const auto started=std::chrono::steady_clock::now();
+    float peak=0, derivative=0,previous=0;
+    constexpr int cycles=2;
+    for(int n=0;n<(int)(sr*cycles);++n){
+        // Deliberately hostile 16-sample parameter automation and rapid changes
+        // between block sizes. This also checks 0/small and long buffers.
+        if(n%16==0){
+            const auto t=(float)(n/16%31)/30.f;
+            eq.setPeak(sr,60.*std::pow(180.,t),-12.+24.*t,.4+8.*(1.-t));
+            highpass.setHighPass(sr,20.+180.*t);
+            comp.set(-38.+30.*t,1.+11.*t,.8f+40.f*t,20.f+150.f*t,6.f*t);
+            delay.configure(1+(int)(sr*(.07+.4*t)),.15f+.5f*t);
+        }
+        const float raw=(n%2511==0)?std::numeric_limits<float>::quiet_NaN():
+                        (n%3377==0)?std::numeric_limits<float>::infinity():
+                        .11f*std::sin((float)(2.*pi*380.*n/sr));
+        const auto cut=highpass.process(raw,raw);
+        const auto filtered=eq.process(cut[0],cut[1]);
+        const auto gain=comp.gain(std::max(std::abs(filtered[0]),std::abs(filtered[1])));
+        const auto gateGain=gate.processGain(std::abs(filtered[0]));
+        const float l=filtered[0]*gain*gateGain, r=filtered[1]*gain*gateGain;
+        const auto echoes=delay.process(l,r);
+        const auto doubled=doubler.process(l,r,.65f,.4f,.3f,.6f);
+        const auto aligned=dry.process(l,r,17);
+        const float y=.65f*l + .08f*echoes[0]+.10f*doubled[0]+.17f*aligned[0];
+        const float yr=.65f*r + .08f*echoes[1]+.10f*doubled[1]+.17f*aligned[1];
+        assert(std::isfinite(y)&&std::isfinite(yr));
+        peak=std::max(peak,std::max(std::abs(y),std::abs(yr)));
+        if(n>0 && n%2511!=0 && n%3377!=0)
+            derivative=std::max(derivative,std::abs(y-previous));
+        previous=y;
+    }
+    const double elapsed=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
+    std::cout<<"rate="<<sr<<" Hz, "<<cycles<<"s audio, wall="<<elapsed<<"s, "
+             <<"estimated one-thread x-real-time="<<cycles/elapsed
+             <<", peak="<<peak<<", max sample jump="<<derivative<<"\n";
+    assert(peak<1.f); // moderate input is not accidentally boosted into clipping
+    assert(derivative<.7f); // guard against obvious automation discontinuities
+}
+
+int main(){
+    testCompressorAutomation();
+    for(double sr:{44100.,48000.,96000.})stressRate(sr);
+    std::cout<<"PASS realtime coefficient/parameter smoothing, finite output, headroom and latency fixtures\n";
+}

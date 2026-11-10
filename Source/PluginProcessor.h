@@ -51,7 +51,7 @@ public:
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,9,slot)].load();}
 private:
     struct EngineSlot {
-        skellpreset::dsp::Biquad peak, highpass;
+        skellpreset::dsp::SmoothedBiquad peak, highpass;
         skellpreset::dsp::Compressor comp;
         skellpreset::dsp::Gate gate;
         skellpreset::dsp::Delay delay;
