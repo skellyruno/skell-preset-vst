@@ -9,6 +9,8 @@ on:
       - 'Source/**'
       - 'assets/**'
       - 'tests/ui_renderer.cpp'
+      - 'SkellCore/include/SkellCore/HeadlessUIRenderer.h'
+      - 'SkellCore/CMakeLists.txt'
   pull_request:
   workflow_dispatch:
 

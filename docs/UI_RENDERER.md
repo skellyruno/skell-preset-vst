@@ -56,3 +56,14 @@ need Xvfb; it **does** need an available window station/GUI message manager.
   audio latency, or CPU load works in a host. Portable DSP tests remain separate.
 - UI automation and preset changes are performed on the message thread; no
   audio callback runs while capturing.
+
+## Reusable SkellCore capture engine
+
+The screenshot loop now calls `skellcore::ui::headless::render()` from
+`<SkellCore/HeadlessUIRenderer.h>`. Skell-Preset keeps a bundled SkellCore
+snapshot for compatibility with its audio modules; its renderer header is
+identical to the upstream shared library at
+[`skell-vst-template/SkellCore`](https://github.com/skellyruno/skell-vst-template/tree/main/SkellCore).
+Other projects should instead pin an immutable SkellCore commit and link
+`SkellCore::UIRenderer`. Plugin-specific scene choices and interaction
+assertions remain in `tests/ui_renderer.cpp`, not in the shared capture engine.
