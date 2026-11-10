@@ -52,8 +52,22 @@ int main(int argc, char** argv) {
                     scene.height = juce::roundToInt(688.f * scale);
                     options.scenes.push_back(scene);
                 }
+        options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
+        options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.configure = [&](const auto& scene) {
+            if(scene.id=="obsidian-expanded-70") {
+                processor.loadFactoryPreset(0);
+                while(processor.activeSlotCount()<16)processor.appendRackSlot();
+                processor.setSlotType(15,SkellPresetAudioProcessor::DeEsser);
+                processor.setSlotOn(15,true);
+            } else if(scene.id=="cream-deesser-70") {
+                processor.loadFactoryPreset(24); // Skell Vocal Polish
+            }
             editor.configureForScreenshot(scene.theme, scene.mode, scene.browser);
+            if(scene.id=="obsidian-expanded-70")
+                editor.selectRackSlotForScreenshot(15,6);
+            else if(scene.id=="cream-deesser-70")
+                editor.selectRackSlotForScreenshot(9,0);
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -61,18 +75,21 @@ int main(int argc, char** argv) {
             {"obsidian-advanced-70", "obsidian-simple-70"},
             {"obsidian-advanced-70", "obsidian-bypass-70"},
             {"obsidian-advanced-70", "cream-advanced-70"},
-            {"cream-advanced-70", "crimson-advanced-70"}
+            {"cream-advanced-70", "crimson-advanced-70"},
+            {"obsidian-advanced-70", "obsidian-expanded-70"},
+            {"cream-advanced-70", "cream-deesser-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 48) {
-            std::fprintf(stderr, "Expected 48 PNGs, captured %d\n", report.captured);
+        if (report.captured != 50) {
+            std::fprintf(stderr, "Expected 50 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
+        processor.loadFactoryPreset(0); // Restore ten-slot baseline for contact sheet.
         // One compact overview: Advanced and Browser at default 70% for each skin.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
         juce::Image overview(juce::Image::RGB, 2 * thumbnailWidth, 3 * thumbnailHeight, true);

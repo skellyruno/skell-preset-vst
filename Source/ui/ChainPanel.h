@@ -15,6 +15,10 @@ public:
     void mouseExit(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
     void setSelectedSlot(int s) {selected=s;repaint();}
+    void setScreenshotScrollOffset(int offset) {
+        scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-10),offset);
+        visualSnapshotValid=false;repaint();
+    }
     std::function<void(int)> onSelection;
 private:
     SkellPresetAudioProcessor& processor;

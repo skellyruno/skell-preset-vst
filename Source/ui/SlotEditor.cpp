@@ -114,7 +114,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
     constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
-    if(type==SkellPresetAudioProcessor::EQ) {
+    if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser) {
         for(float freq:frequencies){
             const auto x=plot.getX()+plot.getWidth()*std::log(freq/20.f)/std::log(1000.f);
             g.setColour(Theme::stroke.withAlpha(.75f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
@@ -158,6 +158,35 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::blue);g.fillEllipse(x0-6,y0-6,12,12);
         g.setColour(Theme::white);g.drawEllipse(x0-6,y0-6,12,12,1.3f);
         Theme::text(g,juce::String(freq,0)+" Hz  |  "+juce::String(gain,1)+" dB",{540,120,285,20},12,Theme::green,false,juce::Justification::centredRight);
+    } else if(type==SkellPresetAudioProcessor::DeEsser) {
+        const float cutoff=3500.f+processor.getSlotParam(slot,0)*8000.f;
+        const float threshold=-53.f+processor.getSlotParam(slot,1)*39.f;
+        const float maxReduction=2.f+processor.getSlotParam(slot,2)*20.f;
+        auto xFor=[&](float frequency){
+            return plot.getX()+plot.getWidth()*std::log(frequency/20.f)/std::log(1000.f);
+        };
+        juce::Path response;
+        for(int ix=0;ix<=835;ix+=3) {
+            const float frequency=20.f*std::pow(1000.f,(float)ix/835.f);
+            const float highWeight=frequency/std::sqrt(frequency*frequency+cutoff*cutoff);
+            const float attenuation=20.f*std::log10(juce::jmax(.0001f,
+                1.f-(1.f-skellpreset::dsp::dbToGain(-maxReduction))*highWeight));
+            const float y=plot.getY()+35.f-attenuation*6.f;
+            if(ix==0)response.startNewSubPath(plot.getX(),y);
+            else response.lineTo(plot.getX()+ix,y);
+        }
+        g.setColour(Theme::green.withAlpha(.13f));
+        g.fillRect(xFor(cutoff),plot.getY(),plot.getRight()-xFor(cutoff),plot.getHeight());
+        g.setColour(Theme::amber.withAlpha(.8f));
+        g.drawVerticalLine((int)xFor(cutoff),plot.getY(),plot.getBottom());
+        g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.8f));
+        Theme::text(g,"SIBILANCE REGION  •  "+juce::String(cutoff,0)+" Hz",
+            {47,163,500,20},12,Theme::green,true);
+        Theme::text(g,juce::String(threshold,1)+" dB THRESHOLD  •  UP TO "
+            +juce::String(maxReduction,1)+" dB REDUCTION",
+            {47,186,600,18},11,Theme::muted);
+        Theme::text(g,"ILLUSTRATIVE MAX REDUCTION  •  ACTUAL GAIN IS LEVEL-DEPENDENT",
+            {43,327,790,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::Compressor){
         // Steady-state input/output transfer, derived from compressor controls.
         const auto* punch=processor.state.getRawParameterValue("macro2");
@@ -221,16 +250,18 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"BELL + LOW CUT",{44,99,130,23},11,Theme::green,true);
         Theme::text(g,"RESPONSE FROM LIVE DSP COEFFICIENTS",{205,100,390,22},11,Theme::muted);
     }
-    if(type==SkellPresetAudioProcessor::EQ) {
+    if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser) {
         const juce::StringArray ticks{"20","50","100","200","500","1k","2k","5k","10k","20k"};
         constexpr float tickHz[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
         for(int i=0;i<ticks.size();i++){
             const auto x=plot.getX()+plot.getWidth()*std::log(tickHz[i]/20.f)/std::log(1000.f);
             Theme::text(g,ticks[i],{(int)x-24,360,48,17},10,Theme::muted,false,juce::Justification::centred);
         }
-        Theme::text(g,"+36",{5,142,30,15},9,Theme::muted);
-        Theme::text(g,"0",{13,245,22,14},9,Theme::muted);
-        Theme::text(g,"-36",{5,341,30,15},9,Theme::muted);
+        if(type==SkellPresetAudioProcessor::EQ) {
+            Theme::text(g,"+36",{5,142,30,15},9,Theme::muted);
+            Theme::text(g,"0",{13,245,22,14},9,Theme::muted);
+            Theme::text(g,"-36",{5,341,30,15},9,Theme::muted);
+        }
     } else if(type==SkellPresetAudioProcessor::Compressor || type==SkellPresetAudioProcessor::Gate) {
         const bool compressor=type==SkellPresetAudioProcessor::Compressor;
         for(int k=0;k<=4;k++){
@@ -248,6 +279,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW • REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING • MONO INPUT REMAINS COMPATIBLE" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
+                  type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  •  STEREO-LINKED CONSONANT CONTROL" :
                   "SLOT CONTROL • 20 MS WET/BYPASS FADES",{30,395,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(const juce::MouseEvent& e){

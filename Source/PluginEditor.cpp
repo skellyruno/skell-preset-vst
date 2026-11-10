@@ -170,6 +170,12 @@ public:
         else browser.setVisible(false);
         repaint();
     }
+    void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
+        chain.setScreenshotScrollOffset(scrollOffset);
+        chain.setSelectedSlot(physicalSlot);
+        slot.select(physicalSlot);
+        refresh();
+    }
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
@@ -224,6 +230,10 @@ public:
         Theme::text(g,"SKELL-PRESET",{75,18,247,36},27,Theme::white,true);
         Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{76,54,239,17},10,Theme::muted,true);
         Theme::text(g,processor.state.state.getProperty("presetBank","Main Vocals").toString().toUpperCase(),{356,12,332,14},10,Theme::muted,true);
+        const double sampleRate=juce::jmax(1.,processor.getSampleRate());
+        const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
+        Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
+                    {695,12,91,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
         g.setColour(Theme::panel);g.fillRect(0,640,Theme::width,48);
         Theme::text(g,"INPUT",{22,652,68,23},12,Theme::muted);
@@ -369,4 +379,8 @@ juce::StringArray SkellPresetAudioProcessorEditor::getScreenshotLayoutIssues() c
 }
 juce::StringArray SkellPresetAudioProcessorEditor::runScreenshotInteractionTests(){
     return canvas->runScreenshotInteractionTests();
+}
+
+void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
+    canvas->selectRackSlotForScreenshot(physicalSlot,scrollOffset);
 }

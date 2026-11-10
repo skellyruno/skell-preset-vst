@@ -10,6 +10,7 @@ public:
     // Deterministic editor capture hooks used by the headless screenshot test.
     // They exercise the actual editor and controls without a separate mock UI.
     void configureForScreenshot(int themeVariant, int workspaceMode, bool showPresetBrowser);
+    void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
     juce::StringArray getScreenshotLayoutIssues() const;
     juce::StringArray runScreenshotInteractionTests();
 private:
