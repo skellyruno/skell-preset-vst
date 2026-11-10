@@ -33,7 +33,8 @@ void ChainPanel::paint(juce::Graphics& g) {
     const int active=processor.activeSlotCount();
     int used=0;
     for(int row=0;row<active;row++) {
-        auto* pv=processor.state.getRawParameterValue("s"+juce::String(row+1)+"_type");
+        const int physical=processor.slotIdAt(row);
+        auto* pv=processor.state.getRawParameterValue("s"+juce::String(physical+1)+"_type");
         if(pv && (int)pv->load()!=SkellPresetAudioProcessor::Empty)++used;
     }
     Theme::text(g,"SIGNAL CHAIN",{15,11,148,22},14,Theme::white,true);

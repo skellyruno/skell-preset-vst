@@ -148,7 +148,9 @@ bool SkellPresetAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout
         || (in==juce::AudioChannelSet::stereo() && out==juce::AudioChannelSet::stereo());
 }
 float SkellPresetAudioProcessor::value(const juce::String& id) const noexcept {
-    if(auto* v=state.getRawParameterValue(id))return v->load();return 0;
+    if(auto* v=state.getRawParameterValue(id))
+        return v->load();
+    return 0;
 }
 void SkellPresetAudioProcessor::setReal(const juce::String& id,float v) {
     if(auto* p=state.getParameter(id))p->setValueNotifyingHost(p->convertTo0to1(v));

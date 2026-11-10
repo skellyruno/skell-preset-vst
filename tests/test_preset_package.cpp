@@ -26,7 +26,7 @@ int main(){
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
         auto& slot=first.slots[(size_t)s];slot.slotId=(s+3)%skellpreset::package::slotCount;
-        slot.type=s%11;slot.enabled=s%2==0;slot.wet=.1f+(float)s*.08f;
+        slot.type=s%11;slot.enabled=s%2==0;slot.wet=.15f+(float)s*.04f;
         slot.params.fill(.5f);
     }
     first.activeSlotCount=14;
@@ -46,6 +46,8 @@ int main(){
     {
         juce::ZipFile v2(path);
         std::unique_ptr<juce::InputStream> input(v2.createStreamForEntry(0));
+        check(input!=nullptr,"Valid preset ZIP has JSON entry");
+        if(!input){dir.deleteRecursively();return 1;}
         const auto jsonText=input->readEntireStreamAsString();
         auto legacyJson=juce::JSON::parse(jsonText);
         auto* object=legacyJson.getDynamicObject();
