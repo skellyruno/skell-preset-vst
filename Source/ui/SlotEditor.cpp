@@ -133,17 +133,59 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::blue);g.fillEllipse(x0-6,y0-6,12,12);
         g.setColour(Theme::white);g.drawEllipse(x0-6,y0-6,12,12,1.3f);
         Theme::text(g,juce::String(freq,0)+" Hz  |  "+juce::String(gain,1)+" dB",{540,120,285,20},12,Theme::green,false,juce::Justification::centredRight);
-    } else if(type!=SkellPresetAudioProcessor::Empty){
-        juce::Path env;
-        const float amount=processor.getSlotParam(slot,0);
-        for(int x=0;x<830;x+=5){
-            const float u=x/830.f;
-            const float value=(1.f-amount*.4f)*std::sin(u*12.f)*std::exp(-u*1.3f);
-            const float y=plot.getCentreY()-value*75.f;
-            if(x==0)env.startNewSubPath(plot.getX()+x,y);else env.lineTo(plot.getX()+x,y);
+    } else if(type==SkellPresetAudioProcessor::Compressor){
+        // Steady-state input/output transfer, derived from compressor controls.
+        const auto* punch=processor.state.getRawParameterValue("macro2");
+        const float punchValue=punch?punch->load():.5f;
+        const float threshold=-48.f+processor.getSlotParam(slot,0)*42.f-12.f*(punchValue-.5f);
+        const float ratio=1.f+processor.getSlotParam(slot,1)*11.f;
+        auto levelToY=[&](float db){return plot.getBottom()-(db+60.f)/60.f*plot.getHeight();};
+        juce::Path unity,compressed;
+        for(int x=0;x<=835;x+=5){
+            const float inDb=-60.f+60.f*x/835.f;
+            const float outDb=inDb>threshold?threshold+(inDb-threshold)/ratio:inDb;
+            if(x==0){unity.startNewSubPath(plot.getX(),levelToY(inDb));compressed.startNewSubPath(plot.getX(),levelToY(outDb));}
+            else {unity.lineTo(plot.getX()+x,levelToY(inDb));compressed.lineTo(plot.getX()+x,levelToY(outDb));}
         }
-        g.setColour(Theme::green.withAlpha(.8f));g.strokePath(env,juce::PathStrokeType(2.4f));
-        Theme::text(g,"ILLUSTRATIVE PARAMETER SHAPE",{45,160,400,18},10,Theme::muted,true);
+        g.setColour(Theme::muted.withAlpha(.38f));g.strokePath(unity,juce::PathStrokeType(1.4f));
+        g.setColour(Theme::green);g.strokePath(compressed,juce::PathStrokeType(2.6f));
+        const float tx=plot.getX()+(threshold+60.f)/60.f*plot.getWidth();
+        g.setColour(Theme::amber.withAlpha(.7f));g.drawVerticalLine((int)tx,plot.getY(),plot.getBottom());
+        Theme::text(g,"STEADY-STATE TRANSFER  •  "+juce::String(threshold,1)+" dB  /  "+juce::String(ratio,1)+":1",
+                    {45,163,670,18},11,Theme::muted,true);
+    } else if(type==SkellPresetAudioProcessor::Gate){
+        const float threshold=-75.f+processor.getSlotParam(slot,0)*70.f;
+        const float hysteresis=processor.getSlotParam(slot,3)*8.f;
+        const float hold=processor.getSlotParam(slot,2)*120.f;
+        const auto toX=[&](float dB){return plot.getX()+plot.getWidth()*juce::jlimit(0.f,1.f,(dB+80.f)/80.f);};
+        const float closeX=toX(threshold-hysteresis),openX=toX(threshold);
+        g.setColour(Theme::green.withAlpha(.09f));g.fillRect(openX,plot.getY(),plot.getRight()-openX,plot.getHeight());
+        g.setColour(Theme::amber.withAlpha(.20f));g.fillRect(closeX,plot.getY(),openX-closeX,plot.getHeight());
+        g.setColour(Theme::blue);g.drawVerticalLine((int)closeX,plot.getY(),plot.getBottom());
+        g.setColour(Theme::green);g.drawVerticalLine((int)openX,plot.getY(),plot.getBottom());
+        Theme::text(g,"OPEN  "+juce::String(threshold,1)+" dB",{45,163,270,20},12,Theme::green,true);
+        Theme::text(g,"CLOSE  "+juce::String(threshold-hysteresis,1)+" dB",{45,187,270,20},12,Theme::muted);
+        Theme::text(g,"HOLD  "+juce::String(hold,0)+" ms",{45,211,270,20},12,Theme::muted);
+        Theme::text(g,"HYSTERESIS THRESHOLDS  •  INPUT LEVEL -80 TO 0 dB",{42,327,700,17},10,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::Delay || type==SkellPresetAudioProcessor::AdlibThrow){
+        const bool throwing=type==SkellPresetAudioProcessor::AdlibThrow;
+        const float seconds=throwing?(.16f+.48f*processor.getSlotParam(slot,0)):(.055f+.85f*processor.getSlotParam(slot,0));
+        const float feedback=throwing?(.2f+.68f*processor.getSlotParam(slot,1)):(.8f*processor.getSlotParam(slot,1));
+        const float unit=juce::jmin(175.f,plot.getWidth()/5.f);
+        for(int tap=0;tap<5;tap++){
+            const float amplitude=std::pow(feedback,(float)tap);
+            const float x=plot.getX()+43.f+tap*unit;
+            g.setColour(Theme::green.withAlpha(.3f+.7f*amplitude));
+            g.fillRoundedRectangle(x,plot.getBottom()-amplitude*133.f,10.f,amplitude*133.f,3.f);
+            Theme::text(g,juce::String(tap+1),{(int)x-7,(int)plot.getBottom()-20,26,16},9,Theme::muted,false,juce::Justification::centred);
+        }
+        Theme::text(g,juce::String(throwing?"PHRASE THROW":"DELAY")+"  "+juce::String(seconds*1000.f,0)+" ms  •  FEEDBACK "+juce::String(feedback*100.f,0)+"%",
+                    {45,163,700,20},12,Theme::green,true);
+        Theme::text(g,"RELATIVE TAP DECAY  •  NOT AN AUDIO WAVEFORM",{43,326,650,17},10,Theme::muted);
+    } else if(type!=SkellPresetAudioProcessor::Empty){
+        // Show configuration rather than inventing a live audio analyzer.
+        Theme::text(g,processor.moduleName(type).toUpperCase(),{65,198,740,40},25,Theme::green,true,juce::Justification::centred);
+        Theme::text(g,"ADJUST THE CONTROLS BELOW  •  AUDIO IS PROCESSED IN REAL TIME",{120,249,600,22},12,Theme::muted,false,juce::Justification::centred);
     } else {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }

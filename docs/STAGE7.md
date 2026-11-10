@@ -5,3 +5,9 @@ Time-FX state continues advancing while bypassed to prevent frozen feedback retu
 The preset browser has card hover emphasis and a scrollbar. Its selection stays open.
 Portable validation: 6/6 tests passed locally (44.1/48/96 kHz). Windows JUCE compile and FL Studio host playback require independent checks.
 Limitations: the EQ still has one bell plus one high-pass; module-type replacement is not yet click-free and lanes are not active.
+
+### Stage 7.1 visual pass
+- Compressor shows the steady-state threshold/ratio transfer curve.
+- Gate displays open/close thresholds, hysteresis and hold time.
+- Delay and Adlib Throw show relative repeat decay rather than a fake waveform.
+- Other modules show accurate configuration status instead of an invented analyzer.
