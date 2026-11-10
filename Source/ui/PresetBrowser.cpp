@@ -3,7 +3,7 @@
 #include <BinaryData.h>
 #include <algorithm>
 
-namespace {const juce::StringArray banks{"All presets","Main Vocals","Adlibs","Vocoding"};}
+namespace {const juce::StringArray banks{"All presets","Main Vocals","Adlibs"};}
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.setMultiLine(false);
     search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
@@ -74,6 +74,7 @@ std::vector<int> PresetBrowser::filtered() const {
     for(int i=0;i<(int)skellpreset::factoryPresets.size();i++) {
         const auto& item=skellpreset::factoryPresets[(size_t)i];
         const juce::String name(item.name), b(item.bank),desc(item.description);
+        if(b=="Vocoding")continue; // Preserve existing preset IDs; hide unfinished vocoder content.
         if(bank>0 && b!=banks[bank])continue;
         bool found=q.isEmpty() || name.containsIgnoreCase(q) || b.containsIgnoreCase(q) || desc.containsIgnoreCase(q);
         if(q.startsWith("bank:"))found=b.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
@@ -92,7 +93,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
     Theme::text(g,juce::String((int)entries.size())+" PRESETS",{204,75,246,20},10,Theme::muted,true);
     Theme::text(g,"ESC TO CLOSE",{getWidth()-121,75,100,20},10,Theme::muted,false,juce::Justification::centredRight);
     g.setColour(Theme::stroke);g.drawVerticalLine(195,84.f,(float)getHeight()-20);
-    for(int i=0;i<4;i++){
+    for(int i=0;i<banks.size();i++){
         auto b=juce::Rectangle<float>(17.f,111.f+i*60.f,168.f,52.f);
         g.setColour(i==bank?Theme::green.withAlpha(.13f):Theme::bg);g.fillRoundedRectangle(b,6);
         g.setColour(i==bank?Theme::green.withAlpha(.7f):Theme::stroke);g.drawRoundedRectangle(b,6,1);
@@ -105,8 +106,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
     }
     Theme::text(g,"ORIGINAL SKELL FACTORY BANKS",{18,369,175,30},9,Theme::muted);
     Theme::text(g,"Click any preset to load.",{18,405,172,19},11,Theme::muted);
-    Theme::text(g,"Audition & custom banks",{18,425,172,19},10,Theme::amber);
-    Theme::text(g,"are upcoming features.",{18,441,172,19},10,Theme::muted);
+    Theme::text(g,"Native preset import / export",{18,425,172,19},10,Theme::amber);
+    Theme::text(g,"Use WAV pairs for MATCH later.",{18,441,172,19},10,Theme::muted);
     for(int i=0;i<7;i++){
         const int itemIndex=i+scroll;
         if(itemIndex>=(int)entries.size())break;
@@ -134,7 +135,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(e.y>=111 && e.x>=17 && e.x<=185){
         const int idx=(e.y-111)/60;
-        if(idx>=0&&idx<4){bank=idx;scroll=0;repaint();}return;
+        if(idx>=0&&idx<banks.size()){bank=idx;scroll=0;repaint();}return;
     }
     if(e.y>=110&&e.x>=207&&e.y<537){
         const auto entries=filtered();const int row=(e.y-110)/61;
