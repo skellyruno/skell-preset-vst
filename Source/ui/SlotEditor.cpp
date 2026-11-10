@@ -135,7 +135,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             if(x==0)env.startNewSubPath(plot.getX()+x,y);else env.lineTo(plot.getX()+x,y);
         }
         g.setColour(Theme::green.withAlpha(.8f));g.strokePath(env,juce::PathStrokeType(2.4f));
-        Theme::text(g,"PARAMETER RESPONSE  •  LIVE DSP",{45,160,400,18},10,Theme::muted,true);
+        Theme::text(g,"ILLUSTRATIVE PARAMETER SHAPE",{45,160,400,18},10,Theme::muted,true);
     } else {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }

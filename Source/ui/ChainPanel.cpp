@@ -37,7 +37,7 @@ void ChainPanel::paint(juce::Graphics& g) {
         auto* on=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");
         const int type=pv?(int)pv->load():0;
         const bool enabled=on && on->load()>.5f && type!=0;
-        g.setColour(selected==slot?Theme::panelAlt.brighter(.1f):Theme::panelAlt.withMultipliedAlpha(row%2?.78f:.96f));
+        g.setColour(selected==slot?Theme::panelAlt.brighter(.1f):(hoveredRow==row?Theme::green.withAlpha(.12f):Theme::panelAlt.withMultipliedAlpha(row%2?.78f:.96f)));
         g.fillRoundedRectangle(box,6.f);
         if(selected==slot) {g.setColour(Theme::green.withAlpha(.88f));g.drawRoundedRectangle(box.reduced(.5f),6.f,1.5f);}
         if(dragging && dragTo==row) {
@@ -57,7 +57,7 @@ void ChainPanel::paint(juce::Graphics& g) {
         }
     }
     const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
-    g.setColour(used==10?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.06f));g.fillRoundedRectangle(add,6.f);
+    g.setColour(used==10?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
     g.setColour(used==10?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,used==10?"RACK FULL  (10 / 10)":"+   ADD MODULE",{24,addTop+5,173,23},12,used==10?Theme::muted:Theme::green,true,juce::Justification::centred);
     Theme::text(g,"DRAG ANYWHERE ON A ROW",{13,511,193,18},9,Theme::muted,false,juce::Justification::centred);
@@ -78,14 +78,21 @@ void ChainPanel::popupFor(int physicalSlot) {
     });
 }
 void ChainPanel::addModule() {
+    int firstEmpty=-1,lastUsed=-1;
     for(int row=0;row<SkellPresetAudioProcessor::slotCount;row++) {
         const int slot=processor.slotIdAt(row);
         auto* type=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
-        if(type && (int)type->load()==SkellPresetAudioProcessor::Empty) {
-            selected=slot;if(onSelection)onSelection(slot);
-            popupFor(slot);repaint();return;
-        }
+        if(type && (int)type->load()!=SkellPresetAudioProcessor::Empty)lastUsed=row;
+        else if(firstEmpty<0)firstEmpty=row;
     }
+    if(firstEmpty<0)return;
+    // Append after the last populated row even if a user left a gap earlier
+    // in the chain. This keeps "+" intuitive without creating new APVTS IDs.
+    const int destination=juce::jmin(SkellPresetAudioProcessor::slotCount-1,lastUsed+1);
+    if(firstEmpty!=destination)processor.reorderSlot(firstEmpty,destination);
+    const int slot=processor.slotIdAt(destination);
+    selected=slot;if(onSelection)onSelection(slot);
+    popupFor(slot);repaint();
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     if(e.x>=10 && e.x<=206 && e.y>=addTop && e.y<addTop+addHeight) {
@@ -120,4 +127,18 @@ void ChainPanel::mouseUp(const juce::MouseEvent&) {
     const bool emptyClick=!dragging && type && (int)type->load()==SkellPresetAudioProcessor::Empty;
     pendingFrom=dragFrom=dragTo=-1;dragging=false;repaint();
     if(emptyClick)popupFor(slot);
+}
+
+void ChainPanel::mouseMove(const juce::MouseEvent& e) {
+    const int next=(e.x>=10 && e.x<=206)?rowAt(e.y):-1;
+    if(next!=hoveredRow){hoveredRow=next;repaint();}
+    const bool add=(e.y>=addTop && e.y<addTop+addHeight && e.x>=10 && e.x<=206);
+    if(next>=0 && e.x<181)setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+    else if(next>=0 || add)setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    else setMouseCursor(juce::MouseCursor::NormalCursor);
+}
+void ChainPanel::mouseExit(const juce::MouseEvent&) {
+    hoveredRow=-1;
+    setMouseCursor(juce::MouseCursor::NormalCursor);
+    repaint();
 }

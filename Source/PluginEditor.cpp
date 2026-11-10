@@ -237,7 +237,7 @@ public:
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
-        if(display==1){chain.repaint();slot.repaint();}
+        if(display==1 && m!=3){chain.repaint();slot.repaint();}
         repaint(juce::Rectangle<int>(307,651,88,26));
         repaint(juce::Rectangle<int>(1021,651,75,26));
     }

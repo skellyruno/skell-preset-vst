@@ -151,7 +151,14 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(e.y>=110&&e.x>=207&&e.y<476){
         const auto entries=filtered();const int row=(e.y-110)/61;
         if(row>=0&&row<6 && scroll+row<(int)entries.size()){
+            const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
             processor.loadFactoryPreset(entries[(size_t)(scroll+row)]);
+            // Loading a sound should not unexpectedly switch a Simple audition
+            // into Advanced or disable the user's existing global bypass.
+            if(previousMode==0 || previousMode==3) {
+                if(auto* mode=processor.state.getParameter("mode"))
+                    mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
+            }
             if(onLoaded)onLoaded();
             // Keep bank, scroll position, and search query visible for fast A/B.
             repaint();
