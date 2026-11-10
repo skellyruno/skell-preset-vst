@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include <cmath>
 namespace {
-const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter"};
+const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler"};
 std::array<juce::String,4> titles(int type) {
     switch(type){
         case 1:return {"Frequency","Gain","Q","Low Cut"};
@@ -13,6 +13,8 @@ std::array<juce::String,4> titles(int type) {
         case 6:return {"Decay","Damping","Size","Tone"};
         case 7:return {"Time","Feedback","Filter","Stereo"};
         case 8:return {"Excite","Colour","Focus","Mix"};
+        case 9:return {"Throw Time","Feedback","Tone","Trigger"};
+        case 10:return {"Width","Timing","Motion","Colour"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -39,14 +41,20 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):processor(p) {
         k.setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
         addAndMakeVisible(k);
     }
+    moduleBox.onChange=[this] {
+        const int next=moduleBox.getSelectedId()-1;
+        if(next>=0)processor.setSlotType(slot,next);
+        repaint();
+    };
     select(0);
 }
 void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
-    typeAttachment.reset();enabledAttachment.reset();wetAttachment.reset();
+    enabledAttachment.reset();wetAttachment.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
-    typeAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.state,prefix+"type",moduleBox);
+    if(auto* type=processor.state.getRawParameterValue(prefix+"type"))
+        moduleBox.setSelectedId((int)type->load()+1,juce::dontSendNotification);
     enabledAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"on",activeButton);
     wetAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"wet",wetKnob);
     for(int k=0;k<4;k++)knobAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
@@ -126,7 +134,10 @@ void SlotEditor::paint(juce::Graphics&g) {
     Theme::text(g,"+36",{5,142,30,15},9,Theme::muted);Theme::text(g,"0",{13,245,22,14},9,Theme::muted);Theme::text(g,"-36",{5,341,30,15},9,Theme::muted);
     const auto labels=titles(type);
     for(int i=0;i<4;i++)Theme::text(g,labels[(size_t)i].toUpperCase(),{133+211*i,459,98,19},11,Theme::muted,true);
-    Theme::text(g,"DRAG THE EQ NODE • BANDS 2–8 ARE PLANNED",{30,395,580,17},10,Theme::muted);
+    Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW • REPEATS CONTINUE THROUGH SILENCE" :
+                  type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING • MONO INPUT REMAINS COMPATIBLE" :
+                  type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE • BANDS 2–8 ARE PLANNED" :
+                  "SLOT CONTROL • 20 MS WET/BYPASS FADES",{30,395,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(const juce::MouseEvent& e){
     const auto x=juce::jlimit(0.f,1.f,(e.position.x-33.f)/835.f);

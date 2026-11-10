@@ -1,6 +1,6 @@
 # SKELL-PRESET | ONE PLUGIN. EVERY SOUND.
 
-**Stage 4 / 0.4.0 development build** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, global gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete. Windows VST3 and Standalone targets compiled successfully in GitHub Actions at Stage 3; Stage 4 Windows VST3, Standalone and native package security tests passed in GitHub Actions run 42405769660. Neither build has been DAW-tested in FL Studio.**
+**Stage 5 / 0.5.0 development build** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, rack gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete. Windows VST3 and Standalone targets compiled successfully in GitHub Actions at Stage 3; Stage 4 Windows VST3, Standalone and native package security tests passed in GitHub Actions run 42405769660. Neither build has been DAW-tested in FL Studio.**
 
 ## What works now
 
@@ -114,3 +114,14 @@ The factory browser now has **IMPORT** and **SAVE PRESET** actions for native fi
 **Security:** The reader never extracts files, rejects any archive with extra entries, unexpected names or symlinks, caps compressed archives at 4 MiB and the single uncompressed JSON entry at 256 KiB, and requires in-range finite control values, valid unique slot IDs, and an exact version. Invalid packages are rejected transactionally before changes reach the live chain. Export uses a temporary file and atomic replacement so a failed save doesn't clobber the old file.
 
 **Known limits:** This is a small, deterministic Stage 4 package *subset* with only `preset.json`; covers, IR WAVs, samples and multi-preset banks are not implemented yet. Preset import applies parameter changes on the UI thread but the current fixed-slot architecture has not implemented module-graph hot swaps or latency reconciliation. The `.skellpreset` roundtrip and malicious ZIP test executable is registered as `NativePresetPackage` in JUCE CTest builds.
+
+## Stage 5 — Compact UI, real rack gate, first adlib DSP, PDC (November 2026)
+
+- Default editor at **70%** (818 × 482), preserving the 1168 × 688 internal layout. Available scales are 70/85/100/125% with a fixed aspect ratio.
+- Preset selector now opens and closes on second click. Escape, outside clicks and mode changes dismiss the browser. Vocoding mode and factory bank entries are hidden, not deleted: legacy mode parameter indices and factory program IDs remain unchanged.
+- The old top-bar Noise Gate is removed; **Gate is a normal bypassable rack module**. Obsolete `globalGate` remains as an inactive parameter ID for backwards host compatibility.
+- Adds **Adlib Throw**, a phrase-end replay using SkellCore PhraseTracker + delay, and **Adlib Doubler**, a stereo micro-delay with decorrelated modulation. Factory Adlibs instantiate both. These are not formant shifters or MIDI triggers.
+- SkellCore's experimental lookahead TruePeakLimiter replaces zero-lookahead soft clipping. Each Limiter reserves its fixed lookahead, even when bypassed. Per-limiter wet/dry, master Mix and Bypass paths delay-match this latency; the processor reports the sum to the host on structural edits and state load. Not BS.1770-certified.
+- All limiter, PDC, throw and doubler buffers are preallocated in prepareToPlay. Structural module type changes are **not realtime automatable** in this version; editing a chain may require host realignment. Parallel lanes and crossfaded graph swaps remain unfinished.
+- Five portable tests include sample-exact dry/bypass PDC and finite stereo doubler output. Real Windows VST3 compilation and FL Studio runtime test must still validate these changes.
+- Advanced formant/pitch adlibs, MIDI throw triggering, full MATCH reconstruction and independent 3-lane PDC are future work.

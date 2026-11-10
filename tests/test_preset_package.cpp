@@ -26,7 +26,7 @@ int main(){
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
         auto& slot=first.slots[(size_t)s];slot.slotId=(s+3)%10;
-        slot.type=s%9;slot.enabled=s%2==0;slot.wet=.1f+(float)s*.08f;
+        slot.type=s%11;slot.enabled=s%2==0;slot.wet=.1f+(float)s*.08f;
         slot.params.fill(.5f);
     }
     first.macros.fill(.5f);
@@ -36,7 +36,7 @@ int main(){
     skellpreset::package::Document second;
     check(skellpreset::package::read(path,second).wasOk(),"Import compressed .skellpreset");
     check(second.name==first.name&&second.bank==first.bank&&second.slots[0].slotId==3
-          &&second.slots[9].type==9%9&&second.macros[0]==first.macros[0],"Roundtrip chain/macro/metadata");
+          &&second.slots[9].type==9%11&&second.macros[0]==first.macros[0],"Roundtrip chain/macro/metadata");
 
     first.slots[1].slotId=first.slots[0].slotId;
     check(skellpreset::package::write(testFile(dir,"duplicate"),first).failed(),"Reject duplicate slot IDs");

@@ -10,3 +10,6 @@ add_test(NAME SkellPresetRestrictedChainFitTest COMMAND SkellPresetRestrictedCha
 add_executable(SkellPresetAutomationTest test_automation.cpp)
 target_compile_features(SkellPresetAutomationTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetAutomationTest COMMAND SkellPresetAutomationTest)
+add_executable(SkellPresetLatencyAdlibTest test_latency_adlib.cpp)
+target_compile_features(SkellPresetLatencyAdlibTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetLatencyAdlibTest COMMAND SkellPresetLatencyAdlibTest)

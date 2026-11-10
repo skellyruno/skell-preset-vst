@@ -10,7 +10,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, NumberOfModules };
     static constexpr int slotCount=10;
     SkellPresetAudioProcessor();
     ~SkellPresetAudioProcessor() override = default;
@@ -55,6 +55,15 @@ private:
         skellpreset::dsp::Compressor comp;
         skellpreset::dsp::Gate gate;
         skellpreset::dsp::Delay delay;
+        skellpreset::dsp::AdlibDoubler doubler;
+        skellpreset::dsp::StereoSampleDelay limiterDry;
+        skellcore::TruePeakLimiter limiter;
+        skellcore::PhraseTracker phrase;
+        std::array<std::vector<float>,2> throwHistory;
+        size_t throwWrite=0,throwRead=0;
+        int throwRemaining=0;
+        bool phrasePreviouslyActive=false;
+        void processThrow(float l,float r,float& outL,float& outR,float amount,float feedback,double sampleRate) noexcept;
         std::array<skellcore::FDNReverb,1> reverb;
         void prepare(double sampleRate);
     };
@@ -80,7 +89,10 @@ private:
     double rate=48000;
     int selectedProgram=0;
     juce::String name="Clean Lead";
-    float dryGateEnv=1;
+    skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc;
+    std::atomic<int> limiterLookahead{0};
+    int currentReportedLatency=0;
+    void updateHostLatency();
     juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> inputSmooth,outputSmooth,mixSmooth,bypassSmooth;
     // Continuous per-slot wet/bypass fades; all memory is owned by processor.
     std::array<juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear>,slotCount> slotWetSmooth;

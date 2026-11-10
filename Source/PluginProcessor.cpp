@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -49,7 +49,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     fl("output","Output",-24,24,0);
     bl("autoGain","Auto gain (reserved)",false);bl("delta","Delta",false);
     bl("adapt","Adapt (reserved)",false);fl("adaptAmount","Adapt amount (reserved)",0,1,0);
-    bl("globalGate","Global gate",false);fl("gateThreshold","Gate threshold",-80,0,-50);
+    bl("globalGate","Legacy global gate (inactive; use rack Gate)",false);fl("gateThreshold","Gate threshold",-80,0,-50);
     p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"laneMode",1},"Lane mode (reserved)",juce::StringArray{"Series","Parallel"},0));
     for(int k=1;k<=8;k++) fl("macro"+juce::String(k),"Macro "+juce::String(k),0,1,.5f);
     for(int s=1;s<=slotCount;s++) {
@@ -71,10 +71,50 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     peak.reset();highpass.reset();comp.prepare(sampleRate);gate.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
+    doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
+    limiterDry.prepare(limiter.latencySamples());
+    phrase.prepare(sampleRate);phrase.setThreshold(.018f);
+    const auto length=(size_t)(sampleRate*1.25)+4;
+    for(auto& line:throwHistory)line.assign(length,0.f);
+    throwWrite=throwRead=0;throwRemaining=0;phrasePreviouslyActive=false;
 }
+void SkellPresetAudioProcessor::EngineSlot::processThrow(float l,float r,float& outL,float& outR,float amount,float feedback,double sampleRate) noexcept {
+    (void)amount;(void)feedback;
+    if(throwHistory[0].empty()){outL=l;outR=r;return;}
+    const auto cap=throwHistory[0].size();
+    throwHistory[0][throwWrite]=l;throwHistory[1][throwWrite]=r;
+    phrase.processSample(std::max(std::abs(l),std::abs(r)));
+    const bool active=phrase.active();
+    if(phrasePreviouslyActive && !active) {
+        // Re-read ~240ms preceding the phrase-end gap into the feedback delay.
+        throwRemaining=std::max(1,(int)(sampleRate*.24));
+        const size_t lookback=(size_t)(sampleRate*.42)+(size_t)throwRemaining;
+        throwRead=(throwWrite+cap-(lookback%cap))%cap;
+    }
+    phrasePreviouslyActive=active;
+    float sourceL=0,sourceR=0;
+    if(throwRemaining>0){
+        sourceL=throwHistory[0][throwRead];sourceR=throwHistory[1][throwRead];
+        throwRead=(throwRead+1)%cap;--throwRemaining;
+    }
+    const auto echo=delay.process(sourceL,sourceR);
+    outL=l+echo[0];outR=r+echo[1];
+    throwWrite=(throwWrite+1)%cap;
+}
+void SkellPresetAudioProcessor::updateHostLatency() {
+    const int latency=limiterLookahead.load(std::memory_order_acquire);
+    int total=0;
+    for(const auto& slot:rawSlots)
+        if(slot.type && (int)slot.type->load(std::memory_order_relaxed)==Limiter)total+=latency;
+    if(total!=currentReportedLatency){currentReportedLatency=total;setLatencySamples(total);}
+}
+
 void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int) {
     rate=sampleRate;for(auto& e:engines)e.prepare(rate);
-    dryGateEnv=1;
+    const auto lookahead=engines[0].limiter.latencySamples();
+    limiterLookahead.store(lookahead,std::memory_order_release);
+    dryPdc.prepare(slotCount*lookahead);bypassPdc.prepare(slotCount*lookahead);
+    updateHostLatency();
     for(auto* smooth:{&inputSmooth,&outputSmooth,&mixSmooth,&bypassSmooth})smooth->reset(rate,.020);
     inputSmooth.setCurrentAndTargetValue(dbToGain(rawGlobal.input->load()));
     outputSmooth.setCurrentAndTargetValue(dbToGain(rawGlobal.output->load()));
@@ -86,8 +126,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int) {
         const auto& raw=rawSlots[(size_t)s];
         blend.setCurrentAndTargetValue(raw.on->load()>.5f ? raw.wet->load():0.f);
     }
-    // Only zero-added-latency DSP is enabled in this stage.
-    setLatencySamples(0);
+
 }
 void SkellPresetAudioProcessor::releaseResources() {}
 bool SkellPresetAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout) const {
@@ -106,7 +145,7 @@ float SkellPresetAudioProcessor::getSlotParam(int slot,int param) const noexcept
 }
 void SkellPresetAudioProcessor::setSlotParam(int slot,int param,float v) {setReal(slotPrefix(slot)+"p"+juce::String(param+1),juce::jlimit(0.f,1.f,v));}
 void SkellPresetAudioProcessor::setSlotOn(int slot,bool on) {setReal(slotPrefix(slot)+"on",on?1.f:0.f);}
-void SkellPresetAudioProcessor::setSlotType(int slot,int type) {setReal(slotPrefix(slot)+"type",juce::jlimit(0,NumberOfModules-1,type));}
+void SkellPresetAudioProcessor::setSlotType(int slot,int type) {setReal(slotPrefix(slot)+"type",juce::jlimit(0,NumberOfModules-1,type));updateHostLatency();}
 juce::String SkellPresetAudioProcessor::moduleName(int type) const {return types[juce::jlimit(0,types.size()-1,type)];}
 
 void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&) {
@@ -121,8 +160,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     outputSmooth.setTargetValue(dbToGain(rawGlobal.output->load()));
     mixSmooth.setTargetValue(juce::jlimit(0.f,1.f,rawGlobal.mix->load()));
     bypassSmooth.setTargetValue(mode==3?0.f:1.f);
-    const bool globalGate=rawGlobal.gate->load()>.5f,delta=rawGlobal.delta->load()>.5f;
-    const auto threshold=dbToGain(rawGlobal.threshold->load());
+    const bool delta=rawGlobal.delta->load()>.5f;
     const float macroTone=rawGlobal.macros[0]->load(),macroPunch=rawGlobal.macros[1]->load(),
                 macroSpace=rawGlobal.macros[2]->load(),macroGrit=rawGlobal.macros[3]->load();
     // Read atomics once each block. Fixed slot objects avoid realtime allocations.
@@ -137,8 +175,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         e.highpass.setHighPass(rate,20.+c.p[3]*250.);
         e.comp.set(-48.f+c.p[0]*42.f-12.f*(macroPunch-.5f),1.f+c.p[1]*11.f,2.f+c.p[2]*98.f,20.f+c.p[3]*480.f,(c.p[4]-.5f)*24.f);
         e.gate.threshold=-75.f+c.p[0]*70.f;e.gate.release=40.f+c.p[1]*600.f;
-        e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f);
+        e.delay.configure((int)(rate*(c.type==AdlibThrow ? (.16+.48*c.p[0]) : (.055+.85*c.p[0]))),c.type==AdlibThrow ? (.2f+.68f*c.p[1]) : (c.p[1]*.8f));
         e.reverb[0].setParameters(.15f+6.f*c.p[0],.12f+c.p[1]*.8f,1.f);
+        if(c.type==Limiter)e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
     }
     for(int s=0;s<slotCount;++s){
         const auto& c=controlCache[(size_t)s];
@@ -149,6 +188,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const auto packed=packedOrder.load(std::memory_order_acquire);
     for(int i=0;i<slotCount;i++)sequence[(size_t)i]=(int)((packed>>(4*i))&0x0fU);
     std::array<float,slotCount> meter{};
+    const auto lookahead=limiterLookahead.load(std::memory_order_acquire);
+    int blockLatency=0;
+    for(int s=0;s<slotCount;++s)if(controlCache[(size_t)s].type==Limiter)blockLatency+=lookahead;
     float inPeak=0,outPeak=0;
     for(int n=0;n<size;n++) {
         float l=std::isfinite(left[n])?left[n]:0.f;
@@ -158,19 +200,16 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         const float mix=mixSmooth.getNextValue(),activeBlend=bypassSmooth.getNextValue();
         inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
         l*=inputGain;r*=inputGain;
-        const auto gateVal=std::max(std::abs(l),std::abs(r));
-        const float goal=gateVal>=threshold?1.f:0.f;
-        const auto smooth=std::exp(-1.f/(float)(rate*.005));
-        dryGateEnv=(float)(dryGateEnv*smooth+goal*(1-smooth));
-        if(globalGate){l*=dryGateEnv;r*=dryGateEnv;}
-        const float dryL=l,dryR=r;
+        const auto delayedOriginal=bypassPdc.process(originalL,originalR,blockLatency);
+        const auto delayedDry=dryPdc.process(l,r,blockLatency);
+        const float dryL=delayedDry[0],dryR=delayedDry[1];
         {
             for(int ix=0;ix<slotCount;ix++) {
                 const int s=sequence[(size_t)ix];if(s<0||s>=slotCount)continue;
                 const auto& c=controlCache[(size_t)s];
                 if(c.type==Empty)continue;
                 const float slotWet=slotWetSmooth[(size_t)s].getNextValue();
-                if(slotWet<.000001f && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
+                if(c.type!=Limiter && slotWet<.000001f && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
                 auto& e=engines[(size_t)s];float wL=l,wR=r;
                 switch(c.type) {
                     case EQ:
@@ -180,9 +219,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         auto gain=e.comp.gain(std::max(std::abs(l),std::abs(r)));
                         wL=l*gain;wR=r*gain;break;}
                     case Limiter: {
-                        float ceiling=.12f+c.p[0]*.87f;
-                        wL=softLimit(l*dbToGain(c.p[1]*18.f),ceiling);
-                        wR=softLimit(r*dbToGain(c.p[1]*18.f),ceiling);break;}
+                        const float drive=dbToGain(c.p[1]*18.f);
+                        const float in[2]{l*drive,r*drive};float out[2]{};
+                        e.limiter.processFrame(in,out,2);
+                        wL=out[0];wR=out[1];break;}
                     case Gate: {
                         float gain=e.gate.processGain(std::max(std::abs(l),std::abs(r)));
                         wL=l*gain;wR=r*gain;break;}
@@ -196,9 +236,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*0.4f+r;break;}
                     case Delay: {auto d=e.delay.process(l,r);wL=d[0];wR=d[1];break;}
                     case Reverb: {auto d=e.reverb[0].processFrame(l,r);wL=d[0];wR=d[1];break;}
+                    case AdlibThrow: {e.processThrow(l,r,wL,wR,c.p[0],c.p[1],rate);break;}
+                    case AdlibDoubler: {auto d=e.doubler.process(l,r,c.p[0],c.p[1],c.p[2]);wL=d[0];wR=d[1];break;}
                     default: break;
                 }
-                // No latency-added algorithms in this phase, so dry and wet remain aligned.
+                // Lookahead limiter wet and bypass both carry its declared sample delay.
+                if(c.type==Limiter){auto aligned=e.limiterDry.process(l,r,lookahead);l=aligned[0];r=aligned[1];}
                 l=l+(wL-l)*slotWet;r=r+(wR-r)*slotWet;
                 meter[(size_t)s]=std::max(meter[(size_t)s],std::max(std::abs(l),std::abs(r)));
             }
@@ -207,8 +250,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         const float resultR=dryR+(r-dryR)*mix;
         const float processedL=(delta?(resultL-dryL):resultL)*outputGain;
         const float processedR=(delta?(resultR-dryR):resultR)*outputGain;
-        left[n]=originalL+(processedL-originalL)*activeBlend;
-        if(right)right[n]=originalR+(processedR-originalR)*activeBlend;
+        left[n]=delayedOriginal[0]+(processedL-delayedOriginal[0])*activeBlend;
+        if(right)right[n]=delayedOriginal[1]+(processedR-delayedOriginal[1])*activeBlend;
         outPeak=std::max(outPeak,std::max(std::abs(left[n]),right?std::abs(right[n]):0.f));
     }
     inputPeak.store(inPeak);outputPeak.store(outPeak);
@@ -237,10 +280,23 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     setSlotParam(4,0,.35f);setSlotParam(4,1,.31f);setReal("s5_wet",preset.space*.30f);
     setSlotParam(5,0,.24f+preset.space*.5f);setSlotParam(5,1,.65f);setReal("s6_wet",preset.space*.35f);
     setSlotParam(6,0,.89f);setSlotParam(6,1,.05f);setReal("s7_wet",.65f);
+    if(juce::String(preset.bank)=="Adlibs") {
+        // Actual phrase throws and decorrelated doubling in the Adlibs bank.
+        setSlotType(4,AdlibThrow);setSlotOn(4,true);
+        setSlotParam(4,0,.28f+preset.space*.40f);
+        setSlotParam(4,1,.18f+preset.space*.65f);
+        setReal("s5_wet",.38f+preset.space*.42f);
+        setSlotType(7,AdlibDoubler);setSlotOn(7,true);
+        setSlotParam(7,0,.42f+preset.punch*.45f);
+        setSlotParam(7,1,.35f+preset.space*.35f);
+        setSlotParam(7,2,.32f);
+        setReal("s8_wet",.38f+preset.space*.45f);
+    }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",preset.bank,nullptr);
+    updateHostLatency();
 }
 juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) const {
     skellpreset::package::Document doc;
@@ -285,6 +341,7 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     selectedProgram=-1; // Imported sound is not a factory preset.
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",doc.bank,nullptr);
+    updateHostLatency();
     return juce::Result::ok();
 }
 
@@ -328,6 +385,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         name=loaded.getProperty("presetName","Custom").toString();
         selectedProgram=juce::jlimit(-1,(int)factoryPresets.size()-1,(int)loaded.getProperty("program",0));
         state.replaceState(loaded);
+        updateHostLatency();
     }
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {return new SkellPresetAudioProcessor();}

@@ -121,4 +121,68 @@ inline float softLimit(float x,float ceiling=0.96f) noexcept {
     // Zero-lookahead saturation limiter, NOT a true-peak limiter.
     return ceiling*std::tanh(x/ceiling);
 }
+
+
+// Preallocated PDC line: all dry/wet alignment runs without reallocations or locks.
+struct StereoSampleDelay {
+    std::array<std::vector<float>,2> channel;
+    size_t head=0;
+    void prepare(int maxDelay) {
+        const size_t capacity=(size_t)std::max(1,maxDelay)+2;
+        for(auto& line:channel)line.assign(capacity,0.f);
+        head=0;
+    }
+    void reset() noexcept {for(auto& line:channel)std::fill(line.begin(),line.end(),0.f);head=0;}
+    std::array<float,2> process(float l,float r,int delay) noexcept {
+        if(channel[0].empty())return {l,r};
+        const auto capacity=channel[0].size();
+        const auto d=(size_t)std::clamp(delay,0,(int)capacity-2);
+        channel[0][head]=std::isfinite(l)?l:0.f;
+        channel[1][head]=std::isfinite(r)?r:0.f;
+        const size_t read=(head+capacity-d)%capacity;
+        const std::array<float,2> output{channel[0][read],channel[1][read]};
+        head=(head+1)%capacity;
+        return output;
+    }
+};
+
+// A modest decorrelated stereo double for isolated adlibs. It is NOT a true pitch shifter.
+struct AdlibDoubler {
+    std::array<std::vector<float>,2> memory;
+    size_t head=0;
+    double rate=48000,phase=0;
+    void prepare(double sr) {
+        rate=std::max(8000.,sr);head=0;phase=0;
+        for(auto& v:memory)v.assign((size_t)(rate*.09)+4,0.f);
+    }
+    void reset() noexcept {for(auto& v:memory)std::fill(v.begin(),v.end(),0.f);head=0;phase=0;}
+    std::array<float,2> process(float l,float r,float width,float depth,float rateControl) noexcept {
+        if(memory[0].empty())return {l,r};
+        const float baseMs=12.f+24.f*std::clamp(depth,0.f,1.f);
+        const float modMs=1.f+4.f*std::clamp(width,0.f,1.f);
+        phase+=2.*pi*(.13+2.*std::clamp((double)rateControl,0.,1.))/rate;
+        if(phase>=2*pi)phase-=2*pi;
+        memory[0][head]=l;memory[1][head]=r;
+        std::array<float,2> out{};
+        for(int c=0;c<2;++c) {
+            const double delay=rate*.001*(baseMs+modMs*std::sin(phase+(c==0?0.:pi*.78)));
+            const auto whole=(size_t)delay;
+            const float alpha=(float)(delay-whole);
+            const auto cap=memory[c].size();
+            const float a=memory[c][(head+cap-whole)%cap];
+            const float b=memory[c][(head+cap-whole-1)%cap];
+            out[(size_t)c]=a+(b-a)*alpha;
+        }
+        head=(head+1)%memory[0].size();
+        return out;
+    }
+};
+
+// PDC policy for this version: limiter types reserve lookahead even when bypassed.
+// This makes each slot's bypass phase-aligned with its active processing path.
+inline int seriesLatencySamples(const int* slotTypes,int count,int limiterType,int limiterLatency) noexcept {
+    int total=0;
+    for(int i=0;i<count;++i)if(slotTypes[i]==limiterType)total+=std::max(0,limiterLatency);
+    return total;
+}
 }
