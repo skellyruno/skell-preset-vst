@@ -230,7 +230,7 @@ public:
         Theme::text(g,"SKELL-PRESET",{75,18,247,36},27,Theme::white,true);
         Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{76,54,239,17},10,Theme::muted,true);
         Theme::text(g,processor.state.state.getProperty("presetBank","Main Vocals").toString().toUpperCase(),{356,12,332,14},10,Theme::muted,true);
-        const double sampleRate=juce::jmax(1.,processor.getSampleRate());
+        const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
         Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
                     {695,12,91,14},9,Theme::muted,true);

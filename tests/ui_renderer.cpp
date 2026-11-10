@@ -33,6 +33,10 @@ int main(int argc, char** argv) {
     int failures = 0;
     {
         SkellPresetAudioProcessorEditor editor(processor);
+        if(processor.preparedAudioRate()!=48000.) {
+            std::fprintf(stderr,"Processor sample rate was not prepared\n");
+            ++failures;
+        }
         processor.loadFactoryPreset(25);
         if(processor.getLatencySamples()!=0) {
             std::fprintf(stderr,"Live Lead must report zero added PDC samples\n");

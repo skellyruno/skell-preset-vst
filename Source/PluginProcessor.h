@@ -54,6 +54,7 @@ public:
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
+    double preparedAudioRate() const noexcept {return rate;}
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
