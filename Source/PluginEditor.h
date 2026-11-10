@@ -7,10 +7,11 @@ public:
     explicit SkellPresetAudioProcessorEditor(SkellPresetAudioProcessor&);
     ~SkellPresetAudioProcessorEditor() override;
     void resized() override;
-#if defined(SKELL_PRESET_UI_RENDERER)
-    // Screenshot-only test seam; never compiled into the VST3 plugin target.
-    void configureForScreenshot(int theme, int mode, bool presetBrowserOpen);
-#endif
+    // Deterministic editor capture hooks used by the headless screenshot test.
+    // They exercise the actual editor and controls without a separate mock UI.
+    void configureForScreenshot(int themeVariant, int workspaceMode, bool showPresetBrowser);
+    juce::StringArray getScreenshotLayoutIssues() const;
+    juce::StringArray runScreenshotInteractionTests();
 private:
     class Canvas;
     std::unique_ptr<Canvas> canvas;

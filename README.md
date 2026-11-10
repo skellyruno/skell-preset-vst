@@ -140,43 +140,10 @@ Next: dedicated per-module visualizations, dynamic graph-change crossfades, para
 ### Stage 8 (0.5.1) development update
 Portable EQ coefficient smoothing, compressor automation de-zippering, safer feedback input validation, non-EQ graph labels, idle repaint reduction and saved UI scale. See [docs/STAGE8.md](docs/STAGE8.md) for test evidence and remaining limitations. **Portable tests passing is not proof of FL Studio compatibility.**
 
+## Headless real-editor screenshots
 
-## Offscreen JUCE UI screenshots (headless renderer)
-
-This repository contains `SkellPresetUiRenderer`: a console application that
-creates the **real** `SkellPresetAudioProcessor` and
-`SkellPresetAudioProcessorEditor`, draws the editor and children to offscreen
-`juce::Image` buffers through `createComponentSnapshot`, and exports 16 PNGs
-plus `manifest.json`. It does **not** render a lookalike HTML UI and never
-requires FL Studio, a VST host, or an audio interface.
-
-On Windows (MSVC), from a project checkout:
-
-```powershell
-cmake -S . -B build -A x64 -DSKELL_PRESET_UI_RENDERER=ON
-cmake --build build --config Release --target SkellPresetUiRenderer --parallel 2
-.\build\SkellPresetUiRenderer_artefacts\Release\SkellPresetUiRenderer.exe .\ui-snapshots
-```
-
-The separate GitHub Actions workflow **Skell-Preset UI Screenshots** compiles
-and runs the same renderer on `windows-latest` and uploads
-`Skell-Preset-UI-Screenshots` for visual inspection. Run it manually from the
-Actions tab or let changes to the UI files trigger it.
-
-On Linux (requires JUCE GUI/X11 build dependencies and `xvfb`):
-
-```bash
-cmake -S . -B build -DSKELL_PRESET_UI_RENDERER=ON
-cmake --build build --target SkellPresetUiRenderer -j2
-xvfb-run -a ./build/SkellPresetUiRenderer_artefacts/SkellPresetUiRenderer ./ui-snapshots
-```
-
-Screenshots cover 70% black/neon, cream and crimson themes in Advanced,
-Simple, Bypass and preset-browser states; additional 85%, 100%, and 125%
-checks cover resizing. The command fails if a snapshot is blank, has wrong
-dimensions, or if a theme/bypass/browser view is identical to its base case.
-
-**Limits:** This validates actual JUCE offscreen painting; it cannot prove
-all mouse/keyboard accessibility or a host-specific native plugin window.
-Inspect the PNGs visually before calling the layout done. No physical audio
-is rendered by this tool.
+Enable `SKELL_PRESET_BUILD_UI_RENDERER=ON` to compile `SkellPresetUIRenderer`,
+which captures the actual JUCE plug-in editor at every supported size, in all
+three themes, for Simple, Advanced, Browser and Bypass modes. Linux runs under
+Xvfb; artifacts are uploaded by the **Headless JUCE UI screenshots** workflow.
+See [docs/UI_RENDERER.md](docs/UI_RENDERER.md) for instructions and limitations.

@@ -112,19 +112,6 @@ public:
         addMouseListener(this,true); // Outside clicks on child panels dismiss the overlay.
         resized();refresh();startTimerHz(30);
     }
-#if defined(SKELL_PRESET_UI_RENDERER)
-    void configureForScreenshot(int requestedTheme, int requestedMode, bool presetBrowserOpen) {
-        // All mutation occurs on the JUCE message thread, before painting.
-        processor.loadFactoryPreset(requestedMode == 0 ? 0 : 1);
-        previousMode = requestedMode == 0 ? 0 : 1;
-        setParam(processor, "mode", requestedMode == 3 ? 3.f : (float)previousMode);
-        setTheme(requestedTheme);
-        browser.setVisible(false);
-        refresh();
-        if (presetBrowserOpen) { browser.open(); browser.toFront(false); }
-        else browser.setVisible(false);
-    }
-#endif
     ~Canvas()override {stopTimer();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
@@ -160,6 +147,60 @@ public:
         sizeSelect.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
         chain.repaint();slot.applyTheme();browser.applyTheme();
         refresh();
+    }
+    void configureForScreenshot(int variant,int workspaceMode,bool showBrowser) {
+        variant=Theme::clampVariant(variant);
+        processor.state.state.setProperty("uiTheme",variant,nullptr);
+        setTheme(variant,false);
+        if(workspaceMode==3){
+            previousMode=1;
+            processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
+        }
+        setParam(processor,"mode",(float)(workspaceMode==3?3:juce::jlimit(0,1,workspaceMode)));
+        refresh();
+        if(showBrowser)browser.open();
+        else browser.setVisible(false);
+        repaint();
+    }
+    juce::StringArray getScreenshotLayoutIssues() const {
+        juce::StringArray issues;
+        const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
+        const std::array<const juce::Component*,12> all{{&themeButton,&preset,&match,
+            &mode[0],&mode[1],&mode[2],&chain,&slot,&input,&mix,&output,&sizeSelect}};
+        for(const auto* child:all){
+            if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
+                issues.add("Control outside canvas bounds: " + child->getName());
+        }
+        const std::array<const juce::Component*,5> top{{&preset,&match,&mode[0],&mode[1],&mode[2]}};
+        for(size_t i=0;i<top.size();++i)
+            for(size_t j=i+1;j<top.size();++j)
+                if(top[i]->getBounds().intersects(top[j]->getBounds()))
+                    issues.add("Overlapping top-bar controls " + juce::String((int)i)
+                               + " / " + juce::String((int)j));
+        if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
+        const int current=(int)processor.state.getRawParameterValue("mode")->load();
+        const bool advanced=current==1 || (current==3 && previousMode==1);
+        if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
+            issues.add("Mode visibility did not match the requested workspace");
+        if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
+        return issues;
+    }
+    juce::StringArray runScreenshotInteractionTests(){
+        juce::StringArray issues;
+        configureForScreenshot(0,1,false);
+        preset.onClick();
+        if(!browser.isVisible())issues.add("Preset selector did not open browser");
+        preset.onClick();
+        if(browser.isVisible())issues.add("Preset selector did not close browser");
+        mode[0].onClick();
+        if(chain.isVisible())issues.add("Simple mode failed to hide the rack");
+        mode[1].onClick();
+        if(!chain.isVisible())issues.add("Advanced mode failed to show the rack");
+        mode[2].onClick();
+        if(!bypassShade.isVisible())issues.add("Bypass did not enable overlay");
+        mode[2].onClick();
+        if(bypassShade.isVisible())issues.add("Bypass toggle failed to restore workspace");
+        return issues;
     }
     void style(juce::TextButton& b){
         b.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
@@ -316,8 +357,12 @@ void SkellPresetAudioProcessorEditor::resized(){
 
 juce::AudioProcessorEditor* SkellPresetAudioProcessor::createEditor(){return new SkellPresetAudioProcessorEditor(*this);}
 
-#if defined(SKELL_PRESET_UI_RENDERER)
-void SkellPresetAudioProcessorEditor::configureForScreenshot(int theme, int mode, bool presetBrowserOpen) {
-    canvas->configureForScreenshot(theme, mode, presetBrowserOpen);
+void SkellPresetAudioProcessorEditor::configureForScreenshot(int theme,int mode,bool browserOpen){
+    canvas->configureForScreenshot(theme,mode,browserOpen);
 }
-#endif
+juce::StringArray SkellPresetAudioProcessorEditor::getScreenshotLayoutIssues() const {
+    return canvas->getScreenshotLayoutIssues();
+}
+juce::StringArray SkellPresetAudioProcessorEditor::runScreenshotInteractionTests(){
+    return canvas->runScreenshotInteractionTests();
+}

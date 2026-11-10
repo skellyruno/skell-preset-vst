@@ -1,38 +1,52 @@
-name: Skell-Preset UI Screenshots
+name: Skell-Preset / Headless JUCE UI screenshots
+
 on:
-  workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - 'Source/PluginEditor.*'
-      - 'Source/ui/**'
-      - 'tools/UiRendererMain.cpp'
       - '.github/workflows/ui-screenshots.yml'
       - 'CMakeLists.txt'
+      - 'Source/**'
+      - 'assets/**'
+      - 'tests/ui_renderer.cpp'
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  screenshot-renderer:
-    runs-on: windows-latest
-    timeout-minutes: 40
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Configure JUCE 8 and SkellCore
-        run: cmake -S . -B build -A x64 -DSKELL_PRESET_UI_RENDERER=ON
-      - name: Compile real editor screenshot harness
-        run: cmake --build build --config Release --target SkellPresetUiRenderer --parallel 2
-      - name: Paint offscreen screenshots and verify distinct views
-        shell: pwsh
+      - name: Install Linux JUCE and virtual-display dependencies
         run: |
-          $app = Get-ChildItem -Path build -Recurse -File -Filter 'SkellPresetUiRenderer.exe' | Select-Object -First 1
-          if (-not $app) { throw 'UI renderer binary not found' }
-          & $app.FullName (Join-Path (Get-Location) 'ui-snapshots')
-          if ($LASTEXITCODE -ne 0) { throw "UI renderer failed (exit $LASTEXITCODE)" }
-          $pngs = @(Get-ChildItem 'ui-snapshots' -Filter '*.png')
-          if ($pngs.Count -ne 16) { throw "Expected 16 screenshots, found $($pngs.Count)" }
-      - name: Upload UI screenshots
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build xvfb xauth pkg-config libasound2-dev libjack-jackd2-dev \
+            libfreetype6-dev libfontconfig1-dev libx11-dev libxext-dev \
+            libxinerama-dev libxcursor-dev libxrandr-dev libxcomposite-dev \
+            libxrender-dev libgl1-mesa-dev libglu1-mesa-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libgtk-3-dev
+      - name: Configure actual-editor renderer with pinned JUCE and SkellCore
+        run: |
+          cmake -S . -B build-ui -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSKELL_PRESET_BUILD_UI_RENDERER=ON \
+            -DSKELL_PRESET_PACKAGE_TESTS=OFF
+      - name: Compile actual JUCE editor and renderer
+        run: cmake --build build-ui --target SkellPresetUIRenderer --parallel 2
+      - name: Capture and validate real editor PNGs
+        shell: bash
+        run: |
+          set -euo pipefail
+          renderer=$(find build-ui -type f -name SkellPresetUIRenderer -executable | head -n 1)
+          test -n "$renderer"
+          xvfb-run -a -s '-screen 0 1920x1080x24' "$renderer" --output ui-screenshots
+          test "$(find ui-screenshots -name '*.png' | wc -l)" -eq 49
+      - name: Upload PNG screenshots and contact sheet
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Skell-Preset-UI-Screenshots
-          path: ui-snapshots/
-          if-no-files-found: error
+          path: ui-screenshots/*.png
+          if-no-files-found: warn
           retention-days: 30
