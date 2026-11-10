@@ -175,16 +175,43 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         for(int k=0;k<16;k++)c.p[(size_t)k]=raw.p[(size_t)k]->load();
         auto& e=engines[(size_t)s];
         if(c.type==Empty)continue;
-        e.peak.setPeak(rate,40.*std::pow(300.,c.p[0]),(c.p[1]-.5)*24.+8.*(macroTone-.5f),.3+7.*c.p[2]);
-        e.highpass.setHighPass(rate,20.+c.p[3]*250.);
-        e.comp.set(-48.f+c.p[0]*42.f-12.f*(macroPunch-.5f),1.f+c.p[1]*11.f,2.f+c.p[2]*98.f,20.f+c.p[3]*480.f,(c.p[4]-.5f)*24.f);
-        e.gate.threshold=-75.f+c.p[0]*70.f;e.gate.release=40.f+c.p[1]*600.f;
-        // Hold and hysteresis were shown in the UI but previously not wired.
-        e.gate.holdMs=c.p[2]*120.f;e.gate.hysteresisDb=c.p[3]*8.f;
-        e.delay.configure((int)(rate*(c.type==AdlibThrow ? (.16+.48*c.p[0]) : (.055+.85*c.p[0]))),c.type==AdlibThrow ? (.2f+.68f*c.p[1]) : (c.p[1]*.8f));
-        e.reverb[0].setParameters(.15f+6.f*c.p[0],.12f+c.p[1]*.8f,1.f);
-        if(c.type==Limiter)e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
-        if(c.type==AdlibThrow)e.throwFilterPole=std::exp(-2.f*(float)skellpreset::dsp::pi*(750.f+c.p[2]*11500.f)/(float)rate);
+        // Configure only the DSP engine in this slot. Previously every occupied
+        // slot recomputed EQ filters, compressor, gate, delay and reverb settings
+        // on every block even when that algorithm was not being used.
+        switch(c.type) {
+            case EQ:
+                e.peak.setPeak(rate,40.*std::pow(300.,c.p[0]),
+                    (c.p[1]-.5)*24.+8.*(macroTone-.5f),.3+7.*c.p[2]);
+                e.highpass.setHighPass(rate,20.+c.p[3]*250.);
+                break;
+            case Compressor:
+                e.comp.set(-48.f+c.p[0]*42.f-12.f*(macroPunch-.5f),
+                    1.f+c.p[1]*11.f,2.f+c.p[2]*98.f,20.f+c.p[3]*480.f,
+                    (c.p[4]-.5f)*24.f);
+                break;
+            case Gate:
+                e.gate.threshold=-75.f+c.p[0]*70.f;
+                e.gate.release=40.f+c.p[1]*600.f;
+                e.gate.holdMs=c.p[2]*120.f;
+                e.gate.hysteresisDb=c.p[3]*8.f;
+                break;
+            case Delay:
+                e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f);
+                break;
+            case AdlibThrow:
+                e.delay.configure((int)(rate*(.16+.48*c.p[0])),.2f+.68f*c.p[1]);
+                e.throwFilterPole=std::exp(-2.f*(float)skellpreset::dsp::pi*
+                    (750.f+c.p[2]*11500.f)/(float)rate);
+                break;
+            case Reverb:
+                e.reverb[0].setParameters(.15f+6.f*c.p[0],
+                    .12f+c.p[1]*.8f,1.f);
+                break;
+            case Limiter:
+                e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
+                break;
+            default: break;
+        }
     }
     for(int s=0;s<slotCount;++s){
         const auto& c=controlCache[(size_t)s];
