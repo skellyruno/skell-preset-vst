@@ -239,19 +239,31 @@ struct AdlibDoubler {
     std::array<std::vector<float>,2> memory;
     size_t head=0;
     double rate=48000,phase=0;
+    float widthSmooth=.5f,depthSmooth=.5f,motionSmooth=.5f,intensitySmooth=.5f;
+    float smoothingStep=.001f;
     void prepare(double sr) {
         rate=std::max(8000.,sr);head=0;phase=0;
+        smoothingStep=1.f-(float)std::exp(-1./(rate*.012));
+        widthSmooth=depthSmooth=motionSmooth=intensitySmooth=.5f;
         for(auto& v:memory)v.assign((size_t)(rate*.09)+4,0.f);
     }
     void reset() noexcept {for(auto& v:memory)std::fill(v.begin(),v.end(),0.f);head=0;phase=0;}
     std::array<float,2> process(float l,float r,float width,float depth,float rateControl,float intensity) noexcept {
         if(memory[0].empty())return {l,r};
-        const float baseMs=12.f+24.f*std::clamp(depth,0.f,1.f);
-        const float modMs=(1.f+4.f*std::clamp(width,0.f,1.f))*(.3f+1.4f*std::clamp(intensity,0.f,1.f));
-        phase+=2.*pi*(.13+2.*std::clamp((double)rateControl,0.,1.))/rate;
+        // Dezipper modulated read heads; abrupt delay jumps make adlib clicks.
+        widthSmooth+=smoothingStep*(clamp(width,0.f,1.f)-widthSmooth);
+        depthSmooth+=smoothingStep*(clamp(depth,0.f,1.f)-depthSmooth);
+        motionSmooth+=smoothingStep*(clamp(rateControl,0.f,1.f)-motionSmooth);
+        intensitySmooth+=smoothingStep*(clamp(intensity,0.f,1.f)-intensitySmooth);
+        for(auto* v:{&widthSmooth,&depthSmooth,&motionSmooth,&intensitySmooth})
+            if(std::abs(*v)<1.e-20f)*v=0.f;
+        const float baseMs=12.f+24.f*depthSmooth;
+        const float modMs=(1.f+4.f*widthSmooth)*(.3f+1.4f*intensitySmooth);
+        phase+=2.*pi*(.13+2.*motionSmooth)/rate;
         if(phase>=2*pi)phase-=2*pi;
-        memory[0][head]=std::isfinite(l)&&std::abs(l)>1.e-20f?l:0.f;
-        memory[1][head]=std::isfinite(r)&&std::abs(r)>1.e-20f?r:0.f;
+        const float safeL=clamp(l,-8.f,8.f),safeR=clamp(r,-8.f,8.f);
+        memory[0][head]=std::abs(safeL)>1.e-20f?safeL:0.f;
+        memory[1][head]=std::abs(safeR)>1.e-20f?safeR:0.f;
         std::array<float,2> out{};
         for(int c=0;c<2;++c) {
             const double delay=rate*.001*(baseMs+modMs*std::sin(phase+(c==0?0.:pi*.78)));
