@@ -1,0 +1,38 @@
+name: Skell-Preset UI Screenshots
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Source/PluginEditor.*'
+      - 'Source/ui/**'
+      - 'tools/UiRendererMain.cpp'
+      - '.github/workflows/ui-screenshots.yml'
+      - 'CMakeLists.txt'
+
+jobs:
+  screenshot-renderer:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure JUCE 8 and SkellCore
+        run: cmake -S . -B build -A x64 -DSKELL_PRESET_UI_RENDERER=ON
+      - name: Compile real editor screenshot harness
+        run: cmake --build build --config Release --target SkellPresetUiRenderer --parallel 2
+      - name: Paint offscreen screenshots and verify distinct views
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem -Path build -Recurse -File -Filter 'SkellPresetUiRenderer.exe' | Select-Object -First 1
+          if (-not $app) { throw 'UI renderer binary not found' }
+          & $app.FullName (Join-Path (Get-Location) 'ui-snapshots')
+          if ($LASTEXITCODE -ne 0) { throw "UI renderer failed (exit $LASTEXITCODE)" }
+          $pngs = @(Get-ChildItem 'ui-snapshots' -Filter '*.png')
+          if ($pngs.Count -ne 16) { throw "Expected 16 screenshots, found $($pngs.Count)" }
+      - name: Upload UI screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: Skell-Preset-UI-Screenshots
+          path: ui-snapshots/
+          if-no-files-found: error
+          retention-days: 30

@@ -112,6 +112,19 @@ public:
         addMouseListener(this,true); // Outside clicks on child panels dismiss the overlay.
         resized();refresh();startTimerHz(30);
     }
+#if defined(SKELL_PRESET_UI_RENDERER)
+    void configureForScreenshot(int requestedTheme, int requestedMode, bool presetBrowserOpen) {
+        // All mutation occurs on the JUCE message thread, before painting.
+        processor.loadFactoryPreset(requestedMode == 0 ? 0 : 1);
+        previousMode = requestedMode == 0 ? 0 : 1;
+        setParam(processor, "mode", requestedMode == 3 ? 3.f : (float)previousMode);
+        setTheme(requestedTheme);
+        browser.setVisible(false);
+        refresh();
+        if (presetBrowserOpen) { browser.open(); browser.toFront(false); }
+        else browser.setVisible(false);
+    }
+#endif
     ~Canvas()override {stopTimer();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
@@ -302,3 +315,9 @@ void SkellPresetAudioProcessorEditor::resized(){
 }
 
 juce::AudioProcessorEditor* SkellPresetAudioProcessor::createEditor(){return new SkellPresetAudioProcessorEditor(*this);}
+
+#if defined(SKELL_PRESET_UI_RENDERER)
+void SkellPresetAudioProcessorEditor::configureForScreenshot(int theme, int mode, bool presetBrowserOpen) {
+    canvas->configureForScreenshot(theme, mode, presetBrowserOpen);
+}
+#endif

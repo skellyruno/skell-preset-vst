@@ -1,6 +1,6 @@
 # SKELL-PRESET | ONE PLUGIN. EVERY SOUND.
 
-**Stage 5 / 0.5.0 development build** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, rack gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete. Windows VST3 and Standalone targets compiled successfully in GitHub Actions at Stage 3; Stage 4 Windows VST3, Standalone and native package security tests passed in GitHub Actions run 42405769660. Neither build has been DAW-tested in FL Studio.**
+**Stage 4 / 0.4.0 development build** — all-in-one vocal-effects plugin based on the Skell VST template and pinned SkellCore v0.2. This is a real JUCE 8 plugin codebase, not a rendered design mockup. The 10-slot processing chain, edited slot parameters, UI shell, factory browser, global gate, four audible macros and state persistence are implemented. **The full requested seven-stage feature set is not complete. Windows VST3 and Standalone targets compiled successfully in GitHub Actions at Stage 3; Stage 4 Windows VST3, Standalone and native package security tests passed in GitHub Actions run 42405769660. Neither build has been DAW-tested in FL Studio.**
 
 ## What works now
 
@@ -117,34 +117,66 @@ The factory browser now has **IMPORT** and **SAVE PRESET** actions for native fi
 
 ## Stage 5 — Compact UI, real rack gate, first adlib DSP, PDC (November 2026)
 
-- Default editor at **70%** (818 × 482), preserving the 1168 × 688 internal layout. Available scales are 70/85/100/125% with a fixed aspect ratio.
-- Preset selector now opens and closes on second click. Escape, outside clicks and mode changes dismiss the browser. Vocoding mode and factory bank entries are hidden, not deleted: legacy mode parameter indices and factory program IDs remain unchanged.
-- The old top-bar Noise Gate is removed; **Gate is a normal bypassable rack module**. Obsolete `globalGate` remains as an inactive parameter ID for backwards host compatibility.
-- Adds **Adlib Throw**, a phrase-end replay using SkellCore PhraseTracker + delay, and **Adlib Doubler**, a stereo micro-delay with decorrelated modulation. Factory Adlibs instantiate both. These are not formant shifters or MIDI triggers.
-- SkellCore's experimental lookahead TruePeakLimiter replaces zero-lookahead soft clipping. Each Limiter reserves its fixed lookahead, even when bypassed. Per-limiter wet/dry, master Mix and Bypass paths delay-match this latency; the processor reports the sum to the host on structural edits and state load. Not BS.1770-certified.
-- All limiter, PDC, throw and doubler buffers are preallocated in prepareToPlay. Structural module type changes are **not realtime automatable** in this version; editing a chain may require host realignment. Parallel lanes and crossfaded graph swaps remain unfinished.
-- Five portable tests include sample-exact dry/bypass PDC and finite stereo doubler output. Real Windows VST3 compilation and FL Studio runtime test must still validate these changes.
-- Advanced formant/pitch adlibs, MIDI throw triggering, full MATCH reconstruction and independent 3-lane PDC are future work.
-
-
-### Stage 5.1 UI / Adlib refinements
-
-- Browser renders six cards per view, keeping its scroll affordance below the cards rather than obscuring the last card; search receives focus on open.
-- The bottom-right output meter was moved left and the output fader narrowed to avoid overlapping the resize selector.
-- Adlib Throw's third control now filters the echo, and the fourth triggers a replay on a rising threshold crossing (manual automation possible).
-- Adlib Doubler's fourth control now changes stereo modulation depth instead of being inert.
-- This still needs a real-world FL Studio audition on mono/stereo vocals and preset changes to judge transitions.
+- Default editor at **70%** (818 × 482), preserving the 1168 × 688 internal layout. Available scales are 70/85/100/125% with a fixed aspect ratio. No external bitmap scaling work occurs on the audio thread.
+- Preset selector now opens **and closes on second click**. Escape, outside clicks and mode changes dismiss the browser. Vocoding mode and factory bank entries are hidden, not deleted: the legacy mode parameter indices and factory program IDs remain unchanged for saved DAW sessions.
+- The old top-bar Noise Gate button is removed; **Gate is a regular bypassable rack module**. The obsolete `globalGate` parameter ID remains for old sessions but no longer processes audio; use the rack Gate slot.
+- The rack adds **Adlib Throw** (SkellCore `PhraseTracker` automatically queues a short phrase-end replay into a tempo-free delay; feedback is bounded) and **Adlib Doubler** (decorrelated modulated short-delay layer). Factory Adlibs now actually instantiate both modules in slots 5/8. They do not yet perform formant shifting or MIDI triggering.
+- Experimental SkellCore lookahead `TruePeakLimiter` replaces the former zero-lookahead soft clipper. Each Limiter slot reserves its fixed lookahead latency, even when bypassed. The limiter's dry/wet crossfade and the global mix/bypass paths are aligned to that lookahead; the processor reports the sum to the host on rack edits and state loading. This is **not a BS.1770-certified true-peak implementation**.
+- All buffers for limiter, dry PDC, adlib history and doubler are preallocated in `prepareToPlay`; callbacks are allocation-free. Latency changes caused by host automation of **module type** are not supported in this version; type changes are structural edits made through the rack UI. Hot-swapping crossfades between differing-latency graphs, and 3-lane PDC, remain unfinished.
+- A fifth portable test exercises sample-exact stereo dry/bypass PDC, bounded Adlib Doubler output and reset.
+- MIDI-driven throws, repeat-pitch, true formant/pitch stacking, multi-lane latency compensation and full reference MATCH remain future milestones. No claim of exact FL preset reconstruction is made.
 
 ## Stage 7 — Gate and EQ fidelity / browser polish
 
-- **Gate:** Hold (0–120 ms) and Hysteresis (0–8 dB) now control audio processing, with a hold timer and separate open/close thresholds.
-- **EQ graph:** displays the same bell and high-pass coefficients as the audio engine, including the Tone macro, rather than an illustrative curve.
-- **Time FX:** bypassed Delay, Reverb and Adlib Throw/Doubler continue advancing their state instead of freezing tails.
-- **Preset browser:** hover emphasis, visible scrollbar and preset-only wheel scrolling; selection still leaves the browser open.
-- **Testing:** six portable regression tests passed locally at 44.1, 48 and 96 kHz. Windows VST3 and FL Studio checks are independent build/runtime milestones.
+- **Gate:** Hold (0–120 ms) and Hysteresis (0–8 dB) controls are now live in the DSP; the hold timer and Schmitt thresholds prevent rapid gate chatter during quiet consonants. Existing APVTS IDs and 10-slot preset formats remain unchanged.
+- **EQ graph:** uses the exact peaking biquad and high-pass coefficients from the audio engine, including the Tone macro, instead of an illustrative Gaussian curve.
+- **Time FX:** bypassed delay, reverb and adlib throw/doubler continue advancing state so old audio does not freeze and jump back when a slot is enabled again.
+- **Preset browser:** hover outline, visible scrollbar, and wheel handling restricted to the preset column; selecting a preset still keeps the browser open.
+- **Testing:** the new portable Gate/EQ test checks centre gain, high-pass attenuation, silence handling, hold and hysteresis at 44.1/48/96 kHz. All six portable tests passed locally on Linux. This does not verify JUCE/Windows VST3 compilation or FL Studio runtime behavior until CI and host testing.
 
-Next: per-module visualization, graph replacement crossfades, parallel-lane PDC and better pitch/formant adlib quality. Existing plugin identity, preset IDs and automation parameter names remain unchanged.
+Next: dedicated per-module visualizations, dynamic graph-change crossfades, parallel-lane PDC, and advanced adlib pitch/formant quality with reference comparisons.
 
 
 ### Stage 8 (0.5.1) development update
 Portable EQ coefficient smoothing, compressor automation de-zippering, safer feedback input validation, non-EQ graph labels, idle repaint reduction and saved UI scale. See [docs/STAGE8.md](docs/STAGE8.md) for test evidence and remaining limitations. **Portable tests passing is not proof of FL Studio compatibility.**
+
+
+## Offscreen JUCE UI screenshots (headless renderer)
+
+This repository contains `SkellPresetUiRenderer`: a console application that
+creates the **real** `SkellPresetAudioProcessor` and
+`SkellPresetAudioProcessorEditor`, draws the editor and children to offscreen
+`juce::Image` buffers through `createComponentSnapshot`, and exports 16 PNGs
+plus `manifest.json`. It does **not** render a lookalike HTML UI and never
+requires FL Studio, a VST host, or an audio interface.
+
+On Windows (MSVC), from a project checkout:
+
+```powershell
+cmake -S . -B build -A x64 -DSKELL_PRESET_UI_RENDERER=ON
+cmake --build build --config Release --target SkellPresetUiRenderer --parallel 2
+.\build\SkellPresetUiRenderer_artefacts\Release\SkellPresetUiRenderer.exe .\ui-snapshots
+```
+
+The separate GitHub Actions workflow **Skell-Preset UI Screenshots** compiles
+and runs the same renderer on `windows-latest` and uploads
+`Skell-Preset-UI-Screenshots` for visual inspection. Run it manually from the
+Actions tab or let changes to the UI files trigger it.
+
+On Linux (requires JUCE GUI/X11 build dependencies and `xvfb`):
+
+```bash
+cmake -S . -B build -DSKELL_PRESET_UI_RENDERER=ON
+cmake --build build --target SkellPresetUiRenderer -j2
+xvfb-run -a ./build/SkellPresetUiRenderer_artefacts/SkellPresetUiRenderer ./ui-snapshots
+```
+
+Screenshots cover 70% black/neon, cream and crimson themes in Advanced,
+Simple, Bypass and preset-browser states; additional 85%, 100%, and 125%
+checks cover resizing. The command fails if a snapshot is blank, has wrong
+dimensions, or if a theme/bypass/browser view is identical to its base case.
+
+**Limits:** This validates actual JUCE offscreen painting; it cannot prove
+all mouse/keyboard accessibility or a host-specific native plugin window.
+Inspect the PNGs visually before calling the layout done. No physical audio
+is rendered by this tool.

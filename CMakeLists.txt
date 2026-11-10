@@ -107,3 +107,35 @@ if(SKELL_PRESET_PACKAGE_TESTS)
     target_compile_features(SkellPresetPackageTests PRIVATE cxx_std_17)
     add_test(NAME NativePresetPackage COMMAND SkellPresetPackageTests)
 endif()
+
+# Deterministic offscreen screenshots of the *real* AudioProcessorEditor.
+# Windows runs without showing a window; on Linux use xvfb-run because JUCE
+# still needs an X11 message manager even when drawing to an offscreen Image.
+option(SKELL_PRESET_UI_RENDERER "Build offscreen JUCE UI screenshot harness" ON)
+if(SKELL_PRESET_UI_RENDERER)
+    juce_add_console_app(SkellPresetUiRenderer PRODUCT_NAME "Skell-Preset UI Renderer")
+    juce_generate_juce_header(SkellPresetUiRenderer)
+    target_sources(SkellPresetUiRenderer PRIVATE
+        tools/UiRendererMain.cpp
+        Source/PluginProcessor.h Source/PluginProcessor.cpp
+        Source/PluginEditor.h Source/PluginEditor.cpp
+        Source/chain/BasicDSP.h Source/chain/FactoryPresets.h
+        Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
+        Source/ui/Theme.h Source/ui/SkullThemeButton.h
+        Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
+        Source/ui/SlotEditor.h Source/ui/SlotEditor.cpp
+        Source/ui/PresetBrowser.h Source/ui/PresetBrowser.cpp
+        Source/match/MatchCore.h)
+    target_compile_definitions(SkellPresetUiRenderer PRIVATE
+        SKELL_PRESET_UI_RENDERER=1
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+    target_link_libraries(SkellPresetUiRenderer PRIVATE
+        SkellPresetAssets SkellCore::DSP SkellCore::UI
+        juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
+    target_compile_features(SkellPresetUiRenderer PRIVATE cxx_std_17)
+    if(MSVC)
+        target_compile_options(SkellPresetUiRenderer PRIVATE /W4 /WX /permissive-)
+    else()
+        target_compile_options(SkellPresetUiRenderer PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    endif()
+endif()
