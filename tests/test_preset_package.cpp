@@ -25,10 +25,11 @@ int main(){
     skellpreset::package::Document first;
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
-        auto& slot=first.slots[(size_t)s];slot.slotId=(s+3)%10;
+        auto& slot=first.slots[(size_t)s];slot.slotId=(s+3)%skellpreset::package::slotCount;
         slot.type=s%11;slot.enabled=s%2==0;slot.wet=.1f+(float)s*.08f;
         slot.params.fill(.5f);
     }
+    first.activeSlotCount=14;
     first.macros.fill(.5f);
     first.macros[0]=.86f;
     auto path=testFile(dir,"roundtrip");
@@ -36,8 +37,46 @@ int main(){
     skellpreset::package::Document second;
     check(skellpreset::package::read(path,second).wasOk(),"Import compressed .skellpreset");
     check(second.name==first.name&&second.bank==first.bank&&second.slots[0].slotId==3
-          &&second.slots[9].type==9%11&&second.macros[0]==first.macros[0],"Roundtrip chain/macro/metadata");
+          &&second.slots[9].type==9%11&&second.macros[0]==first.macros[0]
+          &&second.activeSlotCount==14&&second.slots[15].slotId==2,
+          "Roundtrip sixteen slots, active rack count, macros and metadata");
 
+    // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
+    // 11..16 appended and no change to old slot IDs.
+    {
+        juce::ZipFile v2(path);
+        std::unique_ptr<juce::InputStream> input(v2.createStreamForEntry(0));
+        const auto jsonText=input->readEntireStreamAsString();
+        auto legacyJson=juce::JSON::parse(jsonText);
+        auto* object=legacyJson.getDynamicObject();
+        check(object!=nullptr,"V2 JSON object");
+        if(object){
+            object->setProperty("schemaVersion",1);
+            object->removeProperty("activeSlotCount");
+            auto* chain=object->getProperty("chain").getArray();
+            check(chain!=nullptr,"V2 chain array");
+            if(chain){
+                // Old preset IDs must be in 0..9. Make a deterministic ten
+                // entry permutation (v1 format) rather than truncating 16 IDs.
+                while(chain->size()>10)chain->removeLast();
+                for(int i=0;i<10;++i)
+                    (*chain)[i].getDynamicObject()->setProperty("slotId",i);
+                const auto json=juce::JSON::toString(legacyJson);
+                auto legacyFile=testFile(dir,"legacy-v1");
+                createArchive(legacyFile,"preset.json",json.toStdString());
+                skellpreset::package::Document restored;
+                check(skellpreset::package::read(legacyFile,restored).wasOk(),
+                      "Import original ten-slot schema v1 preset");
+                check(restored.activeSlotCount==10&&restored.slots[10].slotId==10
+                      &&restored.slots[15].slotId==15,
+                      "Legacy rack defaults and slot identity preserved");
+            }
+        }
+    }
+    first.activeSlotCount=17;
+    check(skellpreset::package::write(testFile(dir,"bad-count"),first).failed(),
+          "Reject rack expansion beyond sixteen slots");
+    first.activeSlotCount=14;
     first.slots[1].slotId=first.slots[0].slotId;
     check(skellpreset::package::write(testFile(dir,"duplicate"),first).failed(),"Reject duplicate slot IDs");
     first.slots[1].slotId=4;

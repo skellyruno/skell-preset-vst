@@ -3,8 +3,9 @@
 #include <array>
 
 namespace skellpreset::package {
-constexpr int schemaVersion = 1;
-constexpr int slotCount = 10;
+constexpr int schemaVersion = 2;
+constexpr int legacySlotCount = 10;
+constexpr int slotCount = 16;
 constexpr int parameterCount = 16;
 
 struct Slot {
@@ -20,6 +21,7 @@ struct Document {
     juce::String author = "Skell Audio";
     juce::String bank = "My Presets";
     int mode = 1;
+    int activeSlotCount = legacySlotCount;
     float inputDb = 0, mix = 1, outputDb = 0;
     std::array<float, 8> macros {};
     std::array<Slot, slotCount> slots {};

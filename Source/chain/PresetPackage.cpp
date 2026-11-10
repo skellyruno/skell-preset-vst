@@ -35,7 +35,8 @@ bool decodeInteger(const juce::var& v, int lo, int hi, int& out) {
 juce::Result validate(const Document& d) {
     if (! validText(d.name, 96) || ! validText(d.author, 96)
         || ! validText(d.bank, 64)) return juce::Result::fail("Invalid preset name, author or bank");
-    if (d.mode < 0 || d.mode > 3 || ! finiteRange(d.inputDb, -24, 24)
+    if (d.mode < 0 || d.mode > 3 || d.activeSlotCount < legacySlotCount
+        || d.activeSlotCount > slotCount || ! finiteRange(d.inputDb, -24, 24)
         || ! finiteRange(d.mix, 0, 1) || ! finiteRange(d.outputDb, -24, 24))
         return juce::Result::fail("Invalid global parameter range");
     for (const auto v : d.macros)
@@ -55,6 +56,7 @@ juce::Result validate(const Document& d) {
 juce::var toJson(const Document& d) {
     auto* root = new juce::DynamicObject;
     root->setProperty("schemaVersion", schemaVersion);
+    root->setProperty("activeSlotCount", d.activeSlotCount);
     root->setProperty("name", d.name);
     root->setProperty("author", d.author);
     root->setProperty("bank", d.bank);
@@ -87,8 +89,12 @@ juce::Result fromJson(const juce::var& root, Document& out) {
     if (! root.isObject()) return juce::Result::fail("preset.json must be an object");
     Document candidate;
     int version=0;
-    if (! decodeInteger(root.getProperty("schemaVersion", {}), 1, schemaVersion, version)
-        || version != schemaVersion) return juce::Result::fail("Unsupported schema version");
+    if (! decodeInteger(root.getProperty("schemaVersion", {}), 1, schemaVersion, version))
+        return juce::Result::fail("Unsupported schema version");
+    if (version == 1) candidate.activeSlotCount = legacySlotCount;
+    else if (! decodeInteger(root.getProperty("activeSlotCount", {}),
+                             legacySlotCount, slotCount, candidate.activeSlotCount))
+        return juce::Result::fail("Invalid rack slot count");
     const auto name=root.getProperty("name", {});
     const auto author=root.getProperty("author", {});
     const auto bank=root.getProperty("bank", {});
@@ -108,14 +114,23 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         if (! decodeFloat((*macros.getArray())[k], 0, 1, candidate.macros[(size_t)k]))
             return juce::Result::fail("Invalid macro value");
     const auto chain=root.getProperty("chain", {});
-    if (! chain.isArray() || chain.getArray()->size()!=slotCount)
-        return juce::Result::fail("Exactly ten chain slots required");
-    for (int i=0;i<slotCount;++i) {
+    const int encodedSlots=version==1?legacySlotCount:slotCount;
+    if (! chain.isArray() || chain.getArray()->size()!=encodedSlots)
+        return juce::Result::fail("Invalid chain slot count for schema");
+    // V1 had ten physical IDs. New inactive slots are appended in stable order.
+    for (int i=encodedSlots;i<slotCount;++i) {
+        candidate.slots[(size_t)i].slotId=i;
+        candidate.slots[(size_t)i].type=0;
+        candidate.slots[(size_t)i].enabled=false;
+        candidate.slots[(size_t)i].wet=1.f;
+        candidate.slots[(size_t)i].params.fill(.5f);
+    }
+    for (int i=0;i<encodedSlots;++i) {
         const auto item=(*chain.getArray())[i];
         if (! item.isObject()) return juce::Result::fail("Invalid chain entry");
         auto& slot=candidate.slots[(size_t)i];
         const auto enabled=item.getProperty("enabled", {});
-        if (! decodeInteger(item.getProperty("slotId", {}),0,slotCount-1,slot.slotId)
+        if (! decodeInteger(item.getProperty("slotId", {}),0,encodedSlots-1,slot.slotId)
             || ! decodeInteger(item.getProperty("type", {}),0,10,slot.type)
             || ! enabled.isBool()
             || ! decodeFloat(item.getProperty("wet", {}),0,1,slot.wet))
@@ -161,7 +176,7 @@ juce::Result read(const juce::File& source,Document& result) {
         || ! source.hasFileExtension(".skellpreset"))
         return juce::Result::fail("Not a valid .skellpreset file");
     juce::ZipFile archive(source);
-    if (archive.getNumEntries()!=1)return juce::Result::fail("Only preset.json is supported in Stage 4");
+    if (archive.getNumEntries()!=1)return juce::Result::fail("Only preset.json is supported");
     const auto* entry=archive.getEntry(0);
     if (! entry || entry->filename!="preset.json" || entry->isSymbolicLink
         || entry->uncompressedSize<=0 || entry->uncompressedSize>maxJsonBytes)
