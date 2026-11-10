@@ -21,11 +21,11 @@ int main() {
     AdlibDoubler stack;stack.prepare(48000);
     for(int n=0;n<48000;++n){
         const float x=.2f*std::sin((float)(2*pi*220.*n/48000.));
-        const auto y=stack.process(x,x,.8f,.5f,.55f);
+        const auto y=stack.process(x,x,.8f,.5f,.55f,.7f);
         assert(std::isfinite(y[0])&&std::isfinite(y[1]));
         assert(std::abs(y[0])<=.25f&&std::abs(y[1])<=.25f);
     }
     stack.reset();
-    for(int n=0;n<8000;++n){auto o=stack.process(0,0,.5f,.5f,.5f);assert(o[0]==0&&o[1]==0);}
+    for(int n=0;n<8000;++n){auto o=stack.process(0,0,.5f,.5f,.5f,.5f);assert(o[0]==0&&o[1]==0);}
     std::cout<<"PASS sample-exact dry/bypass PDC and bounded stereo adlib doubler\n";
 }

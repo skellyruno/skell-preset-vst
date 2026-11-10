@@ -29,7 +29,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     for(size_t k=0;k<covers.size();k++)covers[k]=juce::ImageCache::getFromMemory(data[k],size[k]);
     setWantsKeyboardFocus(true);
 }
-void PresetBrowser::open(){bank=0;scroll=0;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);grabKeyboardFocus();repaint();}
+void PresetBrowser::open(){bank=0;scroll=0;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
     importButton.setBounds(17,470,168,27);
@@ -108,7 +108,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
     Theme::text(g,"Click any preset to load.",{18,405,172,19},11,Theme::muted);
     Theme::text(g,"Native preset import / export",{18,425,172,19},10,Theme::amber);
     Theme::text(g,"Use WAV pairs for MATCH later.",{18,441,172,19},10,Theme::muted);
-    for(int i=0;i<7;i++){
+    for(int i=0;i<6;i++){
         const int itemIndex=i+scroll;
         if(itemIndex>=(int)entries.size())break;
         const auto& item=skellpreset::factoryPresets[(size_t)entries[(size_t)itemIndex]];
@@ -128,7 +128,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         Theme::text(g,item.bank,{222,y+34,230,13},10,bankColour,true);
     }
     if(entries.empty())Theme::text(g,"NO MATCHING PRESETS",{246,222,350,40},15,Theme::muted,true);
-    if((int)entries.size()>7){
+    if((int)entries.size()>6){
         Theme::text(g,"SCROLL TO SEE MORE",{260,getHeight()-20,300,16},10,Theme::muted);
     }
 }
@@ -137,16 +137,16 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
         const int idx=(e.y-111)/60;
         if(idx>=0&&idx<banks.size()){bank=idx;scroll=0;repaint();}return;
     }
-    if(e.y>=110&&e.x>=207&&e.y<537){
+    if(e.y>=110&&e.x>=207&&e.y<476){
         const auto entries=filtered();const int row=(e.y-110)/61;
-        if(row>=0&&row<7 && scroll+row<(int)entries.size()){
+        if(row>=0&&row<6 && scroll+row<(int)entries.size()){
             processor.loadFactoryPreset(entries[(size_t)(scroll+row)]);
             if(onLoaded)onLoaded();setVisible(false);if(onClose)onClose();
         }
     }
 }
 void PresetBrowser::mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails& wheel){
-    const int maxScroll=std::max(0,(int)filtered().size()-7);
+    const int maxScroll=std::max(0,(int)filtered().size()-6);
     scroll=juce::jlimit(0,maxScroll,scroll+(wheel.deltaY<0?2:-2));repaint();
 }
 bool PresetBrowser::keyPressed(const juce::KeyPress& key){

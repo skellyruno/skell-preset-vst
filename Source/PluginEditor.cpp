@@ -101,7 +101,7 @@ public:
             g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getInputPeak())?Theme::green:Theme::stroke);
             g.fillRect(310+ix*6,657,4,10);
             g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getOutputPeak())?Theme::green:Theme::stroke);
-            g.fillRect(1070+ix*6,657,4,10);
+            g.fillRect(1023+ix*6,657,4,10);
         }
         const int current=(int)processor.state.getRawParameterValue("mode")->load();
         if(current==0){
@@ -132,8 +132,8 @@ public:
         for(int k=0;k<3;k++)mode[(size_t)k].setBounds(796+k*119,27,115,37);
         const int m=(int)processor.state.getRawParameterValue("mode")->load();
         for(int i=0;i<4;i++)macro[(size_t)i].setBounds(m==0?96+i*254:333+i*222,m==0?399:614,m==0?192:120,m==0?49:19);
-        input.setBounds(80,648,228,34);mix.setBounds(433,648,241,34);output.setBounds(845,648,220,34);
-        sizeSelect.setBounds(1094,650,69,26);
+        input.setBounds(80,648,228,34);mix.setBounds(433,648,241,34);output.setBounds(845,648,172,34);
+        sizeSelect.setBounds(1094,648,69,26);
         browser.setBounds(445,77,650,538);
     }
     void refresh(){
@@ -156,7 +156,7 @@ public:
         // a full-frame 30 Hz redraw was costly on integrated GPUs.
         if(m==1){chain.repaint();slot.repaint();}
         repaint(juce::Rectangle<int>(307,651,88,26));
-        repaint(juce::Rectangle<int>(1068,651,100,26));
+        repaint(juce::Rectangle<int>(1021,651,75,26));
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();

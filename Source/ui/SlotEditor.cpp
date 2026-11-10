@@ -14,7 +14,7 @@ std::array<juce::String,4> titles(int type) {
         case 7:return {"Time","Feedback","Filter","Stereo"};
         case 8:return {"Excite","Colour","Focus","Mix"};
         case 9:return {"Throw Time","Feedback","Tone","Trigger"};
-        case 10:return {"Width","Timing","Motion","Colour"};
+        case 10:return {"Width","Timing","Motion","Depth"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }

@@ -77,28 +77,32 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     const auto length=(size_t)(sampleRate*1.25)+4;
     for(auto& line:throwHistory)line.assign(length,0.f);
     throwWrite=throwRead=0;throwRemaining=0;phrasePreviouslyActive=false;
+    manualPreviouslyActive=false;throwFilterL=throwFilterR=0;throwFilterPole=.6f;
 }
-void SkellPresetAudioProcessor::EngineSlot::processThrow(float l,float r,float& outL,float& outR,float amount,float feedback,double sampleRate) noexcept {
-    (void)amount;(void)feedback;
+void SkellPresetAudioProcessor::EngineSlot::processThrow(float l,float r,float& outL,float& outR,float amount,float feedback,float tone,float trigger,double sampleRate) noexcept {
+    (void)amount;(void)feedback;(void)tone;
     if(throwHistory[0].empty()){outL=l;outR=r;return;}
     const auto cap=throwHistory[0].size();
     throwHistory[0][throwWrite]=l;throwHistory[1][throwWrite]=r;
     phrase.processSample(std::max(std::abs(l),std::abs(r)));
+    const bool manual=trigger>.65f;
     const bool active=phrase.active();
-    if(phrasePreviouslyActive && !active) {
+    if((phrasePreviouslyActive && !active) || (!manualPreviouslyActive && manual)) {
         // Re-read ~240ms preceding the phrase-end gap into the feedback delay.
         throwRemaining=std::max(1,(int)(sampleRate*.24));
         const size_t lookback=(size_t)(sampleRate*.42)+(size_t)throwRemaining;
         throwRead=(throwWrite+cap-(lookback%cap))%cap;
     }
-    phrasePreviouslyActive=active;
+    phrasePreviouslyActive=active;manualPreviouslyActive=manual;
     float sourceL=0,sourceR=0;
     if(throwRemaining>0){
         sourceL=throwHistory[0][throwRead];sourceR=throwHistory[1][throwRead];
         throwRead=(throwRead+1)%cap;--throwRemaining;
     }
     const auto echo=delay.process(sourceL,sourceR);
-    outL=l+echo[0];outR=r+echo[1];
+    throwFilterL=throwFilterPole*throwFilterL+(1.f-throwFilterPole)*echo[0];
+    throwFilterR=throwFilterPole*throwFilterR+(1.f-throwFilterPole)*echo[1];
+    outL=l+throwFilterL;outR=r+throwFilterR;
     throwWrite=(throwWrite+1)%cap;
 }
 void SkellPresetAudioProcessor::updateHostLatency() {
@@ -178,6 +182,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         e.delay.configure((int)(rate*(c.type==AdlibThrow ? (.16+.48*c.p[0]) : (.055+.85*c.p[0]))),c.type==AdlibThrow ? (.2f+.68f*c.p[1]) : (c.p[1]*.8f));
         e.reverb[0].setParameters(.15f+6.f*c.p[0],.12f+c.p[1]*.8f,1.f);
         if(c.type==Limiter)e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
+        if(c.type==AdlibThrow)e.throwFilterPole=std::exp(-2.f*(float)skellpreset::dsp::pi*(750.f+c.p[2]*11500.f)/(float)rate);
     }
     for(int s=0;s<slotCount;++s){
         const auto& c=controlCache[(size_t)s];
@@ -236,8 +241,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*0.4f+r;break;}
                     case Delay: {auto d=e.delay.process(l,r);wL=d[0];wR=d[1];break;}
                     case Reverb: {auto d=e.reverb[0].processFrame(l,r);wL=d[0];wR=d[1];break;}
-                    case AdlibThrow: {e.processThrow(l,r,wL,wR,c.p[0],c.p[1],rate);break;}
-                    case AdlibDoubler: {auto d=e.doubler.process(l,r,c.p[0],c.p[1],c.p[2]);wL=d[0];wR=d[1];break;}
+                    case AdlibThrow: {e.processThrow(l,r,wL,wR,c.p[0],c.p[1],c.p[2],c.p[3],rate);break;}
+                    case AdlibDoubler: {auto d=e.doubler.process(l,r,c.p[0],c.p[1],c.p[2],c.p[3]);wL=d[0];wR=d[1];break;}
                     default: break;
                 }
                 // Lookahead limiter wet and bypass both carry its declared sample delay.

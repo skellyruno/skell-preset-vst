@@ -156,10 +156,10 @@ struct AdlibDoubler {
         for(auto& v:memory)v.assign((size_t)(rate*.09)+4,0.f);
     }
     void reset() noexcept {for(auto& v:memory)std::fill(v.begin(),v.end(),0.f);head=0;phase=0;}
-    std::array<float,2> process(float l,float r,float width,float depth,float rateControl) noexcept {
+    std::array<float,2> process(float l,float r,float width,float depth,float rateControl,float intensity) noexcept {
         if(memory[0].empty())return {l,r};
         const float baseMs=12.f+24.f*std::clamp(depth,0.f,1.f);
-        const float modMs=1.f+4.f*std::clamp(width,0.f,1.f);
+        const float modMs=(1.f+4.f*std::clamp(width,0.f,1.f))*(.3f+1.4f*std::clamp(intensity,0.f,1.f));
         phase+=2.*pi*(.13+2.*std::clamp((double)rateControl,0.,1.))/rate;
         if(phase>=2*pi)phase-=2*pi;
         memory[0][head]=l;memory[1][head]=r;

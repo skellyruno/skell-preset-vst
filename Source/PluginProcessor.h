@@ -62,8 +62,9 @@ private:
         std::array<std::vector<float>,2> throwHistory;
         size_t throwWrite=0,throwRead=0;
         int throwRemaining=0;
-        bool phrasePreviouslyActive=false;
-        void processThrow(float l,float r,float& outL,float& outR,float amount,float feedback,double sampleRate) noexcept;
+        bool phrasePreviouslyActive=false,manualPreviouslyActive=false;
+        float throwFilterL=0,throwFilterR=0,throwFilterPole=.6f;
+        void processThrow(float l,float r,float& outL,float& outR,float amount,float feedback,float tone,float trigger,double sampleRate) noexcept;
         std::array<skellcore::FDNReverb,1> reverb;
         void prepare(double sampleRate);
     };

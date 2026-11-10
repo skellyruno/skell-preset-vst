@@ -125,3 +125,12 @@ The factory browser now has **IMPORT** and **SAVE PRESET** actions for native fi
 - All limiter, PDC, throw and doubler buffers are preallocated in prepareToPlay. Structural module type changes are **not realtime automatable** in this version; editing a chain may require host realignment. Parallel lanes and crossfaded graph swaps remain unfinished.
 - Five portable tests include sample-exact dry/bypass PDC and finite stereo doubler output. Real Windows VST3 compilation and FL Studio runtime test must still validate these changes.
 - Advanced formant/pitch adlibs, MIDI throw triggering, full MATCH reconstruction and independent 3-lane PDC are future work.
+
+
+### Stage 5.1 UI / Adlib refinements
+
+- Browser renders six cards per view, keeping its scroll affordance below the cards rather than obscuring the last card; search receives focus on open.
+- The bottom-right output meter was moved left and the output fader narrowed to avoid overlapping the resize selector.
+- Adlib Throw's third control now filters the echo, and the fourth triggers a replay on a rising threshold crossing (manual automation possible).
+- Adlib Doubler's fourth control now changes stereo modulation depth instead of being inert.
+- This still needs a real-world FL Studio audition on mono/stereo vocals and preset changes to judge transitions.
