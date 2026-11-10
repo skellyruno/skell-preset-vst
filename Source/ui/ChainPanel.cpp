@@ -67,6 +67,16 @@ void ChainPanel::paint(juce::Graphics& g) {
             g.fillRoundedRectangle(juce::Rectangle<float>(12.f,(float)top+35.f,191.f*peak,2.f),.8f);
         }
     }
+    if(active>10) {
+        // Fixed, readable scroll indicator across all three themes.
+        const float railY=(float)rowStart,railH=10.f*rowStep-4.f;
+        const float thumbH=railH*10.f/(float)active;
+        const float y=railY+(railH-thumbH)*(float)scrollOffset/(float)(active-10);
+        g.setColour(Theme::stroke.withAlpha(.8f));
+        g.fillRoundedRectangle(209.f,railY,3.f,railH,1.5f);
+        g.setColour(Theme::green.withAlpha(.80f));
+        g.fillRoundedRectangle(209.f,y,3.f,thumbH,1.5f);
+    }
     const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
     g.setColour(active==16?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
