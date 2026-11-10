@@ -25,3 +25,9 @@ This stage intentionally keeps the plugin manufacturer/code (`SkAu`/`SkPr`), exi
 - Safe click-free *structural* graph swaps, including type/latency transitions and full parallel-lane PDC.
 - True multislot EQ, full vocal MATCH of recorded FL dry/wet WAVs, formant/harmoniser adlib DSP and full sample-library management.
 - FL Studio load/unload, cross-host automation and actual UI screenshots at all scales, CPU profiling and golden audio comparisons on real vocals.
+
+## Compiler-warning cleanup (Stage 8.1)
+- Explicitly convert module choice to float when forwarding to APVTS (`C4244`).
+- Rename the preset-card waveform Y coordinate to avoid shadowing the card position (`C4456`).
+- Change float-buffer initialization in shared SkellCore FDN reset from integer `0` to float `0.0f` (STL `C4244`).
+- Enable MSVC `/WX` for Skell-Preset's production target so new project compilation warnings fail CI.

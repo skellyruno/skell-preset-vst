@@ -149,7 +149,7 @@ float SkellPresetAudioProcessor::getSlotParam(int slot,int param) const noexcept
 }
 void SkellPresetAudioProcessor::setSlotParam(int slot,int param,float v) {setReal(slotPrefix(slot)+"p"+juce::String(param+1),juce::jlimit(0.f,1.f,v));}
 void SkellPresetAudioProcessor::setSlotOn(int slot,bool on) {setReal(slotPrefix(slot)+"on",on?1.f:0.f);}
-void SkellPresetAudioProcessor::setSlotType(int slot,int type) {setReal(slotPrefix(slot)+"type",juce::jlimit(0,NumberOfModules-1,type));updateHostLatency();}
+void SkellPresetAudioProcessor::setSlotType(int slot,int type) {setReal(slotPrefix(slot)+"type",static_cast<float>(juce::jlimit(0,NumberOfModules-1,type)));updateHostLatency();}
 juce::String SkellPresetAudioProcessor::moduleName(int type) const {return types[juce::jlimit(0,types.size()-1,type)];}
 
 void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&) {

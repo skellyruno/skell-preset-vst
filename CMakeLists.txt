@@ -89,7 +89,7 @@ target_link_libraries(SkellPreset PRIVATE
 target_compile_features(SkellPreset PRIVATE cxx_std_17)
 
 if(MSVC)
-    target_compile_options(SkellPreset PRIVATE /W4 /permissive-)
+    target_compile_options(SkellPreset PRIVATE /W4 /WX /permissive-)
 else()
     target_compile_options(SkellPreset PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endif()

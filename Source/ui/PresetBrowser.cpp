@@ -126,8 +126,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
         for(int px=0;px<154;px+=4) {
             const float x=rect.getRight()-173.f+px;
             const float decay=1.f-std::abs(px-77.f)/77.f;
-            const float y=rect.getCentreY()+std::sin(px*.19f+item.colour*2.f)*decay*(9.f+item.colour);
-            if(px==0)wave.startNewSubPath(x,y);else wave.lineTo(x,y);
+            const float waveY=rect.getCentreY()+std::sin(px*.19f+item.colour*2.f)*decay*(9.f+item.colour);
+            if(px==0)wave.startNewSubPath(x,waveY);else wave.lineTo(x,waveY);
         }
         g.setColour(bankTint.withAlpha(.37f));g.strokePath(wave,juce::PathStrokeType(1.6f));
         const bool loaded=entries[(size_t)itemIndex]==processor.getCurrentProgram();
