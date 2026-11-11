@@ -67,3 +67,7 @@ add_test(NAME SkellPresetModulationFXTest COMMAND SkellPresetModulationFXTest)
 add_executable(SkellPresetImportedVocalFXTest test_imported_vocal_fx.cpp)
 target_compile_features(SkellPresetImportedVocalFXTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetImportedVocalFXTest COMMAND SkellPresetImportedVocalFXTest)
+
+add_executable(SkellPresetAdvancedVocalDSPTest test_advanced_vocal_dsp.cpp)
+target_compile_features(SkellPresetAdvancedVocalDSPTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAdvancedVocalDSPTest COMMAND SkellPresetAdvancedVocalDSPTest)
