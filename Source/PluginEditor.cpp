@@ -197,6 +197,8 @@ public:
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
             issues.add("Mode visibility did not match the requested workspace");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
+        if(!slot.moduleSelectorMatchesAudio())
+            issues.add("Module dropdown differs from the actual selected DSP type");
         return issues;
     }
     juce::StringArray runScreenshotInteractionTests(){
@@ -322,6 +324,11 @@ public:
             mode[(size_t)i].setColour(juce::TextButton::buttonColourId,
                 mapped==m?(bypass?Theme::muted.withAlpha(.32f):Theme::green.withAlpha(.24f)):Theme::panelAlt);
         }
+        // UI state must reflect the current host/program state *now*, not at
+        // the next 30Hz timer tick. This also prevents stale module names
+        // during screenshot capture and fast A/B preset auditioning.
+        chain.refreshIfChanged();
+        slot.refreshIfChanged();
         resized();repaint();
     }
     void timerCallback() override{
