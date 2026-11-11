@@ -3,7 +3,7 @@
 #include <cmath>
 #include <limits>
 namespace {
-const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control"};
+const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control","Studio Pitch + Formant"};
 std::array<juce::String,4> titles(int type) {
     switch(type){
         case 1:return {"Frequency","Gain","Q","Low Cut"};
@@ -35,6 +35,7 @@ std::array<juce::String,4> titles(int type) {
         case 27:return {"Threshold","Ratio","FET Speed","Parallel"};
         case 28:return {"Frequency","Threshold","Reduction","Release"};
         case 29:return {"Threshold","Strength","Hold","Release"};
+        case 30:return {"Pitch","Formant","Mix","Quality"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
