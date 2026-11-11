@@ -272,6 +272,13 @@ void SlotEditor::applyKnobReadouts() {
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
     }
+    // APVTS attachments already populated each text box using their default
+    // formatting. Reassigning textFromValueFunction alone leaves that cached
+    // raw decimal visible until the user moves a knob. Update the visible
+    // contents immediately, including after selecting a different EQ bank.
+    wetKnob.updateText();
+    eqQSlider.updateText();
+    for(auto& knob:knobs)knob.updateText();
 }
 void SlotEditor::applyTheme() {
     Theme::selectFor(processor.state);
