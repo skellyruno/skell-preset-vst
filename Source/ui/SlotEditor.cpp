@@ -383,7 +383,65 @@ void SlotEditor::paint(juce::Graphics&g) {
         const float x0=plot.getX()+24.f, x1=plot.getRight()-24.f;
         const float y0=plot.getY()+20.f, y1=plot.getBottom()-27.f;
         const float w=x1-x0, h=y1-y0;
-        if(type==SkellPresetAudioProcessor::VoxRackRoom) {
+        if(type==SkellPresetAudioProcessor::VocalChorusFX) {
+            // Animated multivoice geometry, not a fabricated FFT or waveform.
+            const float width=processor.getSlotParam(slot,3);
+            const float depth=second;
+            const int voices=juce::jlimit(2,5,(int)std::round(2.f+3.f*processor.getSlotParam(slot,2)));
+            for(int v=0;v<voices;++v) {
+                juce::Path voice;
+                const float offset=2.f*(float)juce::MathConstants<float>::pi*v/voices;
+                for(int i=0;i<=170;++i){
+                    const float t=(float)i/170.f;
+                    const float envelope=std::sin(t*(float)juce::MathConstants<float>::pi);
+                    const float motion=std::sin(t*16.f+offset)*
+                                       (h*.18f*depth)*envelope;
+                    const float posY=plot.getCentreY()+(v-(voices-1)*.5f)*(6.f+width*11.f)+motion;
+                    if(i==0)voice.startNewSubPath(x0,posY);
+                    else voice.lineTo(x0+t*w,posY);
+                }
+                g.setColour(v%2==0?Theme::green.withAlpha(.65f+.08f*(v%3)):
+                                      Theme::blue.withAlpha(.7f));
+                g.strokePath(voice,juce::PathStrokeType(1.8f+v*.16f));
+            }
+        } else if(type==SkellPresetAudioProcessor::VocalFlangerFX) {
+            const float depth=second;
+            const float feedback=2.f*processor.getSlotParam(slot,2)-1.f;
+            juce::Path swept,phase;
+            for(int i=0;i<=180;++i){
+                const float t=(float)i/180.f;
+                const float carrier=.5f+.5f*std::sin(t*16.f*(.5f+first));
+                const float a=plot.getBottom()-20.f-
+                              (h-46.f)*(.1f+depth*.78f*carrier);
+                const float b=plot.getCentreY()-
+                              feedback*(h*.19f)*std::sin(t*22.f);
+                if(i==0){swept.startNewSubPath(x0,a);phase.startNewSubPath(x0,b);}
+                else{swept.lineTo(x0+t*w,a);phase.lineTo(x0+t*w,b);}
+            }
+            g.setColour(Theme::blue.withAlpha(.58f));
+            g.strokePath(phase,juce::PathStrokeType(2.f));
+            g.setColour(Theme::green);
+            g.strokePath(swept,juce::PathStrokeType(3.2f));
+        } else if(type==SkellPresetAudioProcessor::RingModFX) {
+            const float depth=second,shape=processor.getSlotParam(slot,2);
+            const float offset=processor.getSlotParam(slot,3)*2.f;
+            for(int ch=0;ch<2;++ch) {
+                juce::Path curve;
+                for(int i=0;i<=180;++i) {
+                    const float t=(float)i/180.f;
+                    const float phase=t*(4.f+first*18.f)+(ch?offset:0.f);
+                    const float sine=std::sin(phase*(float)juce::MathConstants<float>::twoPi);
+                    const float tri=1.f-4.f*std::abs(phase-std::floor(phase)-.5f);
+                    const float mod=sine*(1.f-shape)+tri*shape;
+                    const float value=(1.f-depth)+depth*mod;
+                    const float y=plot.getCentreY()-value*(h*.33f);
+                    if(i==0)curve.startNewSubPath(x0,y);
+                    else curve.lineTo(x0+t*w,y);
+                }
+                g.setColour(ch==0?Theme::green:Theme::blue);
+                g.strokePath(curve,juce::PathStrokeType(ch==0?2.9f:2.2f));
+            }
+        } else if(type==SkellPresetAudioProcessor::VoxRackRoom) {
             const float size=first,damp=second;
             const float predelayMs=200.f*processor.getSlotParam(slot,2);
             // Eight comb paths are visualized as decaying reflections, with
@@ -728,6 +786,21 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail="LOW "+juce::String(processor.getSlotParam(slot,0)*100.f,0)+
                      "%  /  MID "+juce::String(processor.getSlotParam(slot,1)*100.f,0)+
                      "%  /  HIGH "+juce::String(processor.getSlotParam(slot,2)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::VocalChorusFX) {
+        effectTitle="VOCAL CHORUS  /  STEREO MICRO-VOICES";
+        effectDetail=juce::String(.08f+3.9f*processor.getSlotParam(slot,0),2)+
+                     " Hz  /  "+juce::String(1.f+10.f*processor.getSlotParam(slot,1),1)+
+                     " ms  /  2-5 VOICES";
+    } else if(type==SkellPresetAudioProcessor::VocalFlangerFX) {
+        effectTitle="VOCAL FLANGER  /  SWEEP + FEEDBACK";
+        effectDetail=juce::String(.05f+4.95f*processor.getSlotParam(slot,0),2)+
+                     " Hz  /  "+juce::String(.3f+9.f*processor.getSlotParam(slot,1),1)+
+                     " ms RANGE";
+    } else if(type==SkellPresetAudioProcessor::RingModFX) {
+        effectTitle="RING MODULATOR  /  METALLIC VOICE";
+        effectDetail=juce::String(15.f*std::pow(70.f,processor.getSlotParam(slot,0)),0)+
+                     " Hz  /  DEPTH "+
+                     juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
     } else if(type==SkellPresetAudioProcessor::VoxRackRoom) {
         effectTitle="VOXRACK ROOM  /  COMB + ALLPASS";
         effectDetail=juce::String(processor.getSlotParam(slot,2)*200.f,0)+
