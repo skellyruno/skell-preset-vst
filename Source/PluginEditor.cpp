@@ -214,6 +214,18 @@ public:
         if(!bypassShade.isVisible())issues.add("Bypass did not enable overlay");
         mode[2].onClick();
         if(bypassShade.isVisible())issues.add("Bypass toggle failed to restore workspace");
+        // This drives the same XY mutation code as real mouse dragging:
+        // verify the graphical insert is an actual parameter editor.
+        processor.loadFactoryPreset(0);
+        processor.setSlotType(0,SkellPresetAudioProcessor::Saturator);
+        slot.select(0);
+        const float oldValue=processor.getSlotParam(0,0);
+        slot.testGraphGesture({650.f,220.f});
+        if(std::abs(processor.getSlotParam(0,0)-oldValue)<.05f)
+            issues.add("Saturator graph drag failed to update host automation");
+        processor.loadFactoryPreset(0);
+        slot.select(0);
+        chain.setSelectedSlot(0);
         return issues;
     }
     void style(juce::TextButton& b){

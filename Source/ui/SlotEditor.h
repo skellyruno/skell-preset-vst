@@ -12,6 +12,7 @@ public:
     void applyTheme();
     void refreshIfChanged(); // only redraw when DSP controls or type change
     int selectedSlot()const noexcept{return slot;}
+    void testGraphGesture(juce::Point<float> point) {updateGraphNode(point);}
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
@@ -31,5 +32,5 @@ private:
     bool graphSnapshotValid=false;
     int lastType=-1;
     std::array<float,6> lastControls{};
-    void updateGraphNode(const juce::MouseEvent&);
+    void updateGraphNode(juce::Point<float>);
 };

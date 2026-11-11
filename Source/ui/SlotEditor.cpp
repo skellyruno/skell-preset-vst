@@ -446,20 +446,20 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   "SLOT CONTROL / 20 MS WET/BYPASS FADES",{30,395,700,17},10,Theme::muted);
 }
-void SlotEditor::updateGraphNode(const juce::MouseEvent& e) {
+void SlotEditor::updateGraphNode(juce::Point<float> point) {
     const auto type=(int)processor.state.getRawParameterValue(
         "s"+juce::String(slot+1)+"_type")->load();
     if(type==SkellPresetAudioProcessor::EQ){
-        const auto x=juce::jlimit(0.f,1.f,(e.position.x-33.f)/835.f);
-        const auto y=juce::jlimit(-1.f,1.f,(254.f-e.position.y)/103.f);
+        const auto x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
+        const auto y=juce::jlimit(-1.f,1.f,(254.f-point.y)/103.f);
         const float freq=20.f*std::pow(1000.f,x);
         processor.setSlotParam(slot,0,juce::jlimit(0.f,1.f,
             (float)(std::log(freq/40.f)/std::log(300.))));
         processor.setSlotParam(slot,1,juce::jlimit(0.f,1.f,.5f+y*1.5f));
     } else if(type!=SkellPresetAudioProcessor::Empty) {
         // Unified gesture: the same XY marker is used by each bespoke display.
-        const float x=juce::jlimit(0.f,1.f,(e.position.x-57.f)/787.f);
-        const float y=juce::jlimit(0.f,1.f,(330.f-e.position.y)/159.f);
+        const float x=juce::jlimit(0.f,1.f,(point.x-57.f)/787.f);
+        const float y=juce::jlimit(0.f,1.f,(330.f-point.y)/159.f);
         processor.setSlotParam(slot,0,x);
         processor.setSlotParam(slot,1,y);
     }
@@ -473,9 +473,9 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
     draggingGraph=true;
     for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->beginChangeGesture();
-    updateGraphNode(e);
+    updateGraphNode(e.position);
 }
-void SlotEditor::mouseDrag(const juce::MouseEvent& e){if(draggingGraph)updateGraphNode(e);}
+void SlotEditor::mouseDrag(const juce::MouseEvent& e){if(draggingGraph)updateGraphNode(e.position);}
 void SlotEditor::mouseUp(const juce::MouseEvent&){
     if(!draggingGraph)return;
     for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->endChangeGesture();
