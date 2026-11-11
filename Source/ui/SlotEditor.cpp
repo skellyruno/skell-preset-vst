@@ -237,9 +237,119 @@ void SlotEditor::paint(juce::Graphics&g) {
                     {45,163,700,20},12,Theme::green,true);
         Theme::text(g,"RELATIVE TAP DECAY  /  NOT AN AUDIO WAVEFORM",{43,326,650,17},10,Theme::muted);
     } else if(type!=SkellPresetAudioProcessor::Empty){
-        // Show configuration rather than inventing a live audio analyzer.
-        Theme::text(g,processor.moduleName(type).toUpperCase(),{65,198,740,40},25,Theme::green,true,juce::Justification::centred);
-        Theme::text(g,"ADJUST THE CONTROLS BELOW  /  AUDIO IS PROCESSED IN REAL TIME",{120,249,600,22},12,Theme::muted,false,juce::Justification::centred);
+        // Parameter-driven visualizations. These are not fabricated FFT meters:
+        // the user can drag the shared edit point to change P1/P2.
+        const float first=processor.getSlotParam(slot,0);
+        const float second=processor.getSlotParam(slot,1);
+        const float x0=plot.getX()+24.f, x1=plot.getRight()-24.f;
+        const float y0=plot.getY()+20.f, y1=plot.getBottom()-27.f;
+        const float w=x1-x0, h=y1-y0;
+        if(type==SkellPresetAudioProcessor::Limiter){
+            // Limiter transfer: unprocessed diagonal with adjustable ceiling.
+            const float ceiling=y0+18.f+(1.f-first)*h*.58f;
+            g.setColour(Theme::muted.withAlpha(.37f));
+            g.drawLine(x0,y1,x1,y0,1.3f);
+            juce::Path limited;
+            limited.startNewSubPath(x0,y1);
+            const float knee=juce::jlimit(x0+25.f,x1-15.f,
+                                         x0+w*(.50f+.40f*first-.12f*second));
+            limited.lineTo(knee,ceiling);limited.lineTo(x1,ceiling);
+            g.setColour(Theme::green);
+            g.strokePath(limited,juce::PathStrokeType(3.2f));
+            g.setColour(Theme::amber.withAlpha(.65f));
+            g.drawHorizontalLine((int)ceiling,x0,x1);
+            Theme::text(g,"LOOKAHEAD LIMITER  /  CEILING + DRIVE",
+                {62,165,700,20},12,Theme::green,true);
+        } else if(type==SkellPresetAudioProcessor::Saturator){
+            // Waveshaper response changes as the real Drive and Character do.
+            juce::Path shape,unity;
+            const float drive=1.f+17.f*first;
+            const float character=.6f+1.1f*second;
+            for(int i=0;i<=96;++i){
+                const float normal=(float)i/96.f, signal=normal*2.f-1.f;
+                const float output=std::tanh(signal*drive*character)/
+                                   std::max(.5f,drive*.6f);
+                const float x=x0+w*normal;
+                const float y=plot.getCentreY()-juce::jlimit(-1.f,1.f,output)*h*.45f;
+                if(i==0){shape.startNewSubPath(x,y);
+                    unity.startNewSubPath(x,y1);}
+                else{shape.lineTo(x,y);
+                    unity.lineTo(x,y1-h*normal);}
+            }
+            g.setColour(Theme::muted.withAlpha(.40f));g.strokePath(unity,juce::PathStrokeType(1.4f));
+            g.setColour(Theme::green);g.strokePath(shape,juce::PathStrokeType(2.7f));
+            Theme::text(g,"SATURATION  /  LIVE SHAPER RESPONSE",
+                {62,165,700,20},12,Theme::green,true);
+        } else if(type==SkellPresetAudioProcessor::Reverb){
+            // Energy decay is visualized as a damped tail, not fake input audio.
+            const float decay=1.f+first*7.f;
+            const float damping=.15f+second*.80f;
+            juce::Path upper,lower;
+            for(int i=0;i<=120;++i){
+                const float t=(float)i/120.f;
+                const float envelope=std::exp(-t*(.9f+6.f/decay));
+                const float ripple=std::sin(t*145.f)*envelope*(1.f-.55f*damping);
+                const float x=x0+t*w;
+                if(i==0){
+                    upper.startNewSubPath(x,plot.getCentreY()-envelope*h*.32f);
+                    lower.startNewSubPath(x,plot.getCentreY()+ripple*h*.32f);
+                } else {
+                    upper.lineTo(x,plot.getCentreY()-envelope*h*.32f);
+                    lower.lineTo(x,plot.getCentreY()+ripple*h*.32f);
+                }
+            }
+            g.setColour(Theme::green.withAlpha(.75f));
+            g.strokePath(upper,juce::PathStrokeType(2.2f));
+            g.setColour(Theme::blue);
+            g.strokePath(lower,juce::PathStrokeType(1.9f));
+            Theme::text(g,"REVERB  /  DECAY ENVELOPE + REFLECTIONS",
+                {62,165,700,20},12,Theme::green,true);
+        } else if(type==SkellPresetAudioProcessor::Exciter){
+            // Harmonic partial ladder reflects Excite and Colour parameters.
+            const float focus=.25f+second*.75f;
+            for(int i=0;i<11;++i) {
+                const float x=x0+50.f+i*(w-80.f)/10.f;
+                const float strength=std::pow(1.f/(1.f+(float)i*.36f),1.7f-first);
+                const float height=(.08f+first*.78f)*strength*h*focus;
+                g.setColour(i%2?Theme::blue:Theme::green);
+                g.fillRoundedRectangle(x,plot.getCentreY()+h*.34f-height,
+                                       9.f,height+2.f,2.4f);
+            }
+            Theme::text(g,"EXCITER  /  HARMONIC PARTIALS",
+                {62,165,700,20},12,Theme::green,true);
+        } else if(type==SkellPresetAudioProcessor::AdlibDoubler){
+            // Two phase/micro-delay trails represent the stereo layers.
+            const float width=first,offset=.1f+second*.6f;
+            for(int side=0;side<2;++side){
+                juce::Path voice;
+                for(int i=0;i<=140;++i){
+                    const float t=(float)i/140.f;
+                    const float phase=t*30.f+(side?offset:-offset)*5.f;
+                    const float wave=std::sin(phase)*h*(.17f+.18f*width);
+                    const float y=plot.getCentreY()+wave+(side?1.f:-1.f)*width*15.f;
+                    if(i==0)voice.startNewSubPath(x0,y);
+                    else voice.lineTo(x0+t*w,y);
+                }
+                g.setColour(side?Theme::blue:Theme::green);
+                g.strokePath(voice,juce::PathStrokeType(2.2f));
+            }
+            Theme::text(g,"DOUBLER  /  LEFT + RIGHT MICRO-VOICES",
+                {62,165,700,20},12,Theme::green,true);
+        } else {
+            Theme::text(g,processor.moduleName(type).toUpperCase(),
+                {65,198,740,40},25,Theme::green,true,juce::Justification::centred);
+            Theme::text(g,"DRAG THE GRAPH TO EDIT THE FIRST TWO CONTROLS",
+                {120,249,620,22},12,Theme::muted,false,juce::Justification::centred);
+        }
+        // Universal interactive XY marker (first two parameter IDs).
+        const float markerX=x0+w*first,markerY=y1-h*second;
+        g.setColour(Theme::green.withAlpha(.24f));
+        g.drawVerticalLine((int)markerX,y0,y1);
+        g.drawHorizontalLine((int)markerY,x0,x1);
+        g.setColour(Theme::plot);
+        g.fillEllipse(markerX-6.f,markerY-6.f,12.f,12.f);
+        g.setColour(Theme::green);
+        g.drawEllipse(markerX-6.f,markerY-6.f,12.f,12.f,2.4f);
     } else {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }
@@ -282,18 +392,30 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   "SLOT CONTROL / 20 MS WET/BYPASS FADES",{30,395,700,17},10,Theme::muted);
 }
-void SlotEditor::updateGraphNode(const juce::MouseEvent& e){
-    const auto x=juce::jlimit(0.f,1.f,(e.position.x-33.f)/835.f);
-    const auto y=juce::jlimit(-1.f,1.f,(254.f-e.position.y)/103.f);
-    const float freq=20.f*std::pow(1000.f,x);
-    const float normalized=juce::jlimit(0.f,1.f,(float)(std::log(freq/40.f)/std::log(300.)));
-    processor.setSlotParam(slot,0,normalized);
-    processor.setSlotParam(slot,1,juce::jlimit(0.f,1.f,.5f+y*1.5f));
+void SlotEditor::updateGraphNode(const juce::MouseEvent& e) {
+    const auto type=(int)processor.state.getRawParameterValue(
+        "s"+juce::String(slot+1)+"_type")->load();
+    if(type==SkellPresetAudioProcessor::EQ){
+        const auto x=juce::jlimit(0.f,1.f,(e.position.x-33.f)/835.f);
+        const auto y=juce::jlimit(-1.f,1.f,(254.f-e.position.y)/103.f);
+        const float freq=20.f*std::pow(1000.f,x);
+        processor.setSlotParam(slot,0,juce::jlimit(0.f,1.f,
+            (float)(std::log(freq/40.f)/std::log(300.))));
+        processor.setSlotParam(slot,1,juce::jlimit(0.f,1.f,.5f+y*1.5f));
+    } else if(type!=SkellPresetAudioProcessor::Empty) {
+        // Unified gesture: the same XY marker is used by each bespoke display.
+        const float x=juce::jlimit(0.f,1.f,(e.position.x-57.f)/787.f);
+        const float y=juce::jlimit(0.f,1.f,(330.f-e.position.y)/159.f);
+        processor.setSlotParam(slot,0,x);
+        processor.setSlotParam(slot,1,y);
+    }
+    graphSnapshotValid=false;
     repaint();
 }
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     auto* t=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
-    if(!t||(int)t->load()!=1||!juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
+    if(!t||(int)t->load()==SkellPresetAudioProcessor::Empty
+        || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
     draggingGraph=true;
     for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->beginChangeGesture();
     updateGraphNode(e);
