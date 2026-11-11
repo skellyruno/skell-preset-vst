@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include <cmath>
 namespace {
-const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser"};
+const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3"};
 std::array<juce::String,4> titles(int type) {
     switch(type){
         case 1:return {"Frequency","Gain","Q","Low Cut"};
@@ -16,6 +16,7 @@ std::array<juce::String,4> titles(int type) {
         case 9:return {"Throw Time","Feedback","Tone","Trigger"};
         case 10:return {"Width","Timing","Motion","Depth"};
         case 11:return {"Sib. Freq","Threshold","Reduction","Release"};
+        case 12:return {"Macro A","Macro B","Macro C","Macro D"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -26,6 +27,38 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):processor(p) {
     moduleBox.setColour(juce::ComboBox::textColourId,Theme::white);
     moduleBox.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
     addAndMakeVisible(moduleBox);
+    for(auto* button:{&loadExternal,&editExternal}){
+        button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
+        button->setColour(juce::TextButton::textColourOffId,Theme::green);
+        addAndMakeVisible(*button);
+        button->setVisible(false);
+    }
+    loadExternal.setTooltip("Load an installed third-party VST3 effect into this rack slot");
+    editExternal.setTooltip("Open the hosted VST3 editor in a separate window");
+    loadExternal.onClick=[this] {
+        // JUCE FileChooser must outlive its asynchronous callback.
+        externalChooser=std::make_unique<juce::FileChooser>(
+            "Choose an installed VST3 effect",juce::File{},"*.vst3",true);
+        juce::Component::SafePointer<SlotEditor> safe(this);
+        externalChooser->launchAsync(
+            juce::FileBrowserComponent::openMode |
+            juce::FileBrowserComponent::canSelectFiles |
+            juce::FileBrowserComponent::canSelectDirectories,
+            [safe](const juce::FileChooser& chooser) {
+                if(!safe)return;
+                const auto path=chooser.getResult();
+                if(path.getFullPathName().isEmpty())return;
+                const auto result=safe->processor.loadHostedVST3(safe->slot,path);
+                if(result.failed())juce::AlertWindow::showMessageBoxAsync(
+                    juce::AlertWindow::WarningIcon,"VST3 could not load",
+                    result.getErrorMessage());
+                safe->graphSnapshotValid=false;
+                safe->refreshIfChanged();
+            });
+    };
+    editExternal.onClick=[this] {
+        processor.openHostedVST3Editor(slot);
+    };
     activeButton.setButtonText("ON");activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
     activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);addAndMakeVisible(activeButton);
     wetKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
@@ -57,6 +90,10 @@ void SlotEditor::applyTheme() {
     moduleBox.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
     activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
     activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);
+    for(auto* button:{&loadExternal,&editExternal}) {
+        button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
+        button->setColour(juce::TextButton::textColourOffId,Theme::green);
+    }
     for(auto* s:{&wetKnob,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
@@ -71,6 +108,7 @@ void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     graphSnapshotValid=false;
     enabledAttachment.reset();wetAttachment.reset();
+    externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
     if(auto* type=processor.state.getRawParameterValue(prefix+"type"))
@@ -94,11 +132,17 @@ void SlotEditor::refreshIfChanged() {
     if(!changed)return;
     if(type!=lastType)moduleBox.setSelectedId(type+1,juce::dontSendNotification);
     lastType=type;lastControls=current;graphSnapshotValid=true;
+    const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
+    loadExternal.setVisible(external);
+    editExternal.setVisible(external && processor.hasHostedVST3(slot));
+    for(auto& k:knobs)k.setEnabled(!external);
     repaint();
 }
 void SlotEditor::resized() {
     moduleBox.setBounds(550,25,144,29);activeButton.setBounds(711,26,70,28);
     wetKnob.setBounds(802,6,88,78);
+    loadExternal.setBounds(56,374,150,35);
+    editExternal.setBounds(214,374,176,35);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(42+211*k,437,83,70);
 }
 void SlotEditor::paint(juce::Graphics&g) {
@@ -236,6 +280,16 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,juce::String(throwing?"PHRASE THROW":"DELAY")+"  "+juce::String(seconds*1000.f,0)+" ms  /  FEEDBACK "+juce::String(feedback*100.f,0)+"%",
                     {45,163,700,20},12,Theme::green,true);
         Theme::text(g,"RELATIVE TAP DECAY  /  NOT AN AUDIO WAVEFORM",{43,326,650,17},10,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::ExternalVST3) {
+        const auto name=processor.hostedVST3Name(slot);
+        Theme::text(g,"EXTERNAL VST3 INSERT",{80,185,680,31},25,Theme::green,true);
+        Theme::text(g,name.isEmpty()?"NO PLUGIN LOADED":name.toUpperCase(),
+            {81,225,720,34},17,Theme::white,true);
+        Theme::text(g,name.isEmpty()?"Choose LOAD VST3 below to select a plug-in.":
+            "OPEN PLUGIN UI to adjust the hosted effect.",
+            {83,270,720,23},13,Theme::muted);
+        Theme::text(g,"IN-PROCESS HOST  /  THIRD-PARTY CODE RUNS INSIDE YOUR DAW",
+            {85,313,735,20},11,Theme::amber);
     } else if(type!=SkellPresetAudioProcessor::Empty){
         // Parameter-driven visualizations. These are not fabricated FFT meters:
         // the user can drag the shared edit point to change P1/P2.
@@ -415,6 +469,7 @@ void SlotEditor::updateGraphNode(const juce::MouseEvent& e) {
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     auto* t=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
     if(!t||(int)t->load()==SkellPresetAudioProcessor::Empty
+        || (int)t->load()==SkellPresetAudioProcessor::ExternalVST3
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
     draggingGraph=true;
     for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->beginChangeGesture();
