@@ -92,11 +92,53 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     activeButton.setButtonText("ON");activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
     activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);addAndMakeVisible(activeButton);
     wetKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    wetKnob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,60,18);
+    wetKnob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,70,21);
+    wetKnob.textFromValueFunction=[](double v) {
+        return juce::String(juce::roundToInt(juce::jlimit(0.,1.,v)*100.))+"%";
+    };
+    wetKnob.valueFromTextFunction=[](const juce::String& text) {
+        const double value=text.getDoubleValue();
+        return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
+    };
     addAndMakeVisible(wetKnob);
-    for(auto& k:knobs){
+    for(int i=0;i<4;++i){
+        auto& k=knobs[(size_t)i];
         k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,62,20);
+        k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,76,21);
+        // Human-readable display only; hosts still automate the exact stable
+        // normalized parameter range. Never make display conversions in DSP.
+        k.textFromValueFunction=[this,i](double v)->juce::String {
+            v=juce::jlimit(0.,1.,v);
+            const auto* type=processor.state.getRawParameterValue(
+                "s"+juce::String(slot+1)+"_type");
+            if(type && (int)type->load()==SkellPresetAudioProcessor::EQ) {
+                if(i==0) {
+                    const double hz=40.*std::pow(300.,v);
+                    return hz>=1000.?juce::String(hz/1000.,1)+"kHz":
+                                    juce::String(juce::roundToInt(hz))+"Hz";
+                }
+                if(i==1)return juce::String((v-.5)*24.,1)+"dB";
+                if(i==2)return juce::String(.3+7.*v,2)+" Q";
+                return juce::String(juce::roundToInt(20.+250.*v))+"Hz";
+            }
+            return juce::String(juce::roundToInt(v*100.))+"%";
+        };
+        k.valueFromTextFunction=[this,i](const juce::String& input)->double {
+            const auto text=input.trim().toLowerCase();
+            const double value=text.getDoubleValue();
+            const auto* type=processor.state.getRawParameterValue(
+                "s"+juce::String(slot+1)+"_type");
+            if(type && (int)type->load()==SkellPresetAudioProcessor::EQ) {
+                if(i==0) {
+                    const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
+                    return juce::jlimit(0.,1.,std::log(hz/40.)/std::log(300.));
+                }
+                if(i==1)return juce::jlimit(0.,1.,value/24.+.5);
+                if(i==2)return juce::jlimit(0.,1.,(value-.3)/7.);
+                return juce::jlimit(0.,1.,(value-20.)/250.);
+            }
+            return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
+        };
         k.setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         k.setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         k.setColour(juce::Slider::thumbColourId,Theme::white);
