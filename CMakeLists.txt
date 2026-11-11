@@ -86,7 +86,7 @@ juce_add_binary_data(SkellPresetAssets
 target_sources(SkellPreset PRIVATE
     Source/PluginProcessor.h Source/PluginProcessor.cpp
     Source/PluginEditor.h Source/PluginEditor.cpp
-    Source/chain/BasicDSP.h Source/chain/ModulationFX.h Source/chain/ImportedVocalFX.h Source/chain/AdvancedVocalDSP.h Source/chain/SpectralPitchFormant.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h
+    Source/chain/BasicDSP.h Source/chain/ModulationFX.h Source/chain/ImportedVocalFX.h Source/chain/AdvancedVocalDSP.h Source/chain/SpectralPitchFormant.h Source/chain/EffectRegistry.h Source/chain/LiveAudioScope.h Source/chain/ClipRecorder.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h
     Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
     Source/host/HostedVST3.h
     Source/ui/Theme.h Source/ui/ModulePicker.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
@@ -125,6 +125,20 @@ if(SKELL_PRESET_PACKAGE_TESTS)
     target_compile_features(SkellPresetPackageTests PRIVATE cxx_std_17)
     add_test(NAME NativePresetPackage COMMAND SkellPresetPackageTests)
 endif()
+
+# Real file-based clip recorder smoke test. It uses the same writer worker as
+# the shipping plugin, but only writes to a unique temporary WAV.
+juce_add_console_app(SkellPresetCaptureTests PRODUCT_NAME "Skell-Preset Capture Tests")
+juce_generate_juce_header(SkellPresetCaptureTests)
+target_sources(SkellPresetCaptureTests PRIVATE
+    Source/chain/ClipRecorder.h tests/test_clip_recorder.cpp)
+target_compile_definitions(SkellPresetCaptureTests PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(SkellPresetCaptureTests PRIVATE
+    juce::juce_audio_formats juce::juce_audio_utils)
+target_include_directories(SkellPresetCaptureTests PRIVATE Source)
+target_compile_features(SkellPresetCaptureTests PRIVATE cxx_std_17)
+add_test(NAME SkellPresetCaptureTests COMMAND SkellPresetCaptureTests)
 
 # Optional real-editor visual regression renderer. It has no third-party screenshot
 # dependency; Linux execution needs an X server such as xvfb-run.
