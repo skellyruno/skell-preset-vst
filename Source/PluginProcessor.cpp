@@ -712,10 +712,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             outPeak=std::max(outPeak,std::max(std::abs(inL[n]),
                 inR?std::abs(inR[n]):0.f));
         }
+        // Read only the processed output chunk here; the pointers above
+        // are scoped to this host block and remain valid during capture.
+        liveScope.push(inL,inR,frames);
     }
-    // Sample actual rendered output, including dry/wet, bypass and FX.
-    // Decimate into atomics; UI reads independently at 30 Hz.
-    liveScope.push(inL,inR,total);
     inputPeak.store(inPeak,std::memory_order_relaxed);
     outputPeak.store(outPeak,std::memory_order_relaxed);
     for(int s=0;s<slotCount;++s)
