@@ -48,6 +48,17 @@ int main(){
             assert(std::abs(y[0])<=std::abs(x)+.00001f);
         }
         assert(maximumReduction>1.f);
+        // Parallel colour should be gain-neutral on quiet signals and only
+        // compress, not unexpectedly amplify, the full-scale peak.
+        SerialVocalDynamics parallel;
+        parallel.prepare(sr);
+        parallel.set(1.f,0.f,.5f,1.f);
+        for(int n=0;n<300;++n){
+            const float input=.001f*std::sin((float)n*.047f);
+            const auto y=parallel.process(input,-input);
+            assert(std::abs(y[0])<=std::abs(input)+.000002f);
+            assert(std::abs(y[1])<=std::abs(input)+.000002f);
+        }
         DynamicHarshness harsh;
         harsh.prepare(sr);harsh.set(.5f,.5f,0.f,.4f);
         for(int n=0;n<3000;++n){
