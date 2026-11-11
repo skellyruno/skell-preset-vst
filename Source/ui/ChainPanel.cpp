@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include <cmath>
 namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
-    g.setColour(Theme::blue.withAlpha(.86f));
+    g.setColour(Theme::green.withAlpha(.77f));
     juce::Path p;
     if(type==SkellPresetAudioProcessor::EQ) {p.startNewSubPath((float)x,(float)y+10);p.cubicTo((float)x+6,(float)y+10,(float)x+7,(float)y-1,(float)x+13,(float)y+2);p.cubicTo((float)x+19,(float)y+3,(float)x+18,(float)y+10,(float)x+23,(float)y+10);}
     else if(type==SkellPresetAudioProcessor::Compressor) {p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+13);p.lineTo((float)x+14,(float)y+4);p.lineTo((float)x+23,(float)y+4);}
@@ -80,6 +80,14 @@ int ChainPanel::rowAt(int y) const {
 void ChainPanel::paint(juce::Graphics& g) {
     Theme::selectFor(processor.state);
     Theme::panelBox(g,getLocalBounds().toFloat());
+    // Hardware rack rails are deliberately outside the draggable module faces.
+    g.setColour(Theme::stroke.withAlpha(.40f));
+    g.drawLine(5.f,42.f,5.f,467.f,.8f);
+    g.drawLine((float)getWidth()-5.f,42.f,(float)getWidth()-5.f,467.f,.8f);
+    for(float y:{44.f,462.f})for(float x:{5.f,211.f}) {
+        g.setColour(Theme::bg);g.fillEllipse(x-2.f,y-2.f,4.f,4.f);
+        g.setColour(Theme::muted.withAlpha(.40f));g.drawEllipse(x-2.f,y-2.f,4.f,4.f,.8f);
+    }
     clampScroll();
     const int active=processor.activeSlotCount();
     int used=0;
@@ -88,9 +96,9 @@ void ChainPanel::paint(juce::Graphics& g) {
         auto* pv=processor.state.getRawParameterValue("s"+juce::String(physical+1)+"_type");
         if(pv && (int)pv->load()!=SkellPresetAudioProcessor::Empty)++used;
     }
-    Theme::text(g,"SIGNAL CHAIN",{15,8,148,22},14,Theme::white,true);
+    Theme::text(g,"EFFECT RACK",{15,8,148,22},15,Theme::white,true);
     Theme::text(g,dockingDrag?"RELEASE TO DOCK":
-        (dockedRight?"DRAG HEADER LEFT":"DRAG HEADER RIGHT"),
+        (dockedRight?"DRAG LEFT TO DOCK":"DRAG RIGHT TO DOCK"),
         {15,28,130,14},9,dockingDrag?Theme::green:Theme::muted);
     Theme::text(g,juce::String(used)+" FX",{142,13,50,19},10,Theme::muted,true,juce::Justification::centredRight);
     Theme::text(g,juce::String(active)+"/16",{145,29,49,14},9,Theme::green,true,juce::Justification::centredRight);
@@ -118,7 +126,7 @@ void ChainPanel::paint(juce::Graphics& g) {
         else if(type==SkellPresetAudioProcessor::VoxRackRoom)compact="Vox Room";
         else if(type==SkellPresetAudioProcessor::ThreeBandDynamics)compact="3-Band Dyn";
         else if(type==SkellPresetAudioProcessor::ExternalVST3)compact="External VST3";
-        const float fontSize=compact.length()>12?10.f:11.5f;
+        const float fontSize=compact.length()>12?11.f:12.4f;
         Theme::text(g,compact,{97,top+8,88,19},fontSize,
                     type==0?Theme::muted:Theme::white,selected==slot);
         g.setColour(enabled?Theme::green:Theme::muted.withAlpha(.37f));
@@ -144,7 +152,7 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,active>10?"SCROLL TO SEE MORE  /  DRAG TO ORDER":"DRAG ANYWHERE ON A ROW",
+    Theme::text(g,active>10?"SCROLL / DRAG TO REORDER":"DRAG TO REORDER · RIGHT-CLICK",
         {13,511,193,18},9,Theme::muted,false,juce::Justification::centred);
 }
 void ChainPanel::refreshIfChanged() {
