@@ -136,3 +136,36 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
     endif()
     target_compile_features(SkellPresetUIRenderer PRIVATE cxx_std_17)
 endif()
+
+# Windows-only in-process hosting integration fixture. It proves that an
+# actual VST3 bundle can be scanned, instantiated and processed. This fixture
+# is not included in the shipping Skell-Preset VST3 bundle.
+option(SKELL_PRESET_HOST_TESTS "Build local nested-VST3 hosting regression" ON)
+if(WIN32 AND SKELL_PRESET_HOST_TESTS)
+    juce_add_plugin(SkellHostFixture
+        COMPANY_NAME "Skell Audio"
+        BUNDLE_ID "audio.skell.hostfixture"
+        PLUGIN_MANUFACTURER_CODE SkAu
+        PLUGIN_CODE SkHx
+        FORMATS VST3
+        PRODUCT_NAME "SkellHostFixture"
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_OUTPUT FALSE
+        COPY_PLUGIN_AFTER_BUILD FALSE)
+    juce_generate_juce_header(SkellHostFixture)
+    target_sources(SkellHostFixture PRIVATE tests/host_fixture.cpp)
+    target_compile_definitions(SkellHostFixture PRIVATE
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(SkellHostFixture PRIVATE juce::juce_audio_utils)
+
+    juce_add_console_app(SkellPresetHostProbe PRODUCT_NAME "Skell VST3 Host Probe")
+    juce_generate_juce_header(SkellPresetHostProbe)
+    target_sources(SkellPresetHostProbe PRIVATE
+        Source/host/HostedVST3.h tests/test_hosted_vst3.cpp)
+    target_compile_definitions(SkellPresetHostProbe PRIVATE
+        JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(SkellPresetHostProbe PRIVATE
+        juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
+    target_include_directories(SkellPresetHostProbe PRIVATE Source)
+endif()

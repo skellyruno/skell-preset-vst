@@ -42,6 +42,14 @@ jobs:
         run: cmake --build build --config Release --parallel 2
       - name: Validate native preset ZIP import/export and security
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Prove external VST3 load and audio with owned test fixture
+        shell: pwsh
+        run: |
+          $fixture = Get-ChildItem build -Recurse -Directory -Filter 'SkellHostFixture.vst3' | Select-Object -First 1
+          $runner = Get-ChildItem build -Recurse -File -Filter 'SkellPresetHostProbe.exe' | Select-Object -First 1
+          if (-not $fixture -or -not $runner) { throw 'Nested host fixture or probe executable missing' }
+          & $runner.FullName $fixture.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Nested VST3 host regression failed: $LASTEXITCODE" }
       - name: Bundle VST3
         shell: pwsh
         run: |
