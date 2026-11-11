@@ -19,6 +19,7 @@ public:
     void testGraphGesture(juce::Point<float> point) {updateGraphNode(point);}
     void openModulePickerForScreenshot() {moduleTrigger.onClick();}
     bool testModulePickerInteraction();
+    bool testEightBandGraphAndQ();
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
