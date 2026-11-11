@@ -34,13 +34,15 @@ parameters and existing wet/bypass attachments. Existing effect IDs 0–22 and
 factory preset IDs 0–33 remain at their original indices. New presets are
 appended as IDs 34–36: `Rider Ready`, `Ducked Echo`, `Skell Flutter`.
 
-**Important compatibility qualification:** appending options to a JUCE
-AudioParameterChoice may change the *normalized* parameter value associated
-with an old choice index in host automation, even though text identities,
-integer indices and preset state are stable. Host automation projects using
-slot-type choice automation therefore need an FL Studio migration/regression
-test before release. We must not label all automation compatibility certified
-until this is resolved or verified.
+**Host automation design:** To avoid changing the normalized value of
+existing JUCE slot-type choice automation, the original 0–22 `sN_type` host
+parameter is unchanged. A new `sN_fxExt` choice is appended **after all
+existing parameters**, with options None, Rider, Ducking Ping-Pong and
+Vibrato. Effective type 23–25 is decoded only when legacy type = Empty and
+extension = 1–3. The UI, native preset loader/export, signal chain and
+latency calculations all decode this effective type. A real FL Studio project
+reopen and automation playback regression remains a release gate; no
+cross-version host certification is claimed without it.
 
 All these effects are implemented in the standalone C++17
 `Source/chain/ImportedVocalFX.h`; they do not allocate, lock, log, call the
