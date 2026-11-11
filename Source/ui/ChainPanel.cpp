@@ -30,6 +30,17 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
         for(int i=0;i<3;++i)
             p.addRoundedRectangle((float)x+2.f+8.f*i,(float)y+3.f+3.f*(i%2),
                                   5.f,12.f-3.f*(i%2),1.f);
+    } else if(type==SkellPresetAudioProcessor::VoxRackRoom) {
+        for(int i=0;i<4;++i){
+            const float height=13.f-i*2.6f;
+            p.addRoundedRectangle((float)x+2.f+i*6.f,(float)y+15.f-height,
+                                  3.f,height,1.f);
+        }
+    } else if(type==SkellPresetAudioProcessor::VoxRackSmoothComp) {
+        p.startNewSubPath((float)x,(float)y+15.f);
+        p.lineTo((float)x+8.f,(float)y+6.f);
+        p.quadraticTo((float)x+14.f,(float)y+4.f,
+                      (float)x+23.f,(float)y+4.f);
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
