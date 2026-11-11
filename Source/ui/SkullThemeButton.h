@@ -4,37 +4,35 @@
 
 // Official Skell-Preset vector mark. Small-size legibility comes first:
 // clean cranium, two deep sockets, simple nasal cavity and a four-tooth jaw.
-// This is drawn from paths, not a raster screenshot; click opens the skin menu.
+// Vector-only brand badge. One click cycles the three skins, with no menu.
 class SkullThemeButton final : public juce::Button {
 public:
     SkullThemeButton() : juce::Button("Change Skell colour theme") {
-        setTooltip("SKELL themes  /  Obsidian, Cream, Crimson");
+        setTooltip("Click to cycle Obsidian / Cream / Crimson");
         setWantsKeyboardFocus(true);
     }
     void setVariant(int id) { variant=Theme::clampVariant(id); repaint(); }
 
     void paintButton(juce::Graphics& g,bool hovered,bool down) override {
         Theme::select(variant);
-        const auto bounds=getLocalBounds().toFloat().reduced(1.f);
-        if(hovered || down) {
-            g.setColour(Theme::green.withAlpha(down?.16f:.08f));
-            g.fillRoundedRectangle(bounds,10.f);
-            g.setColour(Theme::green.withAlpha(.7f));
-            g.drawRoundedRectangle(bounds,10.f,1.f);
+        const auto bounds=getLocalBounds().toFloat().reduced(1.5f);
+        g.setColour(Theme::panelAlt);
+        g.fillRoundedRectangle(bounds,5.f);
+        g.setColour(Theme::green.withAlpha(hovered?1.f:.80f));
+        g.drawRoundedRectangle(bounds.reduced(.65f),5.f,down?2.2f:1.4f);
+        if(hovered) {
+            g.setColour(Theme::green.withAlpha(down?.18f:.08f));
+            g.fillRoundedRectangle(bounds.reduced(2.f),4.f);
         }
         juce::Graphics::ScopedSaveState guard(g);
         g.addTransform(juce::AffineTransform::scale(bounds.getWidth()/56.f,bounds.getHeight()/56.f)
                            .translated(bounds.getX(),bounds.getY()));
-        // A restrained floating halo anchors the mark without heavy wings.
-        g.setColour(Theme::green.withAlpha(.15f));
-        g.fillEllipse(5.5f,4.f,45.f,46.f);
-        g.setColour(Theme::green.withAlpha(.55f));
-        g.drawEllipse(5.5f,4.f,45.f,46.f,1.1f);
-
+        // Restrained square outline replaces the previous circular halo.
+        // Eye and cheek cut-outs retain their shape at the 70% default scale.
         juce::Path skull;
         skull.startNewSubPath(28.f,7.f);
-        skull.cubicTo(16.f,7.f,11.f,15.f,11.f,26.f);
-        skull.cubicTo(11.f,35.f,16.f,38.f,19.f,39.f);
+        skull.cubicTo(17.f,7.f,12.f,14.f,12.f,25.f);
+        skull.cubicTo(12.f,33.f,15.f,37.f,19.f,39.f);
         skull.lineTo(19.f,46.f);
         skull.quadraticTo(19.f,49.f,23.f,49.f);
         skull.lineTo(33.f,49.f);

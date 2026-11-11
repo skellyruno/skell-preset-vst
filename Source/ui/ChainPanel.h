@@ -20,11 +20,14 @@ public:
         visualSnapshotValid=false;repaint();
     }
     std::function<void(int)> onSelection;
+    std::function<void(bool)> onDockRequest;
+    void setDockedRight(bool value) {dockedRight=value;repaint();}
 private:
     SkellPresetAudioProcessor& processor;
     int selected=0,dragFrom=-1,dragTo=-1,pendingFrom=-1;
     juce::Point<int> pressPoint;
     bool dragging=false;
+    bool dockingDrag=false,dockedRight=false,dockCandidateRight=false;
     int hoveredRow=-1,scrollOffset=0,lastSlotCount=0;
     std::array<int,SkellPresetAudioProcessor::slotCount> lastVisual{};
     bool visualSnapshotValid=false;

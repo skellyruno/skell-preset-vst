@@ -37,7 +37,10 @@ void ChainPanel::paint(juce::Graphics& g) {
         auto* pv=processor.state.getRawParameterValue("s"+juce::String(physical+1)+"_type");
         if(pv && (int)pv->load()!=SkellPresetAudioProcessor::Empty)++used;
     }
-    Theme::text(g,"SIGNAL CHAIN",{15,11,148,22},14,Theme::white,true);
+    Theme::text(g,"SIGNAL CHAIN",{15,8,148,22},14,Theme::white,true);
+    Theme::text(g,dockingDrag?"RELEASE TO DOCK":
+        (dockedRight?"DRAG HEADER LEFT":"DRAG HEADER RIGHT"),
+        {15,28,130,14},9,dockingDrag?Theme::green:Theme::muted);
     Theme::text(g,juce::String(used)+" FX",{142,13,50,19},10,Theme::muted,true,juce::Justification::centredRight);
     Theme::text(g,juce::String(active)+"/16",{145,29,49,14},9,Theme::green,true,juce::Justification::centredRight);
     for(int visual=0;visual<10 && scrollOffset+visual<active;++visual) {
@@ -132,6 +135,13 @@ void ChainPanel::addModule() {
     repaint();
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
+    if(!e.mods.isPopupMenu() && e.x>=8 && e.x<=142 && e.y>=5 && e.y<43) {
+        dockingDrag=true;
+        dockCandidateRight=dockedRight;
+        setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+        repaint();
+        return;
+    }
     if(e.x>=10 && e.x<=206 && e.y>=addTop && e.y<addTop+addHeight) {
         if(!e.mods.isPopupMenu())addModule();return;
     }
@@ -147,6 +157,14 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     pendingFrom=index;dragFrom=dragTo=-1;dragging=false;pressPoint=e.getPosition();repaint();
 }
 void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
+    if(dockingDrag) {
+        if(auto* parent=getParentComponent()) {
+            const int parentX=e.getEventRelativeTo(parent).getPosition().x;
+            dockCandidateRight=parentX>=parent->getWidth()/2;
+            repaint();
+        }
+        return;
+    }
     if(pendingFrom<0)return;
     if(!dragging && e.getPosition().getDistanceFrom(pressPoint)>6) {
         dragging=true;dragFrom=pendingFrom;dragTo=pendingFrom;
@@ -157,6 +175,13 @@ void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
     }
 }
 void ChainPanel::mouseUp(const juce::MouseEvent&) {
+    if(dockingDrag) {
+        dockingDrag=false;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
+        if(onDockRequest)onDockRequest(dockCandidateRight);
+        repaint();
+        return;
+    }
     if(pendingFrom<0)return;
     if(dragging && dragTo>=0 && dragTo!=dragFrom)processor.reorderSlot(dragFrom,dragTo);
     const int slot=processor.slotIdAt(dragging && dragTo>=0 ? dragTo : pendingFrom);
@@ -170,7 +195,9 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
     const int next=(e.x>=10 && e.x<=206)?rowAt(e.y):-1;
     if(next!=hoveredRow){hoveredRow=next;repaint();}
     const bool add=(e.y>=addTop && e.y<addTop+addHeight && e.x>=10 && e.x<=206);
-    if(next>=0 && e.x<181)setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+    if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=142)
+        setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+    else if(next>=0 && e.x<181)setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     else if(next>=0 || add)setMouseCursor(juce::MouseCursor::PointingHandCursor);
     else setMouseCursor(juce::MouseCursor::NormalCursor);
 }
