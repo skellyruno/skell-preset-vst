@@ -19,8 +19,14 @@ int main(){
             assert(std::isfinite(y[0]) && std::isfinite(y[1]));
             assert(std::abs(y[0]-x)<.005f);
         }
-        params[9]=.90f; // sixth of the sixteen controls: fifth-band gain
-        eq.set(sr,params);
+        params[9]=.90f; // fifth-band gain
+        std::array<float,8> narrowQ{};
+        narrowQ.fill(.85f);
+        eq.set(sr,params,narrowQ);
+        assert(EightBandTone::qFromNormalized(.85f)>
+               EightBandTone::qFromNormalized(.15f));
+        assert(std::abs(EightBandTone::normalizedFromQ(
+            EightBandTone::qFromNormalized(.83f))-.83f)<.001f);
         for(int n=0;n<1400;++n){
             const auto y=eq.process(.17f*std::sin(n*.21f),.09f);
             assert(std::isfinite(y[0])&&std::isfinite(y[1]));
