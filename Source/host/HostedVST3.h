@@ -15,7 +15,13 @@ class HostedVST3 final {
 public:
     static constexpr int slotCount=16;
     static constexpr int maxTotalLatency=65536;
-    HostedVST3() { formats.addDefaultFormats(); }
+    HostedVST3() {
+       #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
+        // JUCE 8 removed AudioPluginFormatManager::addDefaultFormats().
+        // Register only VST3 to avoid accidentally loading unsupported formats.
+        formats.addFormat(std::make_unique<juce::VST3PluginFormat>());
+       #endif
+    }
 
     juce::Result load(int slot,const juce::File& path,double sr,int block) {
         if(!valid(slot))return juce::Result::fail("Invalid rack slot");
