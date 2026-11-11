@@ -35,6 +35,16 @@ static std::vector<float> render(double sr,float hz,
 }
 int main(){
     static_assert(SpectralPitchFormant::latencySamples==768,"Unexpected phase vocoder PDC");
+    {
+        SpectralPitchFormant identity;
+        identity.prepare(48000.);
+        identity.set(.5f,.5f,1.f,1.f);
+        for(int i=0;i<2500;++i) {
+            const auto y=identity.process(i==0?.4f:0.f,i==0?-.35f:0.f);
+            assert(std::abs(y[0]-(i==768?.4f:0.f))<1e-7f);
+            assert(std::abs(y[1]-(i==768?-.35f:0.f))<1e-7f);
+        }
+    }
     for(double sr:{8000.,44100.,48000.,96000.}){
         auto neutral=render(sr,310.f,.5f,.5f);
         assert(std::abs(frequency(neutral,sr)-310.f)<35.f);
