@@ -126,7 +126,7 @@ public:
         };
         addAndMakeVisible(sizeSelect);
         sizeSelect.setVisible(false); // Internal compatibility adapter only.
-        settings.setButtonText(juce::String::charToString((juce_wchar)0x2699));
+        settings.setButtonText(juce::String::fromUTF8("\xE2\x9A\x99"));
         settings.setTooltip("Settings  /  Interface Size");
         style(settings);
         addAndMakeVisible(settings);
