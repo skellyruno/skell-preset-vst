@@ -19,6 +19,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         slotPeaks[(size_t)i].store(0);
         auto& r=rawSlots[(size_t)i];const auto prefix=slotPrefix(i);
         r.type=state.getRawParameterValue(prefix+"type");
+        r.extension=state.getRawParameterValue(prefix+"fxExt");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
@@ -52,9 +53,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     bl("globalGate","Legacy global gate (inactive; use rack Gate)",false);fl("gateThreshold","Gate threshold",-80,0,-50);
     p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"laneMode",1},"Lane mode (reserved)",juce::StringArray{"Series","Parallel"},0));
     for(int k=1;k<=8;k++) fl("macro"+juce::String(k),"Macro "+juce::String(k),0,1,.5f);
+    // Preserve the original 0..22 choice count (and host normalization).
+    auto legacyTypes=types;
+    while(legacyTypes.size()>RingModFX+1)
+        legacyTypes.remove(legacyTypes.size()-1);
     for(int s=1;s<=slotCount;s++) {
         const auto id="s"+juce::String(s)+"_";
-        p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{id+"type",1},"Slot "+juce::String(s)+" type",types,0));
+        p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{id+"type",1},"Slot "+juce::String(s)+" type",legacyTypes,0));
         bl(id+"on","Slot "+juce::String(s)+" active",false);
         fl(id+"wet","Slot "+juce::String(s)+" wet",0,1,1);
         p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{id+"lane",1},"Slot "+juce::String(s)+" lane (reserved)",juce::StringArray{"A","B","C"},0));
@@ -65,6 +70,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         fl(pre+"_level",pre+" level (reserved)",-24,12,0);
         fl(pre+"_pan",pre+" pan (reserved)",-1,1,0);
         bl(pre+"_mute",pre+" mute (reserved)",false);
+    }
+    // Append, don't insert, new host parameters so every existing parameter
+    // keeps its original position as well as its stable VST3 ID.
+    for(int s=1;s<=slotCount;++s) {
+        const auto id="s"+juce::String(s)+"_fxExt";
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{id,1},"Slot "+juce::String(s)+" extra effect",
+            juce::StringArray{"None","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato"},0));
     }
     return p;
 }
@@ -122,7 +135,7 @@ void SkellPresetAudioProcessor::updateHostLatency() {
     for(int position=0;position<count;++position) {
         const int id=(int)((order >> (4*position)) & 0x0fU);
         if(id<0 || id>=slotCount || !rawSlots[(size_t)id].type)continue;
-        const int type=(int)rawSlots[(size_t)id].type->load(std::memory_order_relaxed);
+        const int type=slotType(id);
         if(type==Limiter) total+=latency;
         else if(type==ExternalVST3) total+=hosted.getLatency(id);
     }
@@ -177,7 +190,26 @@ float SkellPresetAudioProcessor::getSlotParam(int slot,int param) const noexcept
 }
 void SkellPresetAudioProcessor::setSlotParam(int slot,int param,float v) {setReal(slotPrefix(slot)+"p"+juce::String(param+1),juce::jlimit(0.f,1.f,v));}
 void SkellPresetAudioProcessor::setSlotOn(int slot,bool on) {setReal(slotPrefix(slot)+"on",on?1.f:0.f);}
-void SkellPresetAudioProcessor::setSlotType(int slot,int type) {setReal(slotPrefix(slot)+"type",static_cast<float>(juce::jlimit(0,NumberOfModules-1,type)));updateHostLatency();}
+int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
+    if(slot<0 || slot>=slotCount)return Empty;
+    const auto& raw=rawSlots[(size_t)slot];
+    const int oldType=raw.type?juce::jlimit(0,RingModFX,(int)raw.type->load()):Empty;
+    const int extra=raw.extension?juce::jlimit(0,3,(int)raw.extension->load()):0;
+    return oldType==Empty && extra>0 ? RingModFX+extra : oldType;
+}
+void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
+    if(slot<0 || slot>=slotCount)return;
+    const auto id=slotPrefix(slot);
+    const int chosen=juce::jlimit(0,NumberOfModules-1,type);
+    if(chosen>RingModFX) {
+        setReal(id+"type",(float)Empty);
+        setReal(id+"fxExt",(float)(chosen-RingModFX));
+    } else {
+        setReal(id+"fxExt",0.f);
+        setReal(id+"type",(float)chosen);
+    }
+    updateHostLatency();
+}
 juce::String SkellPresetAudioProcessor::moduleName(int type) const {return types[juce::jlimit(0,types.size()-1,type)];}
 juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path) {
     if(slot<0 || slot>=slotCount)return juce::Result::fail("Invalid host slot");
@@ -261,7 +293,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     for(int s=0;s<slotCount;++s) {
         auto& c=controlCache[(size_t)s];
         const auto& raw=rawSlots[(size_t)s];
-        c.type=juce::jlimit(0,NumberOfModules-1,(int)raw.type->load());
+        c.type=slotType(s);
         c.on=raw.on->load()>.5f;
         c.wet=juce::jlimit(0.f,1.f,raw.wet->load());
         for(int k=0;k<16;++k)c.p[(size_t)k]=raw.p[(size_t)k]->load();
@@ -752,7 +784,7 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         auto& dst=doc.slots[(size_t)position];
         dst.slotId=slotIdAt(position);
         const auto prefix=slotPrefix(dst.slotId);
-        dst.type=juce::jlimit(0,NumberOfModules-1,(int)value(prefix+"type"));
+        dst.type=slotType(dst.slotId);
         if(dst.type==ExternalVST3)
             return juce::Result::fail("External VST3 preset export is not yet portable. Use FL Studio project save until .skellpreset v3.");
         dst.enabled=value(prefix+"on")>.5f;
@@ -822,7 +854,7 @@ void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
         const auto index=juce::String(s+1);
         snapshot.removeProperty("hostPath"+index,nullptr);
         snapshot.removeProperty("hostState"+index,nullptr);
-        if((int)value(slotPrefix(s)+"type")!=ExternalVST3)continue;
+        if(slotType(s)!=ExternalVST3)continue;
         const auto file=hosted.getFile(s);
         if(file.getFullPathName().isEmpty())continue;
         snapshot.setProperty("hostPath"+index,file.getFullPathName(),nullptr);
