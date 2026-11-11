@@ -59,6 +59,22 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
     } else if(type==SkellPresetAudioProcessor::RingModFX) {
         p.addEllipse((float)x+1.f,(float)y+2.f,12.f,12.f);
         p.addEllipse((float)x+10.f,(float)y+2.f,12.f,12.f);
+    } else if(type==SkellPresetAudioProcessor::VocalRiderFX) {
+        p.startNewSubPath((float)x,(float)y+13.f);
+        p.lineTo((float)x+5.f,(float)y+13.f);
+        p.lineTo((float)x+8.f,(float)y+5.f);
+        p.lineTo((float)x+12.f,(float)y+11.f);
+        p.lineTo((float)x+16.f,(float)y+5.f);
+        p.lineTo((float)x+22.f,(float)y+5.f);
+    } else if(type==SkellPresetAudioProcessor::DuckingPingPongFX) {
+        for(int i=0;i<4;++i)
+            p.addEllipse((float)x+1.f+i*6.f,(float)y+6.f+(i%2?4.f:0.f),3.f,3.f);
+        p.startNewSubPath((float)x+1.f,(float)y+14.f);
+        p.lineTo((float)x+22.f,(float)y+14.f);
+    } else if(type==SkellPresetAudioProcessor::VocalVibratoFX) {
+        p.startNewSubPath((float)x,(float)y+9.f);
+        for(int i=1;i<=22;++i)
+            p.lineTo((float)x+i,(float)y+9.f-5.f*std::sin((float)i*.68f));
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
