@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -75,6 +75,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
     voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
     chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
+    rider.prepare(sampleRate);duckingDelay.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -238,6 +239,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const int total=buffer.getNumSamples();
     if(channels<1 || total<=0)return;
     const bool monoSource=getTotalNumInputChannels()==1;
+    // Query the host once per block, never inside the sample loop. The new
+    // ducking delay uses a deterministic 120-BPM fallback when stopped/unknown.
+    double hostBpm=120.;
+    if(auto* playhead=getPlayHead())
+        if(const auto position=playhead->getPosition())
+            if(const auto bpm=position->getBpm())
+                if(std::isfinite(*bpm) && *bpm>=40. && *bpm<=260.)hostBpm=*bpm;
     const int mode=juce::jlimit(0,3,(int)rawGlobal.mode->load());
     inputSmooth.setTargetValue(dbToGain(rawGlobal.input->load()));
     outputSmooth.setTargetValue(dbToGain(rawGlobal.output->load()));
@@ -315,6 +323,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case RingModFX:
                 e.ring.set(15.f*std::pow(70.f,c.p[0]),
                             c.p[1],c.p[2],c.p[3]);
+                break;
+            case VocalRiderFX:
+                e.rider.set(c.p[0],-26.f+14.f*c.p[1],3.f+12.f*c.p[2],c.p[3]);
+                break;
+            case DuckingPingPongFX:
+                e.duckingDelay.set(hostBpm,c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
@@ -416,7 +430,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const bool keepTail=c.type==Limiter || c.type==Delay ||
                 c.type==Reverb || c.type==VoxRackRoom ||
                 c.type==VocalChorusFX || c.type==VocalFlangerFX ||
-                c.type==AdlibThrow || c.type==AdlibDoubler;
+                c.type==AdlibThrow || c.type==AdlibDoubler ||
+                c.type==DuckingPingPongFX;
             if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
             for(int n=0;n<frames;++n) {
@@ -487,6 +502,16 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     case RingModFX: {
                         const auto y=e.ring.process(l,r);
                         wetL=y[0];wetR=y[1];break;
+                    }
+                    case VocalRiderFX: {
+                        const auto y=e.rider.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case DuckingPingPongFX: {
+                        // This engine returns wet echoes only; the rack's
+                        // existing per-slot wet control adds the aligned dry.
+                        const auto y=e.duckingDelay.process(l,r);
+                        wetL=l+y[0];wetR=r+y[1];break;
                     }
                     case Saturator: {
                         const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));
