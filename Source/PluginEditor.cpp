@@ -29,9 +29,13 @@ public:
             menu.addItem(1,"Obsidian  /  Neon Green",true,selectedTheme==Theme::Obsidian);
             menu.addItem(2,"Ivory  /  Cream",true,selectedTheme==Theme::Cream);
             menu.addItem(3,"Crimson  /  Red",true,selectedTheme==Theme::Crimson);
+            menu.addSeparator();
+            menu.addItem(30,"Help / Show Tutorial");
             juce::Component::SafePointer<Canvas> safe(this);
             menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&themeButton),
-                [safe](int id){if(safe && id>=1 && id<=3)safe->setTheme(id-1);});
+                [safe](int id){if(!safe)return;
+                    if(id>=1 && id<=3)safe->setTheme(id-1);
+                    else if(id==30)safe->outer.showGuidedTour(false);});
         };
         addAndMakeVisible(themeButton);
         previousMode=juce::jlimit(0,1,(int)processor.state.state.getProperty("uiPreviousMode",1));
@@ -119,6 +123,28 @@ public:
             if(std::abs(scale-sizes[i])<std::abs(scale-sizes[nearest]))nearest=i;
         if(sizeSelect.getSelectedId()!=nearest+1)
             sizeSelect.setSelectedId(nearest+1,juce::dontSendNotification);
+    }
+    std::vector<skellcore::ui::GuidedTourStep> tourSteps() {
+        std::vector<skellcore::ui::GuidedTourStep> steps;
+        steps.emplace_back(&preset,"PRESET BROWSER",
+            "Choose a starting sound from the preset browser. You can always make your own changes.");
+        steps.emplace_back(&mode[1],"ADVANCED RACK",
+            "Switch to ADVANCED to see each effect slot, change its settings and arrange your chain.");
+        if(chain.isVisible() && slot.isVisible()) {
+            steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
+                "Select an effect slot or use its add control to build your processing chain.");
+            steps.emplace_back(&slot,"EDIT A SLOT",
+                "Adjust the selected effect here. Rack slots keep their own controls and order.");
+        }
+        steps.emplace_back(&mix,"BLEND YOUR SOUND",
+            "Use Mix to balance the processed chain against your original audio.");
+        steps.emplace_back(&sizeSelect,"INTERFACE SIZE",
+            "Resize the interface here. Click the skull for themes and to replay this tutorial.");
+        return steps;
+    }
+    skellcore::ui::GuidedTourPalette tourPalette() const {
+        return {Theme::green,Theme::panel,Theme::white,Theme::muted,
+                juce::Colour(0xd9000000)};
     }
     ~Canvas()override {stopTimer();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
@@ -383,8 +409,28 @@ SkellPresetAudioProcessorEditor::SkellPresetAudioProcessorEditor(SkellPresetAudi
     getConstrainer()->setFixedAspectRatio((double)Theme::width/Theme::height);
     const float restored=juce::jlimit(.70f,1.25f,(float)processor.state.state.getProperty("uiScale",.70f));
     setSize(juce::roundToInt(Theme::width*restored),juce::roundToInt(Theme::height*restored));
+    guidedTour=std::make_unique<skellcore::ui::GuidedTourController>(
+        *this,"skell-preset-vst",1);
+    showGuidedTour(true);
 }
-SkellPresetAudioProcessorEditor::~SkellPresetAudioProcessorEditor(){canvas.reset();}
+SkellPresetAudioProcessorEditor::~SkellPresetAudioProcessorEditor(){
+    guidedTour.reset(); // destroy spotlight before its Canvas target controls
+    canvas.reset();
+}
+void SkellPresetAudioProcessorEditor::showGuidedTour(bool firstRun) {
+    if(!guidedTour || !canvas)return;
+    guidedTour->setPalette(canvas->tourPalette());
+    guidedTour->setSteps(canvas->tourSteps());
+    if(firstRun)guidedTour->startIfFirstRun();
+    else guidedTour->replay();
+}
+void SkellPresetAudioProcessorEditor::dismissGuidedTourForScreenshot() {
+    if(guidedTour)guidedTour->dismiss();
+}
+bool SkellPresetAudioProcessorEditor::showGuidedTourForScreenshot() {
+    showGuidedTour(false);
+    return guidedTour && guidedTour->isShowing();
+}
 void SkellPresetAudioProcessorEditor::resized(){
     const float scale=(float)getWidth()/Theme::width;
     const float previous=(float)processor.state.state.getProperty("uiScale",.70f);

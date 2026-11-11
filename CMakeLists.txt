@@ -35,6 +35,17 @@ else()
     FetchContent_MakeAvailable(SkellCoreDependency)
 endif()
 
+
+# GuidedTour is a shared JUCE UI header from the verified, immutable SkellCore
+# revision. Fetch headers only: the existing bundled SkellCore targets are
+# preserved so duplicate CMake targets and DSP changes are impossible.
+FetchContent_Declare(SkellGuidedTourHeaders
+    GIT_REPOSITORY https://github.com/skellyruno/skell-vst-template.git
+    GIT_TAG 3306ad495c93e062e39b8abbf079534b0b53da4e
+    GIT_SHALLOW FALSE
+    SOURCE_SUBDIR _guided_tour_headers_only)
+FetchContent_MakeAvailable(SkellGuidedTourHeaders)
+
 juce_add_plugin(SkellPreset
     COMPANY_NAME "Skell Audio"
     BUNDLE_ID "audio.skell.preset"
@@ -92,6 +103,7 @@ endif()
 target_link_libraries(SkellPreset PRIVATE
     SkellPresetAssets SkellCore::DSP SkellCore::UI
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
+target_include_directories(SkellPreset PRIVATE "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include")
 target_compile_features(SkellPreset PRIVATE cxx_std_17)
 
 if(MSVC)
@@ -124,6 +136,7 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
     # include directories explicitly instead of creating a second JUCE app.
     add_executable(SkellPresetUIRenderer tests/ui_renderer.cpp)
     target_include_directories(SkellPresetUIRenderer PRIVATE
+    "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include"
         "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
     # The plugin's include dependencies are PRIVATE, so the renderer also
     # links the two SkellCore interface targets to find Core.h and UI.h.

@@ -93,6 +93,7 @@ int main(int argc, char** argv) {
             ++failures;
         }
         processor.loadFactoryPreset(0);
+        editor.dismissGuidedTourForScreenshot(); // no first-launch overlay in normal UI baselines
         for (const auto& issue : editor.runScreenshotInteractionTests()) {
             std::fprintf(stderr, "UI interaction: %s\n", issue.toRawUTF8());
             ++failures;
@@ -112,6 +113,7 @@ int main(int argc, char** argv) {
                     scene.height = juce::roundToInt(688.f * scale);
                     options.scenes.push_back(scene);
                 }
+        options.scenes.push_back({"obsidian-guided-tour-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
@@ -158,7 +160,10 @@ int main(int argc, char** argv) {
                         break;
                     }
             }
+            editor.dismissGuidedTourForScreenshot();
             editor.configureForScreenshot(scene.theme, scene.mode, scene.browser);
+            if(scene.id=="obsidian-guided-tour-70" && !editor.showGuidedTourForScreenshot())
+                std::fprintf(stderr,"Guided tour did not show in real-editor render\\n");
             if(scene.id=="obsidian-expanded-70")
                 editor.selectRackSlotForScreenshot(15,6);
             else if(scene.id=="cream-deesser-70")
@@ -181,18 +186,20 @@ int main(int argc, char** argv) {
             {"obsidian-effect-delay-70", "obsidian-effect-adlib-throw-70"},
             {"obsidian-effect-limiter-70", "obsidian-effect-exciter-70"},
             {"obsidian-effect-adlib-doubler-70", "obsidian-effect-gate-70"},
-            {"obsidian-advanced-70", "obsidian-external-70"}
+            {"obsidian-advanced-70", "obsidian-external-70"},
+            {"obsidian-advanced-70", "obsidian-guided-tour-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 62) {
-            std::fprintf(stderr, "Expected 62 PNGs, captured %d\n", report.captured);
+        if (report.captured != 63) {
+            std::fprintf(stderr, "Expected 63 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
+        editor.dismissGuidedTourForScreenshot();
         processor.loadFactoryPreset(0); // Restore ten-slot baseline for contact sheet.
         // One compact overview: Advanced and Browser at default 70% for each skin.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
