@@ -112,9 +112,8 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         // normalized parameter range. Never make display conversions in DSP.
         k.textFromValueFunction=[this,i](double v)->juce::String {
             v=juce::jlimit(0.,1.,v);
-            const auto* type=processor.state.getRawParameterValue(
-                "s"+juce::String(slot+1)+"_type");
-            if(type && (int)type->load()==SkellPresetAudioProcessor::EQ) {
+            const int selectedType=processor.slotType(slot);
+            if(selectedType==SkellPresetAudioProcessor::EQ) {
                 if(i==0) {
                     const double hz=40.*std::pow(300.,v);
                     return hz>=1000.?juce::String(hz/1000.,1)+"kHz":
@@ -124,7 +123,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 if(i==2)return juce::String(.3+7.*v,2)+" Q";
                 return juce::String(juce::roundToInt(20.+250.*v))+"Hz";
             }
-            const int module=type?(int)type->load():0;
+            const int module=selectedType;
             if(module==SkellPresetAudioProcessor::VocalRiderFX){
                 if(i==1)return juce::String(-26.+14.*v,0)+"dB";
                 if(i==2)return juce::String(3.+12.*v,0)+"dB";
@@ -139,9 +138,8 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         k.valueFromTextFunction=[this,i](const juce::String& input)->double {
             const auto text=input.trim().toLowerCase();
             const double value=text.getDoubleValue();
-            const auto* type=processor.state.getRawParameterValue(
-                "s"+juce::String(slot+1)+"_type");
-            if(type && (int)type->load()==SkellPresetAudioProcessor::EQ) {
+            const int selectedType=processor.slotType(slot);
+            if(selectedType==SkellPresetAudioProcessor::EQ) {
                 if(i==0) {
                     const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
                     return juce::jlimit(0.,1.,std::log(hz/40.)/std::log(300.));
@@ -150,7 +148,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 if(i==2)return juce::jlimit(0.,1.,(value-.3)/7.);
                 return juce::jlimit(0.,1.,(value-20.)/250.);
             }
-            const int module=type?(int)type->load():0;
+            const int module=selectedType;
             if(module==SkellPresetAudioProcessor::VocalRiderFX){
                 if(i==1)return juce::jlimit(0.,1.,(value+26.)/14.);
                 if(i==2)return juce::jlimit(0.,1.,(value-3.)/12.);
@@ -215,8 +213,7 @@ void SlotEditor::select(int newSlot) {
     externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
-    if(auto* type=processor.state.getRawParameterValue(prefix+"type"))
-        moduleBox.setSelectedId((int)type->load()+1,juce::dontSendNotification);
+    moduleBox.setSelectedId(processor.slotType(slot)+1,juce::dontSendNotification);
     enabledAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"on",activeButton);
     wetAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"wet",wetKnob);
     for(int k=0;k<4;k++)knobAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
@@ -225,9 +222,7 @@ void SlotEditor::select(int newSlot) {
 }
 void SlotEditor::refreshIfChanged() {
     const auto prefix="s"+juce::String(slot+1)+"_";
-    const auto* typeValue=processor.state.getRawParameterValue(prefix+"type");
-    if(!typeValue)return;
-    const int type=juce::jlimit(0,SkellPresetAudioProcessor::NumberOfModules-1,(int)typeValue->load());
+    const int type=processor.slotType(slot);
     std::array<float,6> current{};
     for(int i=0;i<4;++i)current[(size_t)i]=processor.getSlotParam(slot,i);
     if(const auto* macro=processor.state.getRawParameterValue("macro1"))current[4]=macro->load();
@@ -267,7 +262,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::bg);g.fillEllipse(sx-2.5f,sy-2.5f,5.f,5.f);
         g.setColour(Theme::stroke);g.drawEllipse(sx-2.5f,sy-2.5f,5.f,5.f,1.f);
     }
-    const int type=(int)processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type")->load();
+    const int type=processor.slotType(slot);
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     Theme::text(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
     Theme::text(g,"MODULE",{491,9,140,15},9,Theme::muted,true);
@@ -1023,8 +1018,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                     : gestureHint,{30,395,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {
-    const auto type=(int)processor.state.getRawParameterValue(
-        "s"+juce::String(slot+1)+"_type")->load();
+    const int type=processor.slotType(slot);
     if(type==SkellPresetAudioProcessor::EQ){
         const auto x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
         const auto y=juce::jlimit(-1.f,1.f,(254.f-point.y)/103.f);
@@ -1043,9 +1037,9 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
     repaint();
 }
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
-    auto* t=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
-    if(!t||(int)t->load()==SkellPresetAudioProcessor::Empty
-        || (int)t->load()==SkellPresetAudioProcessor::ExternalVST3
+    const int type=processor.slotType(slot);
+    if(type==SkellPresetAudioProcessor::Empty
+        || type==SkellPresetAudioProcessor::ExternalVST3
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
     draggingGraph=true;
     for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->beginChangeGesture();
