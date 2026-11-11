@@ -107,6 +107,20 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
     };
     addAndMakeVisible(wetKnob);
+    eqQSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    eqQSlider.setTextBoxStyle(juce::Slider::TextBoxRight,false,59,22);
+    eqQSlider.setRange(0.,1.,.001);
+    eqQSlider.textFromValueFunction=[](double normalized) {
+        const float q=skellpreset::dsp::EightBandTone::qFromNormalized((float)normalized);
+        return "Q "+juce::String(q,2);
+    };
+    eqQSlider.valueFromTextFunction=[](const juce::String& text) {
+        return (double)skellpreset::dsp::EightBandTone::normalizedFromQ(
+            text.retainCharacters("0123456789.-").getFloatValue());
+    };
+    eqQSlider.setTooltip("Select an EQ node to edit its independent bandwidth (Q 0.4–8)");
+    addAndMakeVisible(eqQSlider);
+    eqQSlider.setVisible(false);
     for(int i=0;i<4;++i){
         auto& k=knobs[(size_t)i];
         k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
@@ -217,7 +231,7 @@ void SlotEditor::applyTheme() {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(auto* s:{&wetKnob,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
+    for(auto* s:{&wetKnob,&eqQSlider,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         s->setColour(juce::Slider::thumbColourId,Theme::white);
@@ -238,6 +252,9 @@ void SlotEditor::showEqBank(int firstBand) {
             std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
                 processor.state,prefix+"p"+juce::String(param),knobs[(size_t)k]);
     }
+    eqQAttachment.reset();
+    eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        processor.state,prefix+"eqQ"+juce::String(activeEqBand+1),eqQSlider);
     graphSnapshotValid=false;
     repaint();
 }
@@ -246,13 +263,16 @@ void SlotEditor::select(int newSlot) {
     eqBank=0;activeEqBand=0;
     if(modulePicker.isVisible())modulePicker.hide();
     graphSnapshotValid=false;
-    enabledAttachment.reset();wetAttachment.reset();
+    enabledAttachment.reset();wetAttachment.reset();eqQAttachment.reset();
     externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
     moduleBox.setSelectedId(processor.slotType(slot)+1,juce::dontSendNotification);
     enabledAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"on",activeButton);
     wetAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"wet",wetKnob);
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX)
+        eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            processor.state,prefix+"eqQ1",eqQSlider);
     for(int k=0;k<4;k++)knobAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
     refreshIfChanged();
     repaint();
@@ -266,11 +286,29 @@ void SlotEditor::refreshIfChanged() {
     if(const auto* macro=processor.state.getRawParameterValue("macro2"))current[5]=macro->load();
     bool changed=!graphSnapshotValid || type!=lastType;
     for(int i=0;i<6;++i)changed=changed || std::abs(current[(size_t)i]-lastControls[(size_t)i])>1.e-5f;
+    if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        for(int k=0;k<16;++k) {
+            const float v=processor.getSlotParam(slot,k);
+            changed=changed || std::abs(v-lastEqControls[(size_t)k])>1.e-5f;
+            lastEqControls[(size_t)k]=v;
+        }
+        for(int k=0;k<8;++k){
+            const auto* value=processor.state.getRawParameterValue(
+                prefix+"eqQ"+juce::String(k+1));
+            const float v=value?value->load():.5f;
+            changed=changed || std::abs(v-lastEqControls[(size_t)(16+k)])>1.e-5f;
+            lastEqControls[(size_t)(16+k)]=v;
+        }
+    }
     if(!changed)return;
     if(type!=lastType){
         // A new effect resets the EQ bank, preserving all saved parameter
         // values while reattaching only the controls visible on this page.
         eqBank=0;activeEqBand=0;
+        eqQAttachment.reset();
+        if(type==SkellPresetAudioProcessor::EightBandToneFX)
+            eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"eqQ1",eqQSlider);
         for(auto& attachment:knobAttachment)attachment.reset();
         for(int k=0;k<4;++k)
             knobAttachment[(size_t)k]=
@@ -283,6 +321,7 @@ void SlotEditor::refreshIfChanged() {
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
+    eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
 }
@@ -293,6 +332,7 @@ void SlotEditor::resized() {
     modulePicker.setBounds(405,66,470,400);
     activeButton.setBounds(711,26,70,28);
     wetKnob.setBounds(805,22,86,66);
+    eqQSlider.setBounds(672,114,186,26);
     loadExternal.setBounds(52,420,177,62);
     editExternal.setBounds(246,420,188,62);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
@@ -1114,8 +1154,9 @@ void SlotEditor::paint(juce::Graphics&g) {
                      ":1  /  "+juce::String(18.f*processor.getSlotParam(slot,2),1)+" dB KNEE";
     }
     if(effectTitle.isNotEmpty()){
-        Theme::text(g,effectTitle,{47,103,730,22},14,Theme::green,true);
-        Theme::text(g,effectDetail,{47,128,755,18},12,Theme::muted);
+        const bool narrow=type==SkellPresetAudioProcessor::EightBandToneFX;
+        Theme::text(g,effectTitle,{47,103,narrow?595:730,22},14,Theme::green,true);
+        Theme::text(g,effectDetail,{47,128,narrow?595:755,18},12,Theme::muted);
     }
     if(type==SkellPresetAudioProcessor::Compressor ||
        type==SkellPresetAudioProcessor::Gate ||
@@ -1135,8 +1176,10 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"8 BANDS  /  SELECT DOT TO EDIT",
             {36,101,420,20},12,Theme::green,true);
         Theme::text(g,"B"+juce::String(eqBank+1)+" + B"+
-            juce::String(eqBank+2)+" SELECTED",{655,101,212,20},11,
+            juce::String(eqBank+2)+" SELECTED",{481,101,180,20},11,
             Theme::muted,true,juce::Justification::centredRight);
+        Theme::text(g,"B"+juce::String(activeEqBand+1)+" Q",{681,95,174,17},
+            11,Theme::green,true);
     }
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
