@@ -44,11 +44,13 @@ juce::Result validate(const Document& d) {
     std::array<bool, slotCount> used {};
     for (const auto& slot : d.slots) {
         if (slot.slotId < 0 || slot.slotId >= slotCount || used[(size_t)slot.slotId]
-            || slot.type < 0 || slot.type > 25 || ! finiteRange(slot.wet, 0, 1))
+            || slot.type < 0 || slot.type > 29 || ! finiteRange(slot.wet, 0, 1))
             return juce::Result::fail("Invalid chain slot");
         used[(size_t)slot.slotId] = true;
         for (const auto v : slot.params)
             if (! finiteRange(v, 0, 1)) return juce::Result::fail("Invalid slot parameter");
+        for (const auto q : slot.eqQ)
+            if (! finiteRange(q,0,1))return juce::Result::fail("Invalid EQ bandwidth");
     }
     return juce::Result::ok();
 }
@@ -79,6 +81,9 @@ juce::var toJson(const Document& d) {
         juce::Array<juce::var> params;
         for (float value : slot.params) params.add(value);
         item->setProperty("params", juce::var(params));
+        juce::Array<juce::var> eqQ;
+        for(float value:slot.eqQ)eqQ.add(value);
+        item->setProperty("eqQ",juce::var(eqQ));
         chain.add(juce::var(item));
     }
     root->setProperty("chain", juce::var(chain));
@@ -131,7 +136,7 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         auto& slot=candidate.slots[(size_t)i];
         const auto enabled=item.getProperty("enabled", {});
         if (! decodeInteger(item.getProperty("slotId", {}),0,encodedSlots-1,slot.slotId)
-            || ! decodeInteger(item.getProperty("type", {}),0,25,slot.type)
+            || ! decodeInteger(item.getProperty("type", {}),0,29,slot.type)
             || ! enabled.isBool()
             || ! decodeFloat(item.getProperty("wet", {}),0,1,slot.wet))
             return juce::Result::fail("Invalid chain metadata");
@@ -142,6 +147,16 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         for (int k=0;k<parameterCount;++k)
             if (! decodeFloat((*params.getArray())[k],0,1,slot.params[(size_t)k]))
                 return juce::Result::fail("Invalid module parameter");
+        // Optional extension is compatible with native schema-v1/v2 presets.
+        // Malformed Q arrays are rejected transactionally instead of ignored.
+        const auto eqQ=item.getProperty("eqQ",{});
+        if(!eqQ.isVoid()) {
+            if(!eqQ.isArray() || eqQ.getArray()->size()!=8)
+                return juce::Result::fail("Invalid eight-band EQ Q array");
+            for(int k=0;k<8;++k)
+                if(!decodeFloat((*eqQ.getArray())[k],0,1,slot.eqQ[(size_t)k]))
+                    return juce::Result::fail("Invalid EQ Q value");
+        }
     }
     if (auto status=validate(candidate);status.failed())return status;
     out=std::move(candidate); // transactional: no partial changes on bad packages
