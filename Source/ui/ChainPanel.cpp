@@ -75,6 +75,26 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
         p.startNewSubPath((float)x,(float)y+9.f);
         for(int i=1;i<=22;++i)
             p.lineTo((float)x+i,(float)y+9.f-5.f*std::sin((float)i*.68f));
+    } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        for(int band=0;band<8;++band)
+            p.addEllipse((float)x+2.f+band*2.7f,(float)y+5.f+
+                         4.f*std::sin((float)band*.9f),2.6f,2.6f);
+    } else if(type==SkellPresetAudioProcessor::SerialDynamicsFX) {
+        p.startNewSubPath((float)x,(float)y+13.f);
+        p.lineTo((float)x+9.f,(float)y+5.f);
+        p.quadraticTo((float)x+15.f,(float)y+2.f,(float)x+23.f,(float)y+2.f);
+        p.startNewSubPath((float)x,(float)y+15.f);
+        p.lineTo((float)x+10.f,(float)y+10.f);
+        p.quadraticTo((float)x+16.f,(float)y+8.f,(float)x+23.f,(float)y+8.f);
+    } else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX) {
+        p.startNewSubPath((float)x,(float)y+5.f);
+        p.lineTo((float)x+7.f,(float)y+5.f);
+        p.quadraticTo((float)x+12.f,(float)y+15.f,(float)x+17.f,(float)y+5.f);
+        p.lineTo((float)x+23.f,(float)y+5.f);
+    } else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX) {
+        for(int i=0;i<5;++i)
+            p.addRectangle((float)x+1.f+i*5.f,(float)y+3.f+(i%2)*5.f,
+                           2.5f,13.f-(i%2)*7.f);
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
