@@ -70,6 +70,23 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
+        // Dedicated verified captures for every native effect visualization.
+        // No mock UI: each scene switches the actual rack module/editor.
+        const std::array<std::pair<const char*,int>,10> effectScenes {{
+            {"compressor",SkellPresetAudioProcessor::Compressor},
+            {"limiter",SkellPresetAudioProcessor::Limiter},
+            {"gate",SkellPresetAudioProcessor::Gate},
+            {"saturator",SkellPresetAudioProcessor::Saturator},
+            {"reverb",SkellPresetAudioProcessor::Reverb},
+            {"delay",SkellPresetAudioProcessor::Delay},
+            {"exciter",SkellPresetAudioProcessor::Exciter},
+            {"adlib-throw",SkellPresetAudioProcessor::AdlibThrow},
+            {"adlib-doubler",SkellPresetAudioProcessor::AdlibDoubler},
+            {"deesser",SkellPresetAudioProcessor::DeEsser}
+        }};
+        for(const auto& effect:effectScenes)
+            options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
+                                      818,482,0,1,false});
         options.configure = [&](const auto& scene) {
             if(scene.id=="obsidian-expanded-70") {
                 processor.loadFactoryPreset(0);
@@ -80,12 +97,24 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(24); // Skell Vocal Polish
             } else if(scene.id=="obsidian-live-70") {
                 processor.loadFactoryPreset(25); // Skell Live Lead, 0 PDC
+            } else if(scene.id.startsWith("obsidian-effect-")) {
+                processor.loadFactoryPreset(0);
+                for(const auto& effect:effectScenes)
+                    if(scene.id==juce::String("obsidian-effect-")+effect.first+"-70") {
+                        processor.setSlotType(0,effect.second);
+                        processor.setSlotOn(0,true);
+                        processor.setSlotParam(0,0,.68f);
+                        processor.setSlotParam(0,1,.42f);
+                        break;
+                    }
             }
             editor.configureForScreenshot(scene.theme, scene.mode, scene.browser);
             if(scene.id=="obsidian-expanded-70")
                 editor.selectRackSlotForScreenshot(15,6);
             else if(scene.id=="cream-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
+            else if(scene.id.startsWith("obsidian-effect-"))
+                editor.selectRackSlotForScreenshot(0,0);
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -96,15 +125,18 @@ int main(int argc, char** argv) {
             {"cream-advanced-70", "crimson-advanced-70"},
             {"obsidian-advanced-70", "obsidian-expanded-70"},
             {"cream-advanced-70", "cream-deesser-70"},
-            {"obsidian-advanced-70", "obsidian-live-70"}
+            {"obsidian-advanced-70", "obsidian-live-70"},
+            {"obsidian-effect-saturator-70", "obsidian-effect-reverb-70"},
+            {"obsidian-effect-limiter-70", "obsidian-effect-exciter-70"},
+            {"obsidian-effect-adlib-doubler-70", "obsidian-effect-gate-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 51) {
-            std::fprintf(stderr, "Expected 51 PNGs, captured %d\n", report.captured);
+        if (report.captured != 61) {
+            std::fprintf(stderr, "Expected 61 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
