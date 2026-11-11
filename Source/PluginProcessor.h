@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include <SkellCore/Core.h>
 #include "chain/BasicDSP.h"
+#include "chain/LiveAudioScope.h"
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
 #include "chain/ImportedVocalFX.h"
@@ -70,6 +71,9 @@ public:
     void refreshHostedLatency();
     double preparedAudioRate() const noexcept {
         return displayedRate.load(std::memory_order_acquire);
+    }
+    template<std::size_t N> void getLiveWaveform(std::array<float,N>& samples) const noexcept {
+        liveScope.snapshot(samples);
     }
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
@@ -140,6 +144,7 @@ private:
     std::array<RawSlot,slotCount> rawSlots;
     std::array<std::atomic<float>,slotCount> slotPeaks;
     std::atomic<float> inputPeak{0},outputPeak{0};
+    skellpreset::visual::LiveAudioScope liveScope;
     double rate=48000;
     std::atomic<double> displayedRate{48000.}; // message-thread PDC readout
     int selectedProgram=0;
