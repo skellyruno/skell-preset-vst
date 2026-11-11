@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -75,7 +75,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
     voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
     chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
-    rider.prepare(sampleRate);duckingDelay.prepare(sampleRate);
+    rider.prepare(sampleRate);duckingDelay.prepare(sampleRate);vibrato.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -330,6 +330,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case DuckingPingPongFX:
                 e.duckingDelay.set(hostBpm,c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
+            case VocalVibratoFX:
+                e.vibrato.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
                                   500.f+17500.f*c.p[2]);
@@ -431,7 +434,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 c.type==Reverb || c.type==VoxRackRoom ||
                 c.type==VocalChorusFX || c.type==VocalFlangerFX ||
                 c.type==AdlibThrow || c.type==AdlibDoubler ||
-                c.type==DuckingPingPongFX;
+                c.type==DuckingPingPongFX || c.type==VocalVibratoFX;
             if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
             for(int n=0;n<frames;++n) {
@@ -512,6 +515,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         // existing per-slot wet control adds the aligned dry.
                         const auto y=e.duckingDelay.process(l,r);
                         wetL=l+y[0];wetR=r+y[1];break;
+                    }
+                    case VocalVibratoFX: {
+                        const auto y=e.vibrato.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
                         const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));
