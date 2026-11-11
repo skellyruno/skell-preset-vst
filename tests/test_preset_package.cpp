@@ -99,6 +99,7 @@ int main(){
         advanced.slots[1].type=27;
         advanced.slots[2].type=28;
         advanced.slots[3].type=29;
+        advanced.slots[4].type=30;
         advanced.slots[0].eqQ[0]=.81f;
         advanced.slots[0].eqQ[7]=.12f;
         const auto file=testFile(dir,"advanced-vocal-suite");
@@ -110,6 +111,7 @@ int main(){
               &&loaded.slots[1].type==27
               &&loaded.slots[2].type==28
               &&loaded.slots[3].type==29
+              &&loaded.slots[4].type==30
               &&loaded.slots[0].eqQ[0]==.81f
               &&loaded.slots[0].eqQ[7]==.12f,
               "Roundtrip new effect IDs and independent EQ bandwidths");
