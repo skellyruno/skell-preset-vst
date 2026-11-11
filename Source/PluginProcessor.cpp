@@ -1,11 +1,17 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "chain/EffectRegistry.h"
 #include <cmath>
 
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control","Studio Pitch + Formant"};
+const juce::StringArray types=[] {
+    juce::StringArray result;
+    for(const auto& effect:skellpreset::registry::effects) result.add(effect.name);
+    return result;
+}();
+static_assert(skellpreset::registry::count()==SkellPresetAudioProcessor::NumberOfModules);
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
