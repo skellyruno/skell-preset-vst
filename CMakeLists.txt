@@ -156,7 +156,7 @@ if(WIN32 AND SKELL_PRESET_HOST_TESTS)
     juce_generate_juce_header(SkellHostFixture)
     target_sources(SkellHostFixture PRIVATE tests/host_fixture.cpp)
     target_compile_definitions(SkellHostFixture PRIVATE
-        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
     target_link_libraries(SkellHostFixture PRIVATE juce::juce_audio_utils)
 
     juce_add_console_app(SkellPresetHostProbe PRODUCT_NAME "Skell VST3 Host Probe")
