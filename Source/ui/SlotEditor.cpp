@@ -296,7 +296,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
     constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
-    if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser) {
+    if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser || type==SkellPresetAudioProcessor::EightBandToneFX) {
         for(float freq:frequencies){
             const auto x=plot.getX()+plot.getWidth()*std::log(freq/20.f)/std::log(1000.f);
             g.setColour(Theme::stroke.withAlpha(.75f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
@@ -477,7 +477,50 @@ void SlotEditor::paint(juce::Graphics&g) {
         const float x0=plot.getX()+24.f, x1=plot.getRight()-24.f;
         const float y0=plot.getY()+20.f, y1=plot.getBottom()-27.f;
         const float w=x1-x0, h=y1-y0;
-        if(type==SkellPresetAudioProcessor::VocalChorusFX) {
+        if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+            // Exact, summed eight-band DSP response. Every dot edits the
+            // actual frequency+gain parameters of one independent bell.
+            std::array<skellpreset::dsp::Biquad,8> filter{};
+            const double sr=juce::jmax(8000.,processor.preparedAudioRate());
+            auto xFor=[&](double freq)->float {
+                return plot.getX()+(float)(plot.getWidth()*std::log(freq/20.)/std::log(1000.));
+            };
+            juce::Path response;
+            for(int band=0;band<8;++band) {
+                const float low=skellpreset::dsp::EightBandTone::edges[(size_t)band];
+                const float high=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
+                const float freq=low*std::pow(high/low,processor.getSlotParam(slot,2*band));
+                const float gain=(processor.getSlotParam(slot,2*band+1)-.5f)*30.f;
+                filter[(size_t)band].setPeak(sr,freq,gain,1.1);
+            }
+            for(int px=0;px<=835;px+=5) {
+                const double freq=20.*std::pow(1000.,(double)px/835.);
+                double dB=0.;
+                for(const auto& band:filter)dB+=band.magnitudeDb(freq,sr);
+                const float curveY=juce::jlimit(plot.getY(),plot.getBottom(),
+                    plot.getCentreY()-(float)dB*(plot.getHeight()/72.f));
+                if(px==0)response.startNewSubPath(plot.getX(),curveY);
+                else response.lineTo(plot.getX()+px,curveY);
+            }
+            g.setColour(Theme::green.withAlpha(.11f));
+            auto area=response;area.lineTo(plot.getRight(),plot.getBottom());
+            area.lineTo(plot.getX(),plot.getBottom());area.closeSubPath();g.fillPath(area);
+            g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.7f));
+            for(int band=0;band<8;++band) {
+                const float low=skellpreset::dsp::EightBandTone::edges[(size_t)band];
+                const float high=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
+                const float f=low*std::pow(high/low,processor.getSlotParam(slot,band*2));
+                const float db=(processor.getSlotParam(slot,band*2+1)-.5f)*30.f;
+                const float x=xFor(f);
+                const float y=plot.getCentreY()-db*(plot.getHeight()/72.f);
+                const bool active=band>=eqBank && band<eqBank+2;
+                const float size=active?14.f:10.f;
+                g.setColour(active?Theme::green:Theme::blue.withAlpha(.82f));
+                g.fillEllipse(x-size*.5f,y-size*.5f,size,size);
+                g.setColour(Theme::white.withAlpha(active?.95f:.58f));
+                g.drawEllipse(x-size*.5f,y-size*.5f,size,size,1.3f);
+            }
+        } else if(type==SkellPresetAudioProcessor::VocalChorusFX) {
             // Animated multivoice geometry, not a fabricated FFT or waveform.
             const float width=processor.getSlotParam(slot,3);
             const float depth=second;
@@ -889,7 +932,8 @@ void SlotEditor::paint(juce::Graphics&g) {
             Theme::text(g,"DRAG THE GRAPH TO EDIT THE FIRST TWO CONTROLS",
                 {120,249,620,22},12,Theme::muted,false,juce::Justification::centred);
         }
-        // Universal interactive XY marker (first two parameter IDs).
+        // Non-EQ modules share the two-axis universal marker.
+        if(type!=SkellPresetAudioProcessor::EightBandToneFX) {
         const float markerX=x0+w*first,markerY=y1-h*second;
         g.setColour(Theme::green.withAlpha(.24f));
         g.drawVerticalLine((int)markerX,y0,y1);
@@ -898,6 +942,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.fillEllipse(markerX-6.f,markerY-6.f,12.f,12.f);
         g.setColour(Theme::green);
         g.drawEllipse(markerX-6.f,markerY-6.f,12.f,12.f,2.4f);
+        }
     } else {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }
@@ -993,13 +1038,20 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::green);
         g.drawEllipse(x-6.f,y-6.f,12.f,12.f,2.0f);
     }
+    if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        Theme::text(g,"8 BANDS  /  SELECT DOT TO EDIT",
+            {36,101,420,20},12,Theme::green,true);
+        Theme::text(g,"B"+juce::String(eqBank+1)+" + B"+
+            juce::String(eqBank+2)+" SELECTED",{655,101,212,20},11,
+            Theme::muted,true,juce::Justification::centredRight);
+    }
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
         g.setColour(Theme::green.withAlpha(.7f));g.drawRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f,1.f);
         Theme::text(g,"BELL + LOW CUT",{44,99,130,23},11,Theme::green,true);
         Theme::text(g,"RESPONSE FROM LIVE DSP COEFFICIENTS",{205,100,390,22},11,Theme::muted);
     }
-    if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser) {
+    if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser || type==SkellPresetAudioProcessor::EightBandToneFX) {
         const juce::StringArray ticks{"20","50","100","200","500","1k","2k","5k","10k","20k"};
         constexpr float tickHz[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
         for(int i=0;i<ticks.size();i++){
@@ -1023,7 +1075,11 @@ void SlotEditor::paint(juce::Graphics&g) {
     } else if(type==SkellPresetAudioProcessor::Delay || type==SkellPresetAudioProcessor::AdlibThrow) {
         Theme::text(g,"ECHO NUMBER  1 - 5",{38,364,360,17},10,Theme::muted);
     }
-    const auto labels=titles(type);
+    auto labels=titles(type);
+    if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        labels={ "B"+juce::String(eqBank+1)+" FREQ", "B"+juce::String(eqBank+1)+" GAIN",
+                 "B"+juce::String(eqBank+2)+" FREQ", "B"+juce::String(eqBank+2)+" GAIN" };
+    }
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
         Theme::text(g,"HOSTED VST3  /  USE ITS OWN UI TO EDIT PARAMETERS",
             {447,445,424,49},12,Theme::muted,true);
@@ -1037,6 +1093,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
+                  type==SkellPresetAudioProcessor::EightBandToneFX ? "CLICK ANY OF EIGHT NODES  /  DRAG TO CHANGE ITS FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   type==SkellPresetAudioProcessor::ExternalVST3
                     ? juce::String("EXTERNAL VST3  /  THIRD-PARTY EDITOR OPENS SEPARATELY")
