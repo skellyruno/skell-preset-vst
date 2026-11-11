@@ -227,6 +227,11 @@ public:
             issues.add("Rack overlaps the module editor");
         if(rackOnRight!=(chain.getX()>slot.getX()))
             issues.add("Rack dock state disagrees with displayed position");
+        const int currentMode=(int)processor.state.getRawParameterValue("mode")->load();
+        if(currentMode==1 || (currentMode==3 && previousMode==1))
+            for(const auto& control:macro)
+                if(control.getBounds().intersects(chain.getBounds()))
+                    issues.add("Rack hides an Advanced-mode macro");
         const int current=(int)processor.state.getRawParameterValue("mode")->load();
         const bool advanced=current==1 || (current==3 && previousMode==1);
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
@@ -329,7 +334,7 @@ public:
         }
         const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
         for(int k=0;k<4;k++){
-            const int x=viewMode==0?96+k*254:260+k*222;
+            const int x=viewMode==0?96+k*254:(rackOnRight?24+k*222:260+k*222);
             Theme::text(g,labels[k],{x,viewMode==0?365:611,viewMode==0?200:80,18},11,
                         current==3?Theme::muted.withAlpha(.5f):Theme::muted,true);
         }
@@ -343,10 +348,13 @@ public:
         match.setBounds(696,27,87,37);
         mode[0].setBounds(796,27,176,37);
         mode[1].setBounds(982,27,171,37);
-        help.setBounds(1129,611,24,23);
+        help.setBounds(rackOnRight?906:1129,611,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
-        for(int i=0;i<4;i++)macro[(size_t)i].setBounds(display==0?96+i*254:333+i*222,display==0?399:614,display==0?192:120,display==0?49:19);
+        for(int i=0;i<4;i++)
+            macro[(size_t)i].setBounds(display==0?96+i*254:
+                (rackOnRight?97+i*222:333+i*222),
+                display==0?399:614,display==0?192:120,display==0?49:19);
         input.setBounds(80,648,228,34);
         mix.setBounds(433,648,241,34);
         output.setBounds(845,648,172,34);

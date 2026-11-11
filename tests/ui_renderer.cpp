@@ -147,6 +147,9 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(24); // Skell Vocal Polish
             } else if(scene.id=="obsidian-live-70") {
                 processor.loadFactoryPreset(25); // Skell Live Lead, 0 PDC
+            } else if(scene.id=="obsidian-rack-right-70"
+                      || scene.id=="obsidian-rack-right-browser-70") {
+                processor.loadFactoryPreset(0);
             } else if(scene.id=="obsidian-external-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
