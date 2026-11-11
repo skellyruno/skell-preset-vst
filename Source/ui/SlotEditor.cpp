@@ -1,9 +1,14 @@
 #include "SlotEditor.h"
 #include "Theme.h"
+#include "../chain/EffectRegistry.h"
 #include <cmath>
 #include <limits>
 namespace {
-const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control","Studio Pitch + Formant"};
+const juce::StringArray names=[] {
+    juce::StringArray result;
+    for(const auto& effect:skellpreset::registry::effects)result.add(effect.name);
+    return result;
+}();
 std::array<juce::String,4> titles(int type) {
     switch(type){
         case 1:return {"Frequency","Gain","Q","Low Cut"};
