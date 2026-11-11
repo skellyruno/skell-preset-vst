@@ -118,6 +118,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-external-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-rack-right-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
         const std::array<std::pair<const char*,int>,10> effectScenes {{
@@ -162,6 +163,8 @@ int main(int argc, char** argv) {
             }
             editor.dismissGuidedTourForScreenshot();
             editor.configureForScreenshot(scene.theme, scene.mode, scene.browser);
+            if(scene.id=="obsidian-rack-right-70")
+                editor.dockRackForScreenshot(true);
             if(scene.id=="obsidian-guided-tour-70" && !editor.showGuidedTourForScreenshot())
                 std::fprintf(stderr,"Guided tour did not show in real-editor render\\n");
             if(scene.id=="obsidian-expanded-70")
@@ -187,6 +190,7 @@ int main(int argc, char** argv) {
             {"obsidian-effect-limiter-70", "obsidian-effect-exciter-70"},
             {"obsidian-effect-adlib-doubler-70", "obsidian-effect-gate-70"},
             {"obsidian-advanced-70", "obsidian-external-70"},
+            {"obsidian-advanced-70", "obsidian-rack-right-70"},
             {"obsidian-advanced-70", "obsidian-guided-tour-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
@@ -194,8 +198,8 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 63) {
-            std::fprintf(stderr, "Expected 63 PNGs, captured %d\n", report.captured);
+        if (report.captured != 64) {
+            std::fprintf(stderr, "Expected 64 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
