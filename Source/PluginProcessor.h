@@ -56,6 +56,8 @@ public:
     int loadedFactoryPresetIndex() const noexcept {return selectedProgram;}
     juce::String moduleName(int type) const;
     void setSlotType(int slot,int type);
+    // Decodes the backward-compatible legacy type + optional extended effect.
+    int slotType(int slot) const noexcept;
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
@@ -112,7 +114,8 @@ private:
     std::atomic<std::uint64_t> packedOrder{0};
     std::atomic<int> activeSlots{defaultSlotCount};
     struct RawSlot {
-        std::atomic<float>* type=nullptr;std::atomic<float>* on=nullptr;
+        std::atomic<float>* type=nullptr;std::atomic<float>* extension=nullptr;
+        std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::array<std::atomic<float>*,16> p{};
     };
