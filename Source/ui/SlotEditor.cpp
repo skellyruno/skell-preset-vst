@@ -347,7 +347,146 @@ void SlotEditor::paint(juce::Graphics&g) {
         const float x0=plot.getX()+24.f, x1=plot.getRight()-24.f;
         const float y0=plot.getY()+20.f, y1=plot.getBottom()-27.f;
         const float w=x1-x0, h=y1-y0;
-        if(type==SkellPresetAudioProcessor::Limiter){
+        if(type==SkellPresetAudioProcessor::Radio) {
+            // Illustrated filter response from the Low Cut / High Cut controls.
+            const float lowHz=100.f+1400.f*first;
+            const float highHz=juce::jmax(lowHz*1.5f,1800.f+10000.f*second);
+            const float nasal=processor.getSlotParam(slot,2);
+            const auto hzToX=[&](float hz){
+                return x0+w*juce::jlimit(0.f,1.f,
+                        (float)(std::log(hz/20.f)/std::log(1000.f)));
+            };
+            g.setColour(Theme::green.withAlpha(.09f));
+            g.fillRect(hzToX(lowHz),y0,hzToX(highHz)-hzToX(lowHz),h);
+            juce::Path curve;
+            for(int i=0;i<=160;++i) {
+                const float hz=20.f*std::pow(1000.f,(float)i/160.f);
+                const float hp=hz/std::sqrt(hz*hz+lowHz*lowHz);
+                const float lp=highHz/std::sqrt(hz*hz+highHz*highHz);
+                const float hump=nasal*.18f*std::exp(-std::pow(
+                    (float)std::log(hz/std::sqrt(lowHz*highHz))/.75f,2.f));
+                const float amplitude=juce::jlimit(0.f,1.f,hp*hp*lp*lp+hump);
+                const float x=x0+w*(float)i/160.f;
+                const float y=y1-h*.85f*amplitude;
+                if(i==0)curve.startNewSubPath(x,y);
+                else curve.lineTo(x,y);
+            }
+            g.setColour(Theme::green);
+            g.strokePath(curve,juce::PathStrokeType(3.f));
+            g.setColour(Theme::amber.withAlpha(.8f));
+            g.drawVerticalLine((int)hzToX(lowHz),y0,y1);
+            g.drawVerticalLine((int)hzToX(highHz),y0,y1);
+            Theme::text(g,"BROADCAST / RADIO VOICE", {60,164,470,24},
+                        16,Theme::green,true);
+            Theme::text(g,juce::String(lowHz,0)+" - "+juce::String(highHz,0)+
+                        " Hz / VOICE MID BOOST",{60,195,530,21},12,Theme::white);
+            Theme::text(g,"APPROXIMATE RESPONSE / LIVE CUTOFF CONTROL",
+                        {60,317,680,19},10,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::RetroCrush) {
+            const float bits=3.f+13.f*first;
+            const float downsample=juce::jmax(1.f,1.f+16.f*(1.f-second));
+            const float levels=std::exp2(bits-1.f);
+            juce::Path steps,reference;
+            for(int i=0;i<=180;++i) {
+                const float t=(float)i/180.f;
+                const float phase=std::floor(t*180.f/downsample)*downsample/180.f;
+                const float raw=.8f*std::sin(phase*6.f*(float)juce::MathConstants<float>::pi);
+                const float crushed=std::round(raw*levels)/levels;
+                const float y=y0+h*(.5f-.44f*crushed);
+                const float yReference=y0+h*(.5f-.44f*.8f*std::sin(
+                    t*6.f*(float)juce::MathConstants<float>::pi));
+                if(i==0){steps.startNewSubPath(x0,y);reference.startNewSubPath(x0,yReference);}
+                else{steps.lineTo(x0+w*t,y);reference.lineTo(x0+w*t,yReference);}
+            }
+            g.setColour(Theme::blue.withAlpha(.45f));
+            g.strokePath(reference,juce::PathStrokeType(1.3f));
+            g.setColour(Theme::green);
+            g.strokePath(steps,juce::PathStrokeType(2.7f));
+            Theme::text(g,"RETRO CRUSH / BIT DEPTH + SAMPLE HOLD",
+                        {61,164,650,23},14,Theme::green,true);
+            Theme::text(g,juce::String(bits,1)+" BITS / REDUCED SAMPLE RATE",
+                        {61,190,600,21},12,Theme::white);
+            Theme::text(g,"STYLIZED RECONSTRUCTION / NOT AN AUDIO WAVEFORM",
+                        {61,319,690,17},10,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::Tremolo) {
+            const float depth=second;
+            const float shape=processor.getSlotParam(slot,2);
+            const float stereo=processor.getSlotParam(slot,3)*.5f;
+            for(int ch=0;ch<2;++ch) {
+                juce::Path curve;
+                for(int i=0;i<=160;++i) {
+                    const float t=(float)i/160.f*3.5f+(ch==1?stereo:0.f);
+                    const float phase=t-std::floor(t);
+                    const float sinShape=.5f-.5f*std::cos(2.f*
+                        (float)juce::MathConstants<float>::pi*phase);
+                    const float tri=1.f-std::abs(2.f*phase-1.f);
+                    const float amp=1.f-depth*(sinShape*(1.f-shape)+tri*shape);
+                    const float x=x0+w*(float)i/160.f;
+                    const float y=y0+15.f+(1.f-amp)*(h-30.f);
+                    if(i==0)curve.startNewSubPath(x,y);
+                    else curve.lineTo(x,y);
+                }
+                g.setColour(ch==0?Theme::green:Theme::blue);
+                g.strokePath(curve,juce::PathStrokeType(ch==0?2.9f:2.2f));
+            }
+            Theme::text(g,"TREMOLO / DUAL-STEREO AMPLITUDE MOTION",
+                        {60,164,690,22},14,Theme::green,true);
+            Theme::text(g,"GREEN / LEFT     BLUE / RIGHT",
+                        {60,191,575,21},12,Theme::white);
+            Theme::text(g,"ILLUSTRATIVE MODULATION ENVELOPE / NOT INPUT AUDIO",
+                        {60,318,720,18},10,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::StereoWidth) {
+            const float width=first*2.f;
+            const float monoHz=60.f+340.f*second;
+            // Two stylized voices radiating away from the mid line.
+            const float middle=y0+h*.52f;
+            g.setColour(Theme::muted.withAlpha(.38f));
+            g.drawHorizontalLine((int)middle,x0,x1);
+            for(int ch=0;ch<2;++ch){
+                juce::Path wave;
+                for(int i=0;i<=150;++i){
+                    const float t=(float)i/150.f;
+                    const float envelope=(.4f+.6f*std::sin(t*(float)juce::MathConstants<float>::pi));
+                    const float side=std::sin(t*26.f)*width*h*.26f*envelope;
+                    const float x=x0+t*w;
+                    const float y=middle+(ch==0?1.f:-1.f)*side;
+                    if(i==0)wave.startNewSubPath(x,y);
+                    else wave.lineTo(x,y);
+                }
+                g.setColour(ch==0?Theme::green:Theme::blue);
+                g.strokePath(wave,juce::PathStrokeType(2.6f));
+            }
+            Theme::text(g,"STEREO FIELD / MID + SIDE",
+                        {60,164,680,23},15,Theme::green,true);
+            Theme::text(g,juce::String(width*100.f,0)+"% WIDTH / BASS MONO "+
+                        juce::String(monoHz,0)+" Hz",
+                        {60,195,690,23},12,Theme::white);
+            Theme::text(g,"LEFT / RIGHT DECORRELATION IS ILLUSTRATIVE",
+                        {60,318,650,18},10,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::ThreeBandDynamics) {
+            const juce::StringArray bandLabels{"LOW","MID","HIGH"};
+            for(int k=0;k<3;++k){
+                const float amount=processor.getSlotParam(slot,k);
+                const float x=x0+70.f+k*225.f;
+                const float colH=h*.62f;
+                g.setColour(Theme::panelAlt);
+                g.fillRoundedRectangle(x,y0+55.f,115.f,colH,8.f);
+                g.setColour(Theme::green.withAlpha(.23f));
+                g.fillRoundedRectangle(x,y0+55.f+(1.f-amount)*colH,
+                                       115.f,amount*colH,8.f);
+                g.setColour(Theme::green);
+                g.drawRoundedRectangle(x,y0+55.f,115.f,colH,8.f,1.5f);
+                Theme::text(g,bandLabels[k],{(int)x,(int)y0+16,115,23},14,
+                            Theme::white,true,juce::Justification::centred);
+                Theme::text(g,juce::String((int)(amount*100.f))+"%",
+                            {(int)x,(int)(y0+67.f),115,20},11,
+                            Theme::green,true,juce::Justification::centred);
+            }
+            Theme::text(g,"THREE-BAND DYNAMICS / INDEPENDENT ENVELOPES",
+                        {61,163,740,20},12,Theme::green,true);
+            Theme::text(g,"240 Hz / 3.4 kHz  /  COMPLEMENTARY CROSSOVERS",
+                        {60,320,730,18},10,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::Limiter){
             // Limiter transfer: unprocessed diagonal with adjustable ceiling.
             const float ceiling=y0+18.f+(1.f-first)*h*.58f;
             g.setColour(Theme::muted.withAlpha(.37f));
