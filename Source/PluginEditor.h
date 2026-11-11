@@ -12,6 +12,7 @@ public:
     // They exercise the actual editor and controls without a separate mock UI.
     void configureForScreenshot(int themeVariant, int workspaceMode, bool showPresetBrowser);
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
+    void dockRackForScreenshot(bool right);
     juce::StringArray getScreenshotLayoutIssues() const;
     juce::StringArray runScreenshotInteractionTests();
     bool showGuidedTourForScreenshot();

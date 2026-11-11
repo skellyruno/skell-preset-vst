@@ -23,22 +23,16 @@ public:
         setSize(Theme::width,Theme::height);
         setWantsKeyboardFocus(true);
         addAndMakeVisible(chain);addAndMakeVisible(slot);
-        themeButton.onClick=[this]{
-            juce::PopupMenu menu;
-            menu.addSectionHeader("SKELL THEMES");
-            menu.addItem(1,"Obsidian  /  Neon Green",true,selectedTheme==Theme::Obsidian);
-            menu.addItem(2,"Ivory  /  Cream",true,selectedTheme==Theme::Cream);
-            menu.addItem(3,"Crimson  /  Red",true,selectedTheme==Theme::Crimson);
-            menu.addSeparator();
-            menu.addItem(30,"Help / Show Tutorial");
-            juce::Component::SafePointer<Canvas> safe(this);
-            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&themeButton),
-                [safe](int id){if(!safe)return;
-                    if(id>=1 && id<=3)safe->setTheme(id-1);
-                    else if(id==30)safe->outer.showGuidedTour(false);});
-        };
+        themeButton.onClick=[this] {setTheme((selectedTheme+1)%3);};
+        help.setButtonText("?");
+        help.setTooltip("Replay the Skell-Preset guided tour");
+        style(help);addAndMakeVisible(help);
+        help.onClick=[this]{outer.showGuidedTour(false);};
         addAndMakeVisible(themeButton);
         previousMode=juce::jlimit(0,1,(int)processor.state.state.getProperty("uiPreviousMode",1));
+        rackOnRight=(bool)processor.state.state.getProperty("uiRackOnRight",false);
+        chain.setDockedRight(rackOnRight);
+        chain.onDockRequest=[this](bool right){dockRack(right);};
 
         chain.onSelection=[this](int s){slot.select(s);chain.setSelectedSlot(s);};
 
@@ -52,28 +46,30 @@ public:
                 "Dry/Wet WAV file capture, optimization, and full-chain reconstruction are not yet wired into this editor. "
                 "No match percentage is claimed for real vocal material.","OK");
         };
-        for(int i=0;i<3;i++){
-            mode[(size_t)i].setButtonText(juce::StringArray{"SIMPLE","ADVANCED","BYPASS"}[i]);
-            style(mode[(size_t)i]);addAndMakeVisible(mode[(size_t)i]);
-            mode[(size_t)i].onClick=[this,i]{
-                browser.setVisible(false);
-                const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
-                if(i==2){
-                    // Bypass is a toggle; returning keeps the previous workspace.
-                    if(current==3)setParam(processor,"mode",(float)previousMode);
-                    else {
-                        previousMode=current==0?0:1;
-                        processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
-                        setParam(processor,"mode",3.f);
-                    }
-                } else {
-                    previousMode=i;
-                    processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
-                    setParam(processor,"mode",(float)i);
-                }
-                refresh();
-            };
-        }
+        // One view-switch control plus one independent bypass toggle.
+        for(auto& button:mode){style(button);addAndMakeVisible(button);}
+        mode[0].onClick=[this] {
+            browser.setVisible(false);
+            const int current=(int)processor.state.getRawParameterValue("mode")->load();
+            const int view=current==3?previousMode:(current==0?0:1);
+            previousMode=view==0?1:0;
+            processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
+            setParam(processor,"mode",(float)previousMode);
+            refresh();
+        };
+        mode[1].onClick=[this] {
+            browser.setVisible(false);
+            const int current=juce::jlimit(0,3,
+                (int)processor.state.getRawParameterValue("mode")->load());
+            if(current==3)
+                setParam(processor,"mode",(float)previousMode);
+            else {
+                previousMode=current==0?0:1;
+                processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
+                setParam(processor,"mode",3.f);
+            }
+            refresh();
+        };
         for(int k=0;k<4;k++){
             auto& s=macro[(size_t)k];
             s.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -128,8 +124,8 @@ public:
         std::vector<skellcore::ui::GuidedTourStep> steps;
         steps.emplace_back(&preset,"PRESET BROWSER",
             "Choose a starting sound from the preset browser. You can always make your own changes.");
-        steps.emplace_back(&mode[1],"ADVANCED RACK",
-            "Switch to ADVANCED to see each effect slot, change its settings and arrange your chain.");
+        steps.emplace_back(&mode[0],"SIMPLE / ADVANCED",
+            "Use the single view button to switch between four macros and the full effect rack.");
         if(chain.isVisible() && slot.isVisible()) {
             steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
                 "Select an effect slot or use its add control to build your processing chain.");
@@ -139,7 +135,7 @@ public:
         steps.emplace_back(&mix,"BLEND YOUR SOUND",
             "Use Mix to balance the processed chain against your original audio.");
         steps.emplace_back(&sizeSelect,"INTERFACE SIZE",
-            "Resize the interface here. Click the skull for themes and to replay this tutorial.");
+            "Resize the interface here. Click the skull to cycle themes or ? to replay this tour.");
         return steps;
     }
     skellcore::ui::GuidedTourPalette tourPalette() const {
@@ -164,7 +160,7 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(auto* b:{&preset,&match,&mode[0],&mode[1],&mode[2]})style(*b);
+        for(auto* b:{&preset,&match,&mode[0],&mode[1],&help})style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
             s.setColour(juce::Slider::thumbColourId,Theme::white);
@@ -182,7 +178,16 @@ public:
         chain.repaint();slot.applyTheme();browser.applyTheme();
         refresh();
     }
+    void dockRack(bool right) {
+        if(rackOnRight==right)return;
+        rackOnRight=right;
+        chain.setDockedRight(right);
+        processor.state.state.setProperty("uiRackOnRight",right,nullptr);
+        resized();repaint();
+    }
+    void dockRackForScreenshot(bool right) {dockRack(right);refresh();}
     void configureForScreenshot(int variant,int workspaceMode,bool showBrowser) {
+        dockRack(false);
         variant=Theme::clampVariant(variant);
         processor.state.state.setProperty("uiTheme",variant,nullptr);
         setTheme(variant,false);
@@ -206,18 +211,22 @@ public:
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
         const std::array<const juce::Component*,12> all{{&themeButton,&preset,&match,
-            &mode[0],&mode[1],&mode[2],&chain,&slot,&input,&mix,&output,&sizeSelect}};
+            &mode[0],&mode[1],&help,&chain,&slot,&input,&mix,&output,&sizeSelect}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
         }
-        const std::array<const juce::Component*,5> top{{&preset,&match,&mode[0],&mode[1],&mode[2]}};
+        const std::array<const juce::Component*,4> top{{&preset,&match,&mode[0],&mode[1]}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
                     issues.add("Overlapping top-bar controls " + juce::String((int)i)
                                + " / " + juce::String((int)j));
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
+        if(chain.getBounds().intersects(slot.getBounds()))
+            issues.add("Rack overlaps the module editor");
+        if(rackOnRight!=(chain.getX()>slot.getX()))
+            issues.add("Rack dock state disagrees with displayed position");
         const int current=(int)processor.state.getRawParameterValue("mode")->load();
         const bool advanced=current==1 || (current==3 && previousMode==1);
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
@@ -236,12 +245,24 @@ public:
         if(browser.isVisible())issues.add("Preset selector did not close browser");
         mode[0].onClick();
         if(chain.isVisible())issues.add("Simple mode failed to hide the rack");
+        mode[0].onClick();
+        if(!chain.isVisible())issues.add("Advanced mode toggle failed");
         mode[1].onClick();
-        if(!chain.isVisible())issues.add("Advanced mode failed to show the rack");
-        mode[2].onClick();
         if(!bypassShade.isVisible())issues.add("Bypass did not enable overlay");
-        mode[2].onClick();
+        mode[1].onClick();
         if(bypassShade.isVisible())issues.add("Bypass toggle failed to restore workspace");
+        const int beforeTheme=selectedTheme;
+        themeButton.onClick();
+        if(selectedTheme!=(beforeTheme+1)%3)
+            issues.add("Skull click didn't cycle themes immediately");
+        setTheme(beforeTheme);
+        dockRack(true);
+        if(chain.getX()<=slot.getX()
+           || !(bool)processor.state.state.getProperty("uiRackOnRight",false))
+            issues.add("Rack failed to dock on the right");
+        dockRack(false);
+        if(chain.getX()>=slot.getX())
+            issues.add("Rack failed to return left");
         // This drives the same XY mutation code as real mouse dragging:
         // verify the graphical insert is an actual parameter editor.
         processor.loadFactoryPreset(0);
@@ -267,13 +288,16 @@ public:
         g.fillAll(Theme::bg);
         g.setColour(Theme::panel);g.fillRect(0,0,Theme::width,76);
         g.setColour(Theme::stroke);g.drawHorizontalLine(75,0.f,(float)Theme::width);
-        // Split the wordmark so PRESET is always Skell's signature green.
-        // Preserve a true visible hyphen (not a spacing divider or missing dash).
-        Theme::text(g,"SKELL",{75,18,94,36},27,Theme::white,true);
-        Theme::text(g,"-",{169,17,17,36},27,Theme::white,true);
-        const auto presetGreen=selectedTheme==Theme::Cream
-            ?juce::Colour(0xff139e43):juce::Colour(0xff39ff3a);
-        Theme::text(g,"PRESET",{184,18,152,36},27,presetGreen,true);
+        // One typographic run avoids the clipped hyphen and inconsistent gaps.
+        // PRESET stays true neon green across all three colour skins.
+        juce::AttributedString brand;
+        brand.setFont(Theme::font(27.f,true));
+        brand.setJustification(juce::Justification::centredLeft);
+        brand.append("SKELL-",Theme::white);
+        brand.append("PRESET",juce::Colour(0xff39ff3a));
+        juce::TextLayout wordmark;
+        wordmark.createLayout(brand,271.f);
+        wordmark.draw(g,juce::Rectangle<float>(75.f,18.f,271.f,38.f));
         Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{76,54,239,17},10,Theme::muted,true);
         Theme::text(g,processor.state.state.getProperty("presetBank","Main Vocals").toString().toUpperCase(),{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
@@ -311,11 +335,13 @@ public:
     }
     void resized() override {
         themeButton.setBounds(15,12,53,56);
-        chain.setBounds(13,90,216,535);
-        slot.setBounds(247,90,906,519);
+        chain.setBounds(rackOnRight?939:13,90,216,535);
+        slot.setBounds(rackOnRight?14:247,90,906,519);
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
-        for(int k=0;k<3;k++)mode[(size_t)k].setBounds(796+k*119,27,115,37);
+        mode[0].setBounds(796,27,176,37);
+        mode[1].setBounds(982,27,171,37);
+        help.setBounds(1129,611,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
         for(int i=0;i<4;i++)macro[(size_t)i].setBounds(display==0?96+i*254:333+i*222,display==0?399:614,display==0?192:120,display==0?49:19);
@@ -324,7 +350,8 @@ public:
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
         browser.setBounds(445,77,650,538);
-        bypassShade.setBounds(display==0?14:247,90,display==0?1140:906,display==0?507:519);
+        bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
+                              display==0?1140:906,display==0?507:519);
     }
     void refresh(){
         Theme::select(selectedTheme);
@@ -345,11 +372,12 @@ public:
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
         preset.setButtonText(processor.presetName().toUpperCase()+"  v");
-        for(int i=0;i<3;i++){
-            const int mapped=i==2?3:i;
-            mode[(size_t)i].setColour(juce::TextButton::buttonColourId,
-                mapped==m?(bypass?Theme::muted.withAlpha(.32f):Theme::green.withAlpha(.24f)):Theme::panelAlt);
-        }
+        mode[0].setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
+        mode[0].setTooltip(display==0?"Open full effect chain":"Switch to four macros");
+        mode[1].setButtonText(bypass?"RESTORE":"BYPASS");
+        mode[1].setColour(juce::TextButton::buttonColourId,
+                          bypass?Theme::muted.withAlpha(.32f):Theme::panelAlt);
+        mode[0].setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         // UI state must reflect the current host/program state *now*, not at
         // the next 30Hz timer tick. This also prevents stale module names
         // during screenshot capture and fast A/B preset auditioning.
@@ -390,9 +418,10 @@ private:
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
     int selectedTheme=Theme::Obsidian,previousMode=1;
+    bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
-    juce::TextButton preset,match;
-    std::array<juce::TextButton,3> mode;
+    juce::TextButton preset,match,help;
+    std::array<juce::TextButton,2> mode;
     std::array<juce::Slider,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
     juce::Slider input,mix,output;
@@ -455,4 +484,8 @@ juce::StringArray SkellPresetAudioProcessorEditor::runScreenshotInteractionTests
 
 void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
     canvas->selectRackSlotForScreenshot(physicalSlot,scrollOffset);
+}
+
+void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
+    canvas->dockRackForScreenshot(right);
 }
