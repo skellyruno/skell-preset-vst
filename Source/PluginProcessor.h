@@ -4,13 +4,14 @@
 #include "chain/BasicDSP.h"
 #include "chain/FactoryPresets.h"
 #include "chain/PresetPackage.h"
+#include "host/HostedVST3.h"
 #include <array>
 #include <atomic>
 #include <cstdint>
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
@@ -54,6 +55,11 @@ public:
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
+    juce::Result loadHostedVST3(int slot,const juce::File& path);
+    void openHostedVST3Editor(int slot);
+    juce::String hostedVST3Name(int slot) const {return hosted.getName(slot);}
+    bool hasHostedVST3(int slot) const noexcept {return hosted.get(slot)!=nullptr;}
+    void refreshHostedLatency();
     double preparedAudioRate() const noexcept {
         return displayedRate.load(std::memory_order_acquire);
     }
@@ -68,7 +74,7 @@ private:
         skellpreset::dsp::SplitDeEsser deesser;
         skellpreset::dsp::Delay delay;
         skellpreset::dsp::AdlibDoubler doubler;
-        skellpreset::dsp::StereoSampleDelay limiterDry;
+        skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
         skellcore::TruePeakLimiter limiter;
         skellcore::PhraseTracker phrase;
         std::array<std::vector<float>,2> throwHistory;
@@ -81,6 +87,9 @@ private:
         void prepare(double sampleRate);
     };
     std::array<EngineSlot,slotCount> engines;
+    skellpreset::host::HostedVST3 hosted;
+    juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork;
+    int hostChunkCapacity=512;
     struct Controls {int type=0;bool on=false;float wet=1;std::array<float,16> p{};};
     std::array<Controls,slotCount> controlCache;
     std::atomic<std::uint64_t> packedOrder{0};

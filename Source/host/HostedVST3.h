@@ -25,10 +25,8 @@ public:
         if(owned[(size_t)slot].size()>=8)
             return juce::Result::fail("Restart the DAW session before replacing this insert again");
         juce::OwnedArray<juce::PluginDescription> descriptions;
-        auto* fmt=formats.findFormatForDescription(makeDescription(path));
         // Some VST3 bundles publish more than one processor, so always scan.
         juce::VST3PluginFormat fallback;
-        (void)fmt;
         fallback.findAllTypesForFile(descriptions,path.getFullPathName());
         if(descriptions.isEmpty())return juce::Result::fail("No compatible audio VST3 effect found in bundle");
         juce::PluginDescription* chosen=nullptr;
@@ -105,12 +103,6 @@ public:
     }
 private:
     static bool valid(int slot) noexcept {return slot>=0 && slot<slotCount;}
-    static juce::PluginDescription makeDescription(const juce::File& file) {
-        juce::PluginDescription result;
-        result.pluginFormatName="VST3";
-        result.fileOrIdentifier=file.getFullPathName();
-        return result;
-    }
     juce::AudioPluginFormatManager formats;
     std::array<std::atomic<juce::AudioPluginInstance*>,slotCount> active{};
     std::array<std::atomic<int>,slotCount> latencies{};

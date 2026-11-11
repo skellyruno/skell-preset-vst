@@ -77,12 +77,18 @@ target_sources(SkellPreset PRIVATE
     Source/PluginEditor.h Source/PluginEditor.cpp
     Source/chain/BasicDSP.h Source/chain/FactoryPresets.h
     Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
+    Source/host/HostedVST3.h
     Source/ui/Theme.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
     Source/ui/SlotEditor.h Source/ui/SlotEditor.cpp
     Source/ui/PresetBrowser.h Source/ui/PresetBrowser.cpp
     Source/match/MatchCore.h)
 target_compile_definitions(SkellPreset PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+# JUCE's in-process VST3 host is enabled only for Windows builds. Other
+# targets retain an explicit unsupported result rather than a dummy processor.
+if(WIN32)
+    target_compile_definitions(SkellPreset PRIVATE JUCE_PLUGINHOST_VST3=1)
+endif()
 target_link_libraries(SkellPreset PRIVATE
     SkellPresetAssets SkellCore::DSP SkellCore::UI
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
@@ -125,5 +131,8 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
         SkellPresetAssets SkellCore::DSP SkellCore::UI SkellCore::UIRenderer
         juce::juce_audio_utils juce::juce_gui_extra)
     target_compile_definitions(SkellPresetUIRenderer PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    if(WIN32)
+        target_compile_definitions(SkellPresetUIRenderer PRIVATE JUCE_PLUGINHOST_VST3=1)
+    endif()
     target_compile_features(SkellPresetUIRenderer PRIVATE cxx_std_17)
 endif()
