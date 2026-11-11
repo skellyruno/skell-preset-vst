@@ -1,6 +1,7 @@
 #include "SlotEditor.h"
 #include "Theme.h"
 #include <cmath>
+#include <limits>
 namespace {
 const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control"};
 std::array<juce::String,4> titles(int type) {
@@ -1101,6 +1102,7 @@ void SlotEditor::paint(juce::Graphics&g) {
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {
     const int type=processor.slotType(slot);
+    constexpr float plotCentreY=254.f;
     if(type==SkellPresetAudioProcessor::EQ){
         const auto x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
         const auto y=juce::jlimit(-1.f,1.f,(254.f-point.y)/103.f);
@@ -1108,6 +1110,17 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
         processor.setSlotParam(slot,0,juce::jlimit(0.f,1.f,
             (float)(std::log(freq/40.f)/std::log(300.))));
         processor.setSlotParam(slot,1,juce::jlimit(0.f,1.f,.5f+y*1.5f));
+    } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        const float low=skellpreset::dsp::EightBandTone::edges[(size_t)activeEqBand];
+        const float high=skellpreset::dsp::EightBandTone::edges[(size_t)activeEqBand+1];
+        const float normalized=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
+        const float freq=20.f*std::pow(1000.f,normalized);
+        const float x=juce::jlimit(0.f,1.f,
+            std::log(juce::jlimit(low,high,freq)/low)/std::log(high/low));
+        const float gain=juce::jlimit(0.f,1.f,
+            .5f+(plotCentreY-point.y)/206.f*2.4f);
+        processor.setSlotParam(slot,activeEqBand*2,x);
+        processor.setSlotParam(slot,activeEqBand*2+1,gain);
     } else if(type!=SkellPresetAudioProcessor::Empty) {
         // Unified gesture: the same XY marker is used by each bespoke display.
         const float x=juce::jlimit(0.f,1.f,(point.x-57.f)/787.f);
@@ -1124,13 +1137,41 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         || type==SkellPresetAudioProcessor::ExternalVST3
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
     draggingGraph=true;
-    for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->beginChangeGesture();
+    if(type==SkellPresetAudioProcessor::EightBandToneFX){
+        // Choose the nearest of eight actual DSP nodes, then latch this band
+        // for the whole drag and show its two-band knob page.
+        float nearest=std::numeric_limits<float>::max();
+        for(int b=0;b<8;++b){
+            const float low=skellpreset::dsp::EightBandTone::edges[(size_t)b];
+            const float high=skellpreset::dsp::EightBandTone::edges[(size_t)b+1];
+            const float freq=low*std::pow(high/low,processor.getSlotParam(slot,b*2));
+            const float bx=33.f+835.f*std::log(freq/20.f)/std::log(1000.f);
+            const float dist=std::abs(bx-(float)e.x);
+            if(dist<nearest){nearest=dist;activeEqBand=b;}
+        }
+        if(activeEqBand/2 !=eqBank/2)showEqBank(activeEqBand);
+        for(int k=0;k<2;++k)
+            if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+
+                          "_p"+juce::String(activeEqBand*2+k+1)))
+                p->beginChangeGesture();
+    } else {
+        for(int param:{1,2})
+            if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+
+                                                  "_p"+juce::String(param)))
+                p->beginChangeGesture();
+    }
     updateGraphNode(e.position);
 }
 void SlotEditor::mouseDrag(const juce::MouseEvent& e){if(draggingGraph)updateGraphNode(e.position);}
 void SlotEditor::mouseUp(const juce::MouseEvent&){
     if(!draggingGraph)return;
-    for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->endChangeGesture();
+    const bool eightBand=processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX;
+    for(int k=0;k<2;++k) {
+        const int param=eightBand?activeEqBand*2+k+1:k+1;
+        if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+
+                                               "_p"+juce::String(param)))
+            p->endChangeGesture();
+    }
     draggingGraph=false;
 }
 
