@@ -227,7 +227,13 @@ public:
         g.fillAll(Theme::bg);
         g.setColour(Theme::panel);g.fillRect(0,0,Theme::width,76);
         g.setColour(Theme::stroke);g.drawHorizontalLine(75,0.f,(float)Theme::width);
-        Theme::text(g,"SKELL-PRESET",{75,18,247,36},27,Theme::white,true);
+        // Split the wordmark so PRESET is always Skell's signature green.
+        // Preserve a true visible hyphen (not a spacing divider or missing dash).
+        Theme::text(g,"SKELL",{75,18,94,36},27,Theme::white,true);
+        Theme::text(g,"-",{169,17,17,36},27,Theme::white,true);
+        const auto presetGreen=selectedTheme==Theme::Cream
+            ?juce::Colour(0xff139e43):juce::Colour(0xff39ff3a);
+        Theme::text(g,"PRESET",{184,18,152,36},27,presetGreen,true);
         Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{76,54,239,17},10,Theme::muted,true);
         Theme::text(g,processor.state.state.getProperty("presetBank","Main Vocals").toString().toUpperCase(),{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());

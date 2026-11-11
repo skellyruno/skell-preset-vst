@@ -2,42 +2,76 @@
 #include <JuceHeader.h>
 #include "Theme.h"
 
-// Small original vector-drawn winged skull; doubles as a keyboard-accessible
-// theme selector. No bitmap scaling/blur or UI timer is involved.
+// Official Skell-Preset vector mark. Small-size legibility comes first:
+// clean cranium, two deep sockets, simple nasal cavity and a four-tooth jaw.
+// This is drawn from paths, not a raster screenshot; click opens the skin menu.
 class SkullThemeButton final : public juce::Button {
 public:
-    SkullThemeButton():juce::Button("Choose colour theme") {setTooltip("Change colour theme: Obsidian, Cream or Crimson");}
-    void setVariant(int id) {variant=Theme::clampVariant(id);repaint();}
-    void paintButton(juce::Graphics& g,bool over,bool down) override {
+    SkullThemeButton() : juce::Button("Change Skell colour theme") {
+        setTooltip("SKELL themes  /  Obsidian, Cream, Crimson");
+        setWantsKeyboardFocus(true);
+    }
+    void setVariant(int id) { variant=Theme::clampVariant(id); repaint(); }
+
+    void paintButton(juce::Graphics& g,bool hovered,bool down) override {
         Theme::select(variant);
-        auto b=getLocalBounds().toFloat().reduced(1.f);
-        g.setColour(over?Theme::green.withAlpha(.11f):Theme::panelAlt.withAlpha(.22f));
-        g.fillRoundedRectangle(b,9.f);
-        if(over || down) {g.setColour(Theme::green.withAlpha(.65f));g.drawRoundedRectangle(b,9.f,1.f);}
-        juce::Graphics::ScopedSaveState saved(g);
-        g.addTransform(juce::AffineTransform::scale(b.getWidth()/58.f,b.getHeight()/58.f).translated(b.getX(),b.getY()));
+        const auto bounds=getLocalBounds().toFloat().reduced(1.f);
+        if(hovered || down) {
+            g.setColour(Theme::green.withAlpha(down?.16f:.08f));
+            g.fillRoundedRectangle(bounds,10.f);
+            g.setColour(Theme::green.withAlpha(.7f));
+            g.drawRoundedRectangle(bounds,10.f,1.f);
+        }
+        juce::Graphics::ScopedSaveState guard(g);
+        g.addTransform(juce::AffineTransform::scale(bounds.getWidth()/56.f,bounds.getHeight()/56.f)
+                           .translated(bounds.getX(),bounds.getY()));
+        // A restrained floating halo anchors the mark without heavy wings.
+        g.setColour(Theme::green.withAlpha(.15f));
+        g.fillEllipse(5.5f,4.f,45.f,46.f);
+        g.setColour(Theme::green.withAlpha(.55f));
+        g.drawEllipse(5.5f,4.f,45.f,46.f,1.1f);
+
+        juce::Path skull;
+        skull.startNewSubPath(28.f,7.f);
+        skull.cubicTo(16.f,7.f,11.f,15.f,11.f,26.f);
+        skull.cubicTo(11.f,35.f,16.f,38.f,19.f,39.f);
+        skull.lineTo(19.f,46.f);
+        skull.quadraticTo(19.f,49.f,23.f,49.f);
+        skull.lineTo(33.f,49.f);
+        skull.quadraticTo(37.f,49.f,37.f,46.f);
+        skull.lineTo(37.f,39.f);
+        skull.cubicTo(42.f,36.f,45.f,32.f,45.f,26.f);
+        skull.cubicTo(45.f,15.f,40.f,7.f,28.f,7.f);
+        skull.closeSubPath();
         g.setColour(Theme::green);
-        // Angular wings frame the skull, mirroring the SKELL mark without a jagged raster icon.
-        juce::Path wings;
-        wings.startNewSubPath(17,19);wings.lineTo(9,13);wings.lineTo(3,20);wings.lineTo(3,34);
-        wings.lineTo(10,28);wings.lineTo(15,31);wings.lineTo(20,26);wings.closeSubPath();
-        wings.startNewSubPath(41,19);wings.lineTo(49,13);wings.lineTo(55,20);wings.lineTo(55,34);
-        wings.lineTo(48,28);wings.lineTo(43,31);wings.lineTo(38,26);wings.closeSubPath();
-        g.fillPath(wings);
-        juce::Path cranium;
-        cranium.startNewSubPath(16.f,23.f);
-        cranium.cubicTo(16.f,11.f,21.f,7.f,29.f,7.f);
-        cranium.cubicTo(37.f,7.f,42.f,13.f,42.f,23.f);
-        cranium.cubicTo(42.f,30.f,38.f,34.f,36.f,35.f);
-        cranium.lineTo(36.f,45.f);cranium.lineTo(22.f,45.f);cranium.lineTo(22.f,35.f);
-        cranium.cubicTo(18.f,32.f,16.f,29.f,16.f,23.f);
-        cranium.closeSubPath();g.fillPath(cranium);
+        g.fillPath(skull);
+
+        // Cut-outs remain strong at a 70%-scaled plugin window.
         g.setColour(Theme::plot);
-        juce::Path eye;
-        eye.addEllipse(21.f,24.f,7.f,8.f);eye.addEllipse(31.f,24.f,7.f,8.f);g.fillPath(eye);
-        juce::Path nose;nose.startNewSubPath(29.5f,32.f);nose.lineTo(26.f,38.f);nose.lineTo(33.f,38.f);nose.closeSubPath();g.fillPath(nose);
-        g.setColour(Theme::plot.withAlpha(.8f));
-        for(int i=0;i<3;i++)g.fillRoundedRectangle(24.f+i*4.f,40.f,2.f,5.f,.7f);
+        juce::Path leftEye,rightEye;
+        leftEye.startNewSubPath(17.f,26.f);
+        leftEye.quadraticTo(18.f,20.f,23.f,23.f);
+        leftEye.quadraticTo(26.f,25.f,25.f,31.f);
+        leftEye.quadraticTo(20.f,34.f,17.f,29.f);
+        leftEye.closeSubPath();
+        rightEye.startNewSubPath(39.f,26.f);
+        rightEye.quadraticTo(38.f,20.f,33.f,23.f);
+        rightEye.quadraticTo(30.f,25.f,31.f,31.f);
+        rightEye.quadraticTo(36.f,34.f,39.f,29.f);
+        rightEye.closeSubPath();
+        g.fillPath(leftEye); g.fillPath(rightEye);
+        juce::Path nose;
+        nose.startNewSubPath(28.f,32.f);nose.lineTo(24.f,38.f);
+        nose.quadraticTo(28.f,40.f,32.f,38.f);
+        nose.closeSubPath();g.fillPath(nose);
+        for(int tooth=0;tooth<4;++tooth)
+            g.fillRoundedRectangle(22.f+tooth*3.25f,42.f,1.7f,5.1f,.5f);
+
+        // Original angular highlight gives the otherwise minimal symbol a signature.
+        g.setColour(Theme::white.withAlpha(.30f));
+        juce::Path sheen;sheen.startNewSubPath(17.f,18.f);
+        sheen.quadraticTo(19.f,13.f,24.f,12.f);
+        g.strokePath(sheen,juce::PathStrokeType(1.65f));
     }
 private:
     int variant=Theme::Obsidian;
