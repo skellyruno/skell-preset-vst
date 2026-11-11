@@ -273,6 +273,8 @@ public:
             issues.add("Rack failed to return left");
         if(!slot.testModulePickerInteraction())
             issues.add("Module browser did not toggle, filter or load Ring Mod");
+        if(!slot.testEightBandGraphAndQ())
+            issues.add("8-Band EQ graph did not edit the eighth band and its Q");
         // This drives the same XY mutation code as real mouse dragging:
         // verify the graphical insert is an actual parameter editor.
         processor.loadFactoryPreset(0);
