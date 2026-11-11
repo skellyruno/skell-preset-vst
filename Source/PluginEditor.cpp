@@ -349,7 +349,8 @@ public:
         mix.setBounds(433,648,241,34);
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
-        browser.setBounds(445,77,650,538);
+        // Keep the rack unobstructed when the user docks it on the right.
+        browser.setBounds(rackOnRight?76:445,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
                               display==0?1140:906,display==0?507:519);
     }
