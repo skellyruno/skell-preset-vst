@@ -178,6 +178,7 @@ int main(int argc, char** argv) {
             {"cream-advanced-70", "cream-deesser-70"},
             {"obsidian-advanced-70", "obsidian-live-70"},
             {"obsidian-effect-saturator-70", "obsidian-effect-reverb-70"},
+            {"obsidian-effect-delay-70", "obsidian-effect-adlib-throw-70"},
             {"obsidian-effect-limiter-70", "obsidian-effect-exciter-70"},
             {"obsidian-effect-adlib-doubler-70", "obsidian-effect-gate-70"},
             {"obsidian-advanced-70", "obsidian-external-70"}
