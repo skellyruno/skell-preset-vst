@@ -36,9 +36,9 @@ else()
 endif()
 
 
-// GuidedTour is a shared JUCE UI header from the verified, immutable SkellCore
-// revision. Fetch headers only: the existing bundled SkellCore targets are
-// preserved so duplicate CMake targets and DSP changes are impossible.
+# GuidedTour is a shared JUCE UI header from the verified, immutable SkellCore
+# revision. Fetch headers only: the existing bundled SkellCore targets are
+# preserved so duplicate CMake targets and DSP changes are impossible.
 FetchContent_Declare(SkellGuidedTourHeaders
     GIT_REPOSITORY https://github.com/skellyruno/skell-vst-template.git
     GIT_TAG 3306ad495c93e062e39b8abbf079534b0b53da4e
