@@ -327,6 +327,37 @@ public:
         if(auto* extension=processor.state.getRawParameterValue("s1_fxExt"))
             if((int)extension->load()!=0)
                 issues.add("Legacy module did not clear extended host parameter");
+        // Latest effect extensions must not renormalize previously-published
+        // 23-choice type or the earlier three-choice effect extension.
+        for(int type=SkellPresetAudioProcessor::EightBandToneFX;
+                type<=SkellPresetAudioProcessor::StudioPitchFormantFX;++type){
+            processor.setSlotType(0,type);
+            slot.select(0);
+            const auto* legacy=processor.state.getRawParameterValue("s1_type");
+            const auto* previous=processor.state.getRawParameterValue("s1_fxExt");
+            const auto* advanced=processor.state.getRawParameterValue("s1_fxExt2");
+            const auto* studio=processor.state.getRawParameterValue("s1_fxExt3");
+            const bool isStudio=type==SkellPresetAudioProcessor::StudioPitchFormantFX;
+            if(processor.slotType(0)!=type || !slot.moduleSelectorMatchesAudio()
+                || !legacy || (int)legacy->load()!=SkellPresetAudioProcessor::Empty
+                || !previous || (int)previous->load()!=0 || !advanced || !studio
+                || (int)advanced->load()!=(isStudio?0:type-SkellPresetAudioProcessor::VocalVibratoFX)
+                || (int)studio->load()!=(isStudio?1:0))
+                issues.add("Advanced effect changed legacy slot-type automation mapping");
+        }
+        // The recording-oriented Live Lead preset has no limiter PDC.
+        // Selecting the studio phase vocoder must add exactly 768 samples;
+        // removing the slot must return to zero host latency.
+        processor.loadFactoryPreset(25);
+        processor.setSlotType(8,SkellPresetAudioProcessor::StudioPitchFormantFX);
+        processor.setSlotOn(8,true);
+        if(processor.getLatencySamples()!=
+           skellpreset::dsp::SpectralPitchFormant::latencySamples)
+            issues.add("Studio pitch/formant did not report its 768-sample PDC");
+        processor.setSlotType(8,SkellPresetAudioProcessor::Empty);
+        processor.setSlotOn(8,false);
+        if(processor.getLatencySamples()!=0)
+            issues.add("Studio pitch/formant removal did not clear host PDC");
         processor.loadFactoryPreset(0);
         slot.select(0);
         chain.setSelectedSlot(0);
