@@ -14,6 +14,8 @@ public:
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
     juce::StringArray getScreenshotLayoutIssues() const;
     juce::StringArray runScreenshotInteractionTests();
+    bool showGuidedTourForScreenshot();
+    void dismissGuidedTourForScreenshot();
 private:
     class Canvas;
     std::unique_ptr<Canvas> canvas;
