@@ -240,6 +240,10 @@ public:
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
         }
+        if(!input.textFromValueFunction || input.textFromValueFunction(0.)!="0 dB"
+           || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
+           || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
+            issues.add("Master strip displays raw values rather than physical dB/% labels");
         const std::array<const juce::Component*,4> top{{&preset,&match,&mode[0],&mode[1]}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
