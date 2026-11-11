@@ -79,6 +79,16 @@ public:
     int getLatency(int slot) const noexcept {
         return valid(slot)?latencies[(size_t)slot].load(std::memory_order_acquire):0;
     }
+    void pollLatencies() noexcept {
+        // Message-thread-only check for hosted processors that change PDC
+        // after a preset or oversampling switch.
+        for(int slot=0;slot<slotCount;++slot)
+            if(auto* plugin=get(slot)) {
+                const int value=plugin->getLatencySamples();
+                if(value>=0 && value<=maxTotalLatency)
+                    latencies[(size_t)slot].store(value,std::memory_order_release);
+            }
+    }
     juce::String getName(int slot) const {
         return valid(slot)?names[(size_t)slot]:juce::String{};
     }

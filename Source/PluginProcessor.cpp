@@ -202,8 +202,8 @@ void SkellPresetAudioProcessor::openHostedVST3Editor(int slot) {
     }
 }
 void SkellPresetAudioProcessor::refreshHostedLatency() {
-    // Called by the message-thread timer. A hosted processor may change
-    // its lookahead after a preset change, so the outer host must be updated.
+    // Called by the editor timer, never from the audio callback.
+    hosted.pollLatencies();
     updateHostLatency();
 }
 void SkellPresetAudioProcessor::handleAsyncUpdate() {
