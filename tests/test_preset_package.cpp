@@ -26,7 +26,10 @@ int main(){
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
         auto& slot=first.slots[(size_t)s];slot.slotId=(s+3)%skellpreset::package::slotCount;
-        slot.type=s%11;slot.enabled=s%2==0;slot.wet=.15f+(float)s*.04f;
+        // Exercise the appended native module IDs while preserving the legacy
+        // 0..11 values in the first ten slots of v1 test archives.
+        slot.type=s<11?s%11:13+s-11;
+        slot.enabled=s%2==0;slot.wet=.15f+(float)s*.04f;
         slot.params.fill(.5f);
     }
     first.activeSlotCount=14;
@@ -38,7 +41,8 @@ int main(){
     check(skellpreset::package::read(path,second).wasOk(),"Import compressed .skellpreset");
     check(second.name==first.name&&second.bank==first.bank&&second.slots[0].slotId==3
           &&second.slots[9].type==9%11&&second.macros[0]==first.macros[0]
-          &&second.activeSlotCount==14&&second.slots[15].slotId==2,
+          &&second.activeSlotCount==14&&second.slots[15].slotId==2
+          &&second.slots[11].type==13&&second.slots[15].type==17,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
 
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots

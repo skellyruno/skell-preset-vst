@@ -35,7 +35,8 @@ struct BroadcastRadio {
     }
     // Low/High are absolute frequencies, nasal and drive are normalized.
     void set(float lowHz,float highHz,float nasal,float grit) noexcept {
-        const float low=clamp(lowHz,100.f,2400.f);
+        const float low=clamp(lowHz,100.f,
+                              std::min(2400.f,(float)sr*.24f));
         const float high=clamp(highHz,std::max(low*1.5f,350.f),
                                (float)sr*.44f);
         highTarget=(float)std::exp(-2.*pi*low/sr);

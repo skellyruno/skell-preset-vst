@@ -76,6 +76,6 @@ static void run(double sr) {
     }
 }
 int main() {
-    for(double sr:{44100.,48000.,96000.}) run(sr);
+    for(double sr:{8000.,44100.,48000.,96000.}) run(sr);
     std::cout<<"PASS native zero-lookahead vocal effects at 44.1/48/96 kHz\n";
 }
