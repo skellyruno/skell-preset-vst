@@ -147,12 +147,15 @@ public:
         for(auto& channel:voices)channel.prepare(sampleRate);
         pitch=1.f;formant=1.f;
     }
-    void set(float pitchValue,float formantValue) noexcept {
-        const float p=std::isfinite(pitchValue)?std::clamp(pitchValue,0.f,1.f):.5f;
-        const float f=std::isfinite(formantValue)?std::clamp(formantValue,0.f,1.f):.5f;
-        // +/- 12 semitones independently. Not automatic pitch correction.
-        pitch=std::pow(2.f,(p-.5f)*2.f);
-        formant=std::pow(2.f,(f-.5f)*2.f);
+    void set(float pitchValue,float formantValue,float pitchRange,float formantRange) noexcept {
+        const auto unit=[](float x,float fallback) noexcept {
+            return std::isfinite(x)?std::clamp(x,0.f,1.f):fallback;
+        };
+        const float p=unit(pitchValue,.5f),f=unit(formantValue,.5f);
+        const float pitchSemitones=(p-.5f)*2.f*(3.f+9.f*unit(pitchRange,1.f));
+        const float formantSemitones=(f-.5f)*2.f*(2.f+10.f*unit(formantRange,1.f));
+        pitch=std::pow(2.f,pitchSemitones/12.f);
+        formant=std::pow(2.f,formantSemitones/12.f);
     }
     std::array<float,2> process(float left,float right) noexcept {
         return {voices[0].process(left,pitch,formant),
