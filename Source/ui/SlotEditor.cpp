@@ -664,6 +664,52 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }
     g.restoreState();
+    // The graph is deliberately clipped to its plot rectangle. Titles and
+    // numeric legends belong ABOVE it, after restoring the Graphics clip,
+    // or they become invisible at the default 70% scale.
+    juce::String effectTitle, effectDetail;
+    if(type==SkellPresetAudioProcessor::Radio) {
+        const float low=100.f+1400.f*processor.getSlotParam(slot,0);
+        const float high=1800.f+10000.f*processor.getSlotParam(slot,1);
+        effectTitle="BROADCAST RADIO  /  BANDPASS";
+        effectDetail=juce::String(low,0)+" - "+juce::String(high,0)+" Hz  /  NASAL "+
+                     juce::String(processor.getSlotParam(slot,2)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::RetroCrush) {
+        const float bits=3.f+13.f*processor.getSlotParam(slot,0);
+        const float sr=(float)juce::jmax(8000.,processor.preparedAudioRate());
+        const float hz=100.f*std::pow(sr/100.f,processor.getSlotParam(slot,1));
+        effectTitle="RETRO CRUSH  /  SAMPLE-HOLD SHAPER";
+        effectDetail=juce::String(bits,1)+" BITS  /  "+juce::String(hz,0)+" Hz";
+    } else if(type==SkellPresetAudioProcessor::Tremolo) {
+        effectTitle="TREMOLO  /  AMPLITUDE MOTION";
+        effectDetail=juce::String(.15f+14.f*processor.getSlotParam(slot,0),1)+
+                     " Hz  /  DEPTH "+
+                     juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::StereoWidth) {
+        effectTitle="STEREO FIELD  /  MID + SIDE";
+        effectDetail=juce::String(processor.getSlotParam(slot,0)*200.f,0)+
+                     "% WIDTH  /  MONO BASS "+
+                     juce::String(60.f+340.f*processor.getSlotParam(slot,1),0)+" Hz";
+    } else if(type==SkellPresetAudioProcessor::ThreeBandDynamics) {
+        effectTitle="THREE-BAND DYNAMICS  /  ZERO LOOKAHEAD";
+        effectDetail="LOW "+juce::String(processor.getSlotParam(slot,0)*100.f,0)+
+                     "%  /  MID "+juce::String(processor.getSlotParam(slot,1)*100.f,0)+
+                     "%  /  HIGH "+juce::String(processor.getSlotParam(slot,2)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::VoxRackRoom) {
+        effectTitle="VOXRACK ROOM  /  COMB + ALLPASS";
+        effectDetail=juce::String(processor.getSlotParam(slot,2)*200.f,0)+
+                     " ms PREDELAY  /  "+
+                     juce::String(processor.getSlotParam(slot,0)*100.f,0)+"% SIZE";
+    } else if(type==SkellPresetAudioProcessor::VoxRackSmoothComp) {
+        effectTitle="VOXRACK SMOOTH COMP  /  SOFT KNEE";
+        effectDetail=juce::String(-55.f+53.f*processor.getSlotParam(slot,0),1)+
+                     " dB  /  "+juce::String(1.f+11.f*processor.getSlotParam(slot,1),1)+
+                     ":1  /  "+juce::String(18.f*processor.getSlotParam(slot,2),1)+" dB KNEE";
+    }
+    if(effectTitle.isNotEmpty()){
+        Theme::text(g,effectTitle,{47,103,730,22},14,Theme::green,true);
+        Theme::text(g,effectDetail,{47,128,755,18},12,Theme::muted);
+    }
     if(type==SkellPresetAudioProcessor::Compressor ||
        type==SkellPresetAudioProcessor::Gate ||
        type==SkellPresetAudioProcessor::DeEsser ||
