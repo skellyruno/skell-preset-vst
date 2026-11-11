@@ -181,8 +181,14 @@ public:
         if(memory.size()<8)return {left,right};
         memory[(size_t)write]={finiteOrZero(left),finiteOrZero(right)};
         auto read=[&](int channel,float angle) noexcept {
-            const float triangle=(2.f/3.14159265f)*std::asin(std::sin(angle));
-            const float shape=std::sin(angle)*(1.f-shapeMix)+triangle*shapeMix;
+            // Angle is in [0, 3*pi] here. Piecewise triangle avoids the
+            // extra asin(sin()) call per channel on the audio thread.
+            float wrapped=angle;
+            if(wrapped>=6.28318531f)wrapped-=6.28318531f;
+            const float cycle=wrapped*0.63661977f;
+            const float triangle=cycle<1.f?cycle:(cycle<3.f?2.f-cycle:cycle-4.f);
+            const float shape=(shapeMix<.9999f?std::sin(angle)*(1.f-shapeMix):0.f)
+                               +triangle*shapeMix;
             const float tap=(float)(sr*.008)+depthSamples*shape;
             float pos=(float)write-tap;
             if(pos<0.f)pos+=(float)memory.size();
