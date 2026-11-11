@@ -206,7 +206,27 @@ int main(int argc, char** argv) {
             ++failures;
         }
 
+        // Pixel-level branding regression: a previous AttributedString bug
+        // drew PRESET at JUCE's 14pt default despite a 27pt design size.
+        // Exclude the skull badge and the content area from the measurement.
         editor.dismissGuidedTourForScreenshot();
+        editor.configureForScreenshot(0,1,false);
+        const auto wordmark=skellcore::ui::headless::capture(editor,818,482);
+        int firstX=818,lastX=-1,firstY=482,lastY=-1;
+        if(wordmark.image.isValid())
+            for(int y=7;y<45;++y)for(int x=53;x<242;++x) {
+                const auto colour=wordmark.image.getPixelAt(x,y);
+                if(colour.getGreen()>130
+                   && colour.getGreen()>colour.getRed()*1.4f
+                   && colour.getGreen()>colour.getBlue()*1.2f) {
+                    firstX=juce::jmin(firstX,x);lastX=juce::jmax(lastX,x);
+                    firstY=juce::jmin(firstY,y);lastY=juce::jmax(lastY,y);
+                }
+            }
+        if(lastX-firstX<56 || lastY-firstY<11) {
+            std::fprintf(stderr,"PRESET wordmark is missing or too small at 70%%\n");
+            ++failures;
+        }
         processor.loadFactoryPreset(0); // Restore ten-slot baseline for contact sheet.
         // One compact overview: Advanced and Browser at default 70% for each skin.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
