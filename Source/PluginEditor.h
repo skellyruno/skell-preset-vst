@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include <memory>
+#include <SkellCore/GuidedTour.h>
 class SkellPresetAudioProcessorEditor final:public juce::AudioProcessorEditor {
 public:
     explicit SkellPresetAudioProcessorEditor(SkellPresetAudioProcessor&);
@@ -17,5 +18,7 @@ private:
     class Canvas;
     std::unique_ptr<Canvas> canvas;
     SkellPresetAudioProcessor& processor;
+    std::unique_ptr<skellcore::ui::GuidedTourController> guidedTour;
+    void showGuidedTour(bool firstRun);
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellPresetAudioProcessorEditor)
 };
