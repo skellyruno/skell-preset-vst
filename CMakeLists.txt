@@ -86,7 +86,7 @@ juce_add_binary_data(SkellPresetAssets
 target_sources(SkellPreset PRIVATE
     Source/PluginProcessor.h Source/PluginProcessor.cpp
     Source/PluginEditor.h Source/PluginEditor.cpp
-    Source/chain/BasicDSP.h Source/chain/ModulationFX.h Source/chain/ImportedVocalFX.h Source/chain/AdvancedVocalDSP.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h
+    Source/chain/BasicDSP.h Source/chain/ModulationFX.h Source/chain/ImportedVocalFX.h Source/chain/AdvancedVocalDSP.h Source/chain/SpectralPitchFormant.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h
     Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
     Source/host/HostedVST3.h
     Source/ui/Theme.h Source/ui/ModulePicker.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
