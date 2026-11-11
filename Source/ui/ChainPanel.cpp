@@ -109,8 +109,7 @@ void ChainPanel::paint(juce::Graphics& g) {
     int used=0;
     for(int row=0;row<active;row++) {
         const int physical=processor.slotIdAt(row);
-        auto* pv=processor.state.getRawParameterValue("s"+juce::String(physical+1)+"_type");
-        if(pv && (int)pv->load()!=SkellPresetAudioProcessor::Empty)++used;
+        if(processor.slotType(physical)!=SkellPresetAudioProcessor::Empty)++used;
     }
     Theme::text(g,"EFFECT RACK",{15,8,148,22},15,Theme::white,true);
     Theme::text(g,dockingDrag?"RELEASE TO DOCK":
@@ -122,9 +121,8 @@ void ChainPanel::paint(juce::Graphics& g) {
         const int row=scrollOffset+visual;
         const int slot=processor.slotIdAt(row),top=rowStart+rowStep*visual;
         auto box=juce::Rectangle<float>(10.f,(float)top,196.f,(float)rowHeight);
-        auto* pv=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
         auto* on=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");
-        const int type=pv?(int)pv->load():0;
+        const int type=processor.slotType(slot);
         const bool enabled=on && on->load()>.5f && type!=0;
         g.setColour(selected==slot?Theme::panelAlt.brighter(.1f):(hoveredRow==row?Theme::green.withAlpha(.12f):Theme::panelAlt.withMultipliedAlpha(row%2?.78f:.96f)));
         g.fillRoundedRectangle(box,6.f);
@@ -179,9 +177,8 @@ void ChainPanel::refreshIfChanged() {
     for(int row=0;row<currentSlots;++row) {
         const int slot=processor.slotIdAt(row);
         const auto prefix="s"+juce::String(slot+1)+"_";
-        const auto* type=processor.state.getRawParameterValue(prefix+"type");
         const auto* enabled=processor.state.getRawParameterValue(prefix+"on");
-        const int value=slot*4096+(type?(int)type->load():0)*128
+        const int value=slot*4096+processor.slotType(slot)*128
             +(enabled && enabled->load()>.5f?64:0)
             +(std::isfinite(processor.getSlotPeak(slot))
                 ? juce::jlimit(0,63,(int)(processor.getSlotPeak(slot)*64.f)) : 0);
@@ -268,8 +265,8 @@ void ChainPanel::mouseUp(const juce::MouseEvent&) {
     if(pendingFrom<0)return;
     if(dragging && dragTo>=0 && dragTo!=dragFrom)processor.reorderSlot(dragFrom,dragTo);
     const int slot=processor.slotIdAt(dragging && dragTo>=0 ? dragTo : pendingFrom);
-    auto* type=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
-    const bool emptyClick=!dragging && type && (int)type->load()==SkellPresetAudioProcessor::Empty;
+    const bool emptyClick=!dragging &&
+        processor.slotType(slot)==SkellPresetAudioProcessor::Empty;
     pendingFrom=dragFrom=dragTo=-1;dragging=false;repaint();
     if(emptyClick)popupFor(slot);
 }
