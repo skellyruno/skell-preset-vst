@@ -369,11 +369,11 @@ void SlotEditor::paint(juce::Graphics&g) {
             g.setColour(Theme::amber.withAlpha(.7f));
             g.strokePath(envelope,juce::PathStrokeType(2.f));
             Theme::text(g,"VOXRACK ROOM / DAMPED COMB + ALLPASS",
-                        {60,164,720,23},14,Theme::green,true);
+                        {60,102,720,23},14,Theme::green,true);
             Theme::text(g,juce::String(predelayMs,0)+" ms PREDELAY / "+
                         juce::String((int)(size*100.f))+"% SIZE / "+
                         juce::String((int)(damp*100.f))+"% DAMP",
-                        {60,194,720,23},12,Theme::white);
+                        {60,127,720,21},12,Theme::white);
             Theme::text(g,"8 REFLECTION BANKS / STEREO HALL MODEL (ILLUSTRATIVE)",
                         {60,320,730,18},10,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::VoxRackSmoothComp) {
@@ -407,11 +407,11 @@ void SlotEditor::paint(juce::Graphics&g) {
             g.setColour(Theme::amber.withAlpha(.75f));
             g.drawVerticalLine((int)tx,y0,y1);
             Theme::text(g,"VOXRACK SOFT-KNEE / STEREO LINK",
-                        {60,164,670,22},14,Theme::green,true);
+                        {60,102,670,22},14,Theme::green,true);
             Theme::text(g,juce::String(threshold,1)+" dB  /  "+
                         juce::String(ratio,1)+":1  /  "+
                         juce::String(knee,1)+" dB KNEE",
-                        {60,194,690,23},12,Theme::white);
+                        {60,127,690,21},12,Theme::white);
             Theme::text(g,"0 ms PDC / SMOOTH ATTACK + RELEASE",
                         {60,319,700,18},10,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::Radio) {
@@ -443,10 +443,10 @@ void SlotEditor::paint(juce::Graphics&g) {
             g.setColour(Theme::amber.withAlpha(.8f));
             g.drawVerticalLine((int)hzToX(lowHz),y0,y1);
             g.drawVerticalLine((int)hzToX(highHz),y0,y1);
-            Theme::text(g,"BROADCAST / RADIO VOICE", {60,164,470,24},
+            Theme::text(g,"BROADCAST / RADIO VOICE", {60,102,470,23},
                         16,Theme::green,true);
             Theme::text(g,juce::String(lowHz,0)+" - "+juce::String(highHz,0)+
-                        " Hz / VOICE MID BOOST",{60,195,530,21},12,Theme::white);
+                        " Hz / VOICE MID BOOST",{60,127,530,20},12,Theme::white);
             Theme::text(g,"APPROXIMATE RESPONSE / LIVE CUTOFF CONTROL",
                         {60,317,680,19},10,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::RetroCrush) {
@@ -470,9 +470,9 @@ void SlotEditor::paint(juce::Graphics&g) {
             g.setColour(Theme::green);
             g.strokePath(steps,juce::PathStrokeType(2.7f));
             Theme::text(g,"RETRO CRUSH / BIT DEPTH + SAMPLE HOLD",
-                        {61,164,650,23},14,Theme::green,true);
+                        {61,102,650,23},14,Theme::green,true);
             Theme::text(g,juce::String(bits,1)+" BITS / REDUCED SAMPLE RATE",
-                        {61,190,600,21},12,Theme::white);
+                        {61,127,600,20},12,Theme::white);
             Theme::text(g,"STYLIZED RECONSTRUCTION / NOT AN AUDIO WAVEFORM",
                         {61,319,690,17},10,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::Tremolo) {
@@ -497,9 +497,9 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.strokePath(curve,juce::PathStrokeType(ch==0?2.9f:2.2f));
             }
             Theme::text(g,"TREMOLO / DUAL-STEREO AMPLITUDE MOTION",
-                        {60,164,690,22},14,Theme::green,true);
+                        {60,102,690,22},14,Theme::green,true);
             Theme::text(g,"GREEN / LEFT     BLUE / RIGHT",
-                        {60,191,575,21},12,Theme::white);
+                        {60,127,575,21},12,Theme::white);
             Theme::text(g,"ILLUSTRATIVE MODULATION ENVELOPE / NOT INPUT AUDIO",
                         {60,318,720,18},10,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::StereoWidth) {
@@ -524,10 +524,10 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.strokePath(wave,juce::PathStrokeType(2.6f));
             }
             Theme::text(g,"STEREO FIELD / MID + SIDE",
-                        {60,164,680,23},15,Theme::green,true);
+                        {60,102,680,23},15,Theme::green,true);
             Theme::text(g,juce::String(width*100.f,0)+"% WIDTH / BASS MONO "+
                         juce::String(monoHz,0)+" Hz",
-                        {60,195,690,23},12,Theme::white);
+                        {60,127,690,21},12,Theme::white);
             Theme::text(g,"LEFT / RIGHT DECORRELATION IS ILLUSTRATIVE",
                         {60,318,650,18},10,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::ThreeBandDynamics) {
@@ -550,7 +550,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                             Theme::green,true,juce::Justification::centred);
             }
             Theme::text(g,"THREE-BAND DYNAMICS / INDEPENDENT ENVELOPES",
-                        {61,163,740,20},12,Theme::green,true);
+                        {61,102,740,20},12,Theme::green,true);
             Theme::text(g,"240 Hz / 3.4 kHz  /  COMPLEMENTARY CROSSOVERS",
                         {60,320,730,18},10,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::Limiter){
