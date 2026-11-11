@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 #include "Theme.h"
+#include "../chain/EffectRegistry.h"
 #include <functional>
 #include <vector>
 #include <algorithm>
@@ -187,46 +188,10 @@ public:
 
 private:
     static juce::String category(int type){
-        switch(type){
-            case 1:case 5:case 8:case 13:case 14:return "Tone";
-            case 2:case 3:case 4:case 11:case 17:case 19:return "Dynamics";
-            case 6:case 7:case 9:case 10:case 18:return "Space";
-            case 15:case 16:case 20:case 21:case 22:return "Motion";
-            case 23:return "Dynamics";
-            case 24:return "Space";
-            case 25:return "Motion";
-            case 26:return "Tone";
-            case 27:case 28:case 29:return "Dynamics";
-            case 30:return "Pitch";
-            case 12:return "External";
-            default:return "Utility";
-        }
+        return skellpreset::registry::at(type).category;
     }
     static juce::String terms(int type){
-        switch(type){
-            case 1:return "frequency bands filter";
-            case 2:case 3:case 17:case 19:return "compression loud voice";
-            case 4:return "noise threshold suppression";
-            case 5:case 14:return "drive grit distortion lofi";
-            case 6:case 18:return "room reverb ambience";
-            case 7:case 9:return "echo throw delay adlib";
-            case 8:return "harmonics treble";
-            case 10:case 16:case 20:return "stereo layers doubler";
-            case 11:return "sibilance consonants";
-            case 12:return "vst3 third party insert";
-            case 13:return "radio telephone lo-fi";
-            case 15:case 21:return "sweep wobble flange";
-            case 22:return "alien metallic voice modulation";
-            case 23:return "vocal rider auto gain phrase leveling vocal chain";
-            case 24:return "duck echo ping pong tempo synced delay stereo adlib";
-            case 25:return "vibrato voice pitch wobble flutter modulation stereo";
-            case 26:return "eight band parametric eq frequency gain bell equalizer";
-            case 27:return "fet opto serial compressor peak rms parallel smash";
-            case 28:return "harshness tamer dynamic resonances sibilance soothe";
-            case 29:return "adaptive noise control gate suppressor background noise";
-            case 30:return "studio pitch shift formant spectral phase vocoder 16ms fft";
-            default:return {};
-        }
+        return skellpreset::registry::at(type).terms;
     }
     // Conservative fuzzy matching, inspired by ShallowHost's catalog search.
     // Only the message-thread picker uses this, never the audio callback.
