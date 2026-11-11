@@ -920,6 +920,10 @@ bool SlotEditor::testModulePickerInteraction() {
         return false;
     if(!modulePicker.filterMatchesForTest("reverb",SkellPresetAudioProcessor::VoxRackRoom))
         return false;
+    if(!modulePicker.filterMatchesForTest("choruz",SkellPresetAudioProcessor::VocalChorusFX))
+        return false;
+    if(modulePicker.filterMatchesForTest("compressor",SkellPresetAudioProcessor::VocalChorusFX))
+        return false;
     moduleTrigger.onClick();
     if(!modulePicker.isVisible())return false;
     moduleTrigger.onClick();
