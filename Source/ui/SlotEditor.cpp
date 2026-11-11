@@ -207,8 +207,23 @@ void SlotEditor::applyTheme() {
     }
     repaint();
 }
+void SlotEditor::showEqBank(int firstBand) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::EightBandToneFX)return;
+    eqBank=juce::jlimit(0,3,firstBand/2)*2;
+    const auto prefix="s"+juce::String(slot+1)+"_";
+    for(auto& a:knobAttachment)a.reset();
+    for(int k=0;k<4;++k){
+        const int param=eqBank*2+k+1;
+        knobAttachment[(size_t)k]=
+            std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"p"+juce::String(param),knobs[(size_t)k]);
+    }
+    graphSnapshotValid=false;
+    repaint();
+}
 void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
+    eqBank=0;activeEqBand=0;
     if(modulePicker.isVisible())modulePicker.hide();
     graphSnapshotValid=false;
     enabledAttachment.reset();wetAttachment.reset();
@@ -233,6 +248,14 @@ void SlotEditor::refreshIfChanged() {
     for(int i=0;i<6;++i)changed=changed || std::abs(current[(size_t)i]-lastControls[(size_t)i])>1.e-5f;
     if(!changed)return;
     if(type!=lastType){
+        // A new effect resets the EQ bank, preserving all saved parameter
+        // values while reattaching only the controls visible on this page.
+        eqBank=0;activeEqBand=0;
+        for(auto& attachment:knobAttachment)attachment.reset();
+        for(int k=0;k<4;++k)
+            knobAttachment[(size_t)k]=
+                std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                    processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
         moduleTrigger.setButtonText(processor.moduleName(type));
     }
