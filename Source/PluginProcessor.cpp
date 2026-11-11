@@ -706,6 +706,34 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotParam(slot,3,.62f);
         setReal(slotPrefix(slot)+"wet",index==33?.63f:.49f);
     }
+    if(index==34) {
+        // Rider before the compressor: leveled phrases, no added PDC.
+        setSlotType(8,VocalRiderFX);setSlotOn(8,true);
+        setSlotParam(8,0,.71f);setSlotParam(8,1,.54f);
+        setSlotParam(8,2,.68f);setSlotParam(8,3,.16f);
+        setReal("s9_wet",1.f);
+        std::uint64_t order=0;
+        const int ids[]{0,8,1,2,3,4,5,6,7,9,10,11,12,13,14,15};
+        for(int position=0;position<slotCount;++position)
+            order|=(std::uint64_t)ids[position] << (4*position);
+        packedOrder.store(order,std::memory_order_release);
+    } else if(index==35) {
+        // Ducking stereo echo replaces the ordinary phrase throw in this bank.
+        setSlotType(4,DuckingPingPongFX);setSlotOn(4,true);
+        setSlotParam(4,0,.62f);setSlotParam(4,1,.52f);
+        setSlotParam(4,2,.79f);setSlotParam(4,3,.55f);
+        setReal("s5_wet",.44f);
+    } else if(index==36) {
+        setSlotType(8,VocalVibratoFX);setSlotOn(8,true);
+        setSlotParam(8,0,.48f);setSlotParam(8,1,.56f);
+        setSlotParam(8,2,.62f);setSlotParam(8,3,.34f);
+        setReal("s9_wet",.53f);
+        std::uint64_t order=0;
+        const int ids[]{0,1,2,3,8,4,5,6,7,9,10,11,12,13,14,15};
+        for(int position=0;position<slotCount;++position)
+            order|=(std::uint64_t)ids[position] << (4*position);
+        packedOrder.store(order,std::memory_order_release);
+    }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
     state.state.setProperty("presetName",name,nullptr);
