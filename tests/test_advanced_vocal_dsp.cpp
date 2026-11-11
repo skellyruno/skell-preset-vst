@@ -48,6 +48,17 @@ int main(){
             assert(std::abs(y[0])<=std::abs(x)+.00001f);
         }
         assert(maximumReduction>1.f);
+        // Even very large *finite* peak samples must not poison the
+        // detector and leave the compressor permanently silent or nonfinite.
+        const auto pathological=dynamics.process(1e30f,-1e30f);
+        assert(std::isfinite(pathological[0])&&std::isfinite(pathological[1]));
+        assert(std::isfinite(dynamics.reductionDb()));
+        for(int n=0;n<(int)sr/2;++n){
+            const auto y=dynamics.process(.12f*std::sin(n*.031f),
+                                          -.07f*std::sin(n*.031f));
+            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            assert(std::isfinite(dynamics.reductionDb()));
+        }
         // Parallel colour should be gain-neutral on quiet signals and only
         // compress, not unexpectedly amplify, the full-scale peak.
         SerialVocalDynamics parallel;
@@ -67,6 +78,8 @@ int main(){
             assert(std::isfinite(y[0])&&std::isfinite(y[1]));
         }
         harsh.set(.5f,.3f,1.f,.5f);
+        const auto burst=harsh.process(1e30f,-1e30f);
+        assert(std::isfinite(burst[0])&&std::isfinite(burst[1]));
         for(int n=0;n<3000;++n){
             const auto y=harsh.process(.3f*std::sin(n*.12f),.17f);
             assert(std::isfinite(y[0]) && std::isfinite(y[1]));
