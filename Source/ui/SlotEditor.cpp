@@ -127,6 +127,17 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 return juce::String(juce::roundToInt(20.+250.*v))+"Hz";
             }
             const int module=selectedType;
+            if(module==SkellPresetAudioProcessor::EightBandToneFX) {
+                const int band=eqBank+i/2;
+                if(i%2==0){
+                    const double lo=skellpreset::dsp::EightBandTone::edges[(size_t)band];
+                    const double hi=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
+                    const double hz=lo*std::pow(hi/lo,v);
+                    return hz>=1000.?juce::String(hz/1000.,1)+"kHz":
+                           juce::String(juce::roundToInt(hz))+"Hz";
+                }
+                return juce::String((v-.5)*30.,1)+"dB";
+            }
             if(module==SkellPresetAudioProcessor::VocalRiderFX){
                 if(i==1)return juce::String(-26.+14.*v,0)+"dB";
                 if(i==2)return juce::String(3.+12.*v,0)+"dB";
@@ -152,6 +163,14 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 return juce::jlimit(0.,1.,(value-20.)/250.);
             }
             const int module=selectedType;
+            if(module==SkellPresetAudioProcessor::EightBandToneFX) {
+                if(i%2==1)return juce::jlimit(0.,1.,value/30.+.5);
+                const int band=eqBank+i/2;
+                const double lo=skellpreset::dsp::EightBandTone::edges[(size_t)band];
+                const double hi=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
+                const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
+                return juce::jlimit(0.,1.,std::log(hz/lo)/std::log(hi/lo));
+            }
             if(module==SkellPresetAudioProcessor::VocalRiderFX){
                 if(i==1)return juce::jlimit(0.,1.,(value+26.)/14.);
                 if(i==2)return juce::jlimit(0.,1.,(value-3.)/12.);
