@@ -186,6 +186,10 @@ void SkellPresetAudioProcessor::stopCapture() {
 }
 
 void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlock) {
+    // A sample-rate / host-device change invalidates any ongoing WAV header.
+    // Finalize the previous take on the non-realtime preparation path.
+    capture.stop();
+    liveScope.reset();
     rate=(std::isfinite(sampleRate)&&sampleRate>=8000.)?sampleRate:48000.;
     displayedRate.store(rate,std::memory_order_release);
     hostChunkCapacity=juce::jlimit(64,8192,juce::jmax(512,samplesPerBlock));
