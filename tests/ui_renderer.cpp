@@ -266,6 +266,24 @@ int main(int argc, char** argv) {
             std::fprintf(stderr,"PRESET wordmark is missing or too small at 70%%\n");
             ++failures;
         }
+        processor.loadFactoryPreset(0);
+        processor.setSlotType(0,SkellPresetAudioProcessor::Radio);
+        editor.configureForScreenshot(0,1,false);
+        editor.selectRackSlotForScreenshot(0,0);
+        const auto legendCheck=skellcore::ui::headless::capture(editor,818,482);
+        int neonTextPixels=0;
+        if(legendCheck.image.isValid())
+            for(int y=128;y<159;++y)for(int x=198;x<640;++x){
+                const auto colour=legendCheck.image.getPixelAt(x,y);
+                if(colour.getGreen()>120
+                    && colour.getGreen()>colour.getRed()*1.35f
+                    && colour.getGreen()>colour.getBlue()*1.20f)
+                    ++neonTextPixels;
+            }
+        if(neonTextPixels<25) {
+            std::fprintf(stderr,"Radio graph title is hidden by the plot clip at 70%%\n");
+            ++failures;
+        }
         processor.loadFactoryPreset(0); // Restore ten-slot baseline for contact sheet.
         // One compact overview: Advanced and Browser at default 70% for each skin.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
