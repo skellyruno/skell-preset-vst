@@ -178,6 +178,13 @@ void SkellPresetAudioProcessor::updateHostLatency() {
     if(total!=currentReportedLatency){currentReportedLatency=total;setLatencySamples(total);}
 }
 
+juce::Result SkellPresetAudioProcessor::startCapture(const juce::File& file) {
+    return capture.start(file,preparedAudioRate());
+}
+void SkellPresetAudioProcessor::stopCapture() {
+    capture.stop();
+}
+
 void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlock) {
     rate=(std::isfinite(sampleRate)&&sampleRate>=8000.)?sampleRate:48000.;
     displayedRate.store(rate,std::memory_order_release);
@@ -715,6 +722,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         // Read only the processed output chunk here; the pointers above
         // are scoped to this host block and remain valid during capture.
         liveScope.push(inL,inR,frames);
+        capture.push(inL,inR,frames);
     }
     inputPeak.store(inPeak,std::memory_order_relaxed);
     outputPeak.store(outPeak,std::memory_order_relaxed);
