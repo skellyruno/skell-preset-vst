@@ -45,9 +45,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     moduleTrigger.setTooltip("Browse native audio effects by name and category");
     moduleTrigger.onClick=[this]{
         if(modulePicker.isVisible())modulePicker.hide();
-        else modulePicker.open(
-            (int)processor.state.getRawParameterValue(
-               "s"+juce::String(slot+1)+"_type")->load());
+        else modulePicker.open(processor.slotType(slot));
     };
     modulePicker.onSelect=[this](int type){
         processor.setSlotType(slot,type);
