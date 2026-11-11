@@ -9,6 +9,7 @@
 #include <memory>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace skellpreset::capture {
 class ClipRecorder final : private juce::Thread {
@@ -43,7 +44,7 @@ public:
         dropped.store(0,std::memory_order_relaxed);
         sampleRateHz=sampleRate;
         recording.store(true,std::memory_order_release);
-        startThread(juce::Thread::Priority::normal);
+        startThread();
         return juce::Result::ok();
     }
 
@@ -56,10 +57,10 @@ public:
         signalThreadShouldExit();
         if(isThreadRunning()) {
             // Wait until pending FIFO is drained and WAV header finalized.
-            if(!waitForThreadToExit(8000)) {
-                // Never free the writer while its worker still owns it.
-                stopThread(10000);
-            }
+            // Never forcibly terminate a WAV writer while it owns the file.
+            // If a slow disk delays the flush, keeping the data intact is
+            // safer than killing the worker halfway through the RIFF header.
+            waitForThreadToExit(-1);
         }
         writer.reset();
         sampleRateHz=0.;
