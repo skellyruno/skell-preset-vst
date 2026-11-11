@@ -4,7 +4,7 @@ Reference reviewed: user-supplied `voxrack-main(1).zip`, including `docs/ARCHITE
 
 VoxRack is a Windows microphone Audio Processing Object (system mic DSP) controlled by a WinUI application through shared memory. Skell-Preset is a JUCE VST3 inside a DAW, so it should **not** copy the APO COM registration, Windows service integration, WinUI layout, or shared-memory application state.
 
-The ZIP has no clear general redistribution license. **No VoxRack code was copied**. Useful engineering ideas implemented independently include stable ordered stages, block-rate control reads, a lightweight tracking path, per-effect bypass and tail behavior, an additional original split-band De-Esser, and DSP safety tests.
+The VoxRack owner has explicitly authorized reusing and adapting the original DSP source in Skell-Preset. The first authorized port is VoxRack's band-limited delay feedback topology, adapted into stereo Delay and Adlib Throw (see [VoxRack DSP port](VOXRACK_DSP_PORT.md)). The earlier independent improvements still include stable ordered stages, a lightweight tracking path, De-Esser, and regression tests. VoxRack's Windows APO COM registration, background services, and shared-memory WinUI application are *not* imported into the VST3.
 
 ### Latency trade-offs
 

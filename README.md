@@ -42,4 +42,4 @@ Project plugin code/manufacturer and automation IDs remain unchanged. JUCE is pi
 
 A maximum of 16 slots is deliberate because the current order serialization uses 4-bit slot IDs. Click-free type/order graph swapping, seamless host latency transitions during active transport, multiband/linear-phase processing, parallel lanes, deeper pitch/formant adlibs, full MATCH, direct FL .fst translation, and real FL Studio sessions/CPU profiling remain development tasks. Screenshot success does not prove audio quality.
 
-For the user-supplied VoxRack architecture study and why its Windows APO implementation was **not** copied into a VST3, see [VoxRack review](docs/VOXRACK_REVIEW.md).
+VoxRack is now owner-authorized source for carefully selected DSP ports. Its feedback-filtering design is adapted into the stereo Delay and Adlib Throw with zero added PDC. See [VoxRack DSP Port](docs/VOXRACK_DSP_PORT.md) for implementation and regression tests. Windows APO registration and UI hosting code remain separate; see [VoxRack Review](docs/VOXRACK_REVIEW.md).
