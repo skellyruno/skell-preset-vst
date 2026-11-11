@@ -824,6 +824,42 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
             order|=(std::uint64_t)ids[position] << (4*position);
         packedOrder.store(order,std::memory_order_release);
     }
+    if(index>=37 && index<=40){
+        // A new processor placed before the main compressor (or replaces it)
+        // without changing the 16 physical slot IDs or old factory programs.
+        const bool dualComp=index==38;
+        const int physical=dualComp?1:8;
+        const int chosen=index==37?EightBandToneFX:
+            index==38?SerialDynamicsFX:
+            index==39?DynamicHarshnessFX:AdaptiveNoiseFX;
+        setSlotType(physical,chosen);
+        setSlotOn(physical,true);
+        setReal(slotPrefix(physical)+"wet",dualComp?.92f:1.f);
+        if(index==37) {
+            // Airy articulation with restrained low-mid cleanup.
+            const float gains[8]{-.04f,-.06f,-.03f,-.01f,.04f,.055f,.08f,.05f};
+            for(int k=0;k<8;++k) {
+                setSlotParam(8,k*2,.5f);
+                setSlotParam(8,k*2+1,.5f+gains[k]);
+            }
+        } else if(index==38){
+            setSlotParam(1,0,.58f);setSlotParam(1,1,.47f);
+            setSlotParam(1,2,.28f);setSlotParam(1,3,.12f);
+        } else if(index==39){
+            setSlotParam(8,0,.59f);setSlotParam(8,1,.58f);
+            setSlotParam(8,2,.44f);setSlotParam(8,3,.34f);
+        } else {
+            setSlotParam(8,0,.43f);setSlotParam(8,1,.40f);
+            setSlotParam(8,2,.11f);setSlotParam(8,3,.60f);
+        }
+        if(!dualComp){
+            std::uint64_t order=0;
+            const int ids[]{8,0,1,2,3,4,5,6,7,9,10,11,12,13,14,15};
+            for(int position=0;position<slotCount;++position)
+                order|=(std::uint64_t)ids[position] << (4*position);
+            packedOrder.store(order,std::memory_order_release);
+        }
+    }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
     state.state.setProperty("presetName",name,nullptr);
