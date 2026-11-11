@@ -947,6 +947,13 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotParam(7,0,.14f);setSlotParam(7,1,.43f);
         setSlotParam(7,2,.28f);setSlotParam(7,3,.55f);
         setReal("s8_wet",.36f);
+        // Show the six active native modules consecutively at the top
+        // while retaining each historic physical slot/automation ID.
+        std::uint64_t compactOrder=0;
+        const int ids[]{0,1,3,4,5,7,2,6,8,9,10,11,12,13,14,15};
+        for(int position=0;position<slotCount;++position)
+            compactOrder|=(std::uint64_t)ids[position] << (4*position);
+        packedOrder.store(compactOrder,std::memory_order_release);
     }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
