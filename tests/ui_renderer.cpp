@@ -123,9 +123,11 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-broadcast-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-digital-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-threeband-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-vox-velvet-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-vox-chamber-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,15> effectScenes {{
+        const std::array<std::pair<const char*,int>,17> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -140,7 +142,9 @@ int main(int argc, char** argv) {
             {"retro-crush",SkellPresetAudioProcessor::RetroCrush},
             {"tremolo",SkellPresetAudioProcessor::Tremolo},
             {"stereo-width",SkellPresetAudioProcessor::StereoWidth},
-            {"threeband",SkellPresetAudioProcessor::ThreeBandDynamics}
+            {"threeband",SkellPresetAudioProcessor::ThreeBandDynamics},
+            {"voxrack-room",SkellPresetAudioProcessor::VoxRackRoom},
+            {"voxrack-comp",SkellPresetAudioProcessor::VoxRackSmoothComp}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
@@ -164,6 +168,10 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(27);
             } else if(scene.id=="obsidian-factory-threeband-70") {
                 processor.loadFactoryPreset(28);
+            } else if(scene.id=="obsidian-factory-vox-velvet-70") {
+                processor.loadFactoryPreset(29);
+            } else if(scene.id=="obsidian-factory-vox-chamber-70") {
+                processor.loadFactoryPreset(30);
             } else if(scene.id=="obsidian-external-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
@@ -196,8 +204,11 @@ int main(int argc, char** argv) {
             else if(scene.id=="obsidian-factory-broadcast-70"
                     || scene.id=="obsidian-factory-digital-70")
                 editor.selectRackSlotForScreenshot(3,0);
-            else if(scene.id=="obsidian-factory-threeband-70")
+            else if(scene.id=="obsidian-factory-threeband-70" ||
+                    scene.id=="obsidian-factory-vox-velvet-70")
                 editor.selectRackSlotForScreenshot(1,0);
+            else if(scene.id=="obsidian-factory-vox-chamber-70")
+                editor.selectRackSlotForScreenshot(5,0);
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -220,15 +231,17 @@ int main(int argc, char** argv) {
             {"obsidian-effect-radio-70", "obsidian-effect-retro-crush-70"},
             {"obsidian-effect-tremolo-70", "obsidian-effect-stereo-width-70"},
             {"obsidian-effect-threeband-70", "obsidian-effect-radio-70"},
-            {"obsidian-factory-broadcast-70", "obsidian-factory-threeband-70"}
+            {"obsidian-factory-broadcast-70", "obsidian-factory-threeband-70"},
+            {"obsidian-effect-voxrack-room-70", "obsidian-effect-voxrack-comp-70"},
+            {"obsidian-factory-vox-velvet-70", "obsidian-factory-vox-chamber-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 73) {
-            std::fprintf(stderr, "Expected 73 PNGs, captured %d\n", report.captured);
+        if (report.captured != 77) {
+            std::fprintf(stderr, "Expected 77 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 

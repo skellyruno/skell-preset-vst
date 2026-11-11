@@ -290,6 +290,18 @@ public:
         slot.testGraphGesture({680.f,220.f});
         if(processor.getSlotParam(0,0)<.50f)
             issues.add("Three-band graph did not change the actual compression");
+        processor.setSlotType(0,SkellPresetAudioProcessor::VoxRackRoom);
+        processor.setSlotParam(0,0,.12f);
+        slot.select(0);
+        slot.testGraphGesture({685.f,220.f});
+        if(processor.getSlotParam(0,0)<.5f)
+            issues.add("VoxRack Room drag failed to change its room size");
+        processor.setSlotType(0,SkellPresetAudioProcessor::VoxRackSmoothComp);
+        processor.setSlotParam(0,0,.13f);
+        slot.select(0);
+        slot.testGraphGesture({685.f,220.f});
+        if(processor.getSlotParam(0,0)<.5f)
+            issues.add("VoxRack compressor drag failed to change threshold");
         processor.loadFactoryPreset(0);
         slot.select(0);
         chain.setSelectedSlot(0);

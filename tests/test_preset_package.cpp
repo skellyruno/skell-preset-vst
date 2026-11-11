@@ -45,6 +45,20 @@ int main(){
           &&second.slots[11].type==13&&second.slots[15].type==17,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
 
+    // Schema v2 supports all new VoxRack modules without modifying the
+    // original automation indices in an older host project.
+    {
+        auto vox=first;
+        vox.slots[0].type=18; // actual VoxRack Room
+        vox.slots[1].type=19; // actual VoxRack Smooth Compressor
+        const auto newFile=testFile(dir,"voxrack-roundtrip");
+        check(skellpreset::package::write(newFile,vox).wasOk(),
+              "Export VoxRack module IDs using existing schema v2");
+        skellpreset::package::Document restored;
+        check(skellpreset::package::read(newFile,restored).wasOk()
+              && restored.slots[0].type==18&&restored.slots[1].type==19,
+              "Roundtrip native VoxRack Room and Smooth Comp presets");
+    }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
     {
