@@ -8,7 +8,29 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
     else if(type==SkellPresetAudioProcessor::Compressor) {p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+13);p.lineTo((float)x+14,(float)y+4);p.lineTo((float)x+23,(float)y+4);}
     else if(type==SkellPresetAudioProcessor::Limiter) {p.startNewSubPath((float)x,(float)y+12);p.lineTo((float)x+9,(float)y+3);p.lineTo((float)x+23,(float)y+3);}
     else if(type==SkellPresetAudioProcessor::Delay||type==SkellPresetAudioProcessor::Reverb||type==SkellPresetAudioProcessor::AdlibThrow){for(int i=0;i<4;i++)p.addRectangle((float)x+i*6,(float)y+4+(i%2?3:0),3.f,10.f-(i%2?6.f:0.f));}
-    else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
+    else if(type==SkellPresetAudioProcessor::Radio) {
+        p.startNewSubPath((float)x,(float)y+4);p.lineTo((float)x+4,(float)y+4);
+        p.lineTo((float)x+8,(float)y+13);p.lineTo((float)x+15,(float)y+13);
+        p.lineTo((float)x+19,(float)y+4);p.lineTo((float)x+23,(float)y+4);
+    } else if(type==SkellPresetAudioProcessor::RetroCrush) {
+        p.startNewSubPath((float)x,(float)y+14);p.lineTo((float)x+5,(float)y+14);
+        p.lineTo((float)x+5,(float)y+6);p.lineTo((float)x+13,(float)y+6);
+        p.lineTo((float)x+13,(float)y+1);p.lineTo((float)x+20,(float)y+1);
+        p.lineTo((float)x+20,(float)y+10);p.lineTo((float)x+23,(float)y+10);
+    } else if(type==SkellPresetAudioProcessor::Tremolo) {
+        p.startNewSubPath((float)x,(float)y+11);
+        for(int i=1;i<=23;++i)
+            p.lineTo((float)x+i,(float)y+9.f-6.f*std::sin((float)i*.46f));
+    } else if(type==SkellPresetAudioProcessor::StereoWidth) {
+        p.startNewSubPath((float)x,(float)y+8);p.lineTo((float)x+23,(float)y+8);
+        p.startNewSubPath((float)x+11,(float)y+8);
+        p.lineTo((float)x+22,(float)y+1);p.startNewSubPath((float)x+11,(float)y+8);
+        p.lineTo((float)x+22,(float)y+15);
+    } else if(type==SkellPresetAudioProcessor::ThreeBandDynamics) {
+        for(int i=0;i<3;++i)
+            p.addRoundedRectangle((float)x+2.f+8.f*i,(float)y+3.f+3.f*(i%2),
+                                  5.f,12.f-3.f*(i%2),1.f);
+    } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
 ChainPanel::ChainPanel(SkellPresetAudioProcessor& p):processor(p) {}
