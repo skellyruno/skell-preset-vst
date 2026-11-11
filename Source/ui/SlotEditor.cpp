@@ -1312,6 +1312,27 @@ void SlotEditor::mouseUp(const juce::MouseEvent&){
     draggingGraph=false;
 }
 
+bool SlotEditor::testEightBandGraphAndQ() {
+    const auto physical=slot;
+    processor.setSlotType(physical,SkellPresetAudioProcessor::EightBandToneFX);
+    select(physical);
+    activeEqBand=7;
+    showEqBank(activeEqBand);
+    const float oldFreq=processor.getSlotParam(physical,14);
+    const float oldGain=processor.getSlotParam(physical,15);
+    updateGraphNode({790.f,225.f});
+    const auto freq=processor.getSlotParam(physical,14);
+    const auto gain=processor.getSlotParam(physical,15);
+    eqQSlider.setValue(.86,juce::sendNotificationSync);
+    const auto* q=processor.state.getRawParameterValue(
+        "s"+juce::String(physical+1)+"_eqQ8");
+    const bool good=eqBank==6 && activeEqBand==7 &&
+        std::abs(freq-oldFreq)>.05f && std::abs(gain-oldGain)>.05f
+        && q && std::abs(q->load()-.86f)<.015f
+        && moduleSelectorMatchesAudio();
+    return good;
+}
+
 bool SlotEditor::testModulePickerInteraction() {
     if(!modulePicker.filterMatchesForTest("alien",SkellPresetAudioProcessor::RingModFX))
         return false;
