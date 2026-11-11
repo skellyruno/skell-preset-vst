@@ -161,6 +161,21 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 if(i==2)return juce::String(3.+9.*v,0)+" st max";
                 return juce::String(2.+10.*v,0)+" st max";
             }
+            if(module==SkellPresetAudioProcessor::SerialDynamicsFX) {
+                if(i==0)return juce::String(-48.+42.*v,0)+"dB";
+                if(i==1)return juce::String(2.+10.*v,1)+":1";
+                if(i==2)return juce::String(.35+8.*v,1)+"ms";
+            } else if(module==SkellPresetAudioProcessor::DynamicHarshnessFX) {
+                if(i==0)return juce::String(1800.*std::pow(4.2,v)/1000.,1)+"kHz";
+                if(i==1)return juce::String(-53.+43.*v,0)+"dB";
+                if(i==2)return juce::String(10.*v,1)+"dB";
+                return juce::String(30.+350.*v,0)+"ms";
+            } else if(module==SkellPresetAudioProcessor::AdaptiveNoiseFX) {
+                if(i==0)return juce::String(-75.+55.*v,0)+"dB";
+                if(i==1)return juce::String(36.*v,0)+"dB";
+                if(i==2)return juce::String(250.*v,0)+"ms";
+                return juce::String(25.+425.*v,0)+"ms";
+            }
             if(module==SkellPresetAudioProcessor::VocalRiderFX){
                 if(i==1)return juce::String(-26.+14.*v,0)+"dB";
                 if(i==2)return juce::String(3.+12.*v,0)+"dB";
@@ -201,6 +216,22 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                     (2.*(2.+10.*processor.getSlotParam(slot,3))));
                 if(i==2)return juce::jlimit(0.,1.,(value-3.)/9.);
                 return juce::jlimit(0.,1.,(value-2.)/10.);
+            }
+            if(module==SkellPresetAudioProcessor::SerialDynamicsFX) {
+                if(i==0)return juce::jlimit(0.,1.,(value+48.)/42.);
+                if(i==1)return juce::jlimit(0.,1.,(value-2.)/10.);
+                if(i==2)return juce::jlimit(0.,1.,(value-.35)/8.);
+            } else if(module==SkellPresetAudioProcessor::DynamicHarshnessFX) {
+                if(i==0)return juce::jlimit(0.,1.,std::log(
+                    juce::jmax(1.,value*(text.contains("khz")?1000.:1.))/1800.)/std::log(4.2));
+                if(i==1)return juce::jlimit(0.,1.,(value+53.)/43.);
+                if(i==2)return juce::jlimit(0.,1.,value/10.);
+                return juce::jlimit(0.,1.,(value-30.)/350.);
+            } else if(module==SkellPresetAudioProcessor::AdaptiveNoiseFX) {
+                if(i==0)return juce::jlimit(0.,1.,(value+75.)/55.);
+                if(i==1)return juce::jlimit(0.,1.,value/36.);
+                if(i==2)return juce::jlimit(0.,1.,value/250.);
+                return juce::jlimit(0.,1.,(value-25.)/425.);
             }
             if(module==SkellPresetAudioProcessor::VocalRiderFX){
                 if(i==1)return juce::jlimit(0.,1.,(value+26.)/14.);
