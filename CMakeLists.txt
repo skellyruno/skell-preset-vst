@@ -136,6 +136,7 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
     # include directories explicitly instead of creating a second JUCE app.
     add_executable(SkellPresetUIRenderer tests/ui_renderer.cpp)
     target_include_directories(SkellPresetUIRenderer PRIVATE
+    "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include"
         "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
     # The plugin's include dependencies are PRIVATE, so the renderer also
     # links the two SkellCore interface targets to find Core.h and UI.h.
