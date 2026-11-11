@@ -36,16 +36,26 @@ void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
         }
         g.strokePath(wave,juce::PathStrokeType(2.5f));
     } else if(variation==2) {
-        for(int i=0;i<5;++i)
-            g.drawRoundedRectangle(r.getX()+11.f+i*4.f,r.getY()+9.f+i*4.f,
-                                   r.getWidth()-22.f-i*8.f,r.getHeight()-18.f-i*8.f,3.f,1.8f);
+        const float twist=(float)((seed*7)%13)-6.f;
+        const float step=3.f+(float)(seed%4)*.32f;
+        for(int i=0;i<5;++i) {
+            const float margin=8.f+i*step;
+            g.drawRoundedRectangle(r.getX()+margin+twist*.23f,r.getY()+margin,
+                                   r.getWidth()-2.f*margin,r.getHeight()-2.f*margin,
+                                   2.5f+(float)(seed%3),1.4f);
+        }
     } else {
+        const float span=16.f+(float)((seed*3)%11);
+        const float h=12.f+(float)((seed*5)%13);
         juce::Path poly;
-        poly.startNewSubPath(cx,cy-19.f);
-        poly.lineTo(cx+21.f,cy);poly.lineTo(cx,cy+19.f);
-        poly.lineTo(cx-21.f,cy);poly.closeSubPath();
-        g.strokePath(poly,juce::PathStrokeType(2.5f));
-        g.fillEllipse(cx-6.f,cy-6.f,12.f,12.f);
+        poly.startNewSubPath(cx,cy-h);
+        poly.lineTo(cx+span,cy-3.f);
+        poly.lineTo(cx+3.f,cy+h);
+        poly.lineTo(cx-span,cy+3.f);
+        poly.closeSubPath();
+        g.strokePath(poly,juce::PathStrokeType(2.4f));
+        const float core=3.f+(float)(seed%7);
+        g.fillEllipse(cx-core,cy-core,core*2.f,core*2.f);
     }
 }
 }
