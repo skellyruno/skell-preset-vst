@@ -20,6 +20,7 @@ public:
     void openModulePickerForScreenshot() {moduleTrigger.onClick();}
     bool testModulePickerInteraction();
     bool testEightBandGraphAndQ();
+    bool testKnobReadouts();
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
