@@ -921,6 +921,29 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
             order|=(std::uint64_t)ids[position] << (4*position);
         packedOrder.store(order,std::memory_order_release);
     }
+    if(index==42){
+        // 322 DAW has six built-in Web Audio processors but no supplied
+        // named factory preset library. This is an original, opt-in Skell
+        // chain using our existing, more capable native DSP; do not import
+        // browser AudioNodes or replace the original Simple processor.
+        setSlotType(0,EQ);setSlotOn(0,true);
+        setSlotType(1,Compressor);setSlotOn(1,true);
+        setSlotType(2,Empty);setSlotOn(2,false); // no gate in 322 Six
+        setSlotType(3,Saturator);setSlotOn(3,true);
+        setSlotType(4,Delay);setSlotOn(4,true);
+        setSlotType(5,Reverb);setSlotOn(5,true);
+        setSlotType(6,Empty);setSlotOn(6,false); // no limiter in 322 Six
+        setSlotType(7,VocalChorusFX);setSlotOn(7,true);
+        setSlotParam(0,0,.48f);setSlotParam(0,1,.50f);
+        setSlotParam(1,0,.55f);setSlotParam(1,1,.27f);
+        setSlotParam(1,2,.10f);setSlotParam(1,3,.38f);
+        setSlotParam(3,0,.20f);setReal("s4_wet",.25f);
+        setSlotParam(4,0,.22f);setSlotParam(4,1,.35f);setReal("s5_wet",.31f);
+        setSlotParam(5,0,.32f);setReal("s6_wet",.23f);
+        setSlotParam(7,0,.14f);setSlotParam(7,1,.43f);
+        setSlotParam(7,2,.28f);setSlotParam(7,3,.55f);
+        setReal("s8_wet",.36f);
+    }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
     state.state.setProperty("presetName",name,nullptr);
