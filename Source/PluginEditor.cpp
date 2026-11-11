@@ -479,6 +479,7 @@ public:
         processor.loadFactoryPreset(0);
         slot.select(0);
         chain.setSelectedSlot(0);
+        refresh(); // Restore actual Advanced workspace after Simple-mode QA.
         return issues;
     }
     void style(juce::TextButton& b){
