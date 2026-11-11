@@ -41,6 +41,24 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
         p.lineTo((float)x+8.f,(float)y+6.f);
         p.quadraticTo((float)x+14.f,(float)y+4.f,
                       (float)x+23.f,(float)y+4.f);
+    } else if(type==SkellPresetAudioProcessor::VocalChorusFX) {
+        for(int k=0;k<3;++k) {
+            p.startNewSubPath((float)x,(float)y+5.f+3.f*k);
+            for(int i=1;i<23;i+=2)
+                p.lineTo((float)x+i,(float)y+5.f+3.f*k+
+                         2.f*std::sin(i*.47f+k*1.5f));
+        }
+    } else if(type==SkellPresetAudioProcessor::VocalFlangerFX) {
+        p.startNewSubPath((float)x,(float)y+12.f);
+        p.cubicTo((float)x+6.f,(float)y+12.f,
+                  (float)x+5.f,(float)y+3.f,
+                  (float)x+11.f,(float)y+3.f);
+        p.cubicTo((float)x+16.f,(float)y+3.f,
+                  (float)x+16.f,(float)y+14.f,
+                  (float)x+23.f,(float)y+5.f);
+    } else if(type==SkellPresetAudioProcessor::RingModFX) {
+        p.addEllipse((float)x+1.f,(float)y+2.f,12.f,12.f);
+        p.addEllipse((float)x+10.f,(float)y+2.f,12.f,12.f);
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
