@@ -441,6 +441,32 @@ public:
         processor.setSlotOn(8,false);
         if(processor.getLatencySamples()!=0)
             issues.add("Studio pitch/formant removal did not clear host PDC");
+        // The 322 source has six *effect classes* but no named 322 preset
+        // collection. The new native Studio Six factory chain must actually
+        // instantiate all six without deleting the old Simple macro mixer.
+        processor.loadFactoryPreset(42);
+        const int sixTypes[]{SkellPresetAudioProcessor::EQ,
+            SkellPresetAudioProcessor::Compressor,
+            SkellPresetAudioProcessor::Saturator,
+            SkellPresetAudioProcessor::Delay,
+            SkellPresetAudioProcessor::Reverb,
+            SkellPresetAudioProcessor::VocalChorusFX};
+        const int sixSlots[]{0,1,3,4,5,7};
+        for(int i=0;i<6;++i){
+            auto* on=processor.state.getRawParameterValue(
+                "s"+juce::String(sixSlots[i]+1)+"_on");
+            if(processor.slotType(sixSlots[i])!=sixTypes[i] ||
+               !on || on->load()<.5f)
+                issues.add("Studio Six native effect chain is missing a stage");
+        }
+        if(processor.getNumPrograms()!=43)
+            issues.add("Studio Six factory program did not append at index 42");
+        // Critical compatibility: do not replace the original simple macro
+        // processor when adding a catalog, recorder or waveform visualization.
+        setParam(processor,"mode",0.f);
+        refresh();
+        if(chain.isVisible() || macro[0].getWidth()<=0)
+            issues.add("322 integration broke the original Simple macro mixer");
         processor.loadFactoryPreset(0);
         slot.select(0);
         chain.setSelectedSlot(0);
