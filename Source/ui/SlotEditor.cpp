@@ -100,25 +100,10 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);addAndMakeVisible(activeButton);
     wetKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     wetKnob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,70,21);
-    wetKnob.textFromValueFunction=[](double v) {
-        return juce::String(juce::roundToInt(juce::jlimit(0.,1.,v)*100.))+"%";
-    };
-    wetKnob.valueFromTextFunction=[](const juce::String& text) {
-        const double value=text.getDoubleValue();
-        return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
-    };
     addAndMakeVisible(wetKnob);
     eqQSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     eqQSlider.setTextBoxStyle(juce::Slider::TextBoxRight,false,59,22);
     eqQSlider.setRange(0.,1.,.001);
-    eqQSlider.textFromValueFunction=[](double normalized) {
-        const float q=skellpreset::dsp::EightBandTone::qFromNormalized((float)normalized);
-        return "Q "+juce::String(q,2);
-    };
-    eqQSlider.valueFromTextFunction=[](const juce::String& text) {
-        return (double)skellpreset::dsp::EightBandTone::normalizedFromQ(
-            text.retainCharacters("0123456789.-").getFloatValue());
-    };
     eqQSlider.setTooltip("Select an EQ node to edit its independent bandwidth (Q 0.4–8)");
     addAndMakeVisible(eqQSlider);
     eqQSlider.setVisible(false);
@@ -128,6 +113,45 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,76,21);
         // Human-readable display only; hosts still automate the exact stable
         // normalized parameter range. Never make display conversions in DSP.
+        k.setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
+        k.setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
+        k.setColour(juce::Slider::thumbColourId,Theme::white);
+        k.setColour(juce::Slider::textBoxTextColourId,Theme::white);
+        k.setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
+        k.setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
+        addAndMakeVisible(k);
+    }
+    moduleBox.onChange=[this] {
+        const int next=moduleBox.getSelectedId()-1;
+        if(next>=0)processor.setSlotType(slot,next);
+        graphSnapshotValid=false;
+        refreshIfChanged();
+        repaint();
+    };
+    applyTheme();
+    select(0);
+}
+// AudioProcessorValueTreeState attachments replace slider value/text formatters.
+// Reapply our physical-unit formatting AFTER each (re)attachment, including
+// EQ band-page switches. This affects presentation only, not automatable values.
+void SlotEditor::applyKnobReadouts() {
+    wetKnob.textFromValueFunction=[](double v) {
+        return juce::String(juce::roundToInt(juce::jlimit(0.,1.,v)*100.))+"%";
+    };
+    wetKnob.valueFromTextFunction=[](const juce::String& text) {
+        const double value=text.getDoubleValue();
+        return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
+    };
+    eqQSlider.textFromValueFunction=[](double normalized) {
+        const float q=skellpreset::dsp::EightBandTone::qFromNormalized((float)normalized);
+        return "Q "+juce::String(q,2);
+    };
+    eqQSlider.valueFromTextFunction=[](const juce::String& text) {
+        return (double)skellpreset::dsp::EightBandTone::normalizedFromQ(
+            text.retainCharacters("0123456789.-").getFloatValue());
+    };
+    for(int i=0;i<4;++i) {
+        auto& k=knobs[(size_t)i];
         k.textFromValueFunction=[this,i](double v)->juce::String {
             v=juce::jlimit(0.,1.,v);
             const int selectedType=processor.slotType(slot);
@@ -247,23 +271,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
             }
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
-        k.setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
-        k.setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
-        k.setColour(juce::Slider::thumbColourId,Theme::white);
-        k.setColour(juce::Slider::textBoxTextColourId,Theme::white);
-        k.setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
-        k.setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
-        addAndMakeVisible(k);
     }
-    moduleBox.onChange=[this] {
-        const int next=moduleBox.getSelectedId()-1;
-        if(next>=0)processor.setSlotType(slot,next);
-        graphSnapshotValid=false;
-        refreshIfChanged();
-        repaint();
-    };
-    applyTheme();
-    select(0);
 }
 void SlotEditor::applyTheme() {
     Theme::selectFor(processor.state);
@@ -303,6 +311,7 @@ void SlotEditor::showEqBank(int firstBand) {
     eqQAttachment.reset();
     eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.state,prefix+"eqQ"+juce::String(activeEqBand+1),eqQSlider);
+    applyKnobReadouts();
     graphSnapshotValid=false;
     repaint();
 }
@@ -323,6 +332,7 @@ void SlotEditor::select(int newSlot) {
             processor.state,prefix+"eqQ1",eqQSlider);
     for(int k=0;k<4;k++)knobAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
     refreshIfChanged();
+    applyKnobReadouts();
     repaint();
 }
 void SlotEditor::refreshIfChanged() {
@@ -365,6 +375,7 @@ void SlotEditor::refreshIfChanged() {
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
         moduleTrigger.setButtonText(processor.moduleName(type));
     }
+    applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
     loadExternal.setVisible(external);
