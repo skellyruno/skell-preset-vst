@@ -787,6 +787,59 @@ void SlotEditor::paint(juce::Graphics&g) {
             }
             Theme::text(g,"DOUBLER  /  LEFT + RIGHT MICRO-VOICES",
                 {62,165,700,20},12,Theme::green,true);
+        } else if(type==SkellPresetAudioProcessor::VocalRiderFX) {
+            // Illustrative long-term level tracing, not a claim of live LUFS.
+            const float centre=plot.getCentreY();
+            const float strength=processor.getSlotParam(slot,0);
+            const float target=processor.getSlotParam(slot,1);
+            const float targetY=y0+h*(.76f-.42f*target);
+            g.setColour(Theme::green.withAlpha(.13f));
+            g.fillRoundedRectangle(x0,targetY-13.f,w,26.f,5.f);
+            g.setColour(Theme::green.withAlpha(.6f));
+            g.drawHorizontalLine((int)targetY,x0,x1);
+            for(int lane=0;lane<2;++lane) {
+                juce::Path contour;
+                for(int i=0;i<=100;++i){
+                    const float t=(float)i/100.f;
+                    const float source=std::sin(t*26.f)*(.35f+.65f*std::abs(std::sin(t*5.f)));
+                    const float wave=lane==0?source:source*(1.f-.53f*strength);
+                    const float x=x0+t*w;
+                    const float y=centre-wave*h*.25f-(lane==1?16.f:0.f);
+                    if(i==0)contour.startNewSubPath(x,y);else contour.lineTo(x,y);
+                }
+                g.setColour(lane==0?Theme::muted.withAlpha(.48f):Theme::green);
+                g.strokePath(contour,juce::PathStrokeType(lane==0?1.5f:2.5f));
+            }
+        } else if(type==SkellPresetAudioProcessor::DuckingPingPongFX) {
+            const float feedback=processor.getSlotParam(slot,1);
+            const float duck=processor.getSlotParam(slot,2);
+            g.setColour(Theme::muted.withAlpha(.27f));
+            g.drawHorizontalLine((int)plot.getCentreY(),x0,x1);
+            for(int i=0;i<6;++i) {
+                const float decay=std::pow(.55f+.35f*feedback,(float)i);
+                const float tx=x0+68.f+(float)i*132.f;
+                const float amplitude=decay*(1.f-.60f*duck)*(h*.30f);
+                g.setColour((i%2==0?Theme::green:Theme::blue).withAlpha(.9f));
+                g.drawLine(tx,plot.getCentreY()-amplitude,tx,plot.getCentreY()+amplitude,4.f);
+                g.fillEllipse(tx-5.f,plot.getCentreY()-5.f,10.f,10.f);
+            }
+            Theme::text(g,"L  /  R  /  L  /  R  /  L  /  R",
+                {125,279,675,21},11,Theme::muted,true,juce::Justification::centred);
+        } else if(type==SkellPresetAudioProcessor::VocalVibratoFX) {
+            const float depth=processor.getSlotParam(slot,1);
+            const float stereo=processor.getSlotParam(slot,2);
+            for(int channel=0;channel<2;++channel) {
+                juce::Path curve;
+                for(int i=0;i<=160;++i){
+                    const float t=(float)i/160.f;
+                    const float phase=t*(10.f+28.f*first)+(channel?stereo*3.14159f:0.f);
+                    const float y=plot.getCentreY()+std::sin(phase)*h*(.09f+.22f*depth);
+                    const float x=x0+t*w;
+                    if(i==0)curve.startNewSubPath(x,y);else curve.lineTo(x,y);
+                }
+                g.setColour(channel==0?Theme::green:Theme::blue);
+                g.strokePath(curve,juce::PathStrokeType(channel==0?2.7f:1.9f));
+            }
         } else {
             Theme::text(g,processor.moduleName(type).toUpperCase(),
                 {65,198,740,40},25,Theme::green,true,juce::Justification::centred);
@@ -852,6 +905,22 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String(15.f*std::pow(70.f,processor.getSlotParam(slot,0)),0)+
                      " Hz  /  DEPTH "+
                      juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::VocalRiderFX) {
+        effectTitle="VOCAL RIDER  /  STEREO LINKED LEVELING";
+        effectDetail="TARGET "+juce::String(-26.f+14.f*processor.getSlotParam(slot,1),0)+
+            " dB  /  MAX RANGE "+juce::String(3.f+12.f*processor.getSlotParam(slot,2),0)+
+            " dB  /  ZERO ADDED PDC";
+    } else if(type==SkellPresetAudioProcessor::DuckingPingPongFX) {
+        effectTitle="DUCKING PING-PONG  /  HOST TEMPO ECHO";
+        const float division=processor.getSlotParam(slot,0);
+        effectDetail=juce::String("SYNC ")+(division<.25f?"1/16":division<.5f?"1/8":division<.75f?"1/8D":"1/4")+
+            "  /  DUCK "+juce::String(processor.getSlotParam(slot,2)*100.f,0)+
+            "%  /  HOST BPM FALLBACK 120";
+    } else if(type==SkellPresetAudioProcessor::VocalVibratoFX) {
+        effectTitle="VOCAL VIBRATO  /  STEREO DELAY MODULATION";
+        effectDetail=juce::String(.3f+11.7f*processor.getSlotParam(slot,0),1)+
+            " Hz  /  DEPTH "+juce::String(3.5f*processor.getSlotParam(slot,1),1)+
+            " ms  /  SINE-TRIANGLE";
     } else if(type==SkellPresetAudioProcessor::VoxRackRoom) {
         effectTitle="VOXRACK ROOM  /  COMB + ALLPASS";
         effectDetail=juce::String(processor.getSlotParam(slot,2)*200.f,0)+
