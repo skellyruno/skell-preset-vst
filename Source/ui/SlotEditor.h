@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
+#include "ModulePicker.h"
 #include <array>
 #include <memory>
 class SlotEditor final:public juce::Component {
@@ -18,13 +19,19 @@ public:
         return value && moduleBox.getSelectedId()==(int)value->load()+1;
     }
     void testGraphGesture(juce::Point<float> point) {updateGraphNode(point);}
+    void openModulePickerForScreenshot() {moduleTrigger.onClick();}
+    bool testModulePickerInteraction();
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
 private:
     SkellPresetAudioProcessor& processor;
     int slot=0;
+    // ComboBox remains as a noninteractive compatibility/synchronization
+    // adapter; the user-facing selector is the searchable native overlay.
     juce::ComboBox moduleBox;
+    juce::TextButton moduleTrigger{"SELECT EFFECT"};
+    SkellModulePicker modulePicker;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
     std::unique_ptr<juce::FileChooser> externalChooser;
     juce::ToggleButton activeButton;

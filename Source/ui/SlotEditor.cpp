@@ -31,12 +31,32 @@ std::array<juce::String,4> titles(int type) {
     }
 }
 }
-SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):processor(p) {
+SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
+    processor(p),modulePicker(p) {
     for(int i=0;i<names.size();i++)moduleBox.addItem(names[i],i+1);
     moduleBox.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
     moduleBox.setColour(juce::ComboBox::textColourId,Theme::white);
     moduleBox.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
-    addAndMakeVisible(moduleBox);
+    addChildComponent(moduleBox); // retain selected IDs for host/UI assertions
+    moduleBox.setVisible(false);
+    moduleTrigger.setTooltip("Browse native audio effects by name and category");
+    moduleTrigger.onClick=[this]{
+        if(modulePicker.isVisible())modulePicker.hide();
+        else modulePicker.open(
+            (int)processor.state.getRawParameterValue(
+               "s"+juce::String(slot+1)+"_type")->load());
+    };
+    modulePicker.onSelect=[this](int type){
+        processor.setSlotType(slot,type);
+        moduleBox.setSelectedId(type+1,juce::dontSendNotification);
+        moduleTrigger.setButtonText(processor.moduleName(type));
+        graphSnapshotValid=false;
+        refreshIfChanged();
+        repaint();
+    };
+    addAndMakeVisible(moduleTrigger);
+    addAndMakeVisible(modulePicker);
+    modulePicker.setVisible(false);
     for(auto* button:{&loadExternal,&editExternal}){
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
@@ -100,6 +120,9 @@ void SlotEditor::applyTheme() {
     moduleBox.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
     moduleBox.setColour(juce::ComboBox::textColourId,Theme::white);
     moduleBox.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
+    moduleTrigger.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
+    moduleTrigger.setColour(juce::TextButton::textColourOffId,Theme::white);
+    modulePicker.applyTheme();
     activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
     activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);
     for(auto* button:{&loadExternal,&editExternal}) {
@@ -118,6 +141,7 @@ void SlotEditor::applyTheme() {
 }
 void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
+    if(modulePicker.isVisible())modulePicker.hide();
     graphSnapshotValid=false;
     enabledAttachment.reset();wetAttachment.reset();
     externalChooser.reset();
@@ -143,7 +167,10 @@ void SlotEditor::refreshIfChanged() {
     bool changed=!graphSnapshotValid || type!=lastType;
     for(int i=0;i<6;++i)changed=changed || std::abs(current[(size_t)i]-lastControls[(size_t)i])>1.e-5f;
     if(!changed)return;
-    if(type!=lastType)moduleBox.setSelectedId(type+1,juce::dontSendNotification);
+    if(type!=lastType){
+        moduleBox.setSelectedId(type+1,juce::dontSendNotification);
+        moduleTrigger.setButtonText(processor.moduleName(type));
+    }
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
     loadExternal.setVisible(external);
@@ -153,7 +180,10 @@ void SlotEditor::refreshIfChanged() {
 }
 void SlotEditor::resized() {
     // 210px avoids "VoxRack Smooth Co..." truncation while preserving ON/WET.
-    moduleBox.setBounds(489,25,211,29);activeButton.setBounds(711,26,70,28);
+    moduleTrigger.setBounds(489,25,211,29);
+    moduleBox.setBounds(489,25,211,29);
+    modulePicker.setBounds(405,66,470,400);
+    activeButton.setBounds(711,26,70,28);
     wetKnob.setBounds(802,6,88,78);
     loadExternal.setBounds(48,437,172,57);
     editExternal.setBounds(239,437,186,57);
@@ -810,4 +840,22 @@ void SlotEditor::mouseUp(const juce::MouseEvent&){
     if(!draggingGraph)return;
     for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->endChangeGesture();
     draggingGraph=false;
+}
+
+bool SlotEditor::testModulePickerInteraction() {
+    if(!modulePicker.filterMatchesForTest("alien",SkellPresetAudioProcessor::RingModFX))
+        return false;
+    if(!modulePicker.filterMatchesForTest("reverb",SkellPresetAudioProcessor::VoxRackRoom))
+        return false;
+    moduleTrigger.onClick();
+    if(!modulePicker.isVisible())return false;
+    moduleTrigger.onClick();
+    if(modulePicker.isVisible())return false;
+    moduleTrigger.onClick();
+    modulePicker.chooseForTest(SkellPresetAudioProcessor::RingModFX);
+    const auto* type=processor.state.getRawParameterValue(
+        "s"+juce::String(slot+1)+"_type");
+    return !modulePicker.isVisible() && type
+        && (int)type->load()==SkellPresetAudioProcessor::RingModFX
+        && moduleSelectorMatchesAudio();
 }

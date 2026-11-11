@@ -89,7 +89,7 @@ target_sources(SkellPreset PRIVATE
     Source/chain/BasicDSP.h Source/chain/ModulationFX.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h
     Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
     Source/host/HostedVST3.h
-    Source/ui/Theme.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
+    Source/ui/Theme.h Source/ui/ModulePicker.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
     Source/ui/SlotEditor.h Source/ui/SlotEditor.cpp
     Source/ui/PresetBrowser.h Source/ui/PresetBrowser.cpp
     Source/match/MatchCore.h)
