@@ -3,6 +3,7 @@
 #include <SkellCore/Core.h>
 #include "chain/BasicDSP.h"
 #include "chain/VocalEffects.h"
+#include "chain/VoxRackFX.h"
 #include "chain/FactoryPresets.h"
 #include "chain/PresetPackage.h"
 #include "host/HostedVST3.h"
@@ -12,7 +13,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
@@ -78,6 +79,8 @@ private:
         skellpreset::dsp::VocalTremolo tremolo;
         skellpreset::dsp::VocalWidth width;
         skellpreset::dsp::ThreeBandDynamics threeBand;
+        skellpreset::dsp::VoxRackRoom voxRoom;
+        skellpreset::dsp::VoxRackSmoothCompressor voxComp;
         skellpreset::dsp::Delay delay;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;

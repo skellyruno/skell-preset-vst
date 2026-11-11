@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -73,6 +73,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     deesser.prepare(sampleRate);
     radio.prepare(sampleRate);crusher.prepare(sampleRate);tremolo.prepare(sampleRate);
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
+    voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -295,6 +296,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case ThreeBandDynamics:
                 e.threeBand.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
+            case VoxRackRoom:
+                e.voxRoom.set(c.p[0],c.p[1],200.f*c.p[2],20.f+980.f*c.p[3]);
+                break;
+            case VoxRackSmoothComp:
+                e.voxComp.set(-55.f+53.f*c.p[0],1.f+11.f*c.p[1],
+                              18.f*c.p[2],40.f+410.f*c.p[3]);
+                break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
                                   500.f+17500.f*c.p[2]);
@@ -393,7 +401,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 continue;
             }
             const bool keepTail=c.type==Limiter || c.type==Delay ||
-                c.type==Reverb || c.type==AdlibThrow || c.type==AdlibDoubler;
+                c.type==Reverb || c.type==VoxRackRoom ||
+                c.type==AdlibThrow || c.type==AdlibDoubler;
             if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
             for(int n=0;n<frames;++n) {
@@ -443,6 +452,14 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case ThreeBandDynamics: {
                         const auto y=e.threeBand.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case VoxRackRoom: {
+                        const auto y=e.voxRoom.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case VoxRackSmoothComp: {
+                        const auto y=e.voxComp.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
@@ -607,6 +624,19 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotParam(3,0,.61f);setSlotParam(3,1,.35f);
         setSlotParam(3,2,.5f);setSlotParam(3,3,.5f);
         setReal("s4_wet",.62f);
+    }
+    if(index==29 || index==30) {
+        setSlotType(1,VoxRackSmoothComp);setSlotOn(1,true);
+        setSlotParam(1,0,index==29?.56f:.39f);
+        setSlotParam(1,1,index==29?.30f:.56f);
+        setSlotParam(1,2,index==29?.42f:.56f);
+        setSlotParam(1,3,.32f);
+        setSlotType(5,VoxRackRoom);setSlotOn(5,true);
+        setSlotParam(5,0,index==29?.38f:.73f);
+        setSlotParam(5,1,index==29?.53f:.37f);
+        setSlotParam(5,2,index==29?.07f:.18f);
+        setSlotParam(5,3,.16f);
+        setReal("s6_wet",index==29?.20f:.45f);
     }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);

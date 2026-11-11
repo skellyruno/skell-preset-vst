@@ -53,3 +53,7 @@ add_test(NAME SkellPresetVoxRackDelayTest COMMAND SkellPresetVoxRackDelayTest)
 add_executable(SkellPresetVocalEffectsTest test_vocal_effects.cpp)
 target_compile_features(SkellPresetVocalEffectsTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetVocalEffectsTest COMMAND SkellPresetVocalEffectsTest)
+
+add_executable(SkellPresetVoxRackFXTest test_voxrack_fx.cpp)
+target_compile_features(SkellPresetVoxRackFXTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVoxRackFXTest COMMAND SkellPresetVoxRackFXTest)

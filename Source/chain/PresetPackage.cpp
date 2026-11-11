@@ -44,7 +44,7 @@ juce::Result validate(const Document& d) {
     std::array<bool, slotCount> used {};
     for (const auto& slot : d.slots) {
         if (slot.slotId < 0 || slot.slotId >= slotCount || used[(size_t)slot.slotId]
-            || slot.type < 0 || slot.type > 17 || ! finiteRange(slot.wet, 0, 1))
+            || slot.type < 0 || slot.type > 19 || ! finiteRange(slot.wet, 0, 1))
             return juce::Result::fail("Invalid chain slot");
         used[(size_t)slot.slotId] = true;
         for (const auto v : slot.params)
@@ -131,7 +131,7 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         auto& slot=candidate.slots[(size_t)i];
         const auto enabled=item.getProperty("enabled", {});
         if (! decodeInteger(item.getProperty("slotId", {}),0,encodedSlots-1,slot.slotId)
-            || ! decodeInteger(item.getProperty("type", {}),0,17,slot.type)
+            || ! decodeInteger(item.getProperty("type", {}),0,19,slot.type)
             || ! enabled.isBool()
             || ! decodeFloat(item.getProperty("wet", {}),0,1,slot.wet))
             return juce::Result::fail("Invalid chain metadata");
