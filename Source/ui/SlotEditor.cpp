@@ -226,7 +226,7 @@ void SlotEditor::resized() {
     moduleBox.setBounds(489,25,211,29);
     modulePicker.setBounds(405,66,470,400);
     activeButton.setBounds(711,26,70,28);
-    wetKnob.setBounds(805,5,86,80);
+    wetKnob.setBounds(805,22,86,66);
     loadExternal.setBounds(52,420,177,62);
     editExternal.setBounds(246,420,188,62);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
@@ -245,7 +245,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     Theme::text(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
     Theme::text(g,"MODULE",{491,9,140,15},9,Theme::muted,true);
-    Theme::text(g,"WET",{832,3,50,15},9,Theme::muted,true);
+    Theme::text(g,"WET",{821,5,65,15},11,Theme::muted,true,juce::Justification::centred);
     const auto plot=juce::Rectangle<float>(33,151,835,206);
     g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
