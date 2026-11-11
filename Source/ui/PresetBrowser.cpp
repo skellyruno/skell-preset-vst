@@ -249,15 +249,20 @@ void PresetBrowser::chooseArtwork() {
                     "Invalid artwork","Choose a valid image up to 4096 x 4096.");return;
             }
             const auto destination=safe->activeUserPreset.withFileExtension(".png");
-            if(destination.existsAsFile())destination.deleteFile();
-            juce::FileOutputStream output(destination);
+            // Write-then-replace: a failed save must not destroy the previous cover.
+            juce::TemporaryFile staging(destination);
             juce::PNGImageFormat png;
             const auto thumbnail=image.rescaled(240,180,juce::Graphics::mediumResamplingQuality);
-            if(!output.openedOk() || !png.writeImageToStream(thumbnail,output)) {
-                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                    "Cannot save artwork","The preset cover could not be written.");return;
+            bool written=false;
+            {
+                juce::FileOutputStream output(staging.getFile());
+                if(output.openedOk())
+                    written=png.writeImageToStream(thumbnail,output) && output.flush();
             }
-            output.flush();
+            if(!written || !staging.overwriteTargetFileWithTemporary()) {
+                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                    "Cannot save artwork","Your previous cover is unchanged. Check library permissions.");return;
+            }
             safe->scanLibrary();
             safe->refreshArtwork();
         });
