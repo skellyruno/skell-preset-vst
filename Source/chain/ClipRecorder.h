@@ -27,14 +27,18 @@ public:
             return juce::Result::fail("Choose a .wav file");
         if(!path.getParentDirectory().isDirectory())
             return juce::Result::fail("Recording folder does not exist");
-        std::unique_ptr<juce::FileOutputStream> stream(path.createOutputStream());
-        if(!stream||!stream->openedOk())
+        std::unique_ptr<juce::FileOutputStream> fileStream(path.createOutputStream());
+        if(!fileStream||!fileStream->openedOk())
             return juce::Result::fail("Cannot create recording file");
+        std::unique_ptr<juce::OutputStream> stream(std::move(fileStream));
         juce::WavAudioFormat wav;
-        std::unique_ptr<juce::AudioFormatWriter> next(
-            wav.createWriterFor(stream.get(),sampleRate,2,24,{},0));
+        const auto options=juce::AudioFormatWriter::Options{}
+            .withSampleRate(sampleRate).withNumChannels(2)
+            .withBitsPerSample(24);
+        auto next=wav.createWriterFor(stream,options);
         if(!next)return juce::Result::fail("Cannot prepare 24-bit WAV writer");
-        stream.release(); // JUCE AudioFormatWriter owns and deletes the stream.
+        // The new JUCE 8 writer API transfers stream ownership only on
+        // success. No leaked/double-deleted OutputStream is possible.
         writer=std::move(next);
         const int frames=(int)std::clamp(sampleRate*4.,32768.,768000.);
         fifo.setTotalSize(frames);
