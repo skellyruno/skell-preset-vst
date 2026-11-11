@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include <cmath>
 namespace {
-const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp"};
+const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator"};
 std::array<juce::String,4> titles(int type) {
     switch(type){
         case 1:return {"Frequency","Gain","Q","Low Cut"};
@@ -24,6 +24,9 @@ std::array<juce::String,4> titles(int type) {
         case 17:return {"Low Dyn","Mid Dyn","High Dyn","Release"};
         case 18:return {"Room Size","Damping","Pre-delay","Low Cut"};
         case 19:return {"Threshold","Ratio","Soft Knee","Release"};
+        case 20:return {"Rate","Depth","Voices","Stereo"};
+        case 21:return {"Rate","Sweep","Feedback","Stereo"};
+        case 22:return {"Carrier Hz","Depth","Shape","Stereo"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }

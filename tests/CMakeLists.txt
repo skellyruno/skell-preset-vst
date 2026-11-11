@@ -57,3 +57,8 @@ add_test(NAME SkellPresetVocalEffectsTest COMMAND SkellPresetVocalEffectsTest)
 add_executable(SkellPresetVoxRackFXTest test_voxrack_fx.cpp)
 target_compile_features(SkellPresetVoxRackFXTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetVoxRackFXTest COMMAND SkellPresetVoxRackFXTest)
+
+# Original modulation DSP (VML concepts reimplemented, no GPL code copied).
+add_executable(SkellPresetModulationFXTest test_modulation_fx.cpp)
+target_compile_features(SkellPresetModulationFXTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetModulationFXTest COMMAND SkellPresetModulationFXTest)

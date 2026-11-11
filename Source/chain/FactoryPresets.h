@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,31> factoryPresets {{
+inline constexpr std::array<FactoryPreset,34> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -42,5 +42,8 @@ inline constexpr std::array<FactoryPreset,31> factoryPresets {{
     {"Three-Band Silk","Main Vocals","Controlled multiband focus and subtle width",2,.57f,.57f,.21f,.11f},
     {"VoxRack Velvet","Main Vocals","Soft-knee dynamics and a room-sized vocal finish",4,.51f,.47f,.39f,.09f},
     {"VoxRack Chamber","Adlibs","VoxRack room reflections with phrase-end echoes",5,.40f,.50f,.78f,.34f},
+    {"Wide Choir Adlib","Adlibs","Lush moving vocal layers and stereo chorus",0,.60f,.42f,.67f,.19f},
+    {"Phantom Sweep","Adlibs","Phased comb motion for energetic adlib sends",5,.55f,.64f,.44f,.32f},
+    {"Alien Ring","Adlibs","Metallic ring voice with dark phrase throws",1,.30f,.61f,.56f,.77f},
 }};
 }

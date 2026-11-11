@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -74,6 +74,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     radio.prepare(sampleRate);crusher.prepare(sampleRate);tremolo.prepare(sampleRate);
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
     voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
+    chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -303,6 +304,18 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 e.voxComp.set(-55.f+53.f*c.p[0],1.f+11.f*c.p[1],
                               18.f*c.p[2],40.f+410.f*c.p[3]);
                 break;
+            case VocalChorusFX:
+                e.chorus.set(.08f+3.9f*c.p[0],1.f+10.f*c.p[1],
+                             2.f+3.f*c.p[2],c.p[3]);
+                break;
+            case VocalFlangerFX:
+                e.flanger.set(.05f+4.95f*c.p[0],.3f+9.0f*c.p[1],
+                              (c.p[2]*2.f-1.f)*.82f,c.p[3]);
+                break;
+            case RingModFX:
+                e.ring.set(15.f*std::pow(70.f,c.p[0]),
+                            c.p[1],c.p[2],c.p[3]);
+                break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
                                   500.f+17500.f*c.p[2]);
@@ -402,6 +415,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             }
             const bool keepTail=c.type==Limiter || c.type==Delay ||
                 c.type==Reverb || c.type==VoxRackRoom ||
+                c.type==VocalChorusFX || c.type==VocalFlangerFX ||
                 c.type==AdlibThrow || c.type==AdlibDoubler;
             if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
@@ -460,6 +474,18 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case VoxRackSmoothComp: {
                         const auto y=e.voxComp.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case VocalChorusFX: {
+                        const auto y=e.chorus.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case VocalFlangerFX: {
+                        const auto y=e.flanger.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case RingModFX: {
+                        const auto y=e.ring.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
@@ -637,6 +663,16 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotParam(5,2,index==29?.07f:.18f);
         setSlotParam(5,3,.16f);
         setReal("s6_wet",index==29?.20f:.45f);
+    }
+    if(index>=31 && index<=33) {
+        const int slot=index==31?3:(index==32?7:3);
+        setSlotType(slot,index==31?VocalChorusFX:(index==32?VocalFlangerFX:RingModFX));
+        setSlotOn(slot,true);
+        setSlotParam(slot,0,index==33?.43f:.22f);
+        setSlotParam(slot,1,index==33?.81f:.57f);
+        setSlotParam(slot,2,index==33?.20f:.52f);
+        setSlotParam(slot,3,.62f);
+        setReal(slotPrefix(slot)+"wet",index==33?.63f:.49f);
     }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
