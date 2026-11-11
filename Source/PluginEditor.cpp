@@ -307,6 +307,24 @@ public:
         slot.testGraphGesture({685.f,220.f});
         if(processor.getSlotParam(0,0)<.5f)
             issues.add("VoxRack compressor drag failed to change threshold");
+        // Extended modules must not change the 23-value legacy VST3
+        // choice parameter: old FL Studio automation keeps its normalization.
+        for(int type=SkellPresetAudioProcessor::VocalRiderFX;
+                type<=SkellPresetAudioProcessor::VocalVibratoFX;++type) {
+            processor.setSlotType(0,type);
+            slot.select(0);
+            const auto* legacy=processor.state.getRawParameterValue("s1_type");
+            const auto* extension=processor.state.getRawParameterValue("s1_fxExt");
+            if(processor.slotType(0)!=type || !slot.moduleSelectorMatchesAudio()
+                || !legacy || (int)legacy->load()!=SkellPresetAudioProcessor::Empty
+                || !extension
+                || (int)extension->load()!=type-SkellPresetAudioProcessor::RingModFX)
+                issues.add("Extended rack module was not mapped to separate host parameter");
+        }
+        processor.setSlotType(0,SkellPresetAudioProcessor::RingModFX);
+        if(auto* extension=processor.state.getRawParameterValue("s1_fxExt"))
+            if((int)extension->load()!=0)
+                issues.add("Legacy module did not clear extended host parameter");
         processor.loadFactoryPreset(0);
         slot.select(0);
         chain.setSelectedSlot(0);
