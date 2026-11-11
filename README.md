@@ -1,6 +1,6 @@
-# SKELL-PRESET | ONE PLUGIN. EVERY SOUND.
+# SKELLPRESET | ONE PLUGIN. EVERY SOUND.
 
-**2026 development build — real JUCE 8 Windows VST3.** Skell-Preset uses SkellCore's reusable headless renderer and DSP modules. The plugin starts with a 10-slot rack. **+ ADD SLOT** appends a real processing/automation stage, up to 16 total; scroll the rack to see positions 11–16. The new physical IDs s11–s16 never replace the original ten host automation IDs.
+**2026 development build — JUCE 8 Windows VST3 only (no standalone).** SkellPreset uses SkellCore's reusable headless renderer and DSP modules. The plugin starts with a 10-slot rack. **+ ADD SLOT** appends a real processing/automation stage, up to 16 total; scroll the rack to see positions 11–16. The new physical IDs s11–s16 never replace the original ten host automation IDs.
 
 ## Effects, latency and quality
 
@@ -10,9 +10,19 @@ The **new modulation suite** adds original, zero-lookahead **Vocal Chorus**, **V
 
 **Skell Live Lead** omits the limiter for **0 samples reported PDC** during tracking. **Skell Vocal Polish** has a De-Esser plus the 3 ms limiter for mixing. Neither preset controls interface buffer, other plugins or FL Studio mixer latency. Real-world CPU use and audio quality in FL Studio still need host tests and your vocal reference WAVs.
 
+## Advanced vocal suite (development PR #5)
+
+New native rack modules include a stereo-linked **Vocal Rider**, tempo-synced **Ducking Ping-Pong** echoes and **Vocal Vibrato** (source-review PR #4); plus an **8-band parametric EQ** (independent frequency, gain and Q per band), serial **FET + Opto** compression, **Harshness Tamer**, and **Adaptive Noise Control**. Each has an effect icon, keyboard-searchable entry and dedicated parameter-driven vector display. New rotary and master-strip readouts use physical Hz, dB, %, ratio or time labels.
+
+An optional, **experimental Studio Pitch + Formant** uses a stereo 1024-point FFT / 256-sample hop with **768-sample reported host delay compensation**. The 768-sample delay equates to 16 ms at 48 kHz. This is not a live autotune or a production-validated transparent formant processor. The Adaptive Noise module is **not neural RNNoise** and has no claim of trained noise suppression. Keep studio pitch out of live tracking chains until actual voice listening and CPU/PDC checks have passed.
+
+Old `sN_type` effect choice automation is preserved exactly. New effects are selected through separately appended `fxExt`, `fxExt2`, and `fxExt3` choices; independent EQ-Q host parameters are appended. Native schema-v2 presets can roundtrip Q arrays, while older files import with safe neutral Q. New factory indices 34–41 follow the preserved original 0–33.
+
+Read the [DSP integration audit](docs/ZIP_DSP_INTEGRATION_AUDIT.md) and [advanced suite release gates](docs/ADVANCED_VOCAL_SUITE.md) for provenance, verification status, and unfinished model/host work. **PR #5 is stacked on #4, #3 and #2**; do not merge out of order or interpret passing portable tests as a released VST3.
+
 ## Presets and compatibility
 
-The factory bank includes 34 preserved-ID Main Vocals/Adlibs sounds including **Wide Choir Adlib**, **Phantom Sweep**, **Alien Ring**, **VoxRack Velvet**, and **VoxRack Chamber**. Unfinished Vocoding items remain hidden. Import and export native **.skellpreset** archives. The **My Presets** bank lists locally saved/imported native preset packages for quick auditions without closing the menu. Schema-v2 archives retain all sixteen physical slots and the active chain length; schema-v1 ten-slot packages remain readable. Existing DAW state and original 10-slot parameter IDs are preserved.
+The factory bank preserves its first 34 Main Vocals/Adlibs program IDs including **Wide Choir Adlib**, **Phantom Sweep**, **Alien Ring**, **VoxRack Velvet**, and **VoxRack Chamber**. New vocal-suite factory entries extend the bank to 42 programs without shifting historical indices. Unfinished Vocoding items remain hidden. Import and export native **.skellpreset** archives. The **My Presets** bank lists locally saved/imported native preset packages for quick auditions without closing the menu. Schema-v2 archives retain all sixteen physical slots and the active chain length; schema-v1 ten-slot packages remain readable. Existing DAW state and original 10-slot parameter IDs are preserved.
 
 **FL Studio .fst / third-party preset formats are not directly compatible.** To rebuild your particular main vocal and adlib chains, supply same-performance dry/wet WAV pairs, optional FX-only prints, the FL chain screenshots, BPM/key and plugin settings. See [Reference WAV workflow](docs/REFERENCE_WAV_WORKFLOW.md). Full WAV-driven multi-effect matching remains unfinished.
 
@@ -42,7 +52,7 @@ Project plugin code/manufacturer and automation IDs remain unchanged. JUCE is pi
 
 ## Unfinished / release gates
 
-A maximum of 16 slots is deliberate because the current order serialization uses 4-bit slot IDs. Click-free type/order graph swapping, seamless host latency transitions during active transport, multiband/linear-phase processing, parallel lanes, deeper pitch/formant adlibs, full MATCH, direct FL .fst translation, and real FL Studio sessions/CPU profiling remain development tasks. Screenshot success does not prove audio quality.
+A maximum of 16 slots is deliberate because the current order serialization uses 4-bit slot IDs. Click-free type/order graph swapping, seamless host latency transitions during active transport, multiband **dynamics**/linear-phase EQ, parallel lanes, verified low-latency pitch correction, full MATCH, direct FL .fst translation, neural noise suppression with a licensed model, and real FL Studio listening/CPU profiling remain development tasks. Screenshot success does not prove audio quality.
 
 VoxRack is now owner-authorized source for carefully selected DSP ports. Its feedback-filtering design is adapted into the stereo Delay and Adlib Throw with zero added PDC. See [VoxRack DSP Port](docs/VOXRACK_DSP_PORT.md) for implementation and regression tests. Windows APO registration and UI hosting code remain separate; see [VoxRack Review](docs/VOXRACK_REVIEW.md).
 
