@@ -37,9 +37,12 @@ public:
         if(descriptions.isEmpty())return juce::Result::fail("No compatible audio VST3 effect found in bundle");
         juce::PluginDescription* chosen=nullptr;
         for(auto* description:descriptions)
-            if(!description->isInstrument && description->numInputChannels>0
-                && description->numOutputChannels>0) {chosen=description;break;}
-        if(!chosen)return juce::Result::fail("A stereo audio effect is required (not an instrument)");
+            if(!description->isInstrument) {chosen=description;break;}
+        // JUCE VST3 scans may report zero channels until the plug-in has been
+        // instantiated; VST3 buses can also be dynamic. Do not reject a
+        // valid audio effect using its uninitialized scanner channel counts.
+        // Instead validate the real instance's stereo bus layout below.
+        if(!chosen)return juce::Result::fail("An audio VST3 effect is required (not an instrument)");
         juce::String error;
         auto instance=formats.createPluginInstance(*chosen,std::max(sr,8000.),
                                                    std::max(block,64),error);
