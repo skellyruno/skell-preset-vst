@@ -193,7 +193,7 @@ void SkellPresetAudioProcessor::setSlotOn(int slot,bool on) {setReal(slotPrefix(
 int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     if(slot<0 || slot>=slotCount)return Empty;
     const auto& raw=rawSlots[(size_t)slot];
-    const int oldType=raw.type?juce::jlimit(0,RingModFX,(int)raw.type->load()):Empty;
+    const int oldType=raw.type?juce::jlimit(0,(int)RingModFX,(int)raw.type->load()):Empty;
     const int extra=raw.extension?juce::jlimit(0,3,(int)raw.extension->load()):0;
     return oldType==Empty && extra>0 ? RingModFX+extra : oldType;
 }
