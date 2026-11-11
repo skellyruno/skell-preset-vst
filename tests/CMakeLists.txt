@@ -75,3 +75,8 @@ add_test(NAME SkellPresetAdvancedVocalDSPTest COMMAND SkellPresetAdvancedVocalDS
 add_executable(SkellPresetSpectralPitchFormantTest test_spectral_pitch_formant.cpp)
 target_compile_features(SkellPresetSpectralPitchFormantTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetSpectralPitchFormantTest COMMAND SkellPresetSpectralPitchFormantTest)
+
+# 322 DAW architecture: canonical native effect registry and real output scope.
+add_executable(SkellPreset322RegistryScopeTest test_322_registry_scope.cpp)
+target_compile_features(SkellPreset322RegistryScopeTest PRIVATE cxx_std_17)
+add_test(NAME SkellPreset322RegistryScopeTest COMMAND SkellPreset322RegistryScopeTest)
