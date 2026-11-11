@@ -197,6 +197,7 @@ private:
             case 25:return "Motion";
             case 26:return "Tone";
             case 27:case 28:case 29:return "Dynamics";
+            case 30:return "Pitch";
             case 12:return "External";
             default:return "Utility";
         }
@@ -223,6 +224,7 @@ private:
             case 27:return "fet opto serial compressor peak rms parallel smash";
             case 28:return "harshness tamer dynamic resonances sibilance soothe";
             case 29:return "adaptive noise control gate suppressor background noise";
+            case 30:return "studio pitch shift formant spectral phase vocoder 16ms fft";
             default:return {};
         }
     }
