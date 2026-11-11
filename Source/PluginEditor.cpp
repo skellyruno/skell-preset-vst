@@ -511,7 +511,21 @@ public:
             Theme::text(g,processor.presetName(),{74,164,988,69},47,Theme::white,true);
             Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,248,900,24},14,Theme::muted,true);
             Theme::text(g,"Four macros, one full effect rack. Open Advanced to edit every module.",{79,278,960,24},13,Theme::muted);
-            g.setColour(Theme::stroke);g.drawHorizontalLine(320,74.f,1084.f);
+            // Expanded live scope in the Simple view: this is actual
+            // post-effects output, not a random waveform drawn for decoration.
+            Theme::text(g,"LIVE AUDIO",{79,306,110,20},11,
+                processor.isCapturing()?Theme::red:Theme::green,true);
+            g.setColour(Theme::stroke.withAlpha(.48f));
+            g.drawHorizontalLine(317,202.f,1077.f);
+            juce::Path simpleScope;
+            for(std::size_t n=0;n<waveform.size();++n) {
+                const float x=205.f+(float)n*867.f/(waveform.size()-1);
+                const float y=317.f-juce::jlimit(-1.f,1.f,waveform[n])*10.f;
+                if(n==0)simpleScope.startNewSubPath(x,y);
+                else simpleScope.lineTo(x,y);
+            }
+            g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.9f));
+            g.strokePath(simpleScope,juce::PathStrokeType(1.7f));
             const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
             const juce::StringArray hints{"COLOR & AIR","TRANSIENT IMPACT","DEPTH & TAILS","EDGE & TEXTURE"};
             for(int k=0;k<4;k++){
@@ -618,6 +632,9 @@ public:
             armed?Theme::red.withAlpha(.27f):Theme::panelAlt);
         // Only the small scope strip needs refresh at 30 Hz.
         repaint(juce::Rectangle<int>(73,51,271,25));
+        const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
+        if(activeView==0 || (activeView==3 && previousMode==0))
+            repaint(juce::Rectangle<int>(78,303,1010,29));
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
