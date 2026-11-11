@@ -439,12 +439,18 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"ECHO NUMBER  1 - 5",{38,364,360,17},10,Theme::muted);
     }
     const auto labels=titles(type);
-    for(int i=0;i<4;i++)Theme::text(g,labels[(size_t)i].toUpperCase(),{133+211*i,459,98,19},11,Theme::muted,true);
+    for(int i=0;i<4;i++)
+        Theme::text(g,labels[(size_t)i].toUpperCase(),{133+211*i,459,98,19},
+                    11,Theme::muted,true);
+    const juce::String gestureHint="DRAG GREEN HANDLE  /  X: "+
+        labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
-                  "SLOT CONTROL / 20 MS WET/BYPASS FADES",{30,395,700,17},10,Theme::muted);
+                  type==SkellPresetAudioProcessor::ExternalVST3
+                    ? juce::String("EXTERNAL VST3  /  THIRD-PARTY EDITOR OPENS SEPARATELY")
+                    : gestureHint,{30,395,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {
     const auto type=(int)processor.state.getRawParameterValue(
