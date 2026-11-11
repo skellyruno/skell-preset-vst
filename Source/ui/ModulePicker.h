@@ -4,12 +4,30 @@
 #include "Theme.h"
 #include <functional>
 #include <vector>
+#include <algorithm>
 
 // ShallowHost-inspired native effect finder. Unlike a generic ComboBox, this
 // search/filter UI is rendered inside the existing JUCE PluginEditor. It never
 // instantiates a plugin or touches the audio graph while typing or scrolling.
 // All actual changes still go through the original stable slot-type parameter.
 class SkellModulePicker final : public juce::Component {
+    // Keyboard arrows move the highlighted result while the search retains
+    // focus. This avoids stealing text input on a VST3-hosted plugin.
+    class SearchBox final : public juce::TextEditor {
+    public:
+        std::function<void(int)> onArrow;
+        bool keyPressed(const juce::KeyPress& key) override {
+            if(key.getKeyCode()==juce::KeyPress::upKey) {
+                if(onArrow)onArrow(-1);
+                return true;
+            }
+            if(key.getKeyCode()==juce::KeyPress::downKey) {
+                if(onArrow)onArrow(1);
+                return true;
+            }
+            return juce::TextEditor::keyPressed(key);
+        }
+    };
 public:
     explicit SkellModulePicker(SkellPresetAudioProcessor& p):processor(p) {
         setVisible(false);
@@ -19,6 +37,13 @@ public:
         search.setTextToShowWhenEmpty("Search effects, categories or descriptions...",
                                       Theme::muted);
         search.onTextChange=[this]{topItem=0;filter();repaint();};
+        search.onArrow=[this](int step){
+            if(results.empty())return;
+            selectedRow=juce::jlimit(0,(int)results.size()-1,selectedRow+step);
+            if(selectedRow<topItem)topItem=selectedRow;
+            if(selectedRow>=topItem+7)topItem=selectedRow-6;
+            repaint();
+        };
         search.onReturnKey=[this] {
             if(!results.empty())choose(results[(size_t)juce::jlimit(0,(int)results.size()-1,selectedRow)]);
         };
@@ -47,6 +72,13 @@ public:
         topItem=0;selectedRow=0;
         search.setText({},juce::dontSendNotification);
         filter();
+        // When reopening, highlight the effect currently in the rack.
+        for(int i=0;i<(int)results.size();++i)
+            if(results[(size_t)i]==currentType){
+                selectedRow=i;
+                topItem=juce::jlimit(0,std::max(0,(int)results.size()-7),i-2);
+                break;
+            }
         setVisible(true);
         toFront(true);
         search.grabKeyboardFocus();
@@ -196,6 +228,11 @@ private:
         results.clear();
         for(int type=0;type<SkellPresetAudioProcessor::NumberOfModules;++type)
             if(matches(search.getText(),type))results.push_back(type);
+        // Stable sort within categories retains each existing module ID
+        // and automation mapping, while giving users a predictable catalog.
+        std::stable_sort(results.begin(),results.end(),[](int a,int b){
+            return category(a).compareIgnoreCase(category(b))<0;
+        });
         selectedRow=0;topItem=0;
     }
     void choose(int type){
@@ -206,7 +243,7 @@ private:
         }
     }
     SkellPresetAudioProcessor& processor;
-    juce::TextEditor search;
+    SearchBox search;
     std::vector<int> results;
     int currentType=0,selectedRow=0,topItem=0;
 };
