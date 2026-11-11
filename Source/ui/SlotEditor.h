@@ -25,6 +25,9 @@ public:
 private:
     SkellPresetAudioProcessor& processor;
     int slot=0;
+    int eqBank=0; // two editable EQ bands per knob row; graph shows all eight
+    int activeEqBand=0;
+    void showEqBank(int firstBand);
     // ComboBox remains as a noninteractive compatibility/synchronization
     // adapter; the user-facing selector is the searchable native overlay.
     juce::ComboBox moduleBox;
