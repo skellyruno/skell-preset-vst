@@ -114,7 +114,7 @@ private:
     skellpreset::host::HostedVST3 hosted;
     juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork;
     int hostChunkCapacity=512;
-    struct Controls {int type=0;bool on=false;float wet=1;std::array<float,16> p{};};
+    struct Controls {int type=0;bool on=false;float wet=1;std::array<float,16> p{};std::array<float,8> q{};};
     std::array<Controls,slotCount> controlCache;
     std::atomic<std::uint64_t> packedOrder{0};
     std::atomic<int> activeSlots{defaultSlotCount};
@@ -124,6 +124,7 @@ private:
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::array<std::atomic<float>*,16> p{};
+        std::array<std::atomic<float>*,8> q{};
     };
     struct RawGlobal {
         std::atomic<float>* mode=nullptr;std::atomic<float>* input=nullptr;
