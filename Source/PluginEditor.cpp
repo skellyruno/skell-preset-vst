@@ -328,7 +328,7 @@ public:
         juce::AttributedString brand;
         brand.setJustification(juce::Justification::centredLeft);
         brand.append("SKELL",Theme::white);
-        brand.append("PRESET",Theme::green);
+        brand.append("PRESET",juce::Colour(0xff39ff3a));
         // AttributedString::setFont styles existing text; calling it before
         // append() left the new runs at JUCE's tiny default font.
         brand.setFont(Theme::font(27.f,true));
