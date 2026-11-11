@@ -24,6 +24,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
+        for(int k=0;k<8;++k)r.q[(size_t)k]=state.getRawParameterValue(prefix+"eqQ"+juce::String(k+1));
     }
     packedOrder.store(initialOrder);
     rawGlobal.mode=state.getRawParameterValue("mode");
@@ -88,6 +89,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{id,1},"Slot "+juce::String(s)+" advanced effect",
             juce::StringArray{"None","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control"},0));
     }
+    // Independent Q is appended after both type-extension generations;
+    // existing projects and automation indices are never renormalized.
+    for(int s=1;s<=slotCount;++s)
+        for(int band=1;band<=8;++band)
+            fl("s"+juce::String(s)+"_eqQ"+juce::String(band),
+               "Slot "+juce::String(s)+" EQ Band "+juce::String(band)+" Q",
+               0,1,.5f);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -317,6 +325,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         c.on=raw.on->load()>.5f;
         c.wet=juce::jlimit(0.f,1.f,raw.wet->load());
         for(int k=0;k<16;++k)c.p[(size_t)k]=raw.p[(size_t)k]->load();
+        for(int k=0;k<8;++k)c.q[(size_t)k]=raw.q[(size_t)k]->load();
         auto& e=engines[(size_t)s];
         switch(c.type) {
             case EQ:
@@ -386,7 +395,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 e.vibrato.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case EightBandToneFX:
-                e.eightBand.set(rate,c.p);
+                e.eightBand.set(rate,c.p,c.q);
                 break;
             case SerialDynamicsFX:
                 e.serialDynamics.set(c.p[0],c.p[1],c.p[2],c.p[3]);
@@ -688,6 +697,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     for(int s=0;s<slotCount;s++){
         setSlotType(s,Empty);setSlotOn(s,false);setReal(slotPrefix(s)+"wet",1);
         for(int k=0;k<16;k++)setSlotParam(s,k,.5f);
+        for(int band=1;band<=8;++band)setReal(slotPrefix(s)+"eqQ"+juce::String(band),.5f);
         
     }
     std::uint64_t seqReset=0;
@@ -838,6 +848,7 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         dst.enabled=value(prefix+"on")>.5f;
         dst.wet=value(prefix+"wet");
         for(int k=0;k<16;++k)dst.params[(size_t)k]=getSlotParam(dst.slotId,k);
+        for(int band=0;band<8;++band)dst.eqQ[(size_t)band]=value(prefix+"eqQ"+juce::String(band+1));
     }
     return skellpreset::package::write(file,doc);
 }
@@ -851,6 +862,7 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
         setSlotType(slot.slotId,slot.type);
         setReal(prefix+"wet",slot.wet);
         for(int k=0;k<16;++k)setSlotParam(slot.slotId,k,slot.params[(size_t)k]);
+        for(int band=0;band<8;++band)setReal(prefix+"eqQ"+juce::String(band+1),slot.eqQ[(size_t)band]);
     }
     std::uint64_t next=0;
     for(int position=0;position<slotCount;++position){
