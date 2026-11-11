@@ -349,7 +349,72 @@ void SlotEditor::paint(juce::Graphics&g) {
         const float x0=plot.getX()+24.f, x1=plot.getRight()-24.f;
         const float y0=plot.getY()+20.f, y1=plot.getBottom()-27.f;
         const float w=x1-x0, h=y1-y0;
-        if(type==SkellPresetAudioProcessor::Radio) {
+        if(type==SkellPresetAudioProcessor::VoxRackRoom) {
+            const float size=first,damp=second;
+            const float predelayMs=200.f*processor.getSlotParam(slot,2);
+            // Eight comb paths are visualized as decaying reflections, with
+            // allpass scatter shown as a smoothed envelope.
+            g.setColour(Theme::panelAlt.withAlpha(.8f));
+            g.fillRoundedRectangle(x0+24.f,y0+45.f,w-48.f,h-66.f,9.f);
+            juce::Path envelope;
+            for(int i=0;i<8;++i) {
+                const float decay=std::pow(.66f+size*.30f,(float)i);
+                const float x=x0+58.f+(float)i*(w-116.f)/7.f;
+                const float bar=(.18f+.72f*decay)*(h-65.f);
+                g.setColour(i%2?Theme::blue.withAlpha(.65f):Theme::green.withAlpha(.85f));
+                g.fillRoundedRectangle(x,y1-9.f-bar,10.f,bar,4.f);
+                if(i==0)envelope.startNewSubPath(x+5.f,y1-9.f-bar);
+                else envelope.lineTo(x+5.f,y1-9.f-bar);
+            }
+            g.setColour(Theme::amber.withAlpha(.7f));
+            g.strokePath(envelope,juce::PathStrokeType(2.f));
+            Theme::text(g,"VOXRACK ROOM / DAMPED COMB + ALLPASS",
+                        {60,164,720,23},14,Theme::green,true);
+            Theme::text(g,juce::String(predelayMs,0)+" ms PREDELAY / "+
+                        juce::String((int)(size*100.f))+"% SIZE / "+
+                        juce::String((int)(damp*100.f))+"% DAMP",
+                        {60,194,720,23},12,Theme::white);
+            Theme::text(g,"8 REFLECTION BANKS / STEREO HALL MODEL (ILLUSTRATIVE)",
+                        {60,320,730,18},10,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::VoxRackSmoothComp) {
+            const float threshold=-55.f+53.f*first;
+            const float ratio=1.f+11.f*second;
+            const float knee=18.f*processor.getSlotParam(slot,2);
+            juce::Path unity,curve;
+            for(int i=0;i<=140;++i) {
+                const float in=-60.f+(float)i/140.f*60.f;
+                const float over=in-threshold;
+                float gr=0.f;
+                if(knee>0.0001f && 2.f*std::abs(over)<=knee) {
+                    const float t=over+knee*.5f;
+                    gr=(1.f-1.f/ratio)*t*t/(2.f*knee);
+                } else if(over>0.f)gr=(1.f-1.f/ratio)*over;
+                const float y=y1-h*juce::jlimit(0.f,1.f,(in-gr+60.f)/60.f);
+                const float x=x0+w*(float)i/140.f;
+                if(i==0){
+                    unity.startNewSubPath(x,y1-h*(in+60.f)/60.f);
+                    curve.startNewSubPath(x,y);
+                } else {
+                    unity.lineTo(x,y1-h*(in+60.f)/60.f);
+                    curve.lineTo(x,y);
+                }
+            }
+            g.setColour(Theme::muted.withAlpha(.42f));
+            g.strokePath(unity,juce::PathStrokeType(1.2f));
+            g.setColour(Theme::green);
+            g.strokePath(curve,juce::PathStrokeType(3.f));
+            const float tx=x0+w*juce::jlimit(0.f,1.f,(threshold+60.f)/60.f);
+            g.setColour(Theme::amber.withAlpha(.75f));
+            g.drawVerticalLine((int)tx,y0,y1);
+            Theme::text(g,"VOXRACK SOFT-KNEE / STEREO LINK",
+                        {60,164,670,22},14,Theme::green,true);
+            Theme::text(g,juce::String(threshold,1)+" dB  /  "+
+                        juce::String(ratio,1)+":1  /  "+
+                        juce::String(knee,1)+" dB KNEE",
+                        {60,194,690,23},12,Theme::white);
+            Theme::text(g,"0 ms PDC / SMOOTH ATTACK + RELEASE",
+                        {60,319,700,18},10,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::Radio) {
             // Illustrated filter response from the Low Cut / High Cut controls.
             const float lowHz=100.f+1400.f*first;
             const float highHz=juce::jmax(lowHz*1.5f,1800.f+10000.f*second);
