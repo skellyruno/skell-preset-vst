@@ -125,6 +125,26 @@ public:
             if(index>=0&&index<4)outer.setSize(juce::roundToInt(Theme::width*scales[index]),juce::roundToInt(Theme::height*scales[index]));
         };
         addAndMakeVisible(sizeSelect);
+        sizeSelect.setVisible(false); // Internal compatibility adapter only.
+        settings.setButtonText(juce::String::charToString((juce_wchar)0x2699));
+        settings.setTooltip("Settings  /  Interface Size");
+        style(settings);
+        addAndMakeVisible(settings);
+        settings.onClick=[this] {
+            // An actual native rounded-rectangle settings menu, using the
+            // SkellCore LookAndFeel; do not add another cramped dropdown.
+            juce::PopupMenu menu;
+            menu.addSectionHeader("INTERFACE SIZE");
+            const juce::StringArray labels{"70%","85%","100%","125%"};
+            for(int i=0;i<labels.size();++i)
+                menu.addItem(i+1,labels[i],true,sizeSelect.getSelectedId()==i+1);
+            menu.showMenuAsync(
+                juce::PopupMenu::Options().withTargetComponent(&settings),
+                [safe=juce::Component::SafePointer<Canvas>(this)](int choice) {
+                    if(choice>=1 && choice<=4 && safe!=nullptr)
+                        safe->sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
+                });
+        };
         browser.onLoaded=[this]{slot.select(0);chain.setSelectedSlot(0);refresh();};
         browser.onClose=[this]{preset.repaint();};
         addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
@@ -234,8 +254,8 @@ public:
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
-        const std::array<const juce::Component*,12> all{{&themeButton,&preset,&match,
-            &mode[0],&mode[1],&help,&chain,&slot,&input,&mix,&output,&sizeSelect}};
+        const std::array<const juce::Component*,13> all{{&themeButton,&preset,&match,
+            &mode[0],&mode[1],&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
@@ -251,6 +271,7 @@ public:
                     issues.add("Overlapping top-bar controls " + juce::String((int)i)
                                + " / " + juce::String((int)j));
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
+        if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
         if(chain.getBounds().intersects(slot.getBounds()))
             issues.add("Rack overlaps the module editor");
         if(rackOnRight!=(chain.getX()>slot.getX()))
@@ -485,6 +506,7 @@ public:
         mix.setBounds(433,648,241,34);
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
+        settings.setBounds(1094,648,69,26);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
@@ -557,7 +579,7 @@ private:
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
-    juce::TextButton preset,match,help;
+    juce::TextButton preset,match,help,settings;
     std::array<juce::TextButton,2> mode;
     std::array<juce::Slider,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
