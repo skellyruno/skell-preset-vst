@@ -17,6 +17,7 @@ public:
     static constexpr int latency=fftSize-hop,bins=fftSize/2+1;
     void reset() noexcept {
         inFifo.fill(0.f);outFifo.fill(0.f);outAccum.fill(0.f);
+        dryDelay.fill(0.f);dryWrite=0;blend=0.f;
         lastPhase.fill(0.f);sumPhase.fill(0.f);rover=latency;
     }
     void prepare(double rate) noexcept {
@@ -24,17 +25,28 @@ public:
         constexpr double pi=3.141592653589793238462643383279;
         for(int k=0;k<fftSize;++k)
             window[(size_t)k]=.5f-.5f*std::cos((float)(2*pi*k/fftSize));
+        blendStep=1.f-std::exp(-1.f/(.025f*(float)sr));
         reset();
     }
     float process(float sample,float pitchRatio,float formantRatio) noexcept {
         const float in=std::isfinite(sample)?sample:0.f;
         inFifo[(size_t)rover]=in;
         const float out=outFifo[(size_t)(rover-latency)];
+        const float aligned=dryDelay[(size_t)dryWrite];
+        dryDelay[(size_t)dryWrite]=in;
+        if(++dryWrite==latency)dryWrite=0;
         if(++rover>=fftSize) {
             rover=latency;
             processFrame(pitchRatio,formantRatio);
         }
-        return std::isfinite(out)?out:0.f;
+        // Exact dry identity at 0-st pitch+formant while retaining the same
+        // sample delay as the spectral engine. Smoothed transitions prevent
+        // zipper clicks when moving into/out of the processor.
+        const float target=std::abs(pitchRatio-1.f)<1e-5f &&
+                           std::abs(formantRatio-1.f)<1e-5f?0.f:1.f;
+        blend+=blendStep*(target-blend);
+        const float value=aligned+(out-aligned)*blend;
+        return std::isfinite(value)?value:0.f;
     }
 private:
     using Complex=std::complex<float>;
@@ -112,7 +124,7 @@ private:
             const float magn=synMagnitude[(size_t)k]*shape;
             float freqError=synFrequency[(size_t)k]-(float)k*freqPerBin;
             freqError=freqError/freqPerBin*2.f*pi/oversample+(float)k*expected;
-            sumPhase[(size_t)k]+=freqError;
+            sumPhase[(size_t)k]=std::remainder(sumPhase[(size_t)k]+freqError,2.f*pi);
             spectrum[(size_t)k]=std::polar(magn,sumPhase[(size_t)k]);
         }
         spectrum[0]=Complex(spectrum[0].real(),0.f);
@@ -134,6 +146,9 @@ private:
     double sr=48000.;
     int rover=latency;
     std::array<float,fftSize> window{},inFifo{};
+    std::array<float,latency> dryDelay{};
+    int dryWrite=0;
+    float blend=0.f,blendStep=.001f;
     std::array<float,hop> outFifo{};
     std::array<float,fftSize*2> outAccum{};
     std::array<float,bins> lastPhase{},sumPhase{},anaMagnitude{},anaFrequency{},
