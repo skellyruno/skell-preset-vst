@@ -262,7 +262,15 @@ void PresetBrowser::chooseArtwork() {
             // Write-then-replace: a failed save must not destroy the previous cover.
             juce::TemporaryFile staging(destination);
             juce::PNGImageFormat png;
-            const auto thumbnail=image.rescaled(240,180,juce::Graphics::mediumResamplingQuality);
+            // Preserve portrait and landscape artwork proportions on the 4:3 cover.
+            juce::Image thumbnail(juce::Image::RGB,240,180,true);
+            {
+                juce::Graphics thumbPainter(thumbnail);
+                thumbPainter.fillAll(juce::Colours::black);
+                thumbPainter.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
+                thumbPainter.drawImageWithin(image,0,0,240,180,
+                    juce::RectanglePlacement::centred);
+            }
             bool written=false;
             {
                 juce::FileOutputStream output(staging.getFile());
