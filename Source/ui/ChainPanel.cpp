@@ -95,6 +95,13 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
         for(int i=0;i<5;++i)
             p.addRectangle((float)x+1.f+i*5.f,(float)y+3.f+(i%2)*5.f,
                            2.5f,13.f-(i%2)*7.f);
+    } else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX) {
+        for(int row=0;row<2;++row){
+            p.startNewSubPath((float)x,(float)y+6.f+6.f*row);
+            for(int i=1;i<=23;++i)
+                p.lineTo((float)x+i,(float)y+6.f+6.f*row+
+                         3.f*std::sin(i*(row?.76f:.43f)));
+        }
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
