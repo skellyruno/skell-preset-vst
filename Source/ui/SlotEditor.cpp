@@ -78,6 +78,8 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):processor(p) {
     moduleBox.onChange=[this] {
         const int next=moduleBox.getSelectedId()-1;
         if(next>=0)processor.setSlotType(slot,next);
+        graphSnapshotValid=false;
+        refreshIfChanged();
         repaint();
     };
     applyTheme();
@@ -116,6 +118,7 @@ void SlotEditor::select(int newSlot) {
     enabledAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"on",activeButton);
     wetAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"wet",wetKnob);
     for(int k=0;k<4;k++)knobAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
+    refreshIfChanged();
     repaint();
 }
 void SlotEditor::refreshIfChanged() {
@@ -135,14 +138,14 @@ void SlotEditor::refreshIfChanged() {
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
-    for(auto& k:knobs)k.setEnabled(!external);
+    for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
 }
 void SlotEditor::resized() {
     moduleBox.setBounds(550,25,144,29);activeButton.setBounds(711,26,70,28);
     wetKnob.setBounds(802,6,88,78);
-    loadExternal.setBounds(56,374,150,35);
-    editExternal.setBounds(214,374,176,35);
+    loadExternal.setBounds(48,437,172,57);
+    editExternal.setBounds(239,437,186,57);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(42+211*k,437,83,70);
 }
 void SlotEditor::paint(juce::Graphics&g) {
@@ -439,9 +442,14 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"ECHO NUMBER  1 - 5",{38,364,360,17},10,Theme::muted);
     }
     const auto labels=titles(type);
-    for(int i=0;i<4;i++)
-        Theme::text(g,labels[(size_t)i].toUpperCase(),{133+211*i,459,98,19},
-                    11,Theme::muted,true);
+    if(type==SkellPresetAudioProcessor::ExternalVST3) {
+        Theme::text(g,"HOSTED VST3  /  USE ITS OWN UI TO EDIT PARAMETERS",
+            {447,445,424,49},12,Theme::muted,true);
+    } else {
+        for(int i=0;i<4;i++)
+            Theme::text(g,labels[(size_t)i].toUpperCase(),{133+211*i,459,98,19},
+                        11,Theme::muted,true);
+    }
     const juce::String gestureHint="DRAG GREEN HANDLE  /  X: "+
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
