@@ -14,6 +14,9 @@ struct Slot {
     bool enabled = false;
     float wet = 1.0f;
     std::array<float, parameterCount> params {};
+    // Optional v2 extension, ignored by older readers. Preserves all eight
+    // parametric-EQ bandwidths when saving and reloading native rack presets.
+    std::array<float,8> eqQ {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
 };
 
 struct Document {
