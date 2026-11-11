@@ -277,6 +277,19 @@ public:
         slot.testGraphGesture({650.f,220.f});
         if(std::abs(processor.getSlotParam(0,0)-oldValue)<.05f)
             issues.add("Saturator graph drag failed to update host automation");
+        // New inserts use the same host-automatable drag gesture.
+        processor.setSlotType(0,SkellPresetAudioProcessor::Radio);
+        processor.setSlotParam(0,0,.16f);
+        slot.select(0);
+        slot.testGraphGesture({680.f,220.f});
+        if(processor.getSlotParam(0,0)<.50f)
+            issues.add("Radio visual graph did not change the actual cutoff");
+        processor.setSlotType(0,SkellPresetAudioProcessor::ThreeBandDynamics);
+        processor.setSlotParam(0,0,.1f);
+        slot.select(0);
+        slot.testGraphGesture({680.f,220.f});
+        if(processor.getSlotParam(0,0)<.50f)
+            issues.add("Three-band graph did not change the actual compression");
         processor.loadFactoryPreset(0);
         slot.select(0);
         chain.setSelectedSlot(0);
