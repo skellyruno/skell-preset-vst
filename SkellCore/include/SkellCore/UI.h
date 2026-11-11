@@ -35,6 +35,9 @@ public:
         setColour(juce::TextButton::textColourOffId, colours_.foreground);
         setColour(juce::PopupMenu::backgroundColourId, colours_.surface);
         setColour(juce::PopupMenu::textColourId, colours_.foreground);
+        setColour(juce::PopupMenu::highlightedBackgroundColourId, colours_.accent.withAlpha(.20f));
+        setColour(juce::PopupMenu::highlightedTextColourId, colours_.foreground);
+        setColour(juce::ComboBox::outlineColourId, colours_.secondary.withAlpha(.4f));
     }
     Theme palette() const noexcept { return colours_; }
     // Rounded rectangles, not capsule buttons: readable on dark, cream and crimson skins.
