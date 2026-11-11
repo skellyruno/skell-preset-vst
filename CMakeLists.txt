@@ -51,7 +51,7 @@ juce_add_plugin(SkellPreset
     BUNDLE_ID "audio.skell.preset"
     PLUGIN_MANUFACTURER_CODE SkAu
     PLUGIN_CODE SkPr
-    FORMATS VST3 Standalone
+    FORMATS VST3
     PRODUCT_NAME "Skell-Preset"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
