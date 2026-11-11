@@ -99,8 +99,12 @@ public:
         const float blend=smash;
         // Makeup-free parallel saturation limits additive gain; at 0 this is
         // exact gain reduction with no hidden increase in signal amplitude.
-        return {sane(l*gain*(1.f-blend)+std::tanh(l*3.5f)*blend*.40f),
-                sane(r*gain*(1.f-blend)+std::tanh(r*3.5f)*blend*.40f)};
+        // Normalise the saturator's small-signal gain to unity, so enabling
+        // NY parallel colouring cannot silently boost quiet material.
+        const float parallelL=std::tanh(l*3.5f)/3.5f;
+        const float parallelR=std::tanh(r*3.5f)/3.5f;
+        return {sane(l*gain*(1.f-blend)+parallelL*blend),
+                sane(r*gain*(1.f-blend)+parallelR*blend)};
     }
     float reductionDb() const noexcept {return fetGr+optoGr;}
 private:
