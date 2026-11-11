@@ -1313,9 +1313,15 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"HOSTED VST3  /  USE ITS OWN UI TO EDIT PARAMETERS",
             {447,445,424,49},12,Theme::muted,true);
     } else {
-        for(int i=0;i<4;i++)
-            Theme::text(g,labels[(size_t)i].toUpperCase(),{148+211*i,438,105,24},
-                        12,Theme::muted,true);
+        for(int i=0;i<4;i++) {
+            // At the 70% default display scale the previous 12px muted
+            // captions became very faint and long labels looked clipped.
+            // Give each hardware rotary a high-contrast, full-width legend.
+            const int available=i==3?115:142;
+            Theme::text(g,labels[(size_t)i].toUpperCase(),
+                        {146+211*i,438,available,25},
+                        13.3f,Theme::white.withAlpha(.78f),true);
+        }
     }
     const juce::String gestureHint="DRAG GREEN HANDLE  /  X: "+
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
