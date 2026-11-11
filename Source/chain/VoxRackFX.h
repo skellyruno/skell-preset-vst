@@ -124,7 +124,8 @@ struct VoxRackRoom {
             const float after=(pre[tapOld]*(1.f-alpha)+pre[tapNow]*alpha)*.015f;
             float y=0.f;
             for(auto& c:combs[(size_t)ch])y+=c.tick(after,damping,feedback);
-            for(auto& a:allpasses[(size_t)ch])y=a.tick(y);
+            for(auto& diffusionStage:allpasses[(size_t)ch])
+                y=diffusionStage.tick(y);
             output[ch]=clamp(y*3.f,-8.f,8.f);
         }
         if(++head==capacity)head=0;
