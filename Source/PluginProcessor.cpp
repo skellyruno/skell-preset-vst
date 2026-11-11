@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -74,6 +74,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
+    hostDry.prepare(skellpreset::host::HostedVST3::maxTotalLatency);
     phrase.prepare(sampleRate);phrase.setThreshold(.018f);
     const auto length=(size_t)(sampleRate*1.25)+4;
     for(auto& line:throwHistory)line.assign(length,0.f);
@@ -115,20 +116,29 @@ void SkellPresetAudioProcessor::updateHostLatency() {
     int total=0;
     for(int position=0;position<count;++position) {
         const int id=(int)((order >> (4*position)) & 0x0fU);
-        if(id>=0 && id<slotCount && rawSlots[(size_t)id].type &&
-           (int)rawSlots[(size_t)id].type->load(std::memory_order_relaxed)==Limiter)
-            total+=latency;
+        if(id<0 || id>=slotCount || !rawSlots[(size_t)id].type)continue;
+        const int type=(int)rawSlots[(size_t)id].type->load(std::memory_order_relaxed);
+        if(type==Limiter) total+=latency;
+        else if(type==ExternalVST3) total+=hosted.getLatency(id);
     }
     if(total!=currentReportedLatency){currentReportedLatency=total;setLatencySamples(total);}
 }
 
-void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int) {
+void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlock) {
     rate=(std::isfinite(sampleRate)&&sampleRate>=8000.)?sampleRate:48000.;
     displayedRate.store(rate,std::memory_order_release);
+    hostChunkCapacity=juce::jlimit(64,8192,juce::jmax(512,samplesPerBlock));
+    rackWork.setSize(2,hostChunkCapacity,false,true);
+    hostWork.setSize(2,hostChunkCapacity,false,true);
+    dryWork.setSize(2,hostChunkCapacity,false,true);
+    bypassWork.setSize(2,hostChunkCapacity,false,true);
     for(auto& e:engines)e.prepare(rate);
+    hosted.prepare(rate,hostChunkCapacity);
     const auto lookahead=engines[0].limiter.latencySamples();
     limiterLookahead.store(lookahead,std::memory_order_release);
-    dryPdc.prepare(slotCount*lookahead);bypassPdc.prepare(slotCount*lookahead);
+    const int pdcCapacity=slotCount*lookahead+skellpreset::host::HostedVST3::maxTotalLatency;
+    dryPdc.prepare(pdcCapacity);
+    bypassPdc.prepare(pdcCapacity);
     updateHostLatency();
     for(auto* smooth:{&inputSmooth,&outputSmooth,&mixSmooth,&bypassSmooth})smooth->reset(rate,.020);
     inputSmooth.setCurrentAndTargetValue(dbToGain(rawGlobal.input->load()));
@@ -143,7 +153,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int) {
     }
 
 }
-void SkellPresetAudioProcessor::releaseResources() {}
+void SkellPresetAudioProcessor::releaseResources() { hosted.release(); }
 bool SkellPresetAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout) const {
     const auto in=layout.getMainInputChannelSet(),out=layout.getMainOutputChannelSet();
     return (in==juce::AudioChannelSet::mono() && (out==juce::AudioChannelSet::mono() || out==juce::AudioChannelSet::stereo()))
@@ -164,6 +174,59 @@ void SkellPresetAudioProcessor::setSlotParam(int slot,int param,float v) {setRea
 void SkellPresetAudioProcessor::setSlotOn(int slot,bool on) {setReal(slotPrefix(slot)+"on",on?1.f:0.f);}
 void SkellPresetAudioProcessor::setSlotType(int slot,int type) {setReal(slotPrefix(slot)+"type",static_cast<float>(juce::jlimit(0,NumberOfModules-1,type)));updateHostLatency();}
 juce::String SkellPresetAudioProcessor::moduleName(int type) const {return types[juce::jlimit(0,types.size()-1,type)];}
+juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path) {
+    if(slot<0 || slot>=slotCount)return juce::Result::fail("Invalid host slot");
+    const auto result=hosted.load(slot,path,rate,hostChunkCapacity);
+    if(result.failed())return result;
+    setSlotType(slot,ExternalVST3);
+    setSlotOn(slot,true);
+    updateHostLatency();
+    return juce::Result::ok();
+}
+void SkellPresetAudioProcessor::openHostedVST3Editor(int slot) {
+    auto* plugin=hosted.get(slot);
+    if(!plugin)return;
+    if(auto* existing=plugin->getActiveEditor()) {
+        existing->toFront(true);
+        return;
+    }
+    if(!plugin->hasEditor())return;
+    if(auto* editor=plugin->createEditorIfNeeded()) {
+        juce::DialogWindow::LaunchOptions options;
+        options.dialogTitle="SKELL  /  "+hosted.getName(slot);
+        options.dialogBackgroundColour=juce::Colours::black;
+        options.content.setOwned(editor);
+        options.resizable=true;
+        options.useNativeTitleBar=true;
+        options.launchAsync();
+    }
+}
+void SkellPresetAudioProcessor::refreshHostedLatency() {
+    // Called by the message-thread timer. A hosted processor may change
+    // its lookahead after a preset change, so the outer host must be updated.
+    updateHostLatency();
+}
+void SkellPresetAudioProcessor::handleAsyncUpdate() {
+    // DAW state restoration never scans/loads third-party code in an audio
+    // callback. The AsyncUpdater dispatches this on JUCE's message thread.
+    for(int s=0;s<slotCount;++s) {
+        const auto key=juce::String(s+1);
+        const auto path=state.state.getProperty("hostPath"+key).toString();
+        const auto* type=rawSlots[(size_t)s].type;
+        if(path.isEmpty() || !type || (int)type->load()!=ExternalVST3)continue;
+        if(hosted.getFile(s).getFullPathName()!=path) {
+            const auto result=loadHostedVST3(s,juce::File(path));
+            if(result.failed())continue; // Missing third-party plugin stays dry/safe.
+        }
+        const auto payload=state.state.getProperty("hostState"+key).toString();
+        if(payload.isNotEmpty() && payload.length()<3*1024*1024) {
+            juce::MemoryBlock bytes;
+            if(bytes.fromBase64Encoding(payload))hosted.setState(s,bytes);
+        }
+    }
+    updateHostLatency();
+}
+
 
 void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&) {
     juce::ScopedNoDenormals noDenormals;
@@ -245,8 +308,11 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     int blockLatency=0;
     for(int position=0;position<chainCount;++position) {
         const int id=sequence[(size_t)position];
-        if(id>=0 && id<slotCount && controlCache[(size_t)id].type==Limiter)
-            blockLatency+=lookahead;
+        if(id>=0 && id<slotCount) {
+            const int type=controlCache[(size_t)id].type;
+            if(type==Limiter)blockLatency+=lookahead;
+            else if(type==ExternalVST3)blockLatency+=hosted.getLatency(id);
+        }
     }
     float inPeak=0,outPeak=0;
     for(int n=0;n<size;n++) {
@@ -407,6 +473,8 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         dst.slotId=slotIdAt(position);
         const auto prefix=slotPrefix(dst.slotId);
         dst.type=juce::jlimit(0,NumberOfModules-1,(int)value(prefix+"type"));
+        if(dst.type==ExternalVST3)
+            return juce::Result::fail("External VST3 preset export is not yet portable. Use FL Studio project save until .skellpreset v3.");
         dst.enabled=value(prefix+"on")>.5f;
         dst.wet=value(prefix+"wet");
         for(int k=0;k<16;++k)dst.params[(size_t)k]=getSlotParam(dst.slotId,k);
@@ -470,6 +538,18 @@ void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     snapshot.setProperty("rackSlots",activeSlotCount(),nullptr);
     snapshot.setProperty("presetName",name,nullptr);
     snapshot.setProperty("program",selectedProgram,nullptr);
+    for(int s=0;s<slotCount;++s) {
+        const auto index=juce::String(s+1);
+        snapshot.removeProperty("hostPath"+index,nullptr);
+        snapshot.removeProperty("hostState"+index,nullptr);
+        if((int)value(slotPrefix(s)+"type")!=ExternalVST3)continue;
+        const auto file=hosted.getFile(s);
+        if(file.getFullPathName().isEmpty())continue;
+        snapshot.setProperty("hostPath"+index,file.getFullPathName(),nullptr);
+        auto data=hosted.getState(s);
+        if(data.getSize()>0 && data.getSize()<2*1024*1024)
+            snapshot.setProperty("hostState"+index,data.toBase64Encoding(),nullptr);
+    }
     if(auto xml=snapshot.createXml())copyXmlToBinary(*xml,dest);
 }
 void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
@@ -505,6 +585,12 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         selectedProgram=juce::jlimit(-1,(int)factoryPresets.size()-1,(int)loaded.getProperty("program",0));
         state.replaceState(loaded);
         updateHostLatency();
+        // Don't instantiate external code in setStateInformation(): hosts may
+        // call this from threads that cannot safely load a plugin DLL.
+        bool restore=false;
+        for(int s=0;s<slotCount;++s)
+            if(loaded.hasProperty("hostPath"+juce::String(s+1))) {restore=true;break;}
+        if(restore)triggerAsyncUpdate();
     }
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {return new SkellPresetAudioProcessor();}

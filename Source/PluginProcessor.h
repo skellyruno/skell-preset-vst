@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdint>
 
-class SkellPresetAudioProcessor final : public juce::AudioProcessor {
+class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
 public:
     enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, NumberOfModules };
     static constexpr int slotCount=16;
@@ -117,6 +117,7 @@ private:
     std::atomic<int> limiterLookahead{0};
     int currentReportedLatency=0;
     void updateHostLatency();
+    void handleAsyncUpdate() override;
     juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> inputSmooth,outputSmooth,mixSmooth,bypassSmooth;
     // Continuous per-slot wet/bypass fades; all memory is owned by processor.
     std::array<juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear>,slotCount> slotWetSmooth;
