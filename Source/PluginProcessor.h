@@ -6,6 +6,7 @@
 #include "chain/ModulationFX.h"
 #include "chain/ImportedVocalFX.h"
 #include "chain/AdvancedVocalDSP.h"
+#include "chain/SpectralPitchFormant.h"
 #include "chain/VoxRackFX.h"
 #include "chain/FactoryPresets.h"
 #include "chain/PresetPackage.h"
@@ -16,7 +17,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
@@ -96,6 +97,8 @@ private:
         skellpreset::dsp::SerialVocalDynamics serialDynamics;
         skellpreset::dsp::DynamicHarshness harshness;
         skellpreset::dsp::AdaptiveNoiseControl noiseControl;
+        skellpreset::dsp::SpectralPitchFormant studioPitch;
+        skellpreset::dsp::StereoSampleDelay pitchDry;
         skellpreset::dsp::Delay delay;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
@@ -121,6 +124,7 @@ private:
     struct RawSlot {
         std::atomic<float>* type=nullptr;std::atomic<float>* extension=nullptr;
         std::atomic<float>* extension2=nullptr;
+        std::atomic<float>* extension3=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::array<std::atomic<float>*,16> p{};
