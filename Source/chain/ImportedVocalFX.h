@@ -157,4 +157,56 @@ private:
     float fb=.3f,duckAmount=.6f,lowCoeff=.85f,dcCoeff=.99f;
 };
 
+
+// Dedicated vibrato from the MIT-licensed Auralis/Voice-Changer colour-stage
+// concept, adapted to the Skell stereo rack with guarded fractional reads.
+class VocalVibrato {
+public:
+    void prepare(double sampleRate) {
+        sr=std::isfinite(sampleRate)?std::clamp(sampleRate,8000.,192000.):48000.;
+        memory.assign((size_t)(sr*.024)+8,{0.f,0.f});
+        reset();
+    }
+    void reset() noexcept {
+        for(auto& sample:memory)sample={0.f,0.f};
+        write=0;phase=0.;
+    }
+    void set(float rate,float depth,float stereo,float shape) noexcept {
+        speed=.3f+11.7f*clamp01(rate);
+        depthSamples=(float)sr*.0035f*clamp01(depth);
+        phaseSpread=3.14159265f*clamp01(stereo);
+        shapeMix=clamp01(shape);
+    }
+    std::array<float,2> process(float left,float right) noexcept {
+        if(memory.size()<8)return {left,right};
+        memory[(size_t)write]={finiteOrZero(left),finiteOrZero(right)};
+        auto read=[&](int channel,float angle) noexcept {
+            const float triangle=(2.f/3.14159265f)*std::asin(std::sin(angle));
+            const float shape=std::sin(angle)*(1.f-shapeMix)+triangle*shapeMix;
+            const float tap=(float)(sr*.008)+depthSamples*shape;
+            float pos=(float)write-tap;
+            if(pos<0.f)pos+=(float)memory.size();
+            const int i0=(int)pos;
+            const int i1=(i0+1==(int)memory.size())?0:i0+1;
+            const float mix=pos-(float)i0;
+            const float a=memory[(size_t)i0][(size_t)channel];
+            const float b=memory[(size_t)i1][(size_t)channel];
+            return a+(b-a)*mix;
+        };
+        const float a=(float)phase;
+        const std::array<float,2> result{{read(0,a),read(1,a+phaseSpread)}};
+        phase+=6.283185307179586*speed/sr;
+        if(phase>=6.283185307179586)phase-=6.283185307179586;
+        if(++write==(int)memory.size())write=0;
+        return result;
+    }
+private:
+    static float finiteOrZero(float v) noexcept {return std::isfinite(v)?v:0.f;}
+    static float clamp01(float v) noexcept {return std::isfinite(v)?std::clamp(v,0.f,1.f):0.f;}
+    double sr=48000.,phase=0.;
+    std::vector<std::array<float,2>> memory;
+    int write=0;
+    float speed=5.f,depthSamples=0.f,phaseSpread=0.f,shapeMix=0.f;
+};
+
 } // namespace skellpreset::dsp
