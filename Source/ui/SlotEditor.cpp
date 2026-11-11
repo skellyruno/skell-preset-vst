@@ -540,6 +540,64 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.setColour(Theme::white.withAlpha(active?.95f:.58f));
                 g.drawEllipse(x-size*.5f,y-size*.5f,size,size,1.3f);
             }
+        } else if(type==SkellPresetAudioProcessor::SerialDynamicsFX) {
+            const float threshold=-48.f+42.f*first;
+            const float ratio=2.f+10.f*second;
+            juce::Path fet,opto;
+            for(int i=0;i<=120;++i) {
+                const float db=-60.f+60.f*i/120.f;
+                const float over=std::max(0.f,db-threshold);
+                const float outFet=db-over*(1.f-1.f/ratio)*.70f;
+                const float outOpto=outFet-std::max(0.f,outFet-threshold+3.f)*.43f;
+                const float x=x0+w*i/120.f;
+                const float yyF=y1-(outFet+60.f)/60.f*h;
+                const float yyO=y1-(outOpto+60.f)/60.f*h;
+                if(i==0){fet.startNewSubPath(x,yyF);opto.startNewSubPath(x,yyO);}
+                else {fet.lineTo(x,yyF);opto.lineTo(x,yyO);}
+            }
+            g.setColour(Theme::muted.withAlpha(.45f));
+            g.drawLine(x0,y1,x1,y0,1.1f);
+            g.setColour(Theme::blue);g.strokePath(fet,juce::PathStrokeType(2.2f));
+            g.setColour(Theme::green);g.strokePath(opto,juce::PathStrokeType(2.8f));
+            Theme::text(g,"FET PEAK", {85,169,130,18},10,Theme::blue,true);
+            Theme::text(g,"OPTO RMS",{220,169,150,18},10,Theme::green,true);
+        } else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX) {
+            const float freq=1800.f*std::pow(4.2f,first);
+            const float maxCut=10.f*processor.getSlotParam(slot,2);
+            skellpreset::dsp::Biquad band;
+            const double sr=juce::jmax(8000.,processor.preparedAudioRate());
+            band.setPeak(sr,freq,-maxCut,2.3);
+            juce::Path curve;
+            for(int px=0;px<=835;px+=5){
+                const double f=20.*std::pow(1000.,(double)px/835.);
+                const float db=(float)band.magnitudeDb(f,sr);
+                const float y=juce::jlimit(plot.getY(),plot.getBottom(),
+                    plot.getCentreY()-db*(plot.getHeight()/38.f));
+                if(px==0)curve.startNewSubPath(plot.getX(),y);
+                else curve.lineTo(plot.getX()+px,y);
+            }
+            g.setColour(Theme::green);g.strokePath(curve,juce::PathStrokeType(2.7f));
+            const float nodeX=plot.getX()+plot.getWidth()*std::log(freq/20.f)/std::log(1000.f);
+            g.setColour(Theme::amber);g.fillEllipse(nodeX-5.f,plot.getCentreY()-5.f,10.f,10.f);
+            Theme::text(g,"DYNAMIC CUT  /  WHEN RESONANCE EXCEEDS THRESHOLD",
+                {80,170,710,19},11,Theme::muted,true);
+        } else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX) {
+            const float threshold=-75.f+55.f*first;
+            const float reduction=36.f*processor.getSlotParam(slot,1);
+            juce::Path curve;
+            const float thresholdX=x0+w*(threshold+80.f)/80.f;
+            for(int i=0;i<=130;++i) {
+                const float db=-80.f+i*80.f/130.f;
+                const float lift=std::clamp((db-threshold+5.f)/10.f,0.f,1.f);
+                const float targetDb=db-reduction*(1.f-lift);
+                const float x=x0+w*i/130.f;
+                const float y=y1-h*(targetDb+116.f)/116.f;
+                if(i==0)curve.startNewSubPath(x,y);else curve.lineTo(x,y);
+            }
+            g.setColour(Theme::amber.withAlpha(.75f));g.drawVerticalLine((int)thresholdX,y0,y1);
+            g.setColour(Theme::green);g.strokePath(curve,juce::PathStrokeType(2.8f));
+            Theme::text(g,"ADAPTIVE FLOOR  /  QUIET INPUT REDUCTION",
+                {80,169,690,20},11,Theme::green,true);
         } else if(type==SkellPresetAudioProcessor::VocalChorusFX) {
             // Animated multivoice geometry, not a fabricated FFT or waveform.
             const float width=processor.getSlotParam(slot,3);
@@ -1013,6 +1071,21 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String(15.f*std::pow(70.f,processor.getSlotParam(slot,0)),0)+
                      " Hz  /  DEPTH "+
                      juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        effectTitle="8-BAND EQ  /  EIGHT INDEPENDENT FREQUENCY + GAIN NODES";
+        effectDetail="SELECT A DOT TO SHOW ITS BAND PAIR  /  FIXED Q 1.1  /  ZERO ADDED PDC";
+    } else if(type==SkellPresetAudioProcessor::SerialDynamicsFX) {
+        effectTitle="FET + OPTO  /  TWO-STAGE VOCAL COMPRESSION";
+        effectDetail=juce::String(-48.f+42.f*processor.getSlotParam(slot,0),0)+
+            " dB  /  RATIO "+juce::String(2.f+10.f*processor.getSlotParam(slot,1),1)+
+            ":1  /  OPTIONAL NY PARALLEL";
+    } else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX) {
+        effectTitle="HARSHNESS TAMER  /  DYNAMIC RESONANT DIP";
+        effectDetail=juce::String(1800.f*std::pow(4.2f,processor.getSlotParam(slot,0)),0)+
+            " Hz  /  MAX CUT "+juce::String(10.f*processor.getSlotParam(slot,2),1)+" dB";
+    } else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX) {
+        effectTitle="ADAPTIVE NOISE CONTROL  /  NATIVE DYNAMIC FLOOR";
+        effectDetail="GENTLE NOISE REDUCTION  /  NO NEURAL MODEL  /  ZERO ADDED PDC";
     } else if(type==SkellPresetAudioProcessor::VocalRiderFX) {
         effectTitle="VOCAL RIDER  /  STEREO LINKED LEVELING";
         effectDetail="TARGET "+juce::String(-26.f+14.f*processor.getSlotParam(slot,1),0)+
@@ -1114,6 +1187,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::EightBandToneFX ? "CLICK ANY OF EIGHT NODES  /  DRAG TO CHANGE ITS FREQUENCY + GAIN" :
+                  type==SkellPresetAudioProcessor::AdaptiveNoiseFX ? "ADAPTIVE GATE  /  NOT AN RNNOISE NEURAL MODEL" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   type==SkellPresetAudioProcessor::ExternalVST3
                     ? juce::String("EXTERNAL VST3  /  THIRD-PARTY EDITOR OPENS SEPARATELY")
