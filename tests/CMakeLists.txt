@@ -43,3 +43,8 @@ add_executable(SkellPresetDeEsserTest test_deesser.cpp)
 target_compile_features(SkellPresetDeEsserTest PRIVATE cxx_std_17)
 
 add_test(NAME SkellPresetDeEsserTest COMMAND SkellPresetDeEsserTest)
+
+# Owner-authorized VoxRack feedback filtering port; no extra plugin latency.
+add_executable(SkellPresetVoxRackDelayTest test_voxrack_delay.cpp)
+target_compile_features(SkellPresetVoxRackDelayTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVoxRackDelayTest COMMAND SkellPresetVoxRackDelayTest)

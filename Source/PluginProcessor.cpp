@@ -276,10 +276,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     2.f+c.p[2]*20.f,35.f+c.p[3]*245.f);
                 break;
             case Delay:
-                e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f);
+                e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
+                                  500.f+17500.f*c.p[2]);
                 break;
             case AdlibThrow:
-                e.delay.configure((int)(rate*(.16+.48*c.p[0])),.2f+.68f*c.p[1]);
+                e.delay.configure((int)(rate*(.16+.48*c.p[0])),.2f+.68f*c.p[1],
+                                  500.f+17500.f*c.p[2]);
                 e.throwFilterPole=std::exp(-2.f*(float)skellpreset::dsp::pi*
                     (750.f+c.p[2]*11500.f)/(float)rate);
                 break;
