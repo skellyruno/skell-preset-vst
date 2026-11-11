@@ -1405,6 +1405,18 @@ void SlotEditor::mouseUp(const juce::MouseEvent&){
     draggingGraph=false;
 }
 
+bool SlotEditor::testKnobReadouts() {
+    const auto frequency=knobs[0].getTextFromValue(.5);
+    const auto gain=knobs[1].getTextFromValue(.5);
+    const auto bandwidth=eqQSlider.getTextFromValue(.5);
+    const auto wet=wetKnob.getTextFromValue(1.);
+    return processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX
+        && frequency.containsIgnoreCase("Hz")
+        && gain.containsIgnoreCase("dB")
+        && bandwidth.startsWithIgnoreCase("Q ")
+        && wet.contains("%");
+}
+
 bool SlotEditor::testEightBandGraphAndQ() {
     const auto physical=slot;
     processor.setSlotType(physical,SkellPresetAudioProcessor::EightBandToneFX);
