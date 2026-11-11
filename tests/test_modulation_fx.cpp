@@ -32,9 +32,19 @@ static void run(double sr) {
         assert(ring.process(0.f,0.f)==(std::array<float,2>{0.f,0.f}));
     }
     ring.set(82.f,0.f,.8f,.3f);
+    // Parameter automation is deliberately smoothed. After five
+    // envelope time constants the depth is effectively neutral.
+    for(int i=0;i<(int)(sr*.20);++i)ring.process(.35f,-.22f);
     for(int i=0;i<128;++i) {
         auto y=ring.process(.35f,-.22f);
-        assert(y[0]==.35f && y[1]==-.22f);
+        assert(std::abs(y[0]-.35f)<1.e-5f);
+        assert(std::abs(y[1]+.22f)<1.e-5f);
+    }
+    // Fractional chorus voice count must remain finite during live changes.
+    for(int i=0;i<18000;++i){
+        if(i%113==0)chorus.set(.3f+(i%7)*.3f,1.f+(i%8),2.f+(i%4),.42f);
+        const auto y=chorus.process(i%37==0?.25f:0.f,0.f);
+        assert(finite(y));
     }
     float bad=std::numeric_limits<float>::infinity();
     assert(finite(chorus.process(bad,bad)));
