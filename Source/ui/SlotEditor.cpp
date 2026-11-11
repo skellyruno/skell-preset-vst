@@ -551,7 +551,11 @@ void SlotEditor::paint(juce::Graphics&g) {
                 const float high=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
                 const float freq=low*std::pow(high/low,processor.getSlotParam(slot,2*band));
                 const float gain=(processor.getSlotParam(slot,2*band+1)-.5f)*30.f;
-                filter[(size_t)band].setPeak(sr,freq,gain,1.1);
+                const auto* qValue=processor.state.getRawParameterValue(
+                    "s"+juce::String(slot+1)+"_eqQ"+juce::String(band+1));
+                const float q=skellpreset::dsp::EightBandTone::qFromNormalized(
+                    qValue?qValue->load():.5f);
+                filter[(size_t)band].setPeak(sr,freq,gain,q);
             }
             for(int px=0;px<=835;px+=5) {
                 const double freq=20.*std::pow(1000.,(double)px/835.);
@@ -1113,7 +1117,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                      juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
     } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         effectTitle="8-BAND EQ  /  EIGHT INDEPENDENT FREQUENCY + GAIN NODES";
-        effectDetail="SELECT A DOT TO SHOW ITS BAND PAIR  /  FIXED Q 1.1  /  ZERO ADDED PDC";
+        effectDetail="SELECT ANY DOT TO EDIT FREQUENCY / GAIN / Q  ·  ZERO ADDED PDC";
     } else if(type==SkellPresetAudioProcessor::SerialDynamicsFX) {
         effectTitle="FET + OPTO  /  TWO-STAGE VOCAL COMPRESSION";
         effectDetail=juce::String(-48.f+42.f*processor.getSlotParam(slot,0),0)+
@@ -1285,7 +1289,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
             const float dist=std::abs(bx-(float)e.x);
             if(dist<nearest){nearest=dist;activeEqBand=b;}
         }
-        if(activeEqBand/2 !=eqBank/2)showEqBank(activeEqBand);
+        showEqBank(activeEqBand);
         for(int k=0;k<2;++k)
             if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+
                           "_p"+juce::String(activeEqBand*2+k+1)))
