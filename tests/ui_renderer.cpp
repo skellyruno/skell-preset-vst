@@ -5,6 +5,7 @@
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <array>
+#include <cmath>
 #include <cstdio>
 
 namespace {
@@ -31,6 +32,50 @@ int main(int argc, char** argv) {
     SkellPresetAudioProcessor processor;
     processor.prepareToPlay(48000.0, 512);
     int failures = 0;
+    // Exercise the real AudioProcessor, not only the portable DSP header.
+    // Variable and oversized DAW blocks must be safe after the rack's
+    // block-based refactor for external plugin hosting.
+    for(double sampleRate:{44100.,48000.,96000.}) {
+        processor.prepareToPlay(sampleRate,256);
+        processor.loadFactoryPreset(25); // Zero-PDC tracking chain.
+        for(int frameCount:{63,256,8193}) {
+            juce::AudioBuffer<float> probe(2,frameCount);
+            for(int n=0;n<frameCount;++n) {
+                const float wave=.12f*std::sin((float)(n*0.06));
+                probe.setSample(0,n,wave);
+                probe.setSample(1,n,wave*.8f);
+            }
+            juce::MidiBuffer midi;
+            processor.processBlock(probe,midi);
+            for(int ch=0;ch<2;++ch)
+                for(int n=0;n<frameCount;++n) {
+                    const float value=probe.getSample(ch,n);
+                    if(!std::isfinite(value) || std::abs(value)>3.f) {
+                        std::fprintf(stderr,"DSP invalid output at %.0f Hz block %d\n",
+                                     sampleRate,frameCount);
+                        ++failures;
+                        break;
+                    }
+                }
+        }
+    }
+    processor.prepareToPlay(48000.,512);
+    processor.loadFactoryPreset(25);
+    if(auto* mode=processor.state.getParameter("mode"))
+        mode->setValueNotifyingHost(mode->convertTo0to1(3.f));
+    for(int step=0;step<12;++step) {
+        juce::AudioBuffer<float> probe(2,512);
+        for(int ch=0;ch<2;++ch)
+            for(int n=0;n<512;++n)probe.setSample(ch,n,.125f);
+        juce::MidiBuffer midi;
+        processor.processBlock(probe,midi);
+        if(step==11 && std::abs(probe.getSample(0,511)-.125f)>1.e-4f){
+            std::fprintf(stderr,"Bypass did not settle to sample-aligned input\n");
+            ++failures;
+        }
+    }
+    processor.prepareToPlay(48000.,512);
+    processor.loadFactoryPreset(0);
     {
         SkellPresetAudioProcessorEditor editor(processor);
         if(processor.preparedAudioRate()!=48000.) {
