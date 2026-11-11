@@ -268,21 +268,62 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"CLOSE  "+juce::String(threshold-hysteresis,1)+" dB",{45,187,270,20},12,Theme::muted);
         Theme::text(g,"HOLD  "+juce::String(hold,0)+" ms",{45,211,270,20},12,Theme::muted);
         Theme::text(g,"HYSTERESIS THRESHOLDS  /  INPUT LEVEL -80 TO 0 dB",{42,327,700,17},10,Theme::muted);
-    } else if(type==SkellPresetAudioProcessor::Delay || type==SkellPresetAudioProcessor::AdlibThrow){
-        const bool throwing=type==SkellPresetAudioProcessor::AdlibThrow;
-        const float seconds=throwing?(.16f+.48f*processor.getSlotParam(slot,0)):(.055f+.85f*processor.getSlotParam(slot,0));
-        const float feedback=throwing?(.2f+.68f*processor.getSlotParam(slot,1)):(.8f*processor.getSlotParam(slot,1));
+    } else if(type==SkellPresetAudioProcessor::AdlibThrow){
+        // A phrase-end/retrigger timing diagram, deliberately distinct from
+        // the ordinary Delay's five vertical tap bars. This illustrates
+        // algorithm state; it does not pretend to be a live audio waveform.
+        const float seconds=.16f+.48f*processor.getSlotParam(slot,0);
+        const float feedback=.2f+.68f*processor.getSlotParam(slot,1);
+        const bool manual=processor.getSlotParam(slot,3)>.65f;
+        const float boundary=plot.getX()+400.f;
+        g.setColour(Theme::blue.withAlpha(.13f));
+        g.fillRoundedRectangle(plot.getX()+30.f,plot.getY()+38.f,360.f,123.f,8.f);
+        for(int pulse=0;pulse<9;++pulse) {
+            const float px=plot.getX()+54.f+pulse*34.f;
+            const float height=24.f+18.f*(1.f+std::sin((float)pulse*1.48f));
+            g.setColour(Theme::blue.withAlpha(.30f+.04f*pulse));
+            g.fillRoundedRectangle(px,plot.getCentreY()-height*.5f,
+                                   14.f,height,3.f);
+        }
+        g.setColour(Theme::amber);
+        g.drawVerticalLine((int)boundary,plot.getY()+34.f,plot.getBottom()-18.f);
+        const float baseY=plot.getCentreY()+11.f;
+        for(int echo=0;echo<4;++echo) {
+            const float amplitude=std::pow(feedback,(float)echo);
+            const float cx=plot.getX()+470.f+echo*97.f;
+            const float radius=10.f+22.f*amplitude;
+            g.setColour(Theme::green.withAlpha(.25f+.65f*amplitude));
+            g.drawEllipse(cx-radius,baseY-radius,2.f*radius,2.f*radius,2.f);
+            g.fillEllipse(cx-4.f,baseY-4.f,8.f,8.f);
+        }
+        Theme::text(g,"PHRASE CAPTURE",{70,172,350,18},12,Theme::blue,true);
+        Theme::text(g,manual?"MANUAL THROW / LIVE TRIGGER":
+                        "AUTO PHRASE-END THROW",
+            {477,172,360,18},12,Theme::green,true);
+        Theme::text(g,juce::String(seconds*1000.f,0)+" ms / FEEDBACK "+
+                       juce::String(feedback*100.f,0)+"%",
+            {465,305,360,20},12,Theme::white);
+        Theme::text(g,"TIMING DIAGRAM / NOT A LIVE WAVEFORM",
+            {60,326,550,17},10,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::Delay){
+        const float seconds=.055f+.85f*processor.getSlotParam(slot,0);
+        const float feedback=.8f*processor.getSlotParam(slot,1);
         const float unit=juce::jmin(175.f,plot.getWidth()/5.f);
         for(int tap=0;tap<5;tap++){
             const float amplitude=std::pow(feedback,(float)tap);
             const float x=plot.getX()+43.f+tap*unit;
             g.setColour(Theme::green.withAlpha(.3f+.7f*amplitude));
-            g.fillRoundedRectangle(x,plot.getBottom()-amplitude*133.f,10.f,amplitude*133.f,3.f);
-            Theme::text(g,juce::String(tap+1),{(int)x-7,(int)plot.getBottom()-20,26,16},9,Theme::muted,false,juce::Justification::centred);
+            g.fillRoundedRectangle(x,plot.getBottom()-amplitude*133.f,
+                                   10.f,amplitude*133.f,3.f);
+            Theme::text(g,juce::String(tap+1),
+                {(int)x-7,(int)plot.getBottom()-20,26,16},9,Theme::muted,
+                false,juce::Justification::centred);
         }
-        Theme::text(g,juce::String(throwing?"PHRASE THROW":"DELAY")+"  "+juce::String(seconds*1000.f,0)+" ms  /  FEEDBACK "+juce::String(feedback*100.f,0)+"%",
+        Theme::text(g,"DELAY  "+juce::String(seconds*1000.f,0)+
+                      " ms / FEEDBACK "+juce::String(feedback*100.f,0)+"%",
                     {45,163,700,20},12,Theme::green,true);
-        Theme::text(g,"RELATIVE TAP DECAY  /  NOT AN AUDIO WAVEFORM",{43,326,650,17},10,Theme::muted);
+        Theme::text(g,"RELATIVE TAP DECAY / NOT AN AUDIO WAVEFORM",
+                    {43,326,650,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::ExternalVST3) {
         const auto name=processor.hostedVST3Name(slot);
         Theme::text(g,"EXTERNAL VST3 INSERT",{80,185,680,31},25,Theme::green,true);
@@ -411,6 +452,20 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }
     g.restoreState();
+    if(type==SkellPresetAudioProcessor::Compressor ||
+       type==SkellPresetAudioProcessor::Gate ||
+       type==SkellPresetAudioProcessor::DeEsser ||
+       type==SkellPresetAudioProcessor::Delay ||
+       type==SkellPresetAudioProcessor::AdlibThrow) {
+        const float x=plot.getX()+24.f+(plot.getWidth()-48.f)*
+                      processor.getSlotParam(slot,0);
+        const float y=plot.getBottom()-27.f-(plot.getHeight()-47.f)*
+                      processor.getSlotParam(slot,1);
+        g.setColour(Theme::plot);
+        g.fillEllipse(x-6.f,y-6.f,12.f,12.f);
+        g.setColour(Theme::green);
+        g.drawEllipse(x-6.f,y-6.f,12.f,12.f,2.0f);
+    }
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
         g.setColour(Theme::green.withAlpha(.7f));g.drawRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f,1.f);
