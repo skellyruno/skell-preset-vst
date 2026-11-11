@@ -175,8 +175,13 @@ struct VoxRackSmoothCompressor {
             const double t=over+smoothedKnee*.5;
             target=slope*t*t/(2.*smoothedKnee);
         } else if(over>0.)target=slope*over;
-        gainReduction=target+(gainReduction-target)*
-                      (target>gainReduction?attackPole:releasePole);
+        // A ratio of exactly 1:1 is a unity transfer. Do not leave a
+        // previously strong reduction hanging for the full release time
+        // after the user turns compression off; use the 20 ms click-safe
+        // parameter pole for a fast but continuous return to unity.
+        const double gainPole=ratio<=1.0001f?paramPole:
+            (target>gainReduction?attackPole:releasePole);
+        gainReduction=target+(gainReduction-target)*gainPole;
         if(gainReduction<1.e-18)gainReduction=0.;
         const float gain=dbToGain((float)-gainReduction);
         return {x*gain,y*gain};
