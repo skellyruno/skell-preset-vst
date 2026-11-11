@@ -149,7 +149,8 @@ void SlotEditor::refreshIfChanged() {
     repaint();
 }
 void SlotEditor::resized() {
-    moduleBox.setBounds(550,25,144,29);activeButton.setBounds(711,26,70,28);
+    // 210px avoids "VoxRack Smooth Co..." truncation while preserving ON/WET.
+    moduleBox.setBounds(489,25,211,29);activeButton.setBounds(711,26,70,28);
     wetKnob.setBounds(802,6,88,78);
     loadExternal.setBounds(48,437,172,57);
     editExternal.setBounds(239,437,186,57);
@@ -162,7 +163,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     const int type=(int)processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type")->load();
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     Theme::text(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
-    Theme::text(g,"MODULE",{552,9,140,15},9,Theme::muted,true);
+    Theme::text(g,"MODULE",{491,9,140,15},9,Theme::muted,true);
     Theme::text(g,"WET",{832,3,50,15},9,Theme::muted,true);
     const auto plot=juce::Rectangle<float>(33,151,835,206);
     g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);

@@ -94,7 +94,15 @@ void ChainPanel::paint(juce::Graphics& g) {
         for(int dot=0;dot<6;dot++)g.fillEllipse(18.f+(dot%2)*4.f,(float)top+12.f+(dot/2)*4.f,1.6f,1.6f);
         Theme::text(g,juce::String(row+1).paddedLeft('0',2),{35,top+9,23,18},10,Theme::muted);
         drawIcon(g,type,69,top+9);
-        Theme::text(g,processor.moduleName(type),{97,top+8,88,19},12,type==0?Theme::muted:Theme::white,selected==slot);
+        // Compact rack names must not clip against the status LED.
+        juce::String compact=processor.moduleName(type);
+        if(type==SkellPresetAudioProcessor::VoxRackSmoothComp)compact="Vox Smooth";
+        else if(type==SkellPresetAudioProcessor::VoxRackRoom)compact="Vox Room";
+        else if(type==SkellPresetAudioProcessor::ThreeBandDynamics)compact="3-Band Dyn";
+        else if(type==SkellPresetAudioProcessor::ExternalVST3)compact="External VST3";
+        const float fontSize=compact.length()>12?10.f:11.5f;
+        Theme::text(g,compact,{97,top+8,88,19},fontSize,
+                    type==0?Theme::muted:Theme::white,selected==slot);
         g.setColour(enabled?Theme::green:Theme::muted.withAlpha(.37f));
         g.fillEllipse(188.f,(float)top+15.f,8.f,8.f);
         const auto peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
