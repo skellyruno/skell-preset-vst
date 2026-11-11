@@ -9,8 +9,8 @@
 namespace skellpreset::dsp {
 
 // Eight independent peak bands. The sixteen existing rack parameters describe
-// eight log-spaced frequencies and gains; each band has a carefully chosen
-// bandwidth (Q=1.1) until the fully adjustable-Q preset schema/UI ships.
+// eight log-spaced frequencies and gains; all eight Q controls are independently
+// automatable and saved in the compatible native preset schema.
 // No extra per-sample allocations or changes to old parameter IDs.
 struct EightBandTone {
     static constexpr int bands=8;
@@ -89,8 +89,13 @@ public:
         fetGr=fCoeff*fetGr+(1.f-fCoeff)*target;
         const float fastGain=std::pow(10.f,-fetGr/20.f);
         const float fl=l*fastGain,fr=r*fastGain;
-        power=rmsCoeff*power+(1.f-rmsCoeff)*.5f*(fl*fl+fr*fr);
-        if(power<1e-25f)power=0.f;
+        // Limit the *detector* energy, not the audio signal. Squaring a
+        // perfectly finite, pathological floating-point input can overflow,
+        // poisoning the RMS follower and muting all subsequent output.
+        const float dL=std::clamp(fl,-32.f,32.f);
+        const float dR=std::clamp(fr,-32.f,32.f);
+        power=rmsCoeff*power+(1.f-rmsCoeff)*.5f*(dL*dL+dR*dR);
+        if(!std::isfinite(power)||power<1e-25f)power=0.f;
         const float rms=10.f*std::log10(std::max(power,1e-18f));
         const float optoTarget=std::max(0.f,(rms-threshold+3.f)*.43f);
         const float oCoeff=optoTarget>optoGr?optoAtt:optoRel;
@@ -141,8 +146,8 @@ public:
         l=sane(l);r=sane(r);
         const auto filtered=detector.process(l,r);
         // Detector follows the excess of the presence band, not the bass.
-        const float magnitude=std::max(std::abs(filtered[0]-l),
-                                        std::abs(filtered[1]-r));
+        const float magnitude=std::min(32.f,std::max(std::abs(filtered[0]-l),
+                                                     std::abs(filtered[1]-r)));
         const float coef=magnitude>env?attCoeff:relCoeff;
         env=coef*env+(1.f-coef)*magnitude;
         if(env<1e-20f)env=0.f;
