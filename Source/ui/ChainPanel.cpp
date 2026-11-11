@@ -167,6 +167,13 @@ void ChainPanel::paint(juce::Graphics& g) {
         else if(type==SkellPresetAudioProcessor::VoxRackRoom)compact="Vox Room";
         else if(type==SkellPresetAudioProcessor::ThreeBandDynamics)compact="3-Band Dyn";
         else if(type==SkellPresetAudioProcessor::ExternalVST3)compact="External VST3";
+        else if(type==SkellPresetAudioProcessor::DuckingPingPongFX)compact="Duck Echo";
+        else if(type==SkellPresetAudioProcessor::VocalVibratoFX)compact="Vibrato";
+        else if(type==SkellPresetAudioProcessor::EightBandToneFX)compact="8-Band EQ";
+        else if(type==SkellPresetAudioProcessor::SerialDynamicsFX)compact="FET / Opto";
+        else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX)compact="Harsh Tamer";
+        else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX)compact="Noise Guard";
+        else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX)compact="Studio Pitch";
         const float fontSize=compact.length()>12?11.f:12.4f;
         Theme::text(g,compact,{97,top+8,88,19},fontSize,
                     type==0?Theme::muted:Theme::white,selected==slot);
