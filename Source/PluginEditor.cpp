@@ -304,6 +304,10 @@ public:
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
         }
+        if(record.getBounds().intersects(output.getBounds()) ||
+           record.getBounds().intersects(mix.getBounds()) ||
+           record.getBounds().getRight()>=773)
+            issues.add("Recorder button overlaps the bottom output label or master slider");
         if(!input.textFromValueFunction || input.textFromValueFunction(0.)!="0 dB"
            || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
            || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
@@ -605,11 +609,11 @@ public:
                 (rackOnRight?97+i*222:333+i*222),
                 display==0?438:607,display==0?192:120,display==0?47:24);
         input.setBounds(80,648,228,34);
-        mix.setBounds(433,648,241,34);
+        mix.setBounds(433,648,185,34);
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1094,648,69,26);
-        record.setBounds(688,648,118,30);
+        record.setBounds(634,648,115,30);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
