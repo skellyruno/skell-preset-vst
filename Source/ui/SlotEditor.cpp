@@ -35,7 +35,7 @@ std::array<juce::String,4> titles(int type) {
         case 27:return {"Threshold","Ratio","FET Speed","Parallel"};
         case 28:return {"Frequency","Threshold","Reduction","Release"};
         case 29:return {"Threshold","Strength","Hold","Release"};
-        case 30:return {"Pitch","Formant","Mix","Quality"};
+        case 30:return {"Pitch","Formant","Pitch Range","Formant Range"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -153,6 +153,14 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 }
                 return juce::String((v-.5)*30.,1)+"dB";
             }
+            if(module==SkellPresetAudioProcessor::StudioPitchFormantFX) {
+                if(i==0)return juce::String((v-.5)*2.*
+                    (3.+9.*processor.getSlotParam(slot,2)),1)+" st";
+                if(i==1)return juce::String((v-.5)*2.*
+                    (2.+10.*processor.getSlotParam(slot,3)),1)+" st";
+                if(i==2)return juce::String(3.+9.*v,0)+" st max";
+                return juce::String(2.+10.*v,0)+" st max";
+            }
             if(module==SkellPresetAudioProcessor::VocalRiderFX){
                 if(i==1)return juce::String(-26.+14.*v,0)+"dB";
                 if(i==2)return juce::String(3.+12.*v,0)+"dB";
@@ -185,6 +193,14 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 const double hi=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
                 const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
                 return juce::jlimit(0.,1.,std::log(hz/lo)/std::log(hi/lo));
+            }
+            if(module==SkellPresetAudioProcessor::StudioPitchFormantFX) {
+                if(i==0)return juce::jlimit(0.,1.,.5+value/
+                    (2.*(3.+9.*processor.getSlotParam(slot,2))));
+                if(i==1)return juce::jlimit(0.,1.,.5+value/
+                    (2.*(2.+10.*processor.getSlotParam(slot,3))));
+                if(i==2)return juce::jlimit(0.,1.,(value-3.)/9.);
+                return juce::jlimit(0.,1.,(value-2.)/10.);
             }
             if(module==SkellPresetAudioProcessor::VocalRiderFX){
                 if(i==1)return juce::jlimit(0.,1.,(value+26.)/14.);
@@ -585,6 +601,29 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.setColour(Theme::white.withAlpha(active?.95f:.58f));
                 g.drawEllipse(x-size*.5f,y-size*.5f,size,size,1.3f);
             }
+        } else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX) {
+            const float pitch=std::pow(2.f,
+                (processor.getSlotParam(slot,0)-.5f)*2.f*
+                (3.f+9.f*processor.getSlotParam(slot,2))/12.f);
+            const float formant=std::pow(2.f,
+                (processor.getSlotParam(slot,1)-.5f)*2.f*
+                (2.f+10.f*processor.getSlotParam(slot,3))/12.f);
+            for(int channel=0;channel<2;++channel) {
+                juce::Path wave;
+                for(int i=0;i<=150;++i){
+                    const float t=(float)i/150.f;
+                    const float phase=t*36.f*pitch+(channel?2.3f:0.f);
+                    const float envelope=(.23f+.06f*std::sin(t*12.f*formant));
+                    const float y=plot.getCentreY()+std::sin(phase)*h*envelope+
+                                  (channel?20.f:-20.f);
+                    const float x=x0+t*w;
+                    if(i==0)wave.startNewSubPath(x,y);else wave.lineTo(x,y);
+                }
+                g.setColour(channel?Theme::blue:Theme::green);
+                g.strokePath(wave,juce::PathStrokeType(channel==0?2.6f:1.9f));
+            }
+            Theme::text(g,"STEREO PHASE VOCODER  /  STUDIO QUALITY MODE",
+                {83,168,702,19},11,Theme::muted,true);
         } else if(type==SkellPresetAudioProcessor::SerialDynamicsFX) {
             const float threshold=-48.f+42.f*first;
             const float ratio=2.f+10.f*second;
@@ -1116,6 +1155,9 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String(15.f*std::pow(70.f,processor.getSlotParam(slot,0)),0)+
                      " Hz  /  DEPTH "+
                      juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX) {
+        effectTitle="STUDIO PITCH + FORMANT  /  SPECTRAL COLOUR";
+        effectDetail="768 SAMPLES REPORTED HOST PDC  /  NOT LOW-LATENCY AUTOTUNE";
     } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         effectTitle="8-BAND EQ  /  EIGHT INDEPENDENT FREQUENCY + GAIN NODES";
         effectDetail="SELECT ANY DOT TO EDIT FREQUENCY / GAIN / Q  ·  ZERO ADDED PDC";
@@ -1233,6 +1275,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::EightBandToneFX ? "CLICK ANY OF EIGHT NODES  /  DRAG TO CHANGE ITS FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::AdaptiveNoiseFX ? "ADAPTIVE GATE  /  NOT AN RNNOISE NEURAL MODEL" :
+                  type==SkellPresetAudioProcessor::StudioPitchFormantFX ? "SPECTRAL PITCH / FORMANT  ·  ALIGNED HOST LATENCY 768 SAMPLES" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   type==SkellPresetAudioProcessor::ExternalVST3
                     ? juce::String("EXTERNAL VST3  /  THIRD-PARTY EDITOR OPENS SEPARATELY")
