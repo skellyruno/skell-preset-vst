@@ -138,11 +138,17 @@ public:
             const juce::StringArray labels{"70%","85%","100%","125%"};
             for(int i=0;i<labels.size();++i)
                 menu.addItem(i+1,labels[i],true,sizeSelect.getSelectedId()==i+1);
+            menu.addSeparator();
+            menu.addSectionHeader("RECORDINGS");
+            menu.addItem(100,"Reveal last WAV in folder",lastCaptureFile.existsAsFile());
             menu.showMenuAsync(
                 juce::PopupMenu::Options().withTargetComponent(&settings),
                 [safe=juce::Component::SafePointer<Canvas>(this)](int choice) {
-                    if(choice>=1 && choice<=4 && safe!=nullptr)
+                    if(safe==nullptr)return;
+                    if(choice>=1 && choice<=4)
                         safe->sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
+                    else if(choice==100 && safe->lastCaptureFile.existsAsFile())
+                        safe->lastCaptureFile.revealToUser();
                 });
         };
         record.setButtonText("REC WAV");
@@ -177,7 +183,10 @@ public:
                     if(result.failed())
                         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
                             "Cannot record",result.getErrorMessage());
-                    else safe->record.setButtonText("STOP REC");
+                    else {
+                        safe->lastCaptureFile=file;
+                        safe->record.setButtonText("STOP REC");
+                    }
                 });
         };
         browser.onLoaded=[this]{slot.select(0);chain.setSelectedSlot(0);refresh();};
@@ -683,6 +692,7 @@ private:
     int lastInputMeter=-1,lastOutputMeter=-1;
     juce::TextButton preset,match,help,settings,record;
     std::unique_ptr<juce::FileChooser> recordChooser;
+    juce::File lastCaptureFile;
     std::array<juce::TextButton,2> mode;
     std::array<juce::Slider,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
