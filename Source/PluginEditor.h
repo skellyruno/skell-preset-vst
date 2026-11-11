@@ -13,6 +13,7 @@ public:
     void configureForScreenshot(int themeVariant, int workspaceMode, bool showPresetBrowser);
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
     void dockRackForScreenshot(bool right);
+    void openModulePickerForScreenshot();
     juce::StringArray getScreenshotLayoutIssues() const;
     juce::StringArray runScreenshotInteractionTests();
     bool showGuidedTourForScreenshot();

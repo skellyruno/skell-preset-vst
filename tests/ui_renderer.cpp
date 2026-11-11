@@ -125,9 +125,13 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-threeband-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-vox-velvet-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-vox-chamber-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-wide-choir-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-phantom-sweep-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-alien-ring-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-module-picker-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,17> effectScenes {{
+        const std::array<std::pair<const char*,int>,20> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -144,7 +148,10 @@ int main(int argc, char** argv) {
             {"stereo-width",SkellPresetAudioProcessor::StereoWidth},
             {"threeband",SkellPresetAudioProcessor::ThreeBandDynamics},
             {"voxrack-room",SkellPresetAudioProcessor::VoxRackRoom},
-            {"voxrack-comp",SkellPresetAudioProcessor::VoxRackSmoothComp}
+            {"voxrack-comp",SkellPresetAudioProcessor::VoxRackSmoothComp},
+            {"vocal-chorus",SkellPresetAudioProcessor::VocalChorusFX},
+            {"vocal-flanger",SkellPresetAudioProcessor::VocalFlangerFX},
+            {"ring-mod",SkellPresetAudioProcessor::RingModFX}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
@@ -172,6 +179,14 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(29);
             } else if(scene.id=="obsidian-factory-vox-chamber-70") {
                 processor.loadFactoryPreset(30);
+            } else if(scene.id=="obsidian-factory-wide-choir-70") {
+                processor.loadFactoryPreset(31);
+            } else if(scene.id=="obsidian-factory-phantom-sweep-70") {
+                processor.loadFactoryPreset(32);
+            } else if(scene.id=="obsidian-factory-alien-ring-70") {
+                processor.loadFactoryPreset(33);
+            } else if(scene.id=="obsidian-module-picker-70") {
+                processor.loadFactoryPreset(0);
             } else if(scene.id=="obsidian-external-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
@@ -192,6 +207,8 @@ int main(int argc, char** argv) {
             if(scene.id=="obsidian-rack-right-70"
                || scene.id=="obsidian-rack-right-browser-70")
                 editor.dockRackForScreenshot(true);
+            if(scene.id=="obsidian-module-picker-70")
+                editor.openModulePickerForScreenshot();
             if(scene.id=="obsidian-guided-tour-70" && !editor.showGuidedTourForScreenshot())
                 std::fprintf(stderr,"Guided tour did not show in real-editor render\\n");
             if(scene.id=="obsidian-expanded-70")
@@ -209,6 +226,11 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(1,0);
             else if(scene.id=="obsidian-factory-vox-chamber-70")
                 editor.selectRackSlotForScreenshot(5,0);
+            else if(scene.id=="obsidian-factory-wide-choir-70" ||
+                    scene.id=="obsidian-factory-alien-ring-70")
+                editor.selectRackSlotForScreenshot(3,0);
+            else if(scene.id=="obsidian-factory-phantom-sweep-70")
+                editor.selectRackSlotForScreenshot(7,0);
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -233,15 +255,19 @@ int main(int argc, char** argv) {
             {"obsidian-effect-threeband-70", "obsidian-effect-radio-70"},
             {"obsidian-factory-broadcast-70", "obsidian-factory-threeband-70"},
             {"obsidian-effect-voxrack-room-70", "obsidian-effect-voxrack-comp-70"},
-            {"obsidian-factory-vox-velvet-70", "obsidian-factory-vox-chamber-70"}
+            {"obsidian-factory-vox-velvet-70", "obsidian-factory-vox-chamber-70"},
+            {"obsidian-advanced-70", "obsidian-module-picker-70"},
+            {"obsidian-effect-vocal-chorus-70", "obsidian-effect-vocal-flanger-70"},
+            {"obsidian-effect-ring-mod-70", "obsidian-effect-vocal-flanger-70"},
+            {"obsidian-factory-wide-choir-70", "obsidian-factory-alien-ring-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 77) {
-            std::fprintf(stderr, "Expected 77 PNGs, captured %d\n", report.captured);
+        if (report.captured != 84) {
+            std::fprintf(stderr, "Expected 84 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 

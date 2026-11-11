@@ -201,6 +201,9 @@ public:
         else browser.setVisible(false);
         repaint();
     }
+    void openModulePickerForScreenshot() {
+        slot.openModulePickerForScreenshot();
+    }
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
         chain.setScreenshotScrollOffset(scrollOffset);
         chain.setSelectedSlot(physicalSlot);
@@ -268,6 +271,8 @@ public:
         dockRack(false);
         if(chain.getX()>=slot.getX())
             issues.add("Rack failed to return left");
+        if(!slot.testModulePickerInteraction())
+            issues.add("Module browser did not toggle, filter or load Ring Mod");
         // This drives the same XY mutation code as real mouse dragging:
         // verify the graphical insert is an actual parameter editor.
         processor.loadFactoryPreset(0);
@@ -524,4 +529,8 @@ void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSl
 
 void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
     canvas->dockRackForScreenshot(right);
+}
+
+void SkellPresetAudioProcessorEditor::openModulePickerForScreenshot() {
+    canvas->openModulePickerForScreenshot();
 }

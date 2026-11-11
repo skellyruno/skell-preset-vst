@@ -59,6 +59,22 @@ int main(){
               && restored.slots[0].type==18&&restored.slots[1].type==19,
               "Roundtrip native VoxRack Room and Smooth Comp presets");
     }
+    // Appended modulation IDs must roundtrip without shifting older IDs.
+    {
+        auto motion=first;
+        motion.slots[0].type=20;
+        motion.slots[1].type=21;
+        motion.slots[2].type=22;
+        const auto modFile=testFile(dir,"motion-roundtrip");
+        check(skellpreset::package::write(modFile,motion).wasOk(),
+              "Export three native modulation modules");
+        skellpreset::package::Document restored;
+        check(skellpreset::package::read(modFile,restored).wasOk()
+              && restored.slots[0].type==20
+              && restored.slots[1].type==21
+              && restored.slots[2].type==22,
+              "Roundtrip chorus/flanger/ring module IDs without remapping");
+    }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
     {
