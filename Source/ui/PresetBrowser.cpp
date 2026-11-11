@@ -37,9 +37,9 @@ void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
         g.strokePath(wave,juce::PathStrokeType(2.5f));
     } else if(variation==2) {
         const float twist=(float)((seed*7)%13)-6.f;
-        const float step=3.f+(float)(seed%4)*.32f;
+        const float step=2.6f+(float)(seed%4)*.22f;
         for(int i=0;i<5;++i) {
-            const float margin=8.f+i*step;
+            const float margin=5.f+i*step;
             g.drawRoundedRectangle(r.getX()+margin+twist*.23f,r.getY()+margin,
                                    r.getWidth()-2.f*margin,r.getHeight()-2.f*margin,
                                    2.5f+(float)(seed%3),1.4f);
