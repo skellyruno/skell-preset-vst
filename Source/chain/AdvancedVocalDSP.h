@@ -18,15 +18,32 @@ struct EightBandTone {
     static constexpr std::array<float,bands+1> edges{
         35.f,90.f,185.f,380.f,820.f,1700.f,3600.f,7500.f,17500.f};
     void prepare(double sr) noexcept {for(auto& b:bell)b.prepare(sr);}
-    void set(double sr,const std::array<float,16>& p) noexcept {
+    static float qFromNormalized(float value) noexcept {
+        const float x=std::isfinite(value)?std::clamp(value,0.f,1.f):.5f;
+        return .4f*std::pow(20.f,x); // Q 0.4–8.0
+    }
+    static float normalizedFromQ(float q) noexcept {
+        if(!std::isfinite(q))return .5f;
+        return std::clamp(std::log(std::max(.4f,q)/.4f)/std::log(20.f),0.f,1.f);
+    }
+    void set(double sr,const std::array<float,16>& p,
+             const std::array<float,8>& q) noexcept {
         if(!std::isfinite(sr)||sr<8000.)sr=48000.;
         for(int i=0;i<bands;++i){
+            const auto freqVal=p[(size_t)i*2];
+            const auto gainVal=p[(size_t)i*2+1];
+            const float freqNorm=std::isfinite(freqVal)?std::clamp(freqVal,0.f,1.f):.5f;
+            const float gainNorm=std::isfinite(gainVal)?std::clamp(gainVal,0.f,1.f):.5f;
             const float frequency=edges[(size_t)i]*
-                std::pow(edges[(size_t)i+1]/edges[(size_t)i],
-                         std::clamp(p[(size_t)i*2],0.f,1.f));
-            const float db=(std::clamp(p[(size_t)i*2+1],0.f,1.f)-.5f)*30.f;
-            bell[(size_t)i].setPeak(sr,frequency,db,1.1);
+                std::pow(edges[(size_t)i+1]/edges[(size_t)i],freqNorm);
+            const float db=(gainNorm-.5f)*30.f;
+            bell[(size_t)i].setPeak(sr,frequency,db,qFromNormalized(q[(size_t)i]));
         }
+    }
+    // Legacy test and neutral defaults need not construct a second array.
+    void set(double sr,const std::array<float,16>& p) noexcept {
+        std::array<float,8> defaultQ{};defaultQ.fill(.5f);
+        set(sr,p,defaultQ);
     }
     std::array<float,2> process(float l,float r) noexcept {
         if(!std::isfinite(l))l=0.f;
@@ -147,7 +164,7 @@ class AdaptiveNoiseControl {
 public:
     void prepare(double sampleRate) noexcept {
         sr=std::isfinite(sampleRate)?std::clamp(sampleRate,8000.,192000.):48000.;
-        env=0.f;gain=1.f;
+        env=0.f;gain=1.f;held=0;
         attack=std::exp(-1.f/(.006f*(float)sr));
         release=std::exp(-1.f/(.120f*(float)sr));
     }
