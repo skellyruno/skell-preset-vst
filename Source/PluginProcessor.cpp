@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -20,6 +20,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         auto& r=rawSlots[(size_t)i];const auto prefix=slotPrefix(i);
         r.type=state.getRawParameterValue(prefix+"type");
         r.extension=state.getRawParameterValue(prefix+"fxExt");
+        r.extension2=state.getRawParameterValue(prefix+"fxExt2");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
@@ -79,6 +80,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{id,1},"Slot "+juce::String(s)+" extra effect",
             juce::StringArray{"None","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato"},0));
     }
+    // Keep the earlier 4-choice extension unchanged for projects saved
+    // with the previous beta. A second extension carries the advanced suite.
+    for(int s=1;s<=slotCount;++s) {
+        const auto id="s"+juce::String(s)+"_fxExt2";
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{id,1},"Slot "+juce::String(s)+" advanced effect",
+            juce::StringArray{"None","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control"},0));
+    }
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -89,6 +98,8 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
     chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
     rider.prepare(sampleRate);duckingDelay.prepare(sampleRate);vibrato.prepare(sampleRate);
+    eightBand.prepare(sampleRate);serialDynamics.prepare(sampleRate);
+    harshness.prepare(sampleRate);noiseControl.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -195,16 +206,25 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const auto& raw=rawSlots[(size_t)slot];
     const int oldType=raw.type?juce::jlimit(0,(int)RingModFX,(int)raw.type->load()):Empty;
     const int extra=raw.extension?juce::jlimit(0,3,(int)raw.extension->load()):0;
-    return oldType==Empty && extra>0 ? RingModFX+extra : oldType;
+    const int advanced=raw.extension2?juce::jlimit(0,4,(int)raw.extension2->load()):0;
+    if(oldType!=Empty)return oldType;
+    if(advanced>0)return (int)VocalVibratoFX+advanced;
+    return extra>0 ? (int)RingModFX+extra : (int)Empty;
 }
 void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(slot<0 || slot>=slotCount)return;
     const auto id=slotPrefix(slot);
     const int chosen=juce::jlimit(0,NumberOfModules-1,type);
-    if(chosen>RingModFX) {
+    if(chosen>VocalVibratoFX) {
         setReal(id+"type",(float)Empty);
+        setReal(id+"fxExt",0.f);
+        setReal(id+"fxExt2",(float)(chosen-VocalVibratoFX));
+    } else if(chosen>RingModFX) {
+        setReal(id+"type",(float)Empty);
+        setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt",(float)(chosen-RingModFX));
     } else {
+        setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt",0.f);
         setReal(id+"type",(float)chosen);
     }
@@ -364,6 +384,18 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 break;
             case VocalVibratoFX:
                 e.vibrato.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
+            case EightBandToneFX:
+                e.eightBand.set(rate,c.p);
+                break;
+            case SerialDynamicsFX:
+                e.serialDynamics.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
+            case DynamicHarshnessFX:
+                e.harshness.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
+            case AdaptiveNoiseFX:
+                e.noiseControl.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
@@ -550,6 +582,22 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case VocalVibratoFX: {
                         const auto y=e.vibrato.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case EightBandToneFX: {
+                        const auto y=e.eightBand.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case SerialDynamicsFX: {
+                        const auto y=e.serialDynamics.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case DynamicHarshnessFX: {
+                        const auto y=e.harshness.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case AdaptiveNoiseFX: {
+                        const auto y=e.noiseControl.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
