@@ -892,6 +892,18 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
             packedOrder.store(order,std::memory_order_release);
         }
     }
+    if(index==41) {
+        // Intentionally omitted from live vocal defaults: 768-sample STFT PDC.
+        setSlotType(8,StudioPitchFormantFX);setSlotOn(8,true);
+        setSlotParam(8,0,.72f);setSlotParam(8,1,.42f);
+        setSlotParam(8,2,.62f);setSlotParam(8,3,.58f);
+        setReal("s9_wet",.48f);
+        std::uint64_t order=0;
+        const int ids[]{0,1,2,3,8,4,5,6,7,9,10,11,12,13,14,15};
+        for(int position=0;position<slotCount;++position)
+            order|=(std::uint64_t)ids[position] << (4*position);
+        packedOrder.store(order,std::memory_order_release);
+    }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
     state.state.setProperty("presetName",name,nullptr);
