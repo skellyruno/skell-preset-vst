@@ -22,9 +22,9 @@ public:
     }
     void prepare(double rate) noexcept {
         sr=std::isfinite(rate)?std::clamp(rate,8000.,192000.):48000.;
-        constexpr double pi=3.141592653589793238462643383279;
+        constexpr double windowPi=3.141592653589793238462643383279;
         for(int k=0;k<fftSize;++k)
-            window[(size_t)k]=.5f-.5f*std::cos((float)(2*pi*k/fftSize));
+            window[(size_t)k]=.5f-.5f*std::cos((float)(2*windowPi*k/fftSize));
         blendStep=1.f-std::exp(-1.f/(.025f*(float)sr));
         reset();
     }
