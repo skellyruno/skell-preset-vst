@@ -121,7 +121,16 @@ private:
                 shape=envelope[(size_t)index]*(1.f-fraction)+
                       envelope[(size_t)index+1]*fraction;
             }
-            const float magn=synMagnitude[(size_t)k]*shape;
+            // At low sample rates a formant envelope bin may contain almost
+            // no energy at the new pitch (e.g. 220 -> 440 Hz at 8 kHz).
+            // Unbounded envelope transfer then erases the new fundamental.
+            // Retain at least 35% of the source spectral envelope so pitch
+            // transposition remains audible without disabling formant shape.
+            const int originalBin=std::clamp(
+                (int)std::round((float)k/pitchRatio),0,bins-1);
+            const float safeShape=std::max(
+                shape,envelope[(size_t)originalBin]*.35f);
+            const float magn=synMagnitude[(size_t)k]*safeShape;
             float freqError=synFrequency[(size_t)k]-(float)k*freqPerBin;
             freqError=freqError/freqPerBin*2.f*pi/oversample+(float)k*expected;
             sumPhase[(size_t)k]=std::remainder(sumPhase[(size_t)k]+freqError,2.f*pi);
