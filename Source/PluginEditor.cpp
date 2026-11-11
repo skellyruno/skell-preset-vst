@@ -91,6 +91,27 @@ public:
         inputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"input",input);
         mixAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"mix",mix);
         outputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"output",output);
+        // Host attachments otherwise show opaque raw decimals such as 0.000
+        // and 1.000. Display physical units without changing DSP precision
+        // or the existing automated parameter normalization.
+        auto decibels=[](double value) {
+            return juce::String(juce::roundToInt(value))+" dB";
+        };
+        auto readDb=[](const juce::String& text) {
+            return juce::jlimit(-24.,24.,text.getDoubleValue());
+        };
+        input.textFromValueFunction=decibels;
+        output.textFromValueFunction=decibels;
+        input.valueFromTextFunction=readDb;
+        output.valueFromTextFunction=readDb;
+        mix.textFromValueFunction=[](double value) {
+            return juce::String(juce::roundToInt(juce::jlimit(0.,1.,value)*100.))+"%";
+        };
+        mix.valueFromTextFunction=[](const juce::String& text) {
+            const double value=text.getDoubleValue();
+            return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
+        };
+        input.updateText();output.updateText();mix.updateText();
         sizeSelect.addItemList({"70%","85%","100%","125%"},1);
         const float restored=(float)processor.state.state.getProperty("uiScale",.70f);
         const float available[]{.70f,.85f,1.f,1.25f};
