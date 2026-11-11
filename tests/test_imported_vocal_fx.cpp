@@ -90,6 +90,24 @@ int main() {
     const double ratio=std::sqrt(loud/quiet);
     assert(ratio>1. && ratio<7.); // originally 8.57x
 
+    // Ducking is functional, not only a front-panel knob. Same impulse and
+    // memory content: sustained voice must mask the initial 1/4-note repeat.
+    {
+        DuckingPingPongDelay unmasked,masked;
+        unmasked.prepare(48000.);masked.prepare(48000.);
+        unmasked.set(120.,1.f,.45f,0.f,.7f);
+        masked.set(120.,1.f,.45f,1.f,.7f);
+        float normalEcho=0.f,duckedEcho=0.f;
+        for(int i=0;i<=24000;++i) {
+            const float voice=i==0?1.f:(i>1000?.27f:0.f);
+            const auto plain=unmasked.process(voice,voice);
+            const auto reduced=masked.process(voice,voice);
+            if(i==24000){normalEcho=plain[0];duckedEcho=reduced[0];}
+        }
+        assert(normalEcho>.9f);
+        assert(duckedEcho<normalEcho*.65f);
+    }
+
     // Host tempo fallback and invalid automation never produce invalid audio.
     DuckingPingPongDelay delay;
     delay.prepare(48000.);
