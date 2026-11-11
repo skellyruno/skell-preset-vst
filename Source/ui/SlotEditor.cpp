@@ -124,6 +124,16 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 if(i==2)return juce::String(.3+7.*v,2)+" Q";
                 return juce::String(juce::roundToInt(20.+250.*v))+"Hz";
             }
+            const int module=type?(int)type->load():0;
+            if(module==SkellPresetAudioProcessor::VocalRiderFX){
+                if(i==1)return juce::String(-26.+14.*v,0)+"dB";
+                if(i==2)return juce::String(3.+12.*v,0)+"dB";
+            } else if(module==SkellPresetAudioProcessor::DuckingPingPongFX && i==0) {
+                return v<.25?"1/16":v<.5?"1/8":v<.75?"1/8D":"1/4";
+            } else if(module==SkellPresetAudioProcessor::VocalVibratoFX) {
+                if(i==0)return juce::String(.3+11.7*v,1)+"Hz";
+                if(i==1)return juce::String(3.5*v,1)+"ms";
+            }
             return juce::String(juce::roundToInt(v*100.))+"%";
         };
         k.valueFromTextFunction=[this,i](const juce::String& input)->double {
@@ -139,6 +149,19 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 if(i==1)return juce::jlimit(0.,1.,value/24.+.5);
                 if(i==2)return juce::jlimit(0.,1.,(value-.3)/7.);
                 return juce::jlimit(0.,1.,(value-20.)/250.);
+            }
+            const int module=type?(int)type->load():0;
+            if(module==SkellPresetAudioProcessor::VocalRiderFX){
+                if(i==1)return juce::jlimit(0.,1.,(value+26.)/14.);
+                if(i==2)return juce::jlimit(0.,1.,(value-3.)/12.);
+            } else if(module==SkellPresetAudioProcessor::DuckingPingPongFX && i==0) {
+                if(text=="1/16")return .125;
+                if(text=="1/8")return .375;
+                if(text=="1/8d")return .625;
+                if(text=="1/4")return .875;
+            } else if(module==SkellPresetAudioProcessor::VocalVibratoFX) {
+                if(i==0)return juce::jlimit(0.,1.,(value-.3)/11.7);
+                if(i==1)return juce::jlimit(0.,1.,value/3.5);
             }
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
