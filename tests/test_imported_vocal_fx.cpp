@@ -61,9 +61,11 @@ int main() {
         for(int i=0;i<fixedTap+8;++i) {
             const auto sample=vib.process(i==0?1.f:0.f,i==0?1.f:0.f);
             assert(std::isfinite(sample[0]) && std::isfinite(sample[1]));
-            if(i==fixedTap){impulseL=sample[0];impulseR=sample[1];}
+            if(i>=fixedTap-2 && i<=fixedTap+1){
+                impulseL+=sample[0];impulseR+=sample[1];
+            }
         }
-        assert(impulseL>.95f && impulseR>.95f);
+        assert(impulseL>.95f && impulseR>.95f); // fractional tap spreads across two samples
         vib.set(.95f,1.f,1.f,.75f);
         for(int i=0;i<(int)sampleRate/2;++i){
             const float in=.3f*std::sin((float)i*.117f);
