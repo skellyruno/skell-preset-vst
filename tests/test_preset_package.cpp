@@ -91,6 +91,47 @@ int main(){
               &&restored.slots[2].type==25,
               "Roundtrip new rack effect IDs and retain legacy values");
     }
+    // Native v2 package supports advanced effects and independent Q without
+    // changing original module IDs, old files or schema number.
+    {
+        auto advanced=first;
+        advanced.slots[0].type=26;
+        advanced.slots[1].type=27;
+        advanced.slots[2].type=28;
+        advanced.slots[3].type=29;
+        advanced.slots[0].eqQ[0]=.81f;
+        advanced.slots[0].eqQ[7]=.12f;
+        const auto file=testFile(dir,"advanced-vocal-suite");
+        check(skellpreset::package::write(file,advanced).wasOk(),
+              "Export 8-Band EQ, FET+Opto, Harshness and Noise");
+        skellpreset::package::Document loaded;
+        check(skellpreset::package::read(file,loaded).wasOk()
+              &&loaded.slots[0].type==26
+              &&loaded.slots[1].type==27
+              &&loaded.slots[2].type==28
+              &&loaded.slots[3].type==29
+              &&loaded.slots[0].eqQ[0]==.81f
+              &&loaded.slots[0].eqQ[7]==.12f,
+              "Roundtrip new effect IDs and independent EQ bandwidths");
+        // Older schema-v2 packages had no eqQ property; neutral values
+        // must be provided automatically rather than failing import.
+        juce::ZipFile archive(file);
+        std::unique_ptr<juce::InputStream> input(archive.createStreamForEntry(0));
+        if(input){
+            auto json=juce::JSON::parse(input->readEntireStreamAsString());
+            if(auto* chain=json.getProperty("chain",{}).getArray())
+                for(auto& entry:*chain)
+                    if(auto* item=entry.getDynamicObject())
+                        item->removeProperty("eqQ");
+            const auto noQ=testFile(dir,"legacy-v2-without-eq-q");
+            createArchive(noQ,"preset.json",juce::JSON::toString(json).toStdString());
+            skellpreset::package::Document restored;
+            check(skellpreset::package::read(noQ,restored).wasOk()
+                  &&restored.slots[0].eqQ[0]==.5f
+                  &&restored.slots[0].eqQ[7]==.5f,
+                  "Load old native v2 file with safe neutral EQ bandwidths");
+        }
+    }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
     {
