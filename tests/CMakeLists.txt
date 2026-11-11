@@ -48,3 +48,8 @@ add_test(NAME SkellPresetDeEsserTest COMMAND SkellPresetDeEsserTest)
 add_executable(SkellPresetVoxRackDelayTest test_voxrack_delay.cpp)
 target_compile_features(SkellPresetVoxRackDelayTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetVoxRackDelayTest COMMAND SkellPresetVoxRackDelayTest)
+
+# Independent portable tests for imported vocal-effect behaviour.
+add_executable(SkellPresetVocalEffectsTest test_vocal_effects.cpp)
+target_compile_features(SkellPresetVocalEffectsTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVocalEffectsTest COMMAND SkellPresetVocalEffectsTest)

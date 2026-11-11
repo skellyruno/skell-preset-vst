@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include <cmath>
 namespace {
-const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3"};
+const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics"};
 std::array<juce::String,4> titles(int type) {
     switch(type){
         case 1:return {"Frequency","Gain","Q","Low Cut"};
@@ -16,7 +16,12 @@ std::array<juce::String,4> titles(int type) {
         case 9:return {"Throw Time","Feedback","Tone","Trigger"};
         case 10:return {"Width","Timing","Motion","Depth"};
         case 11:return {"Sib. Freq","Threshold","Reduction","Release"};
-        case 12:return {"Macro A","Macro B","Macro C","Macro D"};
+        case 12:return {"Plugin","Settings","State","PDC"};
+        case 13:return {"Low Cut","High Cut","Nasal","Drive"};
+        case 14:return {"Bit Depth","Sample Rate","Drive","Dither"};
+        case 15:return {"Rate","Depth","Shape","Stereo"};
+        case 16:return {"Width","Mono Bass","Balance","Bass Mix"};
+        case 17:return {"Low Dyn","Mid Dyn","High Dyn","Release"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }

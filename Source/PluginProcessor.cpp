@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -71,6 +71,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     peak.prepare(sampleRate);highpass.prepare(sampleRate);comp.prepare(sampleRate);gate.prepare(sampleRate);
     deesser.prepare(sampleRate);
+    radio.prepare(sampleRate);crusher.prepare(sampleRate);tremolo.prepare(sampleRate);
+    width.prepare(sampleRate);threeBand.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -275,6 +277,24 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 e.deesser.set(3500.f+c.p[0]*8000.f,-53.f+c.p[1]*39.f,
                     2.f+c.p[2]*20.f,35.f+c.p[3]*245.f);
                 break;
+            case Radio:
+                e.radio.set(100.f+1400.f*c.p[0],1800.f+10000.f*c.p[1],
+                            c.p[2],c.p[3]);
+                break;
+            case RetroCrush:
+                e.crusher.set(3.f+13.f*c.p[0],
+                    100.f*std::pow((float)(rate/100.),c.p[1]),c.p[2],c.p[3]);
+                break;
+            case Tremolo:
+                e.tremolo.set(.15f+14.f*c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
+            case StereoWidth:
+                e.width.set(2.f*c.p[0],60.f+340.f*c.p[1],
+                            2.f*c.p[2]-1.f,c.p[3]);
+                break;
+            case ThreeBandDynamics:
+                e.threeBand.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
                                   500.f+17500.f*c.p[2]);
@@ -403,6 +423,26 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case DeEsser: {
                         const auto y=e.deesser.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case Radio: {
+                        const auto y=e.radio.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case RetroCrush: {
+                        const auto y=e.crusher.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case Tremolo: {
+                        const auto y=e.tremolo.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case StereoWidth: {
+                        const auto y=e.width.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case ThreeBandDynamics: {
+                        const auto y=e.threeBand.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
@@ -541,6 +581,32 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotParam(7,1,.35f+preset.space*.35f);
         setSlotParam(7,2,.32f);
         setReal("s8_wet",.38f+preset.space*.45f);
+    }
+    if(index==26) {
+        // A VoxRack-toned phrase throw plus an independently authored
+        // radio insert; no native VST3 host latency is added.
+        setSlotType(3,Radio);setSlotOn(3,true);
+        setSlotParam(3,0,.26f);setSlotParam(3,1,.38f);
+        setSlotParam(3,2,.52f);setSlotParam(3,3,.28f);
+        setReal("s4_wet",.72f);
+        setSlotParam(4,2,.37f);
+    } else if(index==27) {
+        setSlotType(3,RetroCrush);setSlotOn(3,true);
+        setSlotParam(3,0,.28f);setSlotParam(3,1,.42f);
+        setSlotParam(3,2,.34f);setSlotParam(3,3,0.f);
+        setReal("s4_wet",.7f);
+        setSlotType(7,Tremolo);setSlotOn(7,true);
+        setSlotParam(7,0,.44f);setSlotParam(7,1,.58f);
+        setSlotParam(7,2,.35f);setSlotParam(7,3,.15f);
+        setReal("s8_wet",.55f);
+    } else if(index==28) {
+        setSlotType(1,ThreeBandDynamics);setSlotOn(1,true);
+        setSlotParam(1,0,.38f);setSlotParam(1,1,.52f);
+        setSlotParam(1,2,.45f);setSlotParam(1,3,.45f);
+        setSlotType(3,StereoWidth);setSlotOn(3,true);
+        setSlotParam(3,0,.61f);setSlotParam(3,1,.35f);
+        setSlotParam(3,2,.5f);setSlotParam(3,3,.5f);
+        setReal("s4_wet",.62f);
     }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
