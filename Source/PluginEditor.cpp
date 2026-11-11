@@ -291,10 +291,12 @@ public:
         // One typographic run avoids the clipped hyphen and inconsistent gaps.
         // PRESET stays true neon green across all three colour skins.
         juce::AttributedString brand;
-        brand.setFont(Theme::font(27.f,true));
         brand.setJustification(juce::Justification::centredLeft);
         brand.append("SKELL-",Theme::white);
         brand.append("PRESET",juce::Colour(0xff39ff3a));
+        // AttributedString::setFont styles existing text; calling it before
+        // append() left the new runs at JUCE's tiny default font.
+        brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,271.f);
         wordmark.draw(g,juce::Rectangle<float>(75.f,18.f,271.f,38.f));
