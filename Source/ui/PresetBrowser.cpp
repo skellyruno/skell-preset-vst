@@ -256,8 +256,10 @@ void PresetBrowser::chooseArtwork() {
             bool written=false;
             {
                 juce::FileOutputStream output(staging.getFile());
-                if(output.openedOk())
-                    written=png.writeImageToStream(thumbnail,output) && output.flush();
+                if(output.openedOk()) {
+                    written=png.writeImageToStream(thumbnail,output);
+                    output.flush();
+                }
             }
             if(!written || !staging.overwriteTargetFileWithTemporary()) {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
