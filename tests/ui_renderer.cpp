@@ -132,9 +132,13 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-rider-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-ducked-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-flutter-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-eightband-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-opto-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-harsh-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-factory-noise-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,23> effectScenes {{
+        const std::array<std::pair<const char*,int>,27> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -157,7 +161,11 @@ int main(int argc, char** argv) {
             {"ring-mod",SkellPresetAudioProcessor::RingModFX},
             {"vocal-rider",SkellPresetAudioProcessor::VocalRiderFX},
             {"ducking-pingpong",SkellPresetAudioProcessor::DuckingPingPongFX},
-            {"vocal-vibrato",SkellPresetAudioProcessor::VocalVibratoFX}
+            {"vocal-vibrato",SkellPresetAudioProcessor::VocalVibratoFX},
+            {"eight-band-eq",SkellPresetAudioProcessor::EightBandToneFX},
+            {"fet-opto",SkellPresetAudioProcessor::SerialDynamicsFX},
+            {"harshness-tamer",SkellPresetAudioProcessor::DynamicHarshnessFX},
+            {"adaptive-noise",SkellPresetAudioProcessor::AdaptiveNoiseFX}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
@@ -197,6 +205,14 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(35);
             } else if(scene.id=="obsidian-factory-flutter-70") {
                 processor.loadFactoryPreset(36);
+            } else if(scene.id=="obsidian-factory-eightband-70") {
+                processor.loadFactoryPreset(37);
+            } else if(scene.id=="obsidian-factory-opto-70") {
+                processor.loadFactoryPreset(38);
+            } else if(scene.id=="obsidian-factory-harsh-70") {
+                processor.loadFactoryPreset(39);
+            } else if(scene.id=="obsidian-factory-noise-70") {
+                processor.loadFactoryPreset(40);
             } else if(scene.id=="obsidian-module-picker-70") {
                 processor.loadFactoryPreset(0);
             } else if(scene.id=="obsidian-external-70") {
@@ -248,6 +264,12 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(8,0);
             else if(scene.id=="obsidian-factory-ducked-70")
                 editor.selectRackSlotForScreenshot(4,0);
+            else if(scene.id=="obsidian-factory-eightband-70" ||
+                    scene.id=="obsidian-factory-harsh-70" ||
+                    scene.id=="obsidian-factory-noise-70")
+                editor.selectRackSlotForScreenshot(8,0);
+            else if(scene.id=="obsidian-factory-opto-70")
+                editor.selectRackSlotForScreenshot(1,0);
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -279,15 +301,18 @@ int main(int argc, char** argv) {
             {"obsidian-factory-wide-choir-70", "obsidian-factory-alien-ring-70"},
             {"obsidian-effect-vocal-rider-70", "obsidian-effect-vocal-vibrato-70"},
             {"obsidian-effect-ducking-pingpong-70", "obsidian-effect-delay-70"},
-            {"obsidian-factory-rider-70", "obsidian-factory-ducked-70"}
+            {"obsidian-factory-rider-70", "obsidian-factory-ducked-70"},
+            {"obsidian-effect-eight-band-eq-70", "obsidian-effect-fet-opto-70"},
+            {"obsidian-effect-harshness-tamer-70", "obsidian-effect-adaptive-noise-70"},
+            {"obsidian-factory-eightband-70", "obsidian-factory-opto-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 90) {
-            std::fprintf(stderr, "Expected 90 PNGs, captured %d\n", report.captured);
+        if (report.captured != 98) {
+            std::fprintf(stderr, "Expected 98 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
