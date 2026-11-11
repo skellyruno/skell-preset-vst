@@ -713,6 +713,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 inR?std::abs(inR[n]):0.f));
         }
     }
+    // Sample actual rendered output, including dry/wet, bypass and FX.
+    // Decimate into atomics; UI reads independently at 30 Hz.
+    liveScope.push(inL,inR,total);
     inputPeak.store(inPeak,std::memory_order_relaxed);
     outputPeak.store(outPeak,std::memory_order_relaxed);
     for(int s=0;s<slotCount;++s)
