@@ -1177,13 +1177,10 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.drawEllipse(x-6.f,y-6.f,12.f,12.f,2.0f);
     }
     if(type==SkellPresetAudioProcessor::EightBandToneFX) {
-        Theme::text(g,"8 BANDS  /  SELECT DOT TO EDIT",
-            {36,101,420,20},12,Theme::green,true);
-        Theme::text(g,"B"+juce::String(eqBank+1)+" + B"+
-            juce::String(eqBank+2)+" SELECTED",{481,101,180,20},11,
-            Theme::muted,true,juce::Justification::centredRight);
-        Theme::text(g,"B"+juce::String(activeEqBand+1)+" Q",{681,95,174,17},
-            11,Theme::green,true);
+        // The effect title already fills the left of this row. The separate
+        // Q control has its own legible caption and never overlaps the title.
+        Theme::text(g,"BAND "+juce::String(activeEqBand+1)+" Q",
+                    {680,96,172,17},11,Theme::green,true);
     }
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
