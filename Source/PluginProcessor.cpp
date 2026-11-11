@@ -230,30 +230,30 @@ void SkellPresetAudioProcessor::handleAsyncUpdate() {
 
 void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&) {
     juce::ScopedNoDenormals noDenormals;
-    const auto ch=juce::jmin(2,buffer.getNumChannels()),size=buffer.getNumSamples();
+    const int channels=juce::jmin(2,buffer.getNumChannels());
+    const int total=buffer.getNumSamples();
+    if(channels<1 || total<=0)return;
     const bool monoSource=getTotalNumInputChannels()==1;
-    if(ch<1 || size<=0)return;
-    auto* left=buffer.getWritePointer(0);
-    auto* right=ch==2?buffer.getWritePointer(1):nullptr;
     const int mode=juce::jlimit(0,3,(int)rawGlobal.mode->load());
     inputSmooth.setTargetValue(dbToGain(rawGlobal.input->load()));
     outputSmooth.setTargetValue(dbToGain(rawGlobal.output->load()));
     mixSmooth.setTargetValue(juce::jlimit(0.f,1.f,rawGlobal.mix->load()));
     bypassSmooth.setTargetValue(mode==3?0.f:1.f);
     const bool delta=rawGlobal.delta->load()>.5f;
-    const float macroTone=rawGlobal.macros[0]->load(),macroPunch=rawGlobal.macros[1]->load(),
-                macroSpace=rawGlobal.macros[2]->load(),macroGrit=rawGlobal.macros[3]->load();
-    // Read atomics once each block. Fixed slot objects avoid realtime allocations.
-    for(int s=0;s<slotCount;++s){
-        auto& c=controlCache[(size_t)s];const auto& raw=rawSlots[(size_t)s];
+    const float macroTone=rawGlobal.macros[0]->load();
+    const float macroPunch=rawGlobal.macros[1]->load();
+    const float macroSpace=rawGlobal.macros[2]->load();
+    const float macroGrit=rawGlobal.macros[3]->load();
+    // Read all host automation once per callback. Native algorithms share
+    // one preallocated engine per physical slot; no allocation or lock here.
+    for(int s=0;s<slotCount;++s) {
+        auto& c=controlCache[(size_t)s];
+        const auto& raw=rawSlots[(size_t)s];
         c.type=juce::jlimit(0,NumberOfModules-1,(int)raw.type->load());
-        c.on=raw.on->load()>.5f;c.wet=juce::jlimit(0.f,1.f,raw.wet->load());
-        for(int k=0;k<16;k++)c.p[(size_t)k]=raw.p[(size_t)k]->load();
+        c.on=raw.on->load()>.5f;
+        c.wet=juce::jlimit(0.f,1.f,raw.wet->load());
+        for(int k=0;k<16;++k)c.p[(size_t)k]=raw.p[(size_t)k]->load();
         auto& e=engines[(size_t)s];
-        if(c.type==Empty)continue;
-        // Configure only the DSP engine in this slot. Previously every occupied
-        // slot recomputed EQ filters, compressor, gate, delay and reverb settings
-        // on every block even when that algorithm was not being used.
         switch(c.type) {
             case EQ:
                 e.peak.setPeak(rate,40.*std::pow(300.,c.p[0]),
@@ -272,7 +272,6 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 e.gate.hysteresisDb=c.p[3]*8.f;
                 break;
             case DeEsser:
-                // Zero extra latency: suitable for recording/monitoring vocals.
                 e.deesser.set(3500.f+c.p[0]*8000.f,-53.f+c.p[1]*39.f,
                     2.f+c.p[2]*20.f,35.f+c.p[3]*245.f);
                 break;
@@ -285,108 +284,195 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     (750.f+c.p[2]*11500.f)/(float)rate);
                 break;
             case Reverb:
-                e.reverb[0].setParameters(.15f+6.f*c.p[0],
-                    .12f+c.p[1]*.8f,1.f);
+                e.reverb[0].setParameters(.15f+6.f*c.p[0],.12f+c.p[1]*.8f,1.f);
                 break;
             case Limiter:
                 e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
                 break;
             default: break;
         }
-    }
-    for(int s=0;s<slotCount;++s){
-        const auto& c=controlCache[(size_t)s];
-        const float fx=(c.type==Reverb||c.type==Delay)?(.5f+macroSpace):1.f;
-        slotWetSmooth[(size_t)s].setTargetValue(juce::jlimit(0.f,1.f,c.wet*fx)*(c.on?1.f:0.f));
+        const float fx=(c.type==Reverb || c.type==Delay)
+            ?(.5f+macroSpace):1.f;
+        slotWetSmooth[(size_t)s].setTargetValue(juce::jlimit(0.f,1.f,c.wet*fx)
+            *(c.on?1.f:0.f));
     }
     const int chainCount=activeSlotCount();
     std::array<int,slotCount> sequence{};
     const auto packed=packedOrder.load(std::memory_order_acquire);
-    for(int i=0;i<slotCount;i++)sequence[(size_t)i]=(int)((packed>>(4*i))&0x0fU);
-    std::array<float,slotCount> meter{};
-    const auto lookahead=limiterLookahead.load(std::memory_order_acquire);
+    for(int i=0;i<slotCount;++i)
+        sequence[(size_t)i]=(int)((packed>>(4*i)) & 0x0fU);
+    const int lookahead=limiterLookahead.load(std::memory_order_acquire);
     int blockLatency=0;
     for(int position=0;position<chainCount;++position) {
         const int id=sequence[(size_t)position];
-        if(id>=0 && id<slotCount) {
-            const int type=controlCache[(size_t)id].type;
-            if(type==Limiter)blockLatency+=lookahead;
-            else if(type==ExternalVST3)blockLatency+=hosted.getLatency(id);
-        }
+        if(id<0 || id>=slotCount)continue;
+        const auto type=controlCache[(size_t)id].type;
+        if(type==Limiter)blockLatency+=lookahead;
+        else if(type==ExternalVST3)blockLatency+=hosted.getLatency(id);
     }
-    float inPeak=0,outPeak=0;
-    for(int n=0;n<size;n++) {
-        float l=std::isfinite(left[n])?left[n]:0.f;
-        float r=ch==2&&!monoSource?(std::isfinite(right[n])?right[n]:0.f):l;
-        const float originalL=l,originalR=r;
-        const float inputGain=inputSmooth.getNextValue(),outputGain=outputSmooth.getNextValue();
-        const float mix=mixSmooth.getNextValue(),activeBlend=bypassSmooth.getNextValue();
-        inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
-        l*=inputGain;r*=inputGain;
-        const auto delayedOriginal=bypassPdc.process(originalL,originalR,blockLatency);
-        const auto delayedDry=dryPdc.process(l,r,blockLatency);
-        const float dryL=delayedDry[0],dryR=delayedDry[1];
-        {
-            for(int ix=0;ix<chainCount;ix++) {
-                const int s=sequence[(size_t)ix];if(s<0||s>=slotCount)continue;
-                const auto& c=controlCache[(size_t)s];
-                if(c.type==Empty)continue;
-                const float slotWet=slotWetSmooth[(size_t)s].getNextValue();
-                // Advance delay/tail state even while bypassed: no frozen echoes.
-                const bool keepTailRunning=c.type==Limiter || c.type==Delay ||
-                    c.type==Reverb || c.type==AdlibThrow || c.type==AdlibDoubler;
-                if(!keepTailRunning && slotWet<.000001f &&
-                   slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
-                auto& e=engines[(size_t)s];float wL=l,wR=r;
+    blockLatency=juce::jlimit(0,slotCount*lookahead+
+        skellpreset::host::HostedVST3::maxTotalLatency,blockLatency);
+    std::array<float,slotCount> meter{};
+    float inPeak=0.f,outPeak=0.f;
+    const int limit=juce::jmax(64,hostChunkCapacity);
+    for(int offset=0;offset<total;offset+=limit) {
+        const int frames=juce::jmin(limit,total-offset);
+        // setSize(...,avoidReallocating=true) reuses prepareToPlay's fixed buffers.
+        rackWork.setSize(2,frames,false,false,true);
+        dryWork.setSize(2,frames,false,false,true);
+        bypassWork.setSize(2,frames,false,false,true);
+        auto* inL=buffer.getWritePointer(0)+offset;
+        auto* inR=channels==2?buffer.getWritePointer(1)+offset:nullptr;
+        for(int n=0;n<frames;++n) {
+            const float l=std::isfinite(inL[n])?inL[n]:0.f;
+            const float r=inR&&!monoSource?(std::isfinite(inR[n])?inR[n]:0.f):l;
+            inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
+            const float inputGain=inputSmooth.getNextValue();
+            const float preL=l*inputGain,preR=r*inputGain;
+            const auto original=bypassPdc.process(l,r,blockLatency);
+            const auto dry=dryPdc.process(preL,preR,blockLatency);
+            rackWork.setSample(0,n,preL);rackWork.setSample(1,n,preR);
+            dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
+            bypassWork.setSample(0,n,original[0]);
+            bypassWork.setSample(1,n,original[1]);
+        }
+        // The rack is processed one block per stage. Hosted VST3 effects
+        // receive proper blocks instead of one-sample callbacks.
+        for(int pos=0;pos<chainCount;++pos) {
+            const int s=sequence[(size_t)pos];
+            if(s<0 || s>=slotCount)continue;
+            const auto& c=controlCache[(size_t)s];
+            if(c.type==Empty)continue;
+            auto& e=engines[(size_t)s];
+            if(c.type==ExternalVST3) {
+                auto* plugin=hosted.get(s);
+                const int latency=hosted.getLatency(s);
+                if(plugin) {
+                    hostWork.setSize(2,frames,false,false,true);
+                    hostWork.copyFrom(0,0,rackWork,0,0,frames);
+                    hostWork.copyFrom(1,0,rackWork,1,0,frames);
+                    juce::MidiBuffer midi;
+                    plugin->processBlock(hostWork,midi);
+                }
+                for(int n=0;n<frames;++n) {
+                    const float l=rackWork.getSample(0,n);
+                    const float r=rackWork.getSample(1,n);
+                    const auto aligned=e.hostDry.process(l,r,latency);
+                    const float w=slotWetSmooth[(size_t)s].getNextValue();
+                    const float wetL=plugin?hostWork.getSample(0,n):aligned[0];
+                    const float wetR=plugin?hostWork.getSample(1,n):aligned[1];
+                    const float resultL=aligned[0]+(std::isfinite(wetL)?wetL-aligned[0]:0.f)*w;
+                    const float resultR=aligned[1]+(std::isfinite(wetR)?wetR-aligned[1]:0.f)*w;
+                    rackWork.setSample(0,n,resultL);
+                    rackWork.setSample(1,n,resultR);
+                    meter[(size_t)s]=std::max(meter[(size_t)s],
+                        std::max(std::abs(resultL),std::abs(resultR)));
+                }
+                continue;
+            }
+            const bool keepTail=c.type==Limiter || c.type==Delay ||
+                c.type==Reverb || c.type==AdlibThrow || c.type==AdlibDoubler;
+            if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
+                && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
+            for(int n=0;n<frames;++n) {
+                float l=rackWork.getSample(0,n);
+                float r=rackWork.getSample(1,n);
+                float wetL=l,wetR=r;
                 switch(c.type) {
                     case EQ: {
-                        const auto cut=e.highpass.process(l,r);
-                        const auto filtered=e.peak.process(cut[0],cut[1]);
-                        wL=filtered[0];wR=filtered[1];break;}
+                        const auto high=e.highpass.process(l,r);
+                        const auto y=e.peak.process(high[0],high[1]);
+                        wetL=y[0];wetR=y[1];break;
+                    }
                     case Compressor: {
-                        auto gain=e.comp.gain(std::max(std::abs(l),std::abs(r)));
-                        wL=l*gain;wR=r*gain;break;}
+                        const float g=e.comp.gain(std::max(std::abs(l),std::abs(r)));
+                        wetL=l*g;wetR=r*g;break;
+                    }
                     case Limiter: {
                         const float drive=dbToGain(c.p[1]*18.f);
-                        const float in[2]{l*drive,r*drive};float out[2]{};
-                        e.limiter.processFrame(in,out,2);
-                        wL=out[0];wR=out[1];break;}
+                        const float input[2]{l*drive,r*drive};
+                        float output[2]{};
+                        e.limiter.processFrame(input,output,2);
+                        wetL=output[0];wetR=output[1];break;
+                    }
                     case Gate: {
-                        float gain=e.gate.processGain(std::max(std::abs(l),std::abs(r)));
-                        wL=l*gain;wR=r*gain;break;}
+                        const float g=e.gate.processGain(std::max(std::abs(l),std::abs(r)));
+                        wetL=l*g;wetR=r*g;break;
+                    }
                     case DeEsser: {
-                        const auto d=e.deesser.process(l,r);
-                        wL=d[0];wR=d[1];break;}
+                        const auto y=e.deesser.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
                     case Saturator: {
-                        float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f)),blend=(.5f+c.p[1]);
-                        wL=std::tanh(l*drive*blend)/std::max(.5f,drive*.6f);
-                        wR=std::tanh(r*drive*blend)/std::max(.5f,drive*.6f);break;}
+                        const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));
+                        const float blend=.5f+c.p[1];
+                        wetL=std::tanh(l*drive*blend)/std::max(.5f,drive*.6f);
+                        wetR=std::tanh(r*drive*blend)/std::max(.5f,drive*.6f);
+                        break;
+                    }
                     case Exciter: {
                         const float drive=1.f+10.f*c.p[0];
-                        wL=(std::tanh(l*drive)-std::tanh(l*drive*.55f))*0.4f+l;
-                        wR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*0.4f+r;break;}
-                    case Delay: {auto d=e.delay.process(l,r);wL=d[0];wR=d[1];break;}
-                    case Reverb: {auto d=e.reverb[0].processFrame(l,r);wL=d[0];wR=d[1];break;}
-                    case AdlibThrow: {e.processThrow(l,r,wL,wR,c.p[0],c.p[1],c.p[2],c.p[3],rate);break;}
-                    case AdlibDoubler: {auto d=e.doubler.process(l,r,c.p[0],c.p[1],c.p[2],c.p[3]);wL=d[0];wR=d[1];break;}
-                    default: break;
+                        wetL=(std::tanh(l*drive)-std::tanh(l*drive*.55f))*.4f+l;
+                        wetR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*.4f+r;
+                        break;
+                    }
+                    case Delay: {
+                        const auto y=e.delay.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case Reverb: {
+                        const auto y=e.reverb[0].processFrame(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case AdlibThrow:
+                        e.processThrow(l,r,wetL,wetR,c.p[0],c.p[1],c.p[2],c.p[3],rate);
+                        break;
+                    case AdlibDoubler: {
+                        const auto y=e.doubler.process(l,r,c.p[0],c.p[1],c.p[2],c.p[3]);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    default:break;
                 }
-                // Lookahead limiter wet and bypass both carry its declared sample delay.
-                if(c.type==Limiter){auto aligned=e.limiterDry.process(l,r,lookahead);l=aligned[0];r=aligned[1];}
-                l=l+(wL-l)*slotWet;r=r+(wR-r)*slotWet;
-                meter[(size_t)s]=std::max(meter[(size_t)s],std::max(std::abs(l),std::abs(r)));
+                // Sample-align a bypassed limiter as it still contributes PDC.
+                if(c.type==Limiter) {
+                    const auto delayed=e.limiterDry.process(l,r,lookahead);
+                    l=delayed[0];r=delayed[1];
+                }
+                const float wet=slotWetSmooth[(size_t)s].getNextValue();
+                const float processedL=l+(wetL-l)*wet;
+                const float processedR=r+(wetR-r)*wet;
+                rackWork.setSample(0,n,processedL);
+                rackWork.setSample(1,n,processedR);
+                meter[(size_t)s]=std::max(meter[(size_t)s],
+                    std::max(std::abs(processedL),std::abs(processedR)));
             }
         }
-        const float resultL=dryL+(l-dryL)*mix;
-        const float resultR=dryR+(r-dryR)*mix;
-        const float processedL=(delta?(resultL-dryL):resultL)*outputGain;
-        const float processedR=(delta?(resultR-dryR):resultR)*outputGain;
-        left[n]=delayedOriginal[0]+(processedL-delayedOriginal[0])*activeBlend;
-        if(right)right[n]=delayedOriginal[1]+(processedR-delayedOriginal[1])*activeBlend;
-        outPeak=std::max(outPeak,std::max(std::abs(left[n]),right?std::abs(right[n]):0.f));
+        for(int n=0;n<frames;++n) {
+            const float dryL=dryWork.getSample(0,n);
+            const float dryR=dryWork.getSample(1,n);
+            const float wetL=rackWork.getSample(0,n);
+            const float wetR=rackWork.getSample(1,n);
+            const float mix=mixSmooth.getNextValue();
+            const float outGain=outputSmooth.getNextValue();
+            const float blend=bypassSmooth.getNextValue();
+            const float mixedL=dryL+(wetL-dryL)*mix;
+            const float mixedR=dryR+(wetR-dryR)*mix;
+            const float finalL=(delta?mixedL-dryL:mixedL)*outGain;
+            const float finalR=(delta?mixedR-dryR:mixedR)*outGain;
+            const float outputL=bypassWork.getSample(0,n)+
+                (finalL-bypassWork.getSample(0,n))*blend;
+            const float outputR=bypassWork.getSample(1,n)+
+                (finalR-bypassWork.getSample(1,n))*blend;
+            inL[n]=std::isfinite(outputL)?outputL:0.f;
+            if(inR)inR[n]=std::isfinite(outputR)?outputR:0.f;
+            outPeak=std::max(outPeak,std::max(std::abs(inL[n]),
+                inR?std::abs(inR[n]):0.f));
+        }
     }
-    inputPeak.store(inPeak);outputPeak.store(outPeak);
-    for(int s=0;s<slotCount;s++)slotPeaks[(size_t)s].store(meter[(size_t)s]);
+    inputPeak.store(inPeak,std::memory_order_relaxed);
+    outputPeak.store(outPeak,std::memory_order_relaxed);
+    for(int s=0;s<slotCount;++s)
+        slotPeaks[(size_t)s].store(meter[(size_t)s],std::memory_order_relaxed);
 }
 
 int SkellPresetAudioProcessor::appendRackSlot() {
