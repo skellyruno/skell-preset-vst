@@ -145,6 +145,41 @@ public:
                         safe->sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
                 });
         };
+        record.setButtonText("REC WAV");
+        record.setTooltip("Capture processed stereo track audio to a 24-bit WAV. FL Studio owns the microphone and transport.");
+        style(record);
+        addAndMakeVisible(record);
+        record.onClick=[this] {
+            if(processor.isCapturing()) {
+                processor.stopCapture();
+                record.setButtonText("REC WAV");
+                if(processor.droppedCaptureSamples()>0)
+                    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                        "Recording finished with gaps",
+                        "The recorder dropped "+juce::String((juce::int64)processor.droppedCaptureSamples())+
+                        " samples because the storage writer could not keep up.");
+                return;
+            }
+            const auto defaultPath=juce::File::getSpecialLocation(
+                juce::File::userDocumentsDirectory).getChildFile("SkellPreset-Capture.wav");
+            recordChooser=std::make_unique<juce::FileChooser>(
+                "Save processed track audio as WAV",defaultPath,"*.wav");
+            recordChooser->launchAsync(
+                juce::FileBrowserComponent::saveMode |
+                juce::FileBrowserComponent::canSelectFiles |
+                juce::FileBrowserComponent::warnAboutOverwriting,
+                [safe=juce::Component::SafePointer<Canvas>(this)](const juce::FileChooser& chosen) {
+                    if(safe==nullptr)return;
+                    auto file=chosen.getResult();
+                    if(file.getFullPathName().isEmpty())return;
+                    if(!file.hasFileExtension(".wav"))file=file.withFileExtension(".wav");
+                    const auto result=safe->processor.startCapture(file);
+                    if(result.failed())
+                        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                            "Cannot record",result.getErrorMessage());
+                    else safe->record.setButtonText("STOP REC");
+                });
+        };
         browser.onLoaded=[this]{slot.select(0);chain.setSelectedSlot(0);refresh();};
         browser.onClose=[this]{preset.repaint();};
         addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
@@ -254,8 +289,8 @@ public:
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
-        const std::array<const juce::Component*,13> all{{&themeButton,&preset,&match,
-            &mode[0],&mode[1],&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
+        const std::array<const juce::Component*,14> all{{&themeButton,&preset,&match,
+            &mode[0],&mode[1],&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings,&record}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
@@ -434,7 +469,24 @@ public:
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,271.f);
         wordmark.draw(g,juce::Rectangle<float>(75.f,18.f,271.f,38.f));
-        Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{76,54,239,17},11,Theme::muted,true);
+        // Native post-FX scope from actual plugin output, never a synthetic
+        // animation like 322's placeholder recording thumbnails.
+        std::array<float,128> waveform{};
+        processor.getLiveWaveform(waveform);
+        const float sx=123.f,sw=217.f,sy=62.f;
+        g.setColour(Theme::stroke.withAlpha(.58f));
+        g.drawHorizontalLine((int)sy,sx,sx+sw);
+        juce::Path livePath;
+        for(std::size_t i=0;i<waveform.size();++i) {
+            const float x=sx+(float)i*sw/(waveform.size()-1);
+            const float y=sy-juce::jlimit(-1.f,1.f,waveform[i])*7.f;
+            if(i==0)livePath.startNewSubPath(x,y);
+            else livePath.lineTo(x,y);
+        }
+        g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.92f));
+        g.strokePath(livePath,juce::PathStrokeType(1.25f));
+        Theme::text(g,processor.isCapturing()?"REC":"LIVE",{76,54,46,17},
+                    10,processor.isCapturing()?Theme::red:Theme::green,true);
         Theme::text(g,processor.state.state.getProperty("presetBank","Main Vocals").toString().toUpperCase(),{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
@@ -507,6 +559,7 @@ public:
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1094,648,69,26);
+        record.setBounds(688,648,118,30);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
@@ -559,6 +612,12 @@ public:
         const int outLevel=juce::jlimit(0,12,(int)(processor.getOutputPeak()*12.f));
         if(inLevel!=lastInputMeter){lastInputMeter=inLevel;repaint(juce::Rectangle<int>(307,651,88,26));}
         if(outLevel!=lastOutputMeter){lastOutputMeter=outLevel;repaint(juce::Rectangle<int>(1021,651,75,26));}
+        const bool armed=processor.isCapturing();
+        record.setButtonText(armed?"STOP REC":"REC WAV");
+        record.setColour(juce::TextButton::buttonColourId,
+            armed?Theme::red.withAlpha(.27f):Theme::panelAlt);
+        // Only the small scope strip needs refresh at 30 Hz.
+        repaint(juce::Rectangle<int>(73,51,271,25));
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
@@ -579,7 +638,8 @@ private:
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
-    juce::TextButton preset,match,help,settings;
+    juce::TextButton preset,match,help,settings,record;
+    std::unique_ptr<juce::FileChooser> recordChooser;
     std::array<juce::TextButton,2> mode;
     std::array<juce::Slider,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
