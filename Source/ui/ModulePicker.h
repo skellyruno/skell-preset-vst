@@ -214,14 +214,47 @@ private:
             default:return {};
         }
     }
+    // Conservative fuzzy matching, inspired by ShallowHost's catalog search.
+    // Only the message-thread picker uses this, never the audio callback.
+    static bool nearWord(juce::String sought,juce::String candidate){
+        sought=sought.toLowerCase();
+        candidate=candidate.toLowerCase();
+        const int a=sought.length(),b=candidate.length();
+        const int limit=a<3?0:a<=5?1:a<=8?2:3;
+        if(a>24||b>24||std::abs(a-b)>limit)return false;
+        std::array<int,26> previous{},current{};
+        for(int j=0;j<=b;++j)previous[(size_t)j]=j;
+        for(int i=1;i<=a;++i){
+            current[0]=i;
+            int rowMin=i;
+            for(int j=1;j<=b;++j){
+                current[(size_t)j]=std::min({
+                    previous[(size_t)j]+1,
+                    current[(size_t)j-1]+1,
+                    previous[(size_t)j-1]+(sought[i-1]==candidate[j-1]?0:1)
+                });
+                rowMin=std::min(rowMin,current[(size_t)j]);
+            }
+            if(rowMin>limit)return false;
+            previous=current;
+        }
+        return previous[(size_t)b]<=limit;
+    }
     bool matches(const juce::String& query,int type) const {
         const auto text=query.trim();
         if(text.isEmpty())return true;
         const auto searchable=processor.moduleName(type)+" "+
                               category(type)+" "+terms(type);
         auto words=juce::StringArray::fromTokens(text," \t","\"");
-        for(const auto& word:words)
-            if(!searchable.containsIgnoreCase(word))return false;
+        const auto catalogWords=juce::StringArray::fromTokens(
+            searchable," -_/+,.:","\"");
+        for(const auto& word:words){
+            if(searchable.containsIgnoreCase(word))continue;
+            bool near=false;
+            for(const auto& candidate:catalogWords)
+                if(nearWord(word,candidate)) {near=true;break;}
+            if(!near)return false;
+        }
         return true;
     }
     void filter(){
