@@ -485,6 +485,8 @@ void SlotEditor::refreshIfChanged() {
                 std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
                     processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
+        if(type==SkellPresetAudioProcessor::EightBandToneFX)
+            showEqBank(activeEqBand);
     }
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
@@ -495,7 +497,6 @@ void SlotEditor::refreshIfChanged() {
     eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& button:eqBandButtons)button.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
-    if(type==SkellPresetAudioProcessor::EightBandToneFX)showEqBank(activeEqBand);
     for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
 }
@@ -761,9 +762,21 @@ void SlotEditor::paint(juce::Graphics&g) {
                     qValue?qValue->load():.5f);
                 filter[(size_t)band].setPeak(sr,freq,gain,q);
             }
+            skellpreset::dsp::Biquad lowCutFilter,highCutFilter;
+            const auto* loParam=processor.state.getRawParameterValue(
+                "s"+juce::String(slot+1)+"_eqLowCut");
+            const auto* hiParam=processor.state.getRawParameterValue(
+                "s"+juce::String(slot+1)+"_eqHighCut");
+            const float lo=loParam?loParam->load():0.f;
+            const float hi=hiParam?hiParam->load():0.f;
+            if(lo>.0001f)lowCutFilter.setHighPass(sr,
+                skellpreset::dsp::EightBandTone::lowCutFrequency(lo));
+            if(hi>.0001f)highCutFilter.setLowPass(sr,
+                skellpreset::dsp::EightBandTone::highCutFrequency(hi));
             for(int px=0;px<=835;px+=5) {
                 const double freq=20.*std::pow(1000.,(double)px/835.);
-                double dB=0.;
+                double dB=lowCutFilter.magnitudeDb(freq,sr)
+                          +highCutFilter.magnitudeDb(freq,sr);
                 for(const auto& band:filter)dB+=band.magnitudeDb(freq,sr);
                 const float curveY=juce::jlimit(plot.getY(),plot.getBottom(),
                     plot.getCentreY()-(float)dB*(plot.getHeight()/72.f));
@@ -774,6 +787,19 @@ void SlotEditor::paint(juce::Graphics&g) {
             auto area=response;area.lineTo(plot.getRight(),plot.getBottom());
             area.lineTo(plot.getX(),plot.getBottom());area.closeSubPath();g.fillPath(area);
             g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.7f));
+            // Readable cut-frequency markers, independent of all bell handles.
+            for(int side=0;side<2;++side){
+                const float amount=side==0?lo:hi;
+                if(amount<=.0001f)continue;
+                const float hz=side==0?
+                    skellpreset::dsp::EightBandTone::lowCutFrequency(amount):
+                    skellpreset::dsp::EightBandTone::highCutFrequency(amount);
+                const float x=xFor(hz);
+                g.setColour(Theme::amber.withAlpha(.65f));
+                g.drawVerticalLine((int)x,plot.getY()+3.f,plot.getBottom()-3.f);
+                g.setColour(Theme::amber);
+                g.fillEllipse(x-3.f,plot.getY()+2.f,6.f,6.f);
+            }
             for(int band=0;band<8;++band) {
                 const float low=skellpreset::dsp::EightBandTone::edges[(size_t)band];
                 const float high=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
@@ -1411,6 +1437,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         // Q control has its own legible caption and never overlaps the title.
         Theme::text(g,"BAND "+juce::String(activeEqBand+1)+" Q",
                     {680,96,172,17},11,Theme::green,true);
+        Theme::text(g,"LOW CUT",{67,109,112,15},10,Theme::amber,true);
+        Theme::text(g,"HIGH CUT",{369,109,112,15},10,Theme::amber,true);
     }
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
@@ -1571,12 +1599,24 @@ bool SlotEditor::testEightBandGraphAndQ() {
     const auto freq=processor.getSlotParam(physical,14);
     const auto gain=processor.getSlotParam(physical,15);
     eqQSlider.setValue(.86,juce::sendNotificationSync);
+    eqCutSliders[0].setValue(.58,juce::sendNotificationSync);
+    eqCutSliders[1].setValue(.45,juce::sendNotificationSync);
+    const auto* cutLo=processor.state.getRawParameterValue(
+        "s"+juce::String(physical+1)+"_eqLowCut");
+    const auto* cutHi=processor.state.getRawParameterValue(
+        "s"+juce::String(physical+1)+"_eqHighCut");
     const auto* q=processor.state.getRawParameterValue(
         "s"+juce::String(physical+1)+"_eqQ8");
     const bool good=eqBank==6 && activeEqBand==7 &&
         std::abs(freq-oldFreq)>.05f && std::abs(gain-oldGain)>.05f
         && q && std::abs(q->load()-.86f)<.015f
+        && cutLo && std::abs(cutLo->load()-.58f)<.015f
+        && cutHi && std::abs(cutHi->load()-.45f)<.015f
         && moduleSelectorMatchesAudio();
+    // Restore neutral filters so screenshot/gesture probes do not alter the
+    // sound of the selected rack slot after testing.
+    eqCutSliders[0].setValue(0.,juce::sendNotificationSync);
+    eqCutSliders[1].setValue(0.,juce::sendNotificationSync);
     return good;
 }
 
