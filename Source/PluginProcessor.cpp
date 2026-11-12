@@ -542,10 +542,14 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     const float wetR=plugin?hostWork.getSample(1,n):aligned[1];
                     const float resultL=aligned[0]+(std::isfinite(wetL)?wetL-aligned[0]:0.f)*w;
                     const float resultR=aligned[1]+(std::isfinite(wetR)?wetR-aligned[1]:0.f)*w;
-                    rackWork.setSample(0,n,resultL);
-                    rackWork.setSample(1,n,resultR);
+                    // Faulty hosted DSP must not poison the next insert's
+                    // delay/reverb state with a nonfinite mixed sample.
+                    const float safeL=std::isfinite(resultL)?resultL:aligned[0];
+                    const float safeR=std::isfinite(resultR)?resultR:aligned[1];
+                    rackWork.setSample(0,n,safeL);
+                    rackWork.setSample(1,n,safeR);
                     meter[(size_t)s]=std::max(meter[(size_t)s],
-                        std::max(std::abs(resultL),std::abs(resultR)));
+                        std::max(std::abs(safeL),std::abs(safeR)));
                 }
                 continue;
             }
@@ -704,10 +708,15 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 const float wet=slotWetSmooth[(size_t)s].getNextValue();
                 const float processedL=l+(wetL-l)*wet;
                 const float processedR=r+(wetR-r)*wet;
-                rackWork.setSample(0,n,processedL);
-                rackWork.setSample(1,n,processedR);
+                // Keep a fault in one native stage from turning every later
+                // stage's history into NaN/Inf. Preserve finite float audio
+                // without adding normal-signal clipping or a limiter.
+                const float safeL=std::isfinite(processedL)?processedL:l;
+                const float safeR=std::isfinite(processedR)?processedR:r;
+                rackWork.setSample(0,n,safeL);
+                rackWork.setSample(1,n,safeR);
                 meter[(size_t)s]=std::max(meter[(size_t)s],
-                    std::max(std::abs(processedL),std::abs(processedR)));
+                    std::max(std::abs(safeL),std::abs(safeR)));
             }
         }
         for(int n=0;n<frames;++n) {
