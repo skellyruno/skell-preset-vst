@@ -20,9 +20,22 @@ Old `sN_type` effect choice automation is preserved exactly. New effects are sel
 
 Read the [DSP integration audit](docs/ZIP_DSP_INTEGRATION_AUDIT.md) and [advanced suite release gates](docs/ADVANCED_VOCAL_SUITE.md) for provenance, verification status, and unfinished model/host work. **PR #5 is stacked on #4, #3 and #2**; do not merge out of order or interpret passing portable tests as a released VST3.
 
+## 322 DAW-informed workflow (optional, no processor replacement)
+
+The source review of 322.BOOTH added a **canonical searchable effect registry**,
+**real post-FX live waveform** (no fake/random animation), a host-fed **REC WAV**
+button that writes 24-bit stereo files on a background thread, and the new
+native **Studio Six** factory chain at index 42. All 322 Web Audio effects
+already have Skell native equivalents, so **none of the original simpler or
+advanced Skell DSP modules were overwritten**. FL Studio supplies all audio
+and owns microphone permissions, track arming, playlist transport and
+session recording; Skell's WAV capture is an optional post-rack print only.
+
+See [322 DAW comparison and recording limitations](docs/322_DAW_SKELL_INTEGRATION.md).
+
 ## Presets and compatibility
 
-The factory bank preserves its first 34 Main Vocals/Adlibs program IDs including **Wide Choir Adlib**, **Phantom Sweep**, **Alien Ring**, **VoxRack Velvet**, and **VoxRack Chamber**. New vocal-suite factory entries extend the bank to 42 programs without shifting historical indices. Unfinished Vocoding items remain hidden. Import and export native **.skellpreset** archives. The **My Presets** bank lists locally saved/imported native preset packages for quick auditions without closing the menu. Schema-v2 archives retain all sixteen physical slots and the active chain length; schema-v1 ten-slot packages remain readable. Existing DAW state and original 10-slot parameter IDs are preserved.
+The factory bank preserves its first 34 Main Vocals/Adlibs program IDs including **Wide Choir Adlib**, **Phantom Sweep**, **Alien Ring**, **VoxRack Velvet**, and **VoxRack Chamber**. New vocal-suite factory entries extend the bank to 43 programs without shifting historical indices. Unfinished Vocoding items remain hidden. Import and export native **.skellpreset** archives. The **My Presets** bank lists locally saved/imported native preset packages for quick auditions without closing the menu. Schema-v2 archives retain all sixteen physical slots and the active chain length; schema-v1 ten-slot packages remain readable. Existing DAW state and original 10-slot parameter IDs are preserved.
 
 **FL Studio .fst / third-party preset formats are not directly compatible.** To rebuild your particular main vocal and adlib chains, supply same-performance dry/wet WAV pairs, optional FX-only prints, the FL chain screenshots, BPM/key and plugin settings. See [Reference WAV workflow](docs/REFERENCE_WAV_WORKFLOW.md). Full WAV-driven multi-effect matching remains unfinished.
 

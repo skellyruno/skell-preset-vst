@@ -1,11 +1,17 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "chain/EffectRegistry.h"
 #include <cmath>
 
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato","8-Band EQ","FET + Opto","Harshness Tamer","Adaptive Noise Control","Studio Pitch + Formant"};
+const juce::StringArray types=[] {
+    juce::StringArray result;
+    for(const auto& effect:skellpreset::registry::effects) result.add(effect.name);
+    return result;
+}();
+static_assert(skellpreset::registry::count()==SkellPresetAudioProcessor::NumberOfModules);
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -172,7 +178,18 @@ void SkellPresetAudioProcessor::updateHostLatency() {
     if(total!=currentReportedLatency){currentReportedLatency=total;setLatencySamples(total);}
 }
 
+juce::Result SkellPresetAudioProcessor::startCapture(const juce::File& file) {
+    return capture.start(file,preparedAudioRate());
+}
+void SkellPresetAudioProcessor::stopCapture() {
+    capture.stop();
+}
+
 void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBlock) {
+    // A sample-rate / host-device change invalidates any ongoing WAV header.
+    // Finalize the previous take on the non-realtime preparation path.
+    capture.stop();
+    liveScope.reset();
     rate=(std::isfinite(sampleRate)&&sampleRate>=8000.)?sampleRate:48000.;
     displayedRate.store(rate,std::memory_order_release);
     hostChunkCapacity=juce::jlimit(64,8192,juce::jmax(512,samplesPerBlock));
@@ -706,6 +723,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             outPeak=std::max(outPeak,std::max(std::abs(inL[n]),
                 inR?std::abs(inR[n]):0.f));
         }
+        // Read only the processed output chunk here; the pointers above
+        // are scoped to this host block and remain valid during capture.
+        liveScope.push(inL,inR,frames);
+        capture.push(inL,inR,frames);
     }
     inputPeak.store(inPeak,std::memory_order_relaxed);
     outputPeak.store(outPeak,std::memory_order_relaxed);
@@ -903,6 +924,36 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         for(int position=0;position<slotCount;++position)
             order|=(std::uint64_t)ids[position] << (4*position);
         packedOrder.store(order,std::memory_order_release);
+    }
+    if(index==42){
+        // 322 DAW has six built-in Web Audio processors but no supplied
+        // named factory preset library. This is an original, opt-in Skell
+        // chain using our existing, more capable native DSP; do not import
+        // browser AudioNodes or replace the original Simple processor.
+        setSlotType(0,EQ);setSlotOn(0,true);
+        setSlotType(1,Compressor);setSlotOn(1,true);
+        setSlotType(2,Empty);setSlotOn(2,false); // no gate in 322 Six
+        setSlotType(3,Saturator);setSlotOn(3,true);
+        setSlotType(4,Delay);setSlotOn(4,true);
+        setSlotType(5,Reverb);setSlotOn(5,true);
+        setSlotType(6,Empty);setSlotOn(6,false); // no limiter in 322 Six
+        setSlotType(7,VocalChorusFX);setSlotOn(7,true);
+        setSlotParam(0,0,.48f);setSlotParam(0,1,.50f);
+        setSlotParam(1,0,.55f);setSlotParam(1,1,.27f);
+        setSlotParam(1,2,.10f);setSlotParam(1,3,.38f);
+        setSlotParam(3,0,.20f);setReal("s4_wet",.25f);
+        setSlotParam(4,0,.22f);setSlotParam(4,1,.35f);setReal("s5_wet",.31f);
+        setSlotParam(5,0,.32f);setReal("s6_wet",.23f);
+        setSlotParam(7,0,.14f);setSlotParam(7,1,.43f);
+        setSlotParam(7,2,.28f);setSlotParam(7,3,.55f);
+        setReal("s8_wet",.36f);
+        // Show the six active native modules consecutively at the top
+        // while retaining each historic physical slot/automation ID.
+        std::uint64_t compactOrder=0;
+        const int ids[]{0,1,3,4,5,7,2,6,8,9,10,11,12,13,14,15};
+        for(int position=0;position<slotCount;++position)
+            compactOrder|=(std::uint64_t)ids[position] << (4*position);
+        packedOrder.store(compactOrder,std::memory_order_release);
     }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);

@@ -2,6 +2,8 @@
 #include <JuceHeader.h>
 #include <SkellCore/Core.h>
 #include "chain/BasicDSP.h"
+#include "chain/LiveAudioScope.h"
+#include "chain/ClipRecorder.h"
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
 #include "chain/ImportedVocalFX.h"
@@ -71,6 +73,16 @@ public:
     double preparedAudioRate() const noexcept {
         return displayedRate.load(std::memory_order_acquire);
     }
+    template<std::size_t N> void getLiveWaveform(std::array<float,N>& samples) const noexcept {
+        liveScope.snapshot(samples);
+    }
+    // UI-triggered WAV capture of the processed host channel; never opens a
+    // microphone independently or overwrites DAW input/recording settings.
+    juce::Result startCapture(const juce::File& path);
+    void stopCapture();
+    bool isCapturing() const noexcept {return capture.isRecording();}
+    double capturedSeconds() const noexcept {return capture.secondsWritten();}
+    std::uint64_t droppedCaptureSamples() const noexcept {return capture.droppedFrames();}
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
@@ -140,6 +152,8 @@ private:
     std::array<RawSlot,slotCount> rawSlots;
     std::array<std::atomic<float>,slotCount> slotPeaks;
     std::atomic<float> inputPeak{0},outputPeak{0};
+    skellpreset::visual::LiveAudioScope liveScope;
+    skellpreset::capture::ClipRecorder capture;
     double rate=48000;
     std::atomic<double> displayedRate{48000.}; // message-thread PDC readout
     int selectedProgram=0;
