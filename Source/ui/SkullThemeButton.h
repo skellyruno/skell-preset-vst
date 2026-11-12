@@ -11,6 +11,17 @@ public:
         setWantsKeyboardFocus(true);
     }
     void setVariant(int id) {variant=Theme::clampVariant(id);repaint();}
+    // Driven by the processor's actual input peak at the existing 30 Hz UI
+    // tick. Hold attacks, release smoothly and quantize repaints to avoid
+    // redrawing the entire rack for a purely decorative effect.
+    void setSignalPeak(float peak) {
+        const float next=juce::jmax(juce::jlimit(0.f,1.f,
+                                 std::isfinite(peak)?peak:0.f),energy*.82f);
+        const int oldStep=juce::jlimit(0,16,juce::roundToInt(energy*16.f));
+        const int newStep=juce::jlimit(0,16,juce::roundToInt(next*16.f));
+        energy=next;
+        if(newStep!=oldStep)repaint();
+    }
     void paintButton(juce::Graphics& g,bool over,bool down) override {
         Theme::select(variant);
         auto rect=getLocalBounds().toFloat().reduced(.7f);
@@ -31,8 +42,8 @@ public:
         const auto bone=Theme::white;
         const auto shell=Theme::panelAlt.brighter(down?.10f:.23f);
         const auto phosphor=Theme::green;
-        if(over) {
-            g.setColour(phosphor.withAlpha(.095f));
+        if(over || energy>.06f) {
+            g.setColour(phosphor.withAlpha(.055f+(.065f*energy)+(over?.045f:0.f)));
             g.fillEllipse(6.f,5.f,44.f,45.f);
         }
         // Flat upper cranium, angled cheek guards, separated lower jaw.
@@ -70,8 +81,16 @@ public:
         g.strokePath(leftEye,juce::PathStrokeType(1.f));
         g.strokePath(rightEye,juce::PathStrokeType(1.f));
         // Eye glints are deliberately tiny, not cartoon googly eyes.
-        g.fillEllipse(20.5f,29.f,1.8f,1.8f);
-        g.fillEllipse(33.7f,29.f,1.8f,1.8f);
+        if(energy>.035f) {
+            g.setColour(phosphor.withAlpha(.10f+.26f*energy));
+            const float glow=3.5f+5.f*energy;
+            g.fillEllipse(21.2f-glow*.5f,29.9f-glow*.5f,glow,glow);
+            g.fillEllipse(34.5f-glow*.5f,29.9f-glow*.5f,glow,glow);
+        }
+        g.setColour(phosphor.withAlpha(.77f+.23f*energy));
+        const float eyeSize=1.8f+1.1f*energy;
+        g.fillEllipse(21.4f-eyeSize*.5f,29.9f-eyeSize*.5f,eyeSize,eyeSize);
+        g.fillEllipse(34.6f-eyeSize*.5f,29.9f-eyeSize*.5f,eyeSize,eyeSize);
         juce::Path nose;
         nose.startNewSubPath(28.f,33.5f);nose.lineTo(24.5f,40.f);
         nose.lineTo(31.5f,40.f);nose.closeSubPath();
@@ -90,4 +109,5 @@ public:
     }
 private:
     int variant=Theme::Obsidian;
+    float energy=0.f;
 };
