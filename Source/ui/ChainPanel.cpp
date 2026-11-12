@@ -267,9 +267,18 @@ void ChainPanel::paint(juce::Graphics& g) {
         g.setColour(enabled?Theme::green.brighter(.22f):Theme::muted.withAlpha(.28f));
         g.fillEllipse(px-3.55f,py-3.55f,7.1f,7.1f);
         const auto peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
-        if(peak>0.002f) {
-            g.setColour(Theme::green.withAlpha(enabled?.72f:.18f));
-            g.fillRoundedRectangle(juce::Rectangle<float>(12.f,(float)top+35.f,191.f*peak,2.f),.8f);
+        // Bone-rib activity strip is driven by measured audio, not fabricated
+        // motion. Separate bright vertebrae with dark joints for visual depth.
+        for(int rib=0;rib<13;++rib) {
+            const float x=15.f+14.1f*(float)rib;
+            const bool lit=enabled && peak>(float)rib/13.f;
+            g.setColour(lit?Theme::green.withAlpha(.25f+.55f*peak)
+                           :Theme::stroke.withAlpha(.55f));
+            g.fillRoundedRectangle(x,(float)top+34.3f,9.2f,2.5f,1.1f);
+            if(lit) {
+                g.setColour(Theme::white.withAlpha(.13f));
+                g.fillRoundedRectangle(x+1.f,(float)top+34.25f,6.f,.65f,.3f);
+            }
         }
     }
     if(active>10) {
@@ -300,11 +309,11 @@ void ChainPanel::refreshIfChanged() {
         const auto prefix="s"+juce::String(slot+1)+"_";
         const auto* enabled=processor.state.getRawParameterValue(prefix+"on");
         const int wetPercent=juce::jlimit(0,100,juce::roundToInt(slotWet(slot)*100.f));
-        const int value=slot*32768+processor.slotType(slot)*1024
-            +(enabled && enabled->load()>.5f?512:0)
-            +wetPercent*2
+        const int value=slot*65536+processor.slotType(slot)*4096
+            +(enabled && enabled->load()>.5f?2048:0)
+            +wetPercent*16
             +(std::isfinite(processor.getSlotPeak(slot))
-                ? juce::jlimit(0,1,(int)(processor.getSlotPeak(slot)*16.f)) : 0);
+                ? juce::jlimit(0,15,juce::roundToInt(processor.getSlotPeak(slot)*15.f)) : 0);
         if(value!=lastVisual[(size_t)row])changed=true;
         lastVisual[(size_t)row]=value;
     }
