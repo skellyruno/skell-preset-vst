@@ -221,7 +221,13 @@ void ChainPanel::paint(juce::Graphics& g) {
         if(type==SkellPresetAudioProcessor::VoxRackSmoothComp)compact="Vox Smooth";
         else if(type==SkellPresetAudioProcessor::VoxRackRoom)compact="Vox Room";
         else if(type==SkellPresetAudioProcessor::ThreeBandDynamics)compact="3-Band";
-        else if(type==SkellPresetAudioProcessor::ExternalVST3)compact="VST3 Insert";
+        else if(type==SkellPresetAudioProcessor::ExternalVST3) {
+            // Show the loaded effect's actual name in a very narrow channel
+            // strip. The full descriptive name remains available on hover.
+            const auto installed=processor.hostedVST3Name(slot).trim();
+            compact=installed.isEmpty()?"VST3 Insert":installed;
+            if(compact.length()>10)compact=compact.substring(0,8)+"..";
+        }
         else if(type==SkellPresetAudioProcessor::DuckingPingPongFX)compact="Duck Echo";
         else if(type==SkellPresetAudioProcessor::VocalVibratoFX)compact="Vibrato";
         else if(type==SkellPresetAudioProcessor::EightBandToneFX)compact="8-Band EQ";
@@ -449,7 +455,13 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         setTooltip("Click green dot to enable / bypass this effect");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(next>=0) {
-        setTooltip("Click to select / double-click to change effect / drag to reorder");
+        const int slot=processor.slotIdAt(next);
+        if(processor.slotType(slot)==SkellPresetAudioProcessor::ExternalVST3 &&
+           processor.hostedVST3Name(slot).isNotEmpty())
+            setTooltip(processor.hostedVST3Name(slot)+
+                       "  /  double-click to replace  /  drag to reorder");
+        else
+            setTooltip("Click to select / double-click to change effect / drag to reorder");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(add)setMouseCursor(juce::MouseCursor::PointingHandCursor);
     else setMouseCursor(juce::MouseCursor::NormalCursor);
