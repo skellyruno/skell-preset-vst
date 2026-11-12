@@ -4,6 +4,8 @@
 #include "ui/SlotEditor.h"
 #include "ui/PresetBrowser.h"
 #include "ui/SkullThemeButton.h"
+#include "ui/SkellPowerButton.h"
+#include "ui/SkellMacroKnob.h"
 #include <SkellCore/UI.h>
 #include <array>
 #include <memory>
@@ -47,8 +49,9 @@ public:
                 "No match percentage is claimed for real vocal material.","OK");
         };
         // One view-switch control plus one independent bypass toggle.
-        for(auto& button:mode){style(button);addAndMakeVisible(button);}
-        mode[0].onClick=[this] {
+        style(viewSwitch);style(powerButton);
+        addAndMakeVisible(viewSwitch);addAndMakeVisible(powerButton);
+        viewSwitch.onClick=[this] {
             browser.setVisible(false);
             const int current=(int)processor.state.getRawParameterValue("mode")->load();
             const int view=current==3?previousMode:(current==0?0:1);
@@ -57,7 +60,7 @@ public:
             setParam(processor,"mode",(float)previousMode);
             refresh();
         };
-        mode[1].onClick=[this] {
+        powerButton.onClick=[this] {
             browser.setVisible(false);
             const int current=juce::jlimit(0,3,
                 (int)processor.state.getRawParameterValue("mode")->load());
@@ -72,12 +75,28 @@ public:
         };
         for(int k=0;k<4;k++){
             auto& s=macro[(size_t)k];
-            s.setSliderStyle(juce::Slider::LinearHorizontal);
+            s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            constexpr float pi=juce::MathConstants<float>::pi;
+            s.setRotaryParameters(1.25f*pi,2.75f*pi,true);
+            s.setDoubleClickReturnValue(true,.5);
+            const juce::StringArray macroLabels{"Tone","Punch","Space","Grit"};
+            s.setTooltip(macroLabels[k]+"  |  0-100  |  double-click resets to 50");
             s.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
             s.setColour(juce::Slider::trackColourId,Theme::green);
             s.setColour(juce::Slider::thumbColourId,Theme::white);
             addAndMakeVisible(s);
-            macroAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"macro"+juce::String(k+1),s);
+            macroAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                p.state,"macro"+juce::String(k+1),s);
+            // APVTS installs its own decimal formatter. Our 0-100 formatter
+            // must be applied AFTER binding to retain the host's original
+            // parameter normalization while showing integer percentages.
+            s.textFromValueFunction=[](double n) {
+                return juce::String(juce::roundToInt(juce::jlimit(0.,1.,n)*100.))+"%";
+            };
+            s.valueFromTextFunction=[](const juce::String& value) {
+                return juce::jlimit(0.,1.,value.getDoubleValue()/100.);
+            };
+            s.updateText();
         }
         for(auto* s:{&input,&mix,&output}) {
             s->setSliderStyle(juce::Slider::LinearHorizontal);
@@ -209,7 +228,7 @@ public:
         std::vector<skellcore::ui::GuidedTourStep> steps;
         steps.emplace_back(&preset,"PRESET BROWSER",
             "Choose a starting sound from the preset browser. You can always make your own changes.");
-        steps.emplace_back(&mode[0],"SIMPLE / ADVANCED",
+        steps.emplace_back(&viewSwitch,"SIMPLE / ADVANCED",
             "Use the single view button to switch between four macros and the full effect rack.");
         if(chain.isVisible() && slot.isVisible()) {
             steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
@@ -217,9 +236,11 @@ public:
             steps.emplace_back(&slot,"EDIT A SLOT",
                 "Adjust the selected effect here. Rack slots keep their own controls and order.");
         }
+        steps.emplace_back(&powerButton,"POWER / BYPASS",
+            "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
         steps.emplace_back(&mix,"BLEND YOUR SOUND",
             "Use Mix to balance the processed chain against your original audio.");
-        steps.emplace_back(&sizeSelect,"INTERFACE SIZE",
+        steps.emplace_back(&settings,"INTERFACE SIZE",
             "Resize the interface here. Click the skull to cycle themes or ? to replay this tour.");
         return steps;
     }
@@ -233,7 +254,7 @@ public:
             g.setColour(Theme::bg.withAlpha(.57f));g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
             auto centre=getLocalBounds().getCentre();
             Theme::text(g,"BYPASSED",{centre.x-190,centre.y-38,380,50},34,Theme::muted,true,juce::Justification::centred);
-            Theme::text(g,"CLICK BYPASS AGAIN TO RESTORE",{centre.x-220,centre.y+15,440,23},12,Theme::muted,true,juce::Justification::centred);
+            Theme::text(g,"CLICK POWER TO RESTORE",{centre.x-220,centre.y+15,440,23},12,Theme::muted,true,juce::Justification::centred);
         }
     };
     void setTheme(int v,bool persist=true){
@@ -245,7 +266,9 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(auto* b:{&preset,&match,&mode[0],&mode[1],&help})style(*b);
+        for(juce::TextButton* b:std::array<juce::TextButton*,7>{{
+            &preset,&match,&viewSwitch,&powerButton,&help,&settings,&record}})
+            style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
             s.setColour(juce::Slider::thumbColourId,Theme::white);
@@ -299,7 +322,7 @@ public:
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
         const std::array<const juce::Component*,14> all{{&themeButton,&preset,&match,
-            &mode[0],&mode[1],&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings,&record}};
+            &viewSwitch,&powerButton,&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings,&record}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
@@ -312,7 +335,7 @@ public:
            || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
            || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
             issues.add("Master strip displays raw values rather than physical dB/% labels");
-        const std::array<const juce::Component*,4> top{{&preset,&match,&mode[0],&mode[1]}};
+        const std::array<const juce::Component*,4> top{{&preset,&match,&viewSwitch,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -334,6 +357,18 @@ public:
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
             issues.add("Mode visibility did not match the requested workspace");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
+        if(powerButton.isBypassed()!=(current==3))
+            issues.add("Power indicator disagrees with host bypass state");
+        if(!advanced){
+            for(int i=0;i<4;++i) {
+                const auto face=juce::Rectangle<int>(78+i*254,339,220,214);
+                if(!face.contains(macro[(size_t)i].getBounds()))
+                    issues.add("Simple macro dial escapes its card");
+                for(int j=i+1;j<4;++j)
+                    if(macro[(size_t)i].getBounds().intersects(macro[(size_t)j].getBounds()))
+                        issues.add("Simple macro dials overlap");
+            }
+        }
         if(!slot.moduleSelectorMatchesAudio())
             issues.add("Module dropdown differs from the actual selected DSP type");
         return issues;
@@ -345,14 +380,35 @@ public:
         if(!browser.isVisible())issues.add("Preset selector did not open browser");
         preset.onClick();
         if(browser.isVisible())issues.add("Preset selector did not close browser");
-        mode[0].onClick();
+        viewSwitch.onClick();
         if(chain.isVisible())issues.add("Simple mode failed to hide the rack");
-        mode[0].onClick();
+        viewSwitch.onClick();
         if(!chain.isVisible())issues.add("Advanced mode toggle failed");
-        mode[1].onClick();
-        if(!bypassShade.isVisible())issues.add("Bypass did not enable overlay");
-        mode[1].onClick();
-        if(bypassShade.isVisible())issues.add("Bypass toggle failed to restore workspace");
+        powerButton.onClick();
+        if(!bypassShade.isVisible() || !powerButton.isBypassed())
+            issues.add("Power button did not bypass and illuminate OFF state");
+        powerButton.onClick();
+        if(bypassShade.isVisible() || powerButton.isBypassed())
+            issues.add("Power button did not restore the processing ON state");
+        // The Simple macro dials must be real automatable controls, not
+        // decorative painted knobs. Verify 0-100 labels and both view modes.
+        configureForScreenshot(0,0,false);
+        for(int i=0;i<4;++i) {
+            if(macro[(size_t)i].getSliderStyle()!=
+               juce::Slider::RotaryHorizontalVerticalDrag)
+                issues.add("Simple macro is not a functional rotary");
+            if(!macro[(size_t)i].textFromValueFunction ||
+               macro[(size_t)i].getTextFromValue(.371)!="37%")
+                issues.add("Simple macro does not show whole-number 0-100");
+        }
+        powerButton.onClick();
+        if(!powerButton.isBypassed() || chain.isVisible())
+            issues.add("Simple mode power button changed the view or failed");
+        powerButton.onClick();
+        configureForScreenshot(0,1,false);
+        for(const auto& control:macro)
+            if(control.getSliderStyle()!=juce::Slider::LinearHorizontal)
+                issues.add("Advanced macro strip was unexpectedly replaced");
         const int beforeTheme=selectedTheme;
         themeButton.onClick();
         if(selectedTheme!=(beforeTheme+1)%3)
@@ -567,20 +623,53 @@ public:
             g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.9f));
             g.strokePath(simpleScope,juce::PathStrokeType(1.7f));
             const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
-            const juce::StringArray hints{"COLOR & AIR","TRANSIENT IMPACT","DEPTH & TAILS","EDGE & TEXTURE"};
+            const juce::StringArray hints{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
             for(int k=0;k<4;k++){
                 const float x=78.f+254.f*k;
-                auto face=juce::Rectangle<float>(x,339.f,220.f,214.f);
-                g.setColour(Theme::panelAlt);g.fillRoundedRectangle(face,9.f);
-                g.setColour(Theme::stroke);g.drawRoundedRectangle(face,9.f,1.f);
-                g.setColour(Theme::green.withAlpha(.78f));g.fillRoundedRectangle(x+18.f,354.f,3.f,21.f,1.5f);
-                Theme::text(g,labels[k],{(int)x+30,349,176,30},17,Theme::white,true);
-                Theme::text(g,hints[k],{(int)x+20,386,179,18},11,Theme::muted,true);
-                const float value=processor.state.getRawParameterValue("macro"+juce::String(k+1))->load();
-                Theme::text(g,juce::String(juce::roundToInt(value*100.f))+"%",
-                    {(int)x+20,501,175,28},19,Theme::green,true,juce::Justification::centred);
-                g.setColour(Theme::stroke.withAlpha(.6f));
-                g.drawLine(x+18.f,533.f,x+201.f,533.f,.9f);
+                const auto raw=processor.state.getRawParameterValue(
+                    "macro"+juce::String(k+1));
+                const float amount=juce::jlimit(0.f,1.f,raw?raw->load():.5f);
+                const auto face=juce::Rectangle<float>(x,339.f,220.f,214.f);
+                g.setGradientFill(juce::ColourGradient(
+                    Theme::panelAlt.brighter(.055f),face.getTopLeft(),
+                    Theme::panelAlt.darker(.12f),face.getBottomRight(),false));
+                g.fillRoundedRectangle(face,9.f);
+                g.setColour(Theme::stroke.withAlpha(.91f));
+                g.drawRoundedRectangle(face.reduced(.5f),9.f,1.f);
+                // One status tick and a hardware dial; all motion below is
+                // derived from the actual host-automated macro, not a mock meter.
+                g.setColour(Theme::green.withAlpha(.22f+.60f*amount));
+                g.fillRoundedRectangle(x+17.f,354.f,3.f,20.f,1.5f);
+                Theme::text(g,labels[k],{(int)x+28,349,177,27},
+                            16,Theme::white,true);
+                Theme::text(g,hints[k],{(int)x+20,377,180,18},
+                            10.5f,Theme::muted,true,
+                            juce::Justification::centred);
+                // Mini hardware scale stays subtle and never competes with
+                // the real rotary control drawn by SkellCore LookAndFeel.
+                constexpr float pi=juce::MathConstants<float>::pi;
+                const float centreX=x+109.f,centreY=454.f,rad=62.f;
+                for(int tick=0;tick<=10;++tick){
+                    const float a=(1.25f+1.5f*(float)tick/10.f)*pi;
+                    const float dx=std::sin(a),dy=-std::cos(a);
+                    const float tickInner=rad-1.5f,tickOuter=rad+2.5f;
+                    g.setColour(tick<=juce::roundToInt(amount*10.f)
+                        ?Theme::green.withAlpha(.20f+.37f*amount)
+                        :Theme::muted.withAlpha(.21f));
+                    g.drawLine(centreX+dx*tickInner,centreY+dy*tickInner,
+                               centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
+                }
+                Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
+                    {(int)x+55,510,110,29},21,Theme::green,true,
+                    juce::Justification::centred);
+                Theme::text(g,"/ 100",{(int)x+149,516,58,17},
+                    10,Theme::muted,false);
+                const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
+                g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
+                if(amount>.0001f){
+                    g.setColour(Theme::green.withAlpha(.53f));
+                    g.fillRoundedRectangle(meter.withWidth(182.f*amount),1.f);
+                }
             }
         } else {
             const auto macroDeck=juce::Rectangle<float>(rackOnRight?14.f:247.f,588.f,906.f,46.f);
@@ -589,7 +678,13 @@ public:
             const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
             for(int k=0;k<4;k++){
                 const int x=(rackOnRight?30:265)+222*k;
-                Theme::text(g,labels[k],{x,590,171,17},12,Theme::muted,true);
+                Theme::text(g,labels[k],{x,590,105,17},12,Theme::muted,true);
+                const auto* value=processor.state.getRawParameterValue(
+                    "macro"+juce::String(k+1));
+                Theme::text(g,juce::String(juce::roundToInt(100.f*
+                    juce::jlimit(0.f,1.f,value?value->load():.5f))),
+                    {x+108,590,76,17},12,Theme::green,true,
+                    juce::Justification::centredRight);
             }
         }
     }
@@ -599,15 +694,22 @@ public:
         slot.setBounds(rackOnRight?14:247,90,906,496);
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
-        mode[0].setBounds(796,27,176,37);
-        mode[1].setBounds(982,27,171,37);
+        viewSwitch.setBounds(796,27,237,37);
+        powerButton.setBounds(1045,27,108,37);
         help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
-        for(int i=0;i<4;i++)
-            macro[(size_t)i].setBounds(display==0?96+i*254:
-                (rackOnRight?97+i*222:333+i*222),
-                display==0?438:607,display==0?192:120,display==0?47:24);
+        for(int i=0;i<4;i++) {
+            auto& knob=macro[(size_t)i];
+            const auto desired=display==0?juce::Slider::RotaryHorizontalVerticalDrag:
+                                           juce::Slider::LinearHorizontal;
+            if(knob.getSliderStyle()!=desired)knob.setSliderStyle(desired);
+            if(display==0)
+                knob.setBounds(127+i*254,398,120,113);
+            else
+                knob.setBounds(rackOnRight?97+i*222:333+i*222,
+                               607,120,24);
+        }
         input.setBounds(80,648,228,34);
         mix.setBounds(433,648,185,34);
         output.setBounds(845,648,172,34);
@@ -638,12 +740,10 @@ public:
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
         preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
-        mode[0].setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
-        mode[0].setTooltip(display==0?"Open full effect chain":"Switch to four macros");
-        mode[1].setButtonText(bypass?"RESTORE":"BYPASS");
-        mode[1].setColour(juce::TextButton::buttonColourId,
-                          bypass?Theme::muted.withAlpha(.32f):Theme::panelAlt);
-        mode[0].setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
+        viewSwitch.setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
+        viewSwitch.setTooltip(display==0?"Open full effect chain":"Switch to four macros");
+        powerButton.setBypassed(bypass);
+        viewSwitch.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         // UI state must reflect the current host/program state *now*, not at
         // the next 30Hz timer tick. This also prevents stale module names
         // during screenshot capture and fast A/B preset auditioning.
@@ -698,8 +798,9 @@ private:
     juce::TextButton preset,match,help,settings,record;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
-    std::array<juce::TextButton,2> mode;
-    std::array<juce::Slider,4> macro;
+    juce::TextButton viewSwitch;
+    SkellPowerButton powerButton;
+    std::array<SkellMacroKnob,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
     juce::Slider input,mix,output;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputAttachment,mixAttachment,outputAttachment;

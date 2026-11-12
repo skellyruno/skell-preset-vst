@@ -20,6 +20,29 @@ Old `sN_type` effect choice automation is preserved exactly. New effects are sel
 
 Read the [DSP integration audit](docs/ZIP_DSP_INTEGRATION_AUDIT.md) and [advanced suite release gates](docs/ADVANCED_VOCAL_SUITE.md) for provenance, verification status, and unfinished model/host work. **PR #5 is stacked on #4, #3 and #2**; do not merge out of order or interpret passing portable tests as a released VST3.
 
+## Power button, Simple macros and MATCH readiness
+
+The top-right **power switch** replaces the old BYPASS/RESTORE label:
+green **ON** runs the complete rack; red **OFF** bypasses with the existing
+smoothed host mode parameter. Turning power back on restores the last Simple
+or Advanced workspace without clearing modules or automation.
+
+Simple mode keeps exactly four macros—**Tone, Punch, Space and Grit**—but now
+uses matching SkellCore hardware rotary controls with whole-number **0–100**
+readouts and subtle parameter-accurate indicators. There are no new DSP
+parameters and no migration of the existing `macro1..macro4` automation IDs.
+Advanced mode retains its compact macro sliders and full module editor.
+The shared button chrome is slightly more tactile while keeping Obsidian,
+Cream and Crimson colour themes and the clickable skull.
+
+The offline reference-audio alignment in `Source/match/MatchCore.h` now
+compares **overlap-normalized correlation**, avoiding high-energy or short
+overlap offsets dominating the candidate search. Test fixtures cover
+delayed/inverted signals, level changes, silent inputs and noisy,
+transient vocal-like audio. This is groundwork for comparing a processed
+plugin recording to a reference; it is **not yet complete automatic
+multistage plugin matching**. The MATCH UI still describes that limitation.
+
 ## 322 DAW-informed workflow (optional, no processor replacement)
 
 The source review of 322.BOOTH added a **canonical searchable effect registry**,

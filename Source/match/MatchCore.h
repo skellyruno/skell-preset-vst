@@ -38,14 +38,30 @@ inline Result analyse(const std::vector<float>& dry,const std::vector<float>& we
         wetEnergy+=(double)v*v;
     }
     if(dryEnergy<1e-12 || wetEnergy<1e-12)return o;
-    // Downstream version will add envelope onset correlation and sub-sample alignment.
+    // Match normalized correlation rather than the raw dot product.
+    // Raw dot products favour offsets with more overlapping samples and
+    // high-energy bursts, even when those offsets are not the best temporal
+    // alignment. Overlap-energy weighting rejects tiny edge coincidences.
     double best=-1;
     maxLag=std::min(maxLag,(int)std::min(dry.size(),wet.size())/3);
+    const size_t stride=std::max<size_t>(1,std::min(dry.size(),wet.size())/65536);
     for(int lag=-maxLag;lag<=maxLag;++lag) {
-        const auto d=dot(dry,wet,lag,false);
-        const auto mag=std::abs(d);
-        if(mag>best) {best=mag;o.lagSamples=lag;o.inverted=d<0;}
+        double xy=0,xx=0,yy=0;
+        size_t overlap=0;
+        for(size_t i=0;i<dry.size();i+=stride){
+            const auto j=(long)i+lag;
+            if(j<0||j>=(long)wet.size())continue;
+            const auto x=(double)dry[i],y=(double)wet[(size_t)j];
+            xy+=x*y;xx+=x*x;yy+=y*y;++overlap;
+        }
+        if(overlap<128 || xx<1e-12 || yy<1e-12)continue;
+        const double normalized=std::abs(xy)/std::sqrt(xx*yy);
+        const double coverage=std::sqrt(std::min(1.,xx/(dryEnergy/(double)stride))*
+                                        std::min(1.,yy/(wetEnergy/(double)stride)));
+        const double quality=normalized*coverage;
+        if(quality>best) {best=quality;o.lagSamples=lag;o.inverted=xy<0;}
     }
+    if(best<0.)return o;
     double a=0,b=0,err=0,den=0;
     for(size_t i=0;i<dry.size();++i) {
         const auto j=(long)i+o.lagSamples;
@@ -94,7 +110,8 @@ inline Result analyse(const std::vector<float>& dry,const std::vector<float>& we
     }
     o.gainDb=dsp::gainToDb((float)std::abs(gain));
     o.score=std::clamp((float)(100.*(1-std::sqrt(err/std::max(den,1e-12)))),0.f,100.f);
-    o.confidence=(float)std::clamp(best/(std::sqrt(std::max(dryEnergy*wetEnergy,1e-12))),0.,1.);
+    // 'best' is already a bounded, overlap-normalized confidence measure.
+    o.confidence=(float)std::clamp(best,0.,1.);
     o.rmsDry=std::sqrt((float)(b/std::max((size_t)1,dry.size())));
     o.rmsWet=std::sqrt((float)(den/std::max((size_t)1,dry.size())));
     return o;
