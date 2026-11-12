@@ -35,6 +35,27 @@ public:
                                    juce::jmax(0.f,bounds.getWidth()-14.f),1.35f,.6f);
         }
         g.setColour(enabled?(active?accent:Theme::white):Theme::muted.withAlpha(.4f));
+        // Draw the settings wheel as vector hardware instead of depending on
+        // platform emoji fonts. At the compact 70% plugin size, the symbol
+        // must remain centred and readable in its own header button.
+        if(getButtonText()==juce::String::fromUTF8("\xE2\x9A\x99")) {
+            const float cx=bounds.getCentreX(),cy=bounds.getCentreY();
+            const auto steel=over?Theme::green:Theme::white.withAlpha(.85f);
+            g.setColour(steel);
+            constexpr float pi=juce::MathConstants<float>::pi;
+            for(int spoke=0;spoke<8;++spoke) {
+                const float angle=(float)spoke*pi*.25f;
+                const float dx=std::cos(angle),dy=std::sin(angle);
+                g.drawLine(cx+dx*8.0f,cy+dy*8.0f,
+                           cx+dx*11.3f,cy+dy*11.3f,2.5f);
+            }
+            g.drawEllipse(cx-7.9f,cy-7.9f,15.8f,15.8f,2.0f);
+            g.setColour(Theme::bg);
+            g.fillEllipse(cx-3.0f,cy-3.0f,6.0f,6.0f);
+            g.setColour(steel.withAlpha(.80f));
+            g.drawEllipse(cx-3.0f,cy-3.0f,6.0f,6.0f,1.0f);
+            return;
+        }
         const float fontSize=getWidth()<=36?13.f:getWidth()<=92?11.6f:12.3f;
         g.setFont(Theme::font(fontSize,true));
         g.drawFittedText(getButtonText(),getLocalBounds().reduced(7,4),
