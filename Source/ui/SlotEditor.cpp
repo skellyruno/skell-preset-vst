@@ -86,7 +86,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     editExternal.onClick=[this] {
         processor.openHostedVST3Editor(slot);
     };
-    eqQSlider.setSliderStyle(    eqQSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    eqQSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     eqQSlider.setTextBoxStyle(juce::Slider::TextBoxRight,false,59,22);
     eqQSlider.setRange(0.,1.,.001);
     eqQSlider.setTooltip("Select an EQ node to edit its independent bandwidth (Q 0.4–8)");
