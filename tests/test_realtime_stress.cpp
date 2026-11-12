@@ -139,10 +139,14 @@ static void testDynamicPdcCrossfade() {
     for(int n=0;n<250000;++n) {
         const int requested=(n/47)%3==0?0:(n/47)%3==1?400:1023;
         const auto output=moving.processSmoothed(
-            n%499==0?std::numeric_limits<float>::quiet_NaN():.07f,
-            n%607==0?std::numeric_limits<float>::infinity():-.07f,
+            n%499==0?std::numeric_limits<float>::denorm_min():
+              n%733==0?std::numeric_limits<float>::quiet_NaN():.07f,
+            n%607==0?std::numeric_limits<float>::infinity():
+              n%911==0?std::numeric_limits<float>::denorm_min():-.07f,
             requested,441);
         assert(std::isfinite(output[0]) && std::isfinite(output[1]));
+        assert(std::fpclassify(output[0])!=FP_SUBNORMAL);
+        assert(std::fpclassify(output[1])!=FP_SUBNORMAL);
         assert(std::abs(output[0])<=.071f && std::abs(output[1])<=.071f);
     }
     std::cout<<"PASS stereo PDC crossfade / old max step "<<maxOldJump
