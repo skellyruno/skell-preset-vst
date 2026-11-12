@@ -148,6 +148,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-external-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-installed-vst3-browser-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-browser-70",818,482,0,1,true});
         options.scenes.push_back({"obsidian-factory-broadcast-70",818,482,0,1,false});
@@ -249,7 +250,8 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(41);
             } else if(scene.id=="obsidian-module-picker-70") {
                 processor.loadFactoryPreset(0);
-            } else if(scene.id=="obsidian-external-70") {
+            } else if(scene.id=="obsidian-external-70" ||
+                      scene.id=="obsidian-installed-vst3-browser-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
@@ -278,7 +280,8 @@ int main(int argc, char** argv) {
             else if(scene.id=="cream-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
             else if(scene.id.startsWith("obsidian-effect-")
-                    || scene.id=="obsidian-external-70")
+                    || scene.id=="obsidian-external-70"
+                    || scene.id=="obsidian-installed-vst3-browser-70")
                 editor.selectRackSlotForScreenshot(0,0);
             else if(scene.id=="obsidian-factory-broadcast-70"
                     || scene.id=="obsidian-factory-digital-70")
@@ -306,6 +309,8 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(1,0);
             else if(scene.id=="obsidian-factory-formant-70")
                 editor.selectRackSlotForScreenshot(8,0);
+            if(scene.id=="obsidian-installed-vst3-browser-70")
+                editor.openInstalledVST3BrowserForScreenshot();
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -322,6 +327,7 @@ int main(int argc, char** argv) {
             {"obsidian-effect-limiter-70", "obsidian-effect-exciter-70"},
             {"obsidian-effect-adlib-doubler-70", "obsidian-effect-gate-70"},
             {"obsidian-advanced-70", "obsidian-external-70"},
+            {"obsidian-external-70", "obsidian-installed-vst3-browser-70"},
             {"obsidian-advanced-70", "obsidian-rack-right-70"},
             {"obsidian-rack-right-70", "obsidian-rack-right-browser-70"},
             {"obsidian-advanced-70", "obsidian-guided-tour-70"},
@@ -348,8 +354,8 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 100) {
-            std::fprintf(stderr, "Expected 100 PNGs, captured %d\n", report.captured);
+        if (report.captured != 101) {
+            std::fprintf(stderr, "Expected 101 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
