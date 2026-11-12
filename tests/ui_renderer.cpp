@@ -237,6 +237,8 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-external-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-rack-wet-dot-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-rack-wet-dot-125",1460,860,0,1,false});
         options.scenes.push_back({"obsidian-installed-vst3-browser-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-browser-70",818,482,0,1,true});
@@ -339,6 +341,12 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(41);
             } else if(scene.id=="obsidian-module-picker-70") {
                 processor.loadFactoryPreset(0);
+            } else if(scene.id=="obsidian-rack-wet-dot-70"
+                      || scene.id=="obsidian-rack-wet-dot-125") {
+                processor.loadFactoryPreset(0);
+                processor.setSlotOn(0,false);
+                if(auto* wet=processor.state.getParameter("s3_wet"))
+                    wet->setValueNotifyingHost(wet->convertTo0to1(.36f));
             } else if(scene.id=="obsidian-external-70" ||
                       scene.id=="obsidian-installed-vst3-browser-70") {
                 processor.loadFactoryPreset(0);
@@ -416,6 +424,7 @@ int main(int argc, char** argv) {
             {"obsidian-effect-limiter-70", "obsidian-effect-exciter-70"},
             {"obsidian-effect-adlib-doubler-70", "obsidian-effect-gate-70"},
             {"obsidian-advanced-70", "obsidian-external-70"},
+            {"obsidian-advanced-70", "obsidian-rack-wet-dot-70"},
             {"obsidian-external-70", "obsidian-installed-vst3-browser-70"},
             {"obsidian-advanced-70", "obsidian-rack-right-70"},
             {"obsidian-rack-right-70", "obsidian-rack-right-browser-70"},
@@ -443,8 +452,8 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 101) {
-            std::fprintf(stderr, "Expected 101 PNGs, captured %d\n", report.captured);
+        if (report.captured != 103) {
+            std::fprintf(stderr, "Expected 103 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
