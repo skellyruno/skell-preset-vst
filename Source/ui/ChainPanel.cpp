@@ -415,7 +415,6 @@ void ChainPanel::mouseUp(const juce::MouseEvent&) {
     }
     if(pendingFrom<0)return;
     if(dragging && dragTo>=0 && dragTo!=dragFrom)processor.reorderSlot(dragFrom,dragTo);
-    const int slot=processor.slotIdAt(dragging && dragTo>=0 ? dragTo : pendingFrom);
     pendingFrom=dragFrom=dragTo=-1;dragging=false;repaint();
 }
 
