@@ -115,6 +115,69 @@ int main(int argc, char** argv) {
                 }
         }
     }
+    // Genuine processBlock regression for the new FL-style wet/bypass controls.
+    // Use a constant, low-level real buffer so a discontinuity is not masked
+    // by a waveform transient. The original per-slot APVTS parameters remain
+    // the sole source of automation; the DSP must interpolate switches.
+    {
+        processor.prepareToPlay(48000.,256);
+        processor.loadFactoryPreset(0);
+        for(int n=0;n<processor.activeSlotCount();++n) {
+            const int slotId=processor.slotIdAt(n);
+            processor.setSlotType(slotId,SkellPresetAudioProcessor::Empty);
+            processor.setSlotOn(slotId,false);
+        }
+        processor.setSlotType(0,SkellPresetAudioProcessor::Saturator);
+        processor.setSlotParam(0,0,.90f);
+        processor.setSlotParam(0,1,.48f);
+        processor.setSlotOn(0,true);
+        auto* wet=processor.state.getParameter("s1_wet");
+        if(!wet) {
+            std::fprintf(stderr,"Rack wet host automation parameter missing\n");
+            ++failures;
+        } else {
+            const std::array<float,5> wetStages{1.f,0.f,1.f,1.f,1.f};
+            const std::array<bool,5> powerStages{true,true,true,false,true};
+            std::array<float,5> steady{};
+            float previous=0.f;
+            bool havePrevious=false;
+            float greatestStep=0.f;
+            for(int stage=0;stage<5;++stage) {
+                wet->setValueNotifyingHost(wet->convertTo0to1(wetStages[(size_t)stage]));
+                processor.setSlotOn(0,powerStages[(size_t)stage]);
+                // 12 blocks @ 256 = 64 ms, comfortably beyond 20 ms smoothing.
+                for(int block=0;block<12;++block) {
+                    juce::AudioBuffer<float> probe(2,256);
+                    for(int ch=0;ch<2;++ch)probe.clear(ch,0,256);
+                    for(int ch=0;ch<2;++ch)
+                        for(int n=0;n<256;++n)probe.setSample(ch,n,.04f);
+                    juce::MidiBuffer midi;
+                    processor.processBlock(probe,midi);
+                    for(int n=0;n<256;++n) {
+                        const float value=probe.getSample(0,n);
+                        if(!std::isfinite(value) || std::abs(value)>1.f ||
+                           std::fpclassify(value)==FP_SUBNORMAL) {
+                            std::fprintf(stderr,"Rack wet/bypass NaN, clip or denormal\n");
+                            ++failures;break;
+                        }
+                        if(havePrevious)
+                            greatestStep=std::max(greatestStep,std::abs(value-previous));
+                        previous=value;havePrevious=true;
+                    }
+                    steady[(size_t)stage]=probe.getSample(0,255);
+                }
+            }
+            if(greatestStep>.08f || std::abs(steady[0]-steady[1])<.002f ||
+               std::abs(steady[1]-.04f)>.005f ||
+               std::abs(steady[3]-.04f)>.005f ||
+               std::abs(steady[4]-steady[0])>.005f) {
+                std::fprintf(stderr,"Rack wet/bypass ramp or audible effect regression"
+                                    " / max step %f / on %f / dry %f / muted %f / restore %f\n",
+                    greatestStep,steady[0],steady[1],steady[3],steady[4]);
+                ++failures;
+            }
+        }
+    }
     processor.prepareToPlay(48000.,512);
     processor.loadFactoryPreset(25);
     if(auto* mode=processor.state.getParameter("mode"))
