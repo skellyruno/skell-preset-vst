@@ -1,0 +1,11 @@
+{
+  "schema": "skellworld-plugin/1",
+  "product_id": "skell.preset",
+  "display_name": "Skell Preset",
+  "connection": "explicit-opt-in-loopback",
+  "capabilities": [
+    "presence"
+  ],
+  "source_repository": "skellyruno/skell-preset-vst",
+  "note": "Settings menu opt-in, presence only. No preset names, effect-chain details, audio, files or parameters are shared."
+}

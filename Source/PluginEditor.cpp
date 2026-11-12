@@ -8,6 +8,7 @@
 #include "ui/SkellActionButton.h"
 #include "ui/SkellMacroKnob.h"
 #include <SkellCore/UI.h>
+#include <SkellCore/WorldLink.h>
 #include <array>
 #include <memory>
 
@@ -152,7 +153,7 @@ public:
         addAndMakeVisible(sizeSelect);
         sizeSelect.setVisible(false); // Internal compatibility adapter only.
         settings.setButtonText(juce::String::fromUTF8("\xE2\x9A\x99"));
-        settings.setTooltip("Settings  /  Interface Size");
+        settings.setTooltip("Settings / Size / World connection");
         style(settings);
         addAndMakeVisible(settings);
         settings.onClick=[this] {
@@ -166,6 +167,11 @@ public:
             menu.addSeparator();
             menu.addSectionHeader("RECORDINGS");
             menu.addItem(100,"Reveal last WAV in folder",lastCaptureFile.existsAsFile());
+            menu.addSeparator();
+            menu.addSectionHeader("SKELLWORLD / OPTIONAL PRESENCE");
+            menu.addItem(200,worldLink.requested() ?
+                (worldLink.hubOnline() ? "Leave SkellWorld (connected)" : "Leave SkellWorld (hub offline)") :
+                "Join SkellWorld (presence only)");
             menu.showMenuAsync(
                 juce::PopupMenu::Options().withTargetComponent(&settings),
                 [safe=juce::Component::SafePointer<Canvas>(this)](int choice) {
@@ -174,6 +180,10 @@ public:
                         safe->sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
                     else if(choice==100 && safe->lastCaptureFile.existsAsFile())
                         safe->lastCaptureFile.revealToUser();
+                    else if(choice==200) {
+                        if(safe->worldLink.requested()) safe->worldLink.leave();
+                        else safe->worldLink.join();  // worker thread, no audio callback
+                    }
                 });
         };
         record.setButtonText("REC WAV");
@@ -807,6 +817,8 @@ private:
     SkullThemeButton themeButton;
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
+    // Editor-scoped, opt-in informational presence; no state/automation IDs.
+    skellcore::world::WorldLink worldLink{"skell.preset","Skell Preset"};
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
