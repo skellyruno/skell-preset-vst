@@ -15,9 +15,28 @@ namespace skellpreset::dsp {
 struct EightBandTone {
     static constexpr int bands=8;
     std::array<SmoothedBiquad,bands> bell{};
+    SmoothedBiquad lowCut, highCut;
     static constexpr std::array<float,bands+1> edges{
         35.f,90.f,185.f,380.f,820.f,1700.f,3600.f,7500.f,17500.f};
-    void prepare(double sr) noexcept {for(auto& b:bell)b.prepare(sr);}
+    void prepare(double sr) noexcept {
+        for(auto& b:bell)b.prepare(sr);
+        lowCut.prepare(sr);highCut.prepare(sr);
+    }
+    static float lowCutFrequency(float value) noexcept {
+        return 20.f*std::pow(20.f,std::clamp(value,0.f,1.f)); // 20–400 Hz
+    }
+    static float highCutFrequency(float value) noexcept {
+        return 20000.f*std::pow(.09f,std::clamp(value,0.f,1.f)); // 20k–1.8k
+    }
+    // A zero parameter is a flat, identity filter, preserving old projects.
+    void setCuts(double sr,float low,float high) noexcept {
+        const float lo=std::isfinite(low)?std::clamp(low,0.f,1.f):0.f;
+        const float hi=std::isfinite(high)?std::clamp(high,0.f,1.f):0.f;
+        if(lo<=.0001f)lowCut.aim(Biquad{});
+        else lowCut.setHighPass(sr,lowCutFrequency(lo));
+        if(hi<=.0001f)highCut.aim(Biquad{});
+        else highCut.setLowPass(sr,highCutFrequency(hi));
+    }
     static float qFromNormalized(float value) noexcept {
         const float x=std::isfinite(value)?std::clamp(value,0.f,1.f):.5f;
         return .4f*std::pow(20.f,x); // Q 0.4–8.0
@@ -48,11 +67,13 @@ struct EightBandTone {
     std::array<float,2> process(float l,float r) noexcept {
         if(!std::isfinite(l))l=0.f;
         if(!std::isfinite(r))r=0.f;
+        const auto hp=lowCut.process(l,r);
+        l=hp[0];r=hp[1];
         for(auto& band:bell){
             const auto out=band.process(l,r);
             l=out[0];r=out[1];
         }
-        return {l,r};
+        return highCut.process(l,r);
     }
 };
 
