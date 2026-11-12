@@ -1591,8 +1591,8 @@ bool SlotEditor::testEightBandGraphAndQ() {
     const auto physical=slot;
     processor.setSlotType(physical,SkellPresetAudioProcessor::EightBandToneFX);
     select(physical);
-    activeEqBand=7;
-    showEqBank(activeEqBand);
+    // User-facing band buttons must select the right automatable slot band.
+    eqBandButtons[7].onClick();
     const float oldFreq=processor.getSlotParam(physical,14);
     const float oldGain=processor.getSlotParam(physical,15);
     updateGraphNode({790.f,225.f});
