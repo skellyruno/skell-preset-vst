@@ -32,6 +32,36 @@ int main(int argc, char** argv) {
     SkellPresetAudioProcessor processor;
     processor.prepareToPlay(48000.0, 512);
     int failures = 0;
+    // Verify filesystem-only VST3 browsing independently of installed plugin
+    // binaries. This runs in the actual JUCE UI harness on Linux as well.
+    {
+        const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getChildFile("skell-ui-vst3-index-"+juce::Uuid().toString());
+        const auto first=root.getChildFile("Vendor").getChildFile("Space Echo.vst3");
+        const auto second=root.getChildFile("Gate.vst3");
+        const auto inside=first.getChildFile("Ignore Inside.vst3");
+        const bool created=root.createDirectory().wasOk()
+            && first.createDirectory().wasOk()
+            && second.createDirectory().wasOk()
+            && inside.createDirectory().wasOk();
+        if(!created) {
+            std::fprintf(stderr,"Could not create UI VST3-browser fixture\n");
+            ++failures;
+        } else {
+            skellpreset::host::InstalledVST3Index index;
+            juce::Array<juce::File> paths;
+            paths.add(root);paths.add(root);
+            index.start(paths);
+            for(int pass=0;pass<100 && !index.finished();++pass)index.step(2);
+            if(!index.finished() || index.truncated() || index.entries().size()!=2
+               || index.filter("SPACE").size()!=1 || index.filter("gate").size()!=1
+               || !index.filter("Ignore Inside").empty()) {
+                std::fprintf(stderr,"Installed VST3 browser did not filter/stop at opaque bundles\n");
+                ++failures;
+            }
+        }
+        root.deleteRecursively();
+    }
     // Exercise the real AudioProcessor, not only the portable DSP header.
     // Variable and oversized DAW blocks must be safe after the rack's
     // block-based refactor for external plugin hosting.
