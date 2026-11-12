@@ -28,11 +28,17 @@ portable `.skellpreset` ZIP (the exporter explicitly rejects external slots
 to prevent silent data loss). This is not an installer or redistributor of
 third-party plugins and does not package their copyrighted binaries.
 
-**Latency:** Each hosted plugin reports its own lookahead; Skell-Preset adds
-that to host PDC and delays the slot dry signal to preserve its wet/bypass
-alignment. The total hosted latency is capped at 65,536 samples. Dynamic
-latency changes can still click or briefly misalign while a project is
-playing; stop playback before changing external plugin quality/oversampling.
+**Latency:** The external insert panel shows each loaded plugin's reported PDC
+in samples and milliseconds at the current sample rate. Values above 5 ms are
+highlighted as a tracking caution, not a failure. The toolbar also shows
+Skell-Preset's whole-rack PDC. Hosting does **not** reduce an external plugin's
+own lookahead or guarantee low round-trip monitoring latency. Skell-Preset adds
+reported hosted latency to its own host PDC and delays the slot dry signal to
+preserve wet/bypass alignment. The total hosted latency is capped at 65,536
+samples at plugin load. Dynamic latency changes can still click or briefly
+misalign while a project is playing; stop playback before changing external
+plugin quality/oversampling. Recursive loading of Skell-Preset itself is
+rejected before the nested instance is created.
 
 ### Remaining validation before production
 

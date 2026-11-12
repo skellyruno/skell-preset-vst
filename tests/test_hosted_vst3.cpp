@@ -7,6 +7,19 @@
 int main(int argc,char** argv) {
     if(argc<2){std::fprintf(stderr,"Expected plugin bundle path\n");return 2;}
     juce::ScopedJuceInitialiser_GUI gui;
+    // A hosted Skell-Preset would recursively host its own DSP/UI. Reject
+    // product-name spelling variants before instantiating external code.
+    for(const auto* name:{"Skell-Preset", "SKELLPRESET", "Skell Preset", "Skell_Preset"}) {
+        if(!skellpreset::host::isSkellPresetProductName(name)) {
+            std::fprintf(stderr,"Recursive host name was not recognized: %s\n",name);
+            return 8;
+        }
+    }
+    if(skellpreset::host::isSkellPresetProductName("SkellyTune") ||
+       skellpreset::host::isSkellPresetProductName("Skell DeEsser")) {
+        std::fprintf(stderr,"Unrelated Skell products must remain hostable\n");
+        return 9;
+    }
     skellpreset::host::HostedVST3 host;
     const juce::File fixture(juce::String::fromUTF8(argv[1]));
     const auto loaded=host.load(0,fixture,48000.,512);
