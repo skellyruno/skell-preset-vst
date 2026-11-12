@@ -17,6 +17,8 @@ struct Slot {
     // Optional v2 extension, ignored by older readers. Preserves all eight
     // parametric-EQ bandwidths when saving and reloading native rack presets.
     std::array<float,8> eqQ {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
+    // Optional v2 fields; absent in old presets, so both filters are flat.
+    float eqLowCut=0.f,eqHighCut=0.f;
 };
 
 struct Document {
