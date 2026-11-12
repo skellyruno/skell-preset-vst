@@ -19,6 +19,7 @@ public:
     }
     void testGraphGesture(juce::Point<float> point) {updateGraphNode(point);}
     void openModulePickerForScreenshot() {moduleTrigger.onClick();}
+    void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
     bool testEightBandGraphAndQ();
     bool testKnobReadouts();
