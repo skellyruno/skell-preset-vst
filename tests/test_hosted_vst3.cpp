@@ -63,11 +63,12 @@ int main(int argc,char** argv) {
         for(int n=0;n<512;++n)
             audio.setSample(ch,n,.25f*std::sin(.02f*(float)n));
     juce::MidiBuffer midi;
+    host.updateTransport(position,240,48000.);
     plugin->processBlock(audio,midi);
     double maxError=0.;
     for(int ch=0;ch<2;++ch)
         for(int n=0;n<512;++n) {
-            const double ideal=.125*std::sin(.02*(double)n);
+            const double ideal=.0625*std::sin(.02*(double)n);
             const double value=audio.getSample(ch,n);
             if(!std::isfinite(value))return 5;
             maxError=std::max(maxError,std::abs(value-ideal));
@@ -79,6 +80,6 @@ int main(int argc,char** argv) {
         std::fprintf(stderr,"Hosted plug-in state was not captured\n");return 7;
     }
     host.release();
-    std::printf("PASS nested JUCE VST3 load, stereo processing, PDC and state\n");
+    std::printf("PASS nested JUCE VST3 load, forwarded transport, stereo processing, PDC and state\n");
     return 0;
 }
