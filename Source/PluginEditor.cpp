@@ -344,7 +344,7 @@ public:
            || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
            || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
             issues.add("Master strip displays raw values rather than physical dB/% labels");
-        const std::array<const juce::Component*,4> top{{&preset,&match,&viewSwitch,&powerButton}};
+        const std::array<const juce::Component*,5> top{{&preset,&match,&viewSwitch,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -352,6 +352,9 @@ public:
                                + " / " + juce::String((int)j));
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
         if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
+        if(settings.getY()>75 || settings.getRight()>=powerButton.getX() ||
+           settings.getWidth()>powerButton.getWidth())
+            issues.add("Header settings must sit compactly before the far-right power icon");
         if(chain.getBounds().intersects(slot.getBounds()))
             issues.add("Rack overlaps the module editor");
         if(rackOnRight!=(chain.getX()>slot.getX()))
@@ -414,8 +417,9 @@ public:
         if(!powerButton.isBypassed() || chain.isVisible())
             issues.add("Simple mode power button changed the view or failed");
         if(powerButton.getButtonText().isNotEmpty() ||
-           powerButton.getRight()<Theme::width-18)
-            issues.add("Header power must be icon-only at the far right");
+           powerButton.getRight()<Theme::width-18 ||
+           settings.getRight()>=powerButton.getX())
+            issues.add("Header power must be icon-only at the far right after settings");
         powerButton.onClick();
         configureForScreenshot(0,1,false);
         for(const auto& control:macro)
@@ -710,6 +714,7 @@ public:
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
         viewSwitch.setBounds(796,27,237,37);
+        settings.setBounds(1047,27,44,38); // one settings icon before master power
         powerButton.setBounds(1104,26,50,40);
         help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
@@ -729,7 +734,6 @@ public:
         mix.setBounds(433,648,185,34);
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
-        settings.setBounds(1094,648,69,26);
         record.setBounds(634,648,115,30);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
