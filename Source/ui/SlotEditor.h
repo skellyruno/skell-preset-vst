@@ -44,8 +44,11 @@ private:
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
     std::unique_ptr<juce::FileChooser> externalChooser;
     juce::Slider eqQSlider;
+    std::array<juce::Slider,2> eqCutSliders;
+    std::array<juce::TextButton,8> eqBandButtons;
     std::array<juce::Slider,4> knobs;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> eqQAttachment;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,2> eqCutAttachments;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> knobAttachment;
     bool draggingGraph=false;
     bool graphSnapshotValid=false;
@@ -54,7 +57,7 @@ private:
     int lastHostedLatency=-1;
     bool lastHostedLoaded=false;
     std::array<float,6> lastControls{};
-    std::array<float,24> lastEqControls{};
+    std::array<float,26> lastEqControls{};
     void updateGraphNode(juce::Point<float>);
     void chooseVST3File();
     void loadVST3FromFile(const juce::File& file);
