@@ -132,8 +132,25 @@ static void testDynamicPdcCrossfade() {
     assert(maxOldJump>.17f); // strong test signal demonstrates old failure
     assert(maxNewJump<.08f); // new line has neither jump nor peak increase
 
-    // Invariant 3: repeated, even mid-ramp, PDC updates are finite and
-    // produce no out-of-range memory taps or allocations on the audio thread.
+    // Invariant 3: rapid mid-fade mode changes must not snap to an
+    // interpolated delay tap (which is not equivalent to an audio crossfade).
+    // This 712 Hz case produced >0.4 sample steps with the old restart logic.
+    StereoSampleDelay rapid;
+    rapid.prepare(1024);
+    float prevRapid=0.f,maxRapidJump=0.f;
+    for(int n=0;n<32000;++n) {
+        const int request=(n/47)%3==0?0:(n/47)%3==1?333:1023;
+        const float input=.25f*std::sin(2.f*pi*712.3f*(float)n/48000.f);
+        const auto output=rapid.processSmoothed(input,-input,request,480);
+        assert(std::isfinite(output[0]) && std::isfinite(output[1]));
+        if(n>2048)maxRapidJump=std::max(maxRapidJump,
+                                        std::abs(output[0]-prevRapid));
+        prevRapid=output[0];
+    }
+    assert(maxRapidJump<.08f);
+
+    // Invariant 4: repeated PDC updates and corrupted samples are finite
+    // and produce no out-of-range memory taps or subnormal output.
     StereoSampleDelay moving;
     moving.prepare(1024);
     const auto pdcStarted=std::chrono::steady_clock::now();
@@ -154,6 +171,7 @@ static void testDynamicPdcCrossfade() {
         std::chrono::steady_clock::now()-pdcStarted).count();
     std::cout<<"PASS stereo PDC crossfade / old max step "<<maxOldJump
              <<" / smoothed max step "<<maxNewJump
+             <<" / rapid-change max step "<<maxRapidJump
              <<" / 250k stress frames "<<pdcSeconds<<"s"
              <<" / x48k realtime "<<(250000./48000.)/std::max(1.e-9,pdcSeconds)<<"\n";
 }
