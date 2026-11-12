@@ -16,6 +16,9 @@ the parent FL Studio process. Save your FL project before testing a new insert.
 5. Once loaded, click **OPEN PLUGIN UI** to use the third-party editor.
 6. Use Skell-Preset's per-slot wet/bypass and reorder controls. The hosted
    effect receives genuine multi-sample blocks, not one process call per sample.
+   The selected insert panel shows its own reported latency in samples and
+   milliseconds, while the rack header shows combined PDC. Search results
+   are filenames, not verified plugin metadata; only LOAD validates the VST3.
 
 ### Installed bundle discovery
 The browser indexes *file and folder names only*, without loading or executing
