@@ -3,7 +3,7 @@
 #include "../PluginProcessor.h"
 #include <functional>
 #include <array>
-class ChainPanel final:public juce::Component {
+class ChainPanel final:public juce::Component,public juce::SettableTooltipClient {
 public:
     explicit ChainPanel(SkellPresetAudioProcessor& p);
     void paint(juce::Graphics&) override;
