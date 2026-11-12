@@ -793,6 +793,7 @@ public:
     }
     void timerCallback() override{
         processor.refreshHostedLatency();
+        themeButton.setSignalPeak(processor.getInputPeak());
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
         syncSizeControl((float)outer.getWidth()/Theme::width);
