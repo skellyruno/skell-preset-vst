@@ -238,9 +238,9 @@ public:
             "Use the single view button to switch between four macros and the full effect rack.");
         if(chain.isVisible() && slot.isVisible()) {
             steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
-                "Select an effect slot or use its add control to build your processing chain.");
+                "Double-click a row to replace its effect. Drag its small ring for wet blend; click the rightmost green dot to bypass.");
             steps.emplace_back(&slot,"EDIT A SLOT",
-                "Adjust the selected effect here. Rack slots keep their own controls and order.");
+                "Adjust the selected effect here. Rack slots keep their own independent controls, order and automation.");
         }
         steps.emplace_back(&powerButton,"POWER / BYPASS",
             "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
