@@ -51,6 +51,8 @@ juce::Result validate(const Document& d) {
             if (! finiteRange(v, 0, 1)) return juce::Result::fail("Invalid slot parameter");
         for (const auto q : slot.eqQ)
             if (! finiteRange(q,0,1))return juce::Result::fail("Invalid EQ bandwidth");
+        if(!finiteRange(slot.eqLowCut,0,1)||!finiteRange(slot.eqHighCut,0,1))
+            return juce::Result::fail("Invalid EQ cut control");
     }
     return juce::Result::ok();
 }
@@ -84,6 +86,8 @@ juce::var toJson(const Document& d) {
         juce::Array<juce::var> eqQ;
         for(float value:slot.eqQ)eqQ.add(value);
         item->setProperty("eqQ",juce::var(eqQ));
+        item->setProperty("eqLowCut",slot.eqLowCut);
+        item->setProperty("eqHighCut",slot.eqHighCut);
         chain.add(juce::var(item));
     }
     root->setProperty("chain", juce::var(chain));
@@ -157,6 +161,12 @@ juce::Result fromJson(const juce::var& root, Document& out) {
                 if(!decodeFloat((*eqQ.getArray())[k],0,1,slot.eqQ[(size_t)k]))
                     return juce::Result::fail("Invalid EQ Q value");
         }
+        // Optional extensions keep legacy .skellpreset v1 and v2 readable.
+        const auto lo=item.getProperty("eqLowCut",{});
+        const auto hi=item.getProperty("eqHighCut",{});
+        if((!lo.isVoid() && !decodeFloat(lo,0,1,slot.eqLowCut))
+            ||(!hi.isVoid() && !decodeFloat(hi,0,1,slot.eqHighCut)))
+            return juce::Result::fail("Invalid EQ cut value");
     }
     if (auto status=validate(candidate);status.failed())return status;
     out=std::move(candidate); // transactional: no partial changes on bad packages
