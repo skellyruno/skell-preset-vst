@@ -312,6 +312,9 @@ public:
     void openModulePickerForScreenshot() {
         slot.openModulePickerForScreenshot();
     }
+    void openInstalledVST3BrowserForScreenshot() {
+        slot.openInstalledVST3BrowserForScreenshot();
+    }
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
         chain.setScreenshotScrollOffset(scrollOffset);
         chain.setSelectedSlot(physicalSlot);
@@ -870,4 +873,8 @@ void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
 
 void SkellPresetAudioProcessorEditor::openModulePickerForScreenshot() {
     canvas->openModulePickerForScreenshot();
+}
+
+void SkellPresetAudioProcessorEditor::openInstalledVST3BrowserForScreenshot() {
+    canvas->openInstalledVST3BrowserForScreenshot();
 }

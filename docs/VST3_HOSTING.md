@@ -8,10 +8,34 @@ the parent FL Studio process. Save your FL project before testing a new insert.
 
 1. Open Skell-Preset / Advanced.
 2. Choose an empty rack slot (or click **+ ADD SLOT**) and select **External VST3**.
-3. Click **LOAD VST3** and choose a local, installed `.vst3` bundle.
-4. Once loaded, click **OPEN PLUGIN UI** to use the third-party editor.
-5. Use Skell-Preset's per-slot wet/bypass and reorder controls. The hosted
+3. Click **LOAD VST3** to open the native installed-plugin browser.
+   Type part of a bundle name or location, choose a result, and click **LOAD**
+   (or double-click it). **RESCAN** refreshes installed bundle locations.
+4. If your plugin is installed elsewhere, choose **BROWSE FILE...** from the
+   browser to manually select its `.vst3` bundle.
+5. Once loaded, click **OPEN PLUGIN UI** to use the third-party editor.
+6. Use Skell-Preset's per-slot wet/bypass and reorder controls. The hosted
    effect receives genuine multi-sample blocks, not one process call per sample.
+   The selected insert panel shows its own reported latency in samples and
+   milliseconds, while the rack header shows combined PDC. Search results
+   are filenames, not verified plugin metadata; only LOAD validates the VST3.
+
+### Installed bundle discovery
+The browser indexes *file and folder names only*, without loading or executing
+third-party plugin binaries merely to populate search results. It checks the
+Windows standard system `%COMMONPROGRAMFILES%\\VST3` and per-user
+`%LOCALAPPDATA%\\Programs\\Common\\VST3` folders. Files and directories
+ending in `.vst3` are treated as opaque bundles; their interior is never
+searched. Results are case-insensitive and show the actual path, not guessed
+vendor metadata or a fabricated classification.
+
+To bound GUI work, the index walks a few folders per timer tick, with limits
+of 512 folders, 1,024 bundles and five directory levels. A partial-index
+warning is shown if limits are reached. Manual file selection remains available
+for custom VST3 paths. This is an initial built-in effect browser, **not a
+sandboxed or exhaustive VST3 metadata scanner**. Loading a result still calls
+the existing in-process JUCE VST3 scanner/loader and may block or crash a DAW
+if the third-party plugin is faulty.
 
 The host accepts **stereo-input/stereo-output audio effects only**. Instruments,
 MIDI routing, arbitrary sidechains and external VST2/AU/CLAP formats are not

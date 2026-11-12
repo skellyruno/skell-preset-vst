@@ -46,7 +46,7 @@ std::array<juce::String,4> titles(int type) {
 }
 }
 SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
-    processor(p),modulePicker(p) {
+    processor(p),modulePicker(p),installedBrowser(p) {
     for(int i=0;i<names.size();i++)moduleBox.addItem(names[i],i+1);
     moduleBox.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
     moduleBox.setColour(juce::ComboBox::textColourId,Theme::white);
@@ -55,6 +55,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     moduleBox.setVisible(false);
     moduleTrigger.setTooltip("Browse native audio effects by name and category");
     moduleTrigger.onClick=[this]{
+        installedBrowser.hide();
         if(modulePicker.isVisible())modulePicker.hide();
         else modulePicker.open(processor.slotType(slot));
     };
@@ -75,28 +76,20 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(*button);
         button->setVisible(false);
     }
-    loadExternal.setTooltip("Load an installed third-party VST3 effect into this rack slot");
+    loadExternal.setTooltip("Search installed VST3 effects or browse for a VST3 file");
     editExternal.setTooltip("Open the hosted VST3 editor in a separate window");
+    // Directory discovery is file-only. The third-party library is opened
+    // exclusively after choosing a bundle or using the manual picker.
+    addAndMakeVisible(installedBrowser);
+    installedBrowser.setVisible(false);
+    installedBrowser.onLoad=[this](const juce::File& path){loadVST3FromFile(path);};
+    installedBrowser.onBrowseFile=[this]{chooseVST3File();};
     loadExternal.onClick=[this] {
-        // JUCE FileChooser must outlive its asynchronous callback.
-        externalChooser=std::make_unique<juce::FileChooser>(
-            "Choose an installed VST3 effect",juce::File{},"*.vst3",true);
-        juce::Component::SafePointer<SlotEditor> safe(this);
-        externalChooser->launchAsync(
-            juce::FileBrowserComponent::openMode |
-            juce::FileBrowserComponent::canSelectFiles |
-            juce::FileBrowserComponent::canSelectDirectories,
-            [safe](const juce::FileChooser& chooser) {
-                if(!safe)return;
-                const auto path=chooser.getResult();
-                if(path.getFullPathName().isEmpty())return;
-                const auto result=safe->processor.loadHostedVST3(safe->slot,path);
-                if(result.failed())juce::AlertWindow::showMessageBoxAsync(
-                    juce::AlertWindow::WarningIcon,"VST3 could not load",
-                    result.getErrorMessage());
-                safe->graphSnapshotValid=false;
-                safe->refreshIfChanged();
-            });
+        if(installedBrowser.isVisible())installedBrowser.hide();
+        else {
+            if(modulePicker.isVisible())modulePicker.hide();
+            installedBrowser.open();
+        }
     };
     editExternal.onClick=[this] {
         processor.openHostedVST3Editor(slot);
@@ -285,6 +278,33 @@ void SlotEditor::applyKnobReadouts() {
     eqQSlider.updateText();
     for(auto& knob:knobs)knob.updateText();
 }
+void SlotEditor::loadVST3FromFile(const juce::File& path) {
+    if(path.getFullPathName().isEmpty())return;
+    const auto result=processor.loadHostedVST3(slot,path);
+    if(result.failed())
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::AlertWindow::WarningIcon,"VST3 could not load",
+            result.getErrorMessage());
+    graphSnapshotValid=false;
+    refreshIfChanged();
+    repaint();
+}
+void SlotEditor::chooseVST3File() {
+    // Keep the asynchronous chooser alive until it returns.
+    externalChooser=std::make_unique<juce::FileChooser>(
+        "Choose an installed VST3 effect",juce::File{},"*.vst3",true);
+    juce::Component::SafePointer<SlotEditor> safe(this);
+    externalChooser->launchAsync(
+        juce::FileBrowserComponent::openMode |
+        juce::FileBrowserComponent::canSelectFiles |
+        juce::FileBrowserComponent::canSelectDirectories,
+        [safe](const juce::FileChooser& chooser) {
+            if(!safe)return;
+            const auto path=chooser.getResult();
+            if(path.getFullPathName().isEmpty())return;
+            safe->loadVST3FromFile(path);
+        });
+}
 void SlotEditor::applyTheme() {
     Theme::selectFor(processor.state);
     moduleBox.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
@@ -293,6 +313,7 @@ void SlotEditor::applyTheme() {
     moduleTrigger.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
     moduleTrigger.setColour(juce::TextButton::textColourOffId,Theme::white);
     modulePicker.applyTheme();
+    installedBrowser.applyTheme();
     activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
     activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);
     for(auto* button:{&loadExternal,&editExternal}) {
@@ -331,6 +352,7 @@ void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     eqBank=0;activeEqBand=0;
     if(modulePicker.isVisible())modulePicker.hide();
+    installedBrowser.hide();
     graphSnapshotValid=false;
     enabledAttachment.reset();wetAttachment.reset();eqQAttachment.reset();
     externalChooser.reset();
@@ -397,6 +419,7 @@ void SlotEditor::refreshIfChanged() {
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
+    if(!external && installedBrowser.isVisible())installedBrowser.hide();
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
     eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
@@ -412,6 +435,7 @@ void SlotEditor::resized() {
     wetKnob.setBounds(805,22,86,66);
     eqQSlider.setBounds(672,114,186,26);
     loadExternal.setBounds(52,420,177,62);
+    installedBrowser.setBounds(85,62,735,385);
     editExternal.setBounds(246,420,188,62);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
 }

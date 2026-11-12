@@ -2,6 +2,7 @@
 // Linux: run under Xvfb. Never instantiate a mock editor or call the audio thread.
 #include "../Source/PluginEditor.h"
 #include "../Source/PluginProcessor.h"
+#include "../Source/host/InstalledVST3Index.h"
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <array>
@@ -32,6 +33,36 @@ int main(int argc, char** argv) {
     SkellPresetAudioProcessor processor;
     processor.prepareToPlay(48000.0, 512);
     int failures = 0;
+    // Verify filesystem-only VST3 browsing independently of installed plugin
+    // binaries. This runs in the actual JUCE UI harness on Linux as well.
+    {
+        const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getChildFile("skell-ui-vst3-index-"+juce::Uuid().toString());
+        const auto first=root.getChildFile("Vendor").getChildFile("Space Echo.vst3");
+        const auto second=root.getChildFile("Gate.vst3");
+        const auto inside=first.getChildFile("Ignore Inside.vst3");
+        const bool created=root.createDirectory().wasOk()
+            && first.createDirectory().wasOk()
+            && second.createDirectory().wasOk()
+            && inside.createDirectory().wasOk();
+        if(!created) {
+            std::fprintf(stderr,"Could not create UI VST3-browser fixture\n");
+            ++failures;
+        } else {
+            skellpreset::host::InstalledVST3Index index;
+            juce::Array<juce::File> paths;
+            paths.add(root);paths.add(root);
+            index.start(paths);
+            for(int pass=0;pass<100 && !index.finished();++pass)index.step(2);
+            if(!index.finished() || index.truncated() || index.entries().size()!=2
+               || index.filter("SPACE").size()!=1 || index.filter("gate").size()!=1
+               || !index.filter("Ignore Inside").empty()) {
+                std::fprintf(stderr,"Installed VST3 browser did not filter/stop at opaque bundles\n");
+                ++failures;
+            }
+        }
+        root.deleteRecursively();
+    }
     // Exact playback/tempo position supplied to hosted effects at each chunk.
     // This tests the JUCE transport bridge without loading arbitrary DLLs.
     {
@@ -143,6 +174,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-external-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-installed-vst3-browser-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-browser-70",818,482,0,1,true});
         options.scenes.push_back({"obsidian-factory-broadcast-70",818,482,0,1,false});
@@ -244,7 +276,8 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(41);
             } else if(scene.id=="obsidian-module-picker-70") {
                 processor.loadFactoryPreset(0);
-            } else if(scene.id=="obsidian-external-70") {
+            } else if(scene.id=="obsidian-external-70" ||
+                      scene.id=="obsidian-installed-vst3-browser-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
@@ -273,7 +306,8 @@ int main(int argc, char** argv) {
             else if(scene.id=="cream-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
             else if(scene.id.startsWith("obsidian-effect-")
-                    || scene.id=="obsidian-external-70")
+                    || scene.id=="obsidian-external-70"
+                    || scene.id=="obsidian-installed-vst3-browser-70")
                 editor.selectRackSlotForScreenshot(0,0);
             else if(scene.id=="obsidian-factory-broadcast-70"
                     || scene.id=="obsidian-factory-digital-70")
@@ -301,6 +335,8 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(1,0);
             else if(scene.id=="obsidian-factory-formant-70")
                 editor.selectRackSlotForScreenshot(8,0);
+            if(scene.id=="obsidian-installed-vst3-browser-70")
+                editor.openInstalledVST3BrowserForScreenshot();
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -317,6 +353,7 @@ int main(int argc, char** argv) {
             {"obsidian-effect-limiter-70", "obsidian-effect-exciter-70"},
             {"obsidian-effect-adlib-doubler-70", "obsidian-effect-gate-70"},
             {"obsidian-advanced-70", "obsidian-external-70"},
+            {"obsidian-external-70", "obsidian-installed-vst3-browser-70"},
             {"obsidian-advanced-70", "obsidian-rack-right-70"},
             {"obsidian-rack-right-70", "obsidian-rack-right-browser-70"},
             {"obsidian-advanced-70", "obsidian-guided-tour-70"},
@@ -343,8 +380,8 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 100) {
-            std::fprintf(stderr, "Expected 100 PNGs, captured %d\n", report.captured);
+        if (report.captured != 101) {
+            std::fprintf(stderr, "Expected 101 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 

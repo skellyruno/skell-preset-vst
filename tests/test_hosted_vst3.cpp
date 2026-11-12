@@ -1,5 +1,6 @@
 #include <JuceHeader.h>
 #include "../Source/host/HostedVST3.h"
+#include "../Source/host/InstalledVST3Index.h"
 #include <cmath>
 #include <cstdio>
 
@@ -44,6 +45,39 @@ int main(int argc,char** argv) {
     if(transport.getPosition()) {
         std::fprintf(stderr,"Missing DAW transport must remain unavailable\n");
         return 11;
+    }
+
+    // Index only directory names. A nested .vst3 is an opaque bundle,
+    // not a folder to recurse through, and duplicate roots are harmless.
+    const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("skell-vst3-index-"+juce::Uuid().toString());
+    const auto nested=root.getChildFile("FX").getChildFile("FabFilter Example.vst3");
+    const auto other=root.getChildFile("Adlib Example.vst3");
+    const auto hidden=nested.getChildFile("DoNotDiscover.vst3");
+    const auto prepared=root.createDirectory().wasOk()
+        && nested.createDirectory().wasOk()
+        && other.createDirectory().wasOk()
+        && hidden.createDirectory().wasOk();
+    if(!prepared) {
+        std::fprintf(stderr,"Could not create VST3 discovery fixture\n");return 12;
+    }
+    juce::Array<juce::File> roots;
+    roots.add(root);roots.add(root);
+    skellpreset::host::InstalledVST3Index index;
+    index.start(roots);
+    for(int pass=0;pass<100 && !index.finished();++pass)index.step(1);
+    const auto found=index.entries();
+    const bool valid=index.finished() && !index.truncated() && found.size()==2
+        && found[0].name=="Adlib Example"
+        && found[1].name=="FabFilter Example"
+        && index.filter("fabfilter").size()==1
+        && index.filter("ADLIB").size()==1
+        && index.filter("not-present").empty()
+        && index.filter("DoNotDiscover").empty();
+    root.deleteRecursively();
+    if(!valid){
+        std::fprintf(stderr,"Installed VST3 bundle discovery/search regression\n");
+        return 13;
     }
 
     skellpreset::host::HostedVST3 host;

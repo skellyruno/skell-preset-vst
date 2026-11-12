@@ -14,6 +14,7 @@ public:
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
     void dockRackForScreenshot(bool right);
     void openModulePickerForScreenshot();
+    void openInstalledVST3BrowserForScreenshot();
     juce::StringArray getScreenshotLayoutIssues() const;
     juce::StringArray runScreenshotInteractionTests();
     bool showGuidedTourForScreenshot();
