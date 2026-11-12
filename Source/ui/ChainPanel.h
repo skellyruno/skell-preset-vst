@@ -9,6 +9,7 @@ public:
     void paint(juce::Graphics&) override;
     void refreshIfChanged(); // avoid painting all ten rows while the chain is idle
     void mouseDown(const juce::MouseEvent&) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
     void mouseMove(const juce::MouseEvent&) override;
@@ -20,11 +21,19 @@ public:
         visualSnapshotValid=false;repaint();
     }
     std::function<void(int)> onSelection;
+    // Double-clicking an effect opens the searchable replacement overlay.
+    std::function<void(int)> onReplaceRequest;
+    // Shared hit-test geometry for UI and regression tests.
+    static constexpr int wetControlLeft=149,wetControlRight=181;
+    static constexpr int powerControlLeft=182,powerControlRight=206;
+    bool testRackControlsAndWet();
     std::function<void(bool)> onDockRequest;
     void setDockedRight(bool value) {dockedRight=value;repaint();}
 private:
     SkellPresetAudioProcessor& processor;
     int selected=0,dragFrom=-1,dragTo=-1,pendingFrom=-1;
+    int wetDragSlot=-1;
+    float wetDragStart=0.f;
     juce::Point<int> pressPoint;
     bool dragging=false;
     bool dockingDrag=false,dockedRight=false,dockCandidateRight=false;
@@ -35,4 +44,8 @@ private:
     void clampScroll();
     void addModule();
     void popupFor(int physicalSlot);
+    float slotWet(int physicalSlot) const noexcept;
+    void setSlotWet(int physicalSlot,float wet);
+    void toggleSlotPower(int physicalSlot);
+    bool selectAndReplace(int row);
 };
