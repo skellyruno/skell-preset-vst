@@ -361,7 +361,7 @@ void SlotEditor::refreshIfChanged() {
     const int level=juce::jlimit(0,14,juce::roundToInt(measured*14.f));
     if(!changed && lastPeakLevel!=level) {
         lastPeakLevel=level;
-        repaint(juce::Rectangle<int>(178,83,195,32)); // tiny live bone-rib overlay only
+        repaint(juce::Rectangle<int>(178,75,195,22)); // tiny live bone-rib overlay only
         return;
     }
     lastPeakLevel=level;
@@ -441,19 +441,19 @@ void SlotEditor::paint(juce::Graphics&g) {
                 {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
     // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
     // vertebrae respond to the signal while leaving parameter graphs readable.
-    Theme::text(g,"BONE SIGNAL",{22,86,158,22},10,Theme::muted,true);
+    Theme::text(g,"BONE SIGNAL",{22,73,158,18},9.8f,Theme::muted,true);
     const float level=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
     for(int rib=0;rib<14;++rib) {
         const float x=178.f+13.5f*(float)rib;
         const bool alive=level>((float)rib/14.f);
         g.setColour(alive?Theme::green.withAlpha(.33f+.55f*level)
                          :Theme::stroke.withAlpha(.67f));
-        g.fillRoundedRectangle(x+2.f,93.1f,6.7f,8.8f,2.8f);
-        g.fillEllipse(x,95.3f,4.5f,4.5f);
-        g.fillEllipse(x+6.f,95.3f,4.5f,4.5f);
+        g.fillRoundedRectangle(x+2.f,79.1f,6.7f,7.4f,2.8f);
+        g.fillEllipse(x,80.2f,4.5f,4.5f);
+        g.fillEllipse(x+6.f,80.2f,4.5f,4.5f);
         if(alive) {
             g.setColour(Theme::white.withAlpha(.15f));
-            g.drawLine(x+3.f,94.1f,x+8.f,94.1f,.8f);
+            g.drawLine(x+3.f,79.5f,x+8.f,79.5f,.8f);
         }
     }
     const auto plot=juce::Rectangle<float>(33,151,835,206);
