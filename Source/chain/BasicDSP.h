@@ -241,12 +241,21 @@ inline float softLimit(float x,float ceiling=0.96f) noexcept {
 struct StereoSampleDelay {
     std::array<std::vector<float>,2> channel;
     size_t head=0;
+    // Dual-tap crossfade state, used only when the rack's PDC changes.
+    // The original sample-exact process() path remains unchanged for fixed
+    // lookahead and all existing latency/impulse regression fixtures.
+    int fadeFrom=0,fadeTo=-1,fadeRemaining=0,fadeDuration=1;
     void prepare(int maxDelay) {
         const size_t capacity=(size_t)std::max(1,maxDelay)+2;
         for(auto& line:channel)line.assign(capacity,0.f);
         head=0;
+        fadeFrom=0;fadeTo=-1;fadeRemaining=0;fadeDuration=1;
     }
-    void reset() noexcept {for(auto& line:channel)std::fill(line.begin(),line.end(),0.f);head=0;}
+    void reset() noexcept {
+        for(auto& line:channel)std::fill(line.begin(),line.end(),0.f);
+        head=0;
+        fadeFrom=0;fadeTo=-1;fadeRemaining=0;fadeDuration=1;
+    }
     std::array<float,2> process(float l,float r,int delay) noexcept {
         if(channel[0].empty())return {l,r};
         const auto capacity=channel[0].size();
@@ -257,6 +266,48 @@ struct StereoSampleDelay {
         const std::array<float,2> output{channel[0][read],channel[1][read]};
         head=(head+1)%capacity;
         return output;
+    }
+    // When a hosted VST3 changes oversampling/lookahead, snapping the read
+    // head across a PDC buffer causes an audible discontinuity. Crossfade the
+    // old/new taps over a short fixed interval; no allocation, lock, or
+    // per-sample delay-line reinitialization. Stable delay is sample-exact.
+    std::array<float,2> processSmoothed(float l,float r,int delay,
+                                        int transitionSamples) noexcept {
+        if(channel[0].empty())return {std::isfinite(l)?l:0.f,
+                                     std::isfinite(r)?r:0.f};
+        const auto size=channel[0].size();
+        const int requested=std::clamp(delay,0,(int)size-2);
+        if(fadeTo<0) {
+            fadeFrom=fadeTo=requested;fadeRemaining=0;
+        } else if(requested!=fadeTo) {
+            // For another change mid-transition, approximate the effective
+            // current tap before starting a fresh short crossfade.
+            if(fadeRemaining>0)
+                fadeFrom=(int)std::lround(
+                    ((double)fadeFrom*fadeRemaining+
+                     (double)fadeTo*(fadeDuration-fadeRemaining))/
+                    std::max(1,fadeDuration));
+            else fadeFrom=fadeTo;
+            fadeTo=requested;
+            fadeDuration=std::max(1,transitionSamples);
+            fadeRemaining=fadeDuration;
+        }
+        channel[0][head]=std::isfinite(l)?l:0.f;
+        channel[1][head]=std::isfinite(r)?r:0.f;
+        const auto previousTap=(head+size-(size_t)fadeFrom)%size;
+        const auto nextTap=(head+size-(size_t)fadeTo)%size;
+        float blend=1.f;
+        if(fadeRemaining>0) {
+            blend=(float)(fadeDuration-fadeRemaining+1)/(float)fadeDuration;
+            --fadeRemaining;
+        }
+        std::array<float,2> out{};
+        for(size_t ch=0;ch<2;++ch) {
+            const float a=channel[ch][previousTap],b=channel[ch][nextTap];
+            out[ch]=a+(b-a)*blend;
+        }
+        head=(head+1)%size;
+        return out;
     }
 };
 
