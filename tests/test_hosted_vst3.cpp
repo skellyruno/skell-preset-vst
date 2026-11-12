@@ -20,6 +20,32 @@ int main(int argc,char** argv) {
         std::fprintf(stderr,"Unrelated Skell products must remain hostable\n");
         return 9;
     }
+    // The nested effect must see accurate tempo, transport and chunk position.
+    juce::AudioPlayHead::PositionInfo position;
+    position.setBpm(96.);
+    position.setPpqPosition(12.);
+    position.setTimeInSamples(std::int64_t{48000});
+    position.setTimeInSeconds(1.);
+    position.setIsPlaying(true);
+    skellpreset::host::HostedTransport transport;
+    transport.update(position,240,48000.);
+    const auto observed=transport.getPosition();
+    if(!observed || !observed->getIsPlaying()
+       || observed->getBpm()!=position.getBpm()
+       || observed->getTimeInSamples()!=juce::Optional<std::int64_t>{48240}
+       || !observed->getTimeInSeconds()
+       || std::abs(*observed->getTimeInSeconds()-1.005)>1.e-9
+       || !observed->getPpqPosition()
+       || std::abs(*observed->getPpqPosition()-12.008)>1.e-9) {
+        std::fprintf(stderr,"Hosted transport BPM, playing or chunk offset wrong\n");
+        return 10;
+    }
+    transport.update({},0,48000.);
+    if(transport.getPosition()) {
+        std::fprintf(stderr,"Missing DAW transport must remain unavailable\n");
+        return 11;
+    }
+
     skellpreset::host::HostedVST3 host;
     const juce::File fixture(juce::String::fromUTF8(argv[1]));
     const auto loaded=host.load(0,fixture,48000.,512);
