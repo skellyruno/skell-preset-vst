@@ -126,6 +126,8 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     pitchDry.prepare(skellpreset::dsp::SpectralPitchFormant::latencySamples);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
+    for(auto* value:{&saturatorDrive,&saturatorBlend,&exciterDrive})
+        value->reset(sampleRate,.012);
     limiterDry.prepare(limiter.latencySamples());
     hostDry.prepare(skellpreset::host::HostedVST3::maxTotalLatency);
     phrase.prepare(sampleRate);phrase.setThreshold(.018f);
@@ -198,6 +200,17 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     dryWork.setSize(2,hostChunkCapacity,false,true);
     bypassWork.setSize(2,hostChunkCapacity,false,true);
     for(auto& e:engines)e.prepare(rate);
+    // Initialize drive from the actual saved parameters, not arbitrary 0/1.
+    // This prevents 12 ms startup coloration when loading a saved session.
+    const float initialGrit=rawGlobal.macros[3]->load();
+    for(int s=0;s<slotCount;++s) {
+        auto& engine=engines[(size_t)s];
+        const auto& raw=rawSlots[(size_t)s];
+        engine.saturatorDrive.setCurrentAndTargetValue(
+            dbToGain(24.f*raw.p[0]->load()+10.f*(initialGrit-.5f)));
+        engine.saturatorBlend.setCurrentAndTargetValue(.5f+raw.p[1]->load());
+        engine.exciterDrive.setCurrentAndTargetValue(1.f+10.f*raw.p[0]->load());
+    }
     hosted.prepare(rate,hostChunkCapacity);
     const auto lookahead=engines[0].limiter.latencySamples();
     limiterLookahead.store(lookahead,std::memory_order_release);
@@ -461,6 +474,14 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case Limiter:
                 e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
                 break;
+            case Saturator:
+                e.saturatorDrive.setTargetValue(
+                    dbToGain(24.f*c.p[0]+10.f*(macroGrit-.5f)));
+                e.saturatorBlend.setTargetValue(.5f+c.p[1]);
+                break;
+            case Exciter:
+                e.exciterDrive.setTargetValue(1.f+10.f*c.p[0]);
+                break;
             default: break;
         }
         const float fx=(c.type==Reverb || c.type==Delay)
@@ -665,14 +686,15 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
-                        const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));
-                        const float blend=.5f+c.p[1];
-                        wetL=std::tanh(l*drive*blend)/std::max(.5f,drive*.6f);
-                        wetR=std::tanh(r*drive*blend)/std::max(.5f,drive*.6f);
+                        const float drive=e.saturatorDrive.getNextValue();
+                        const float blend=e.saturatorBlend.getNextValue();
+                        const float inverseNorm=1.f/std::max(.5f,drive*.6f);
+                        wetL=std::tanh(l*drive*blend)*inverseNorm;
+                        wetR=std::tanh(r*drive*blend)*inverseNorm;
                         break;
                     }
                     case Exciter: {
-                        const float drive=1.f+10.f*c.p[0];
+                        const float drive=e.exciterDrive.getNextValue();
                         wetL=(std::tanh(l*drive)-std::tanh(l*drive*.55f))*.4f+l;
                         wetR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*.4f+r;
                         break;
