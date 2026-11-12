@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,37> factoryPresets {{
+inline constexpr std::array<FactoryPreset,42> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -48,5 +48,10 @@ inline constexpr std::array<FactoryPreset,37> factoryPresets {{
     {"Rider Ready","Main Vocals","Steady phrase levelling before compression",0,.55f,.46f,.20f,.08f},
     {"Ducked Echo","Adlibs","Tempo-locked stereo repeats that duck under the vocal",2,.50f,.52f,.78f,.19f},
     {"Skell Flutter","Adlibs","Expressive stereo vibrato with soft throws",4,.48f,.39f,.60f,.26f},
+    {"Eight-Band Air","Main Vocals","Eight individually tuned vocal frequency bands",2,.68f,.48f,.19f,.12f},
+    {"Opto Punch","Main Vocals","Fast FET peaks into slow optical leveling",0,.57f,.78f,.12f,.13f},
+    {"Smooth Edge","Main Vocals","Dynamic resonance tamer in the presence region",4,.56f,.48f,.18f,.10f},
+    {"Noise Guard","Main Vocals","Gentle adaptive background-noise floor control",1,.48f,.41f,.14f,.09f},
+    {"Formant Sketch","Adlibs","Creative spectral pitch/formant colour; studio PDC",5,.51f,.42f,.67f,.27f},
 }};
 }

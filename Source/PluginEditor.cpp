@@ -91,6 +91,27 @@ public:
         inputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"input",input);
         mixAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"mix",mix);
         outputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"output",output);
+        // Host attachments otherwise show opaque raw decimals such as 0.000
+        // and 1.000. Display physical units without changing DSP precision
+        // or the existing automated parameter normalization.
+        auto decibels=[](double value) {
+            return juce::String(juce::roundToInt(value))+" dB";
+        };
+        auto readDb=[](const juce::String& text) {
+            return juce::jlimit(-24.,24.,text.getDoubleValue());
+        };
+        input.textFromValueFunction=decibels;
+        output.textFromValueFunction=decibels;
+        input.valueFromTextFunction=readDb;
+        output.valueFromTextFunction=readDb;
+        mix.textFromValueFunction=[](double value) {
+            return juce::String(juce::roundToInt(juce::jlimit(0.,1.,value)*100.))+"%";
+        };
+        mix.valueFromTextFunction=[](const juce::String& text) {
+            const double value=text.getDoubleValue();
+            return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
+        };
+        input.updateText();output.updateText();mix.updateText();
         sizeSelect.addItemList({"70%","85%","100%","125%"},1);
         const float restored=(float)processor.state.state.getProperty("uiScale",.70f);
         const float available[]{.70f,.85f,1.f,1.25f};
@@ -104,6 +125,26 @@ public:
             if(index>=0&&index<4)outer.setSize(juce::roundToInt(Theme::width*scales[index]),juce::roundToInt(Theme::height*scales[index]));
         };
         addAndMakeVisible(sizeSelect);
+        sizeSelect.setVisible(false); // Internal compatibility adapter only.
+        settings.setButtonText(juce::String::fromUTF8("\xE2\x9A\x99"));
+        settings.setTooltip("Settings  /  Interface Size");
+        style(settings);
+        addAndMakeVisible(settings);
+        settings.onClick=[this] {
+            // An actual native rounded-rectangle settings menu, using the
+            // SkellCore LookAndFeel; do not add another cramped dropdown.
+            juce::PopupMenu menu;
+            menu.addSectionHeader("INTERFACE SIZE");
+            const juce::StringArray labels{"70%","85%","100%","125%"};
+            for(int i=0;i<labels.size();++i)
+                menu.addItem(i+1,labels[i],true,sizeSelect.getSelectedId()==i+1);
+            menu.showMenuAsync(
+                juce::PopupMenu::Options().withTargetComponent(&settings),
+                [safe=juce::Component::SafePointer<Canvas>(this)](int choice) {
+                    if(choice>=1 && choice<=4 && safe!=nullptr)
+                        safe->sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
+                });
+        };
         browser.onLoaded=[this]{slot.select(0);chain.setSelectedSlot(0);refresh();};
         browser.onClose=[this]{preset.repaint();};
         addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
@@ -213,12 +254,16 @@ public:
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
-        const std::array<const juce::Component*,12> all{{&themeButton,&preset,&match,
-            &mode[0],&mode[1],&help,&chain,&slot,&input,&mix,&output,&sizeSelect}};
+        const std::array<const juce::Component*,13> all{{&themeButton,&preset,&match,
+            &mode[0],&mode[1],&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
         }
+        if(!input.textFromValueFunction || input.textFromValueFunction(0.)!="0 dB"
+           || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
+           || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
+            issues.add("Master strip displays raw values rather than physical dB/% labels");
         const std::array<const juce::Component*,4> top{{&preset,&match,&mode[0],&mode[1]}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
@@ -226,6 +271,7 @@ public:
                     issues.add("Overlapping top-bar controls " + juce::String((int)i)
                                + " / " + juce::String((int)j));
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
+        if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
         if(chain.getBounds().intersects(slot.getBounds()))
             issues.add("Rack overlaps the module editor");
         if(rackOnRight!=(chain.getX()>slot.getX()))
@@ -273,6 +319,10 @@ public:
             issues.add("Rack failed to return left");
         if(!slot.testModulePickerInteraction())
             issues.add("Module browser did not toggle, filter or load Ring Mod");
+        if(!slot.testEightBandGraphAndQ())
+            issues.add("8-Band EQ graph did not edit the eighth band and its Q");
+        if(!slot.testKnobReadouts())
+            issues.add("APVTS overwrote physical Hz/dB/Q/% knob readouts");
         // This drives the same XY mutation code as real mouse dragging:
         // verify the graphical insert is an actual parameter editor.
         processor.loadFactoryPreset(0);
@@ -325,6 +375,37 @@ public:
         if(auto* extension=processor.state.getRawParameterValue("s1_fxExt"))
             if((int)extension->load()!=0)
                 issues.add("Legacy module did not clear extended host parameter");
+        // Latest effect extensions must not renormalize previously-published
+        // 23-choice type or the earlier three-choice effect extension.
+        for(int type=SkellPresetAudioProcessor::EightBandToneFX;
+                type<=SkellPresetAudioProcessor::StudioPitchFormantFX;++type){
+            processor.setSlotType(0,type);
+            slot.select(0);
+            const auto* legacy=processor.state.getRawParameterValue("s1_type");
+            const auto* previous=processor.state.getRawParameterValue("s1_fxExt");
+            const auto* advanced=processor.state.getRawParameterValue("s1_fxExt2");
+            const auto* studio=processor.state.getRawParameterValue("s1_fxExt3");
+            const bool isStudio=type==SkellPresetAudioProcessor::StudioPitchFormantFX;
+            if(processor.slotType(0)!=type || !slot.moduleSelectorMatchesAudio()
+                || !legacy || (int)legacy->load()!=SkellPresetAudioProcessor::Empty
+                || !previous || (int)previous->load()!=0 || !advanced || !studio
+                || (int)advanced->load()!=(isStudio?0:type-SkellPresetAudioProcessor::VocalVibratoFX)
+                || (int)studio->load()!=(isStudio?1:0))
+                issues.add("Advanced effect changed legacy slot-type automation mapping");
+        }
+        // The recording-oriented Live Lead preset has no limiter PDC.
+        // Selecting the studio phase vocoder must add exactly 768 samples;
+        // removing the slot must return to zero host latency.
+        processor.loadFactoryPreset(25);
+        processor.setSlotType(8,SkellPresetAudioProcessor::StudioPitchFormantFX);
+        processor.setSlotOn(8,true);
+        if(processor.getLatencySamples()!=
+           skellpreset::dsp::SpectralPitchFormant::latencySamples)
+            issues.add("Studio pitch/formant did not report its 768-sample PDC");
+        processor.setSlotType(8,SkellPresetAudioProcessor::Empty);
+        processor.setSlotOn(8,false);
+        if(processor.getLatencySamples()!=0)
+            issues.add("Studio pitch/formant removal did not clear host PDC");
         processor.loadFactoryPreset(0);
         slot.select(0);
         chain.setSelectedSlot(0);
@@ -425,6 +506,7 @@ public:
         mix.setBounds(433,648,241,34);
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
+        settings.setBounds(1094,648,69,26);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
@@ -497,7 +579,7 @@ private:
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
-    juce::TextButton preset,match,help;
+    juce::TextButton preset,match,help,settings;
     std::array<juce::TextButton,2> mode;
     std::array<juce::Slider,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;

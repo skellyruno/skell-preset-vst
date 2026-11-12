@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Configure JUCE 8 and SkellCore
         run: cmake -S . -B build -A x64
-      - name: Compile VST3 and Standalone
+      - name: Compile Windows VST3 and regression fixtures
         run: cmake --build build --config Release --parallel 2
       - name: Validate native preset ZIP import/export and security
         run: ctest --test-dir build -C Release --output-on-failure

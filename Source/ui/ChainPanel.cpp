@@ -75,6 +75,33 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
         p.startNewSubPath((float)x,(float)y+9.f);
         for(int i=1;i<=22;++i)
             p.lineTo((float)x+i,(float)y+9.f-5.f*std::sin((float)i*.68f));
+    } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        for(int band=0;band<8;++band)
+            p.addEllipse((float)x+2.f+band*2.7f,(float)y+5.f+
+                         4.f*std::sin((float)band*.9f),2.6f,2.6f);
+    } else if(type==SkellPresetAudioProcessor::SerialDynamicsFX) {
+        p.startNewSubPath((float)x,(float)y+13.f);
+        p.lineTo((float)x+9.f,(float)y+5.f);
+        p.quadraticTo((float)x+15.f,(float)y+2.f,(float)x+23.f,(float)y+2.f);
+        p.startNewSubPath((float)x,(float)y+15.f);
+        p.lineTo((float)x+10.f,(float)y+10.f);
+        p.quadraticTo((float)x+16.f,(float)y+8.f,(float)x+23.f,(float)y+8.f);
+    } else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX) {
+        p.startNewSubPath((float)x,(float)y+5.f);
+        p.lineTo((float)x+7.f,(float)y+5.f);
+        p.quadraticTo((float)x+12.f,(float)y+15.f,(float)x+17.f,(float)y+5.f);
+        p.lineTo((float)x+23.f,(float)y+5.f);
+    } else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX) {
+        for(int i=0;i<5;++i)
+            p.addRectangle((float)x+1.f+i*5.f,(float)y+3.f+(i%2)*5.f,
+                           2.5f,13.f-(i%2)*7.f);
+    } else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX) {
+        for(int row=0;row<2;++row){
+            p.startNewSubPath((float)x,(float)y+6.f+6.f*row);
+            for(int i=1;i<=23;++i)
+                p.lineTo((float)x+i,(float)y+6.f+6.f*row+
+                         3.f*std::sin(i*(row?.76f:.43f)));
+        }
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
@@ -140,6 +167,13 @@ void ChainPanel::paint(juce::Graphics& g) {
         else if(type==SkellPresetAudioProcessor::VoxRackRoom)compact="Vox Room";
         else if(type==SkellPresetAudioProcessor::ThreeBandDynamics)compact="3-Band Dyn";
         else if(type==SkellPresetAudioProcessor::ExternalVST3)compact="External VST3";
+        else if(type==SkellPresetAudioProcessor::DuckingPingPongFX)compact="Duck Echo";
+        else if(type==SkellPresetAudioProcessor::VocalVibratoFX)compact="Vibrato";
+        else if(type==SkellPresetAudioProcessor::EightBandToneFX)compact="8-Band EQ";
+        else if(type==SkellPresetAudioProcessor::SerialDynamicsFX)compact="FET / Opto";
+        else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX)compact="Harsh Tamer";
+        else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX)compact="Noise Guard";
+        else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX)compact="Studio Pitch";
         const float fontSize=compact.length()>12?11.f:12.4f;
         Theme::text(g,compact,{97,top+8,88,19},fontSize,
                     type==0?Theme::muted:Theme::white,selected==slot);
