@@ -131,6 +131,7 @@ private:
     }
     void refreshResults() {
         visible=index.filter(search.getText());
+        list.setVisible(!visible.empty());
         list.updateContent();
         if(visible.empty())list.deselectAllRows();
         else list.selectRow(0);
