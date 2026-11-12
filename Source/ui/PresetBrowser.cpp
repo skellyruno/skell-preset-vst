@@ -2,8 +2,63 @@
 #include "Theme.h"
 #include <algorithm>
 #include <cmath>
+#include <array>
 
-namespace {const juce::StringArray banks{"All presets","Main Vocals","Adlibs","My Presets"};}
+namespace {
+const juce::StringArray banks{"All presets","Main Vocals","Adlibs","My Presets"};
+// Each factory sound has deterministic original cover art; no bitmap decoding
+// or file I/O during a repaint. User-selected images override this motif.
+void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
+                juce::Colour accent) {
+    g.setGradientFill(juce::ColourGradient(Theme::plot,r.getX(),r.getY(),
+                     accent.darker(.65f),r.getRight(),r.getBottom(),false));
+    g.fillRoundedRectangle(r,5.f);
+    juce::Graphics::ScopedSaveState save(g);
+    g.reduceClipRegion(r.toNearestInt());
+    const int variation=(seed<0?-seed:seed)%4;
+    const float cx=r.getCentreX(),cy=r.getCentreY();
+    g.setColour(accent.withAlpha(.13f));
+    for(int i=1;i<=4;++i)
+        g.drawEllipse(cx-9.f*i,cy-9.f*i,18.f*i,18.f*i,1.f);
+    g.setColour(accent.withAlpha(.85f));
+    if(variation==0) {
+        for(int i=0;i<7;++i){
+            const float h=11.f+(float)((seed*17+i*29)%31);
+            g.fillRoundedRectangle(r.getX()+6.f+i*8.6f,cy-h*.5f,4.f,h,1.3f);
+        }
+    } else if(variation==1) {
+        juce::Path wave;
+        for(int i=0;i<=42;++i){
+            const float x=r.getX()+3.f+i*(r.getWidth()-6.f)/42.f;
+            const float y=cy+std::sin((float)i*.5f+seed*.21f)*
+                (11.f+5.f*std::cos((float)i*.13f));
+            if(i==0)wave.startNewSubPath(x,y);else wave.lineTo(x,y);
+        }
+        g.strokePath(wave,juce::PathStrokeType(2.5f));
+    } else if(variation==2) {
+        const float twist=(float)((seed*7)%13)-6.f;
+        const float step=2.6f+(float)(seed%4)*.22f;
+        for(int i=0;i<5;++i) {
+            const float margin=5.f+i*step;
+            g.drawRoundedRectangle(r.getX()+margin+twist*.23f,r.getY()+margin,
+                                   r.getWidth()-2.f*margin,r.getHeight()-2.f*margin,
+                                   2.5f+(float)(seed%3),1.4f);
+        }
+    } else {
+        const float span=16.f+(float)((seed*3)%11);
+        const float h=12.f+(float)((seed*5)%13);
+        juce::Path poly;
+        poly.startNewSubPath(cx,cy-h);
+        poly.lineTo(cx+span,cy-3.f);
+        poly.lineTo(cx+3.f,cy+h);
+        poly.lineTo(cx-span,cy+3.f);
+        poly.closeSubPath();
+        g.strokePath(poly,juce::PathStrokeType(2.4f));
+        const float core=3.f+(float)(seed%7);
+        g.fillEllipse(cx-core,cy-core,core*2.f,core*2.f);
+    }
+}
+}
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.setMultiLine(false);
     search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
@@ -16,13 +71,16 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
         if(!entries.empty())auditionEntry(entries[(size_t)std::min(scroll,(int)entries.size()-1)]);
     };
     addAndMakeVisible(search);
-    for (auto* button : {&importButton,&exportButton}) {
+    for (auto* button : {&importButton,&exportButton,&artworkButton}) {
         addAndMakeVisible(*button);
     }
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
     exportButton.setTooltip("Save the active chain, slot order, macros and global controls");
+    artworkButton.setTooltip("Add custom PNG/JPG cover art to a saved My Presets entry");
+    artworkButton.setEnabled(false);
     importButton.onClick=[this] {chooseImport();};
     exportButton.onClick=[this] {chooseExport();};
+    artworkButton.onClick=[this] {chooseArtwork();};
     setWantsKeyboardFocus(true);
 }
 void PresetBrowser::applyTheme() {
@@ -31,7 +89,7 @@ void PresetBrowser::applyTheme() {
     search.setColour(juce::TextEditor::textColourId,Theme::white);
     search.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
     search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
-    for(auto* button:{&importButton,&exportButton}) {
+    for(auto* button:{&importButton,&exportButton,&artworkButton}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panel);
         button->setColour(juce::TextButton::textColourOffId,Theme::white);
     }
@@ -56,29 +114,43 @@ void PresetBrowser::scanLibrary() {
             return a.getFileName().compareIgnoreCase(b.getFileName())<0;
         });
     if(userPresets.size()>200)userPresets.resize(200);
+    userArtwork.clear();userArtwork.resize(userPresets.size());
+    for(size_t i=0;i<userPresets.size();++i) {
+        const auto base=userPresets[i];
+        auto cover=base.withFileExtension(".png");
+        if(!cover.existsAsFile())cover=base.withFileExtension(".jpg");
+        if(cover.existsAsFile() && cover.getSize()>0 && cover.getSize()<=2*1024*1024) {
+            auto image=juce::ImageFileFormat::loadFrom(cover);
+            if(image.isValid() && image.getWidth()<=4096 && image.getHeight()<=4096)
+                userArtwork[i]=image.rescaled(128,96,juce::Graphics::mediumResamplingQuality);
+        }
+    }
 }
 void PresetBrowser::copyToLibrary(const juce::File& source) {
     const auto folder=libraryDirectory();
     if(folder.createDirectory().failed())return;
     if(source.getParentDirectory()==folder) {
-        activeUserPreset=source;scanLibrary();return;
+        activeUserPreset=source;scanLibrary();refreshArtwork();return;
     }
     const auto dest=folder.getNonexistentChildFile(
         juce::File::createLegalFileName(source.getFileNameWithoutExtension()),
         ".skellpreset",true);
     if(source.copyFileTo(dest))activeUserPreset=dest;
     scanLibrary();
+    refreshArtwork();
 }
-void PresetBrowser::open(){scanLibrary();bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
+void PresetBrowser::open(){scanLibrary();refreshArtwork();bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
-    importButton.setBounds(17,470,168,27);
-    exportButton.setBounds(17,502,168,27);
+    importButton.setBounds(18,419,166,31);
+    exportButton.setBounds(18,456,166,31);
+    artworkButton.setBounds(18,493,166,31);
 }
 void PresetBrowser::setChooserActive(bool active) {
     chooserActive=active;
     importButton.setEnabled(!active);
     exportButton.setEnabled(!active);
+    artworkButton.setEnabled(!active && activeUserPreset.existsAsFile());
 }
 void PresetBrowser::chooseImport() {
     if(chooserActive)return;
@@ -121,6 +193,8 @@ void PresetBrowser::chooseExport() {
                 return;
             }
             safe->copyToLibrary(file);
+            safe->refreshArtwork();
+            safe->repaint();
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"Preset saved",file.getFullPathName());
         });
 }
@@ -157,30 +231,80 @@ std::vector<int> PresetBrowser::filtered() const {
     }
     return list;
 }
+void PresetBrowser::refreshArtwork() {
+    artworkButton.setEnabled(!chooserActive && activeUserPreset.existsAsFile());
+    repaint();
+}
+void PresetBrowser::chooseArtwork() {
+    if(chooserActive || !activeUserPreset.existsAsFile())return;
+    setChooserActive(true);
+    fileChooser=std::make_unique<juce::FileChooser>(
+        "Choose artwork for "+activeUserPreset.getFileNameWithoutExtension(),
+        juce::File{}, "*.png;*.jpg;*.jpeg");
+    juce::Component::SafePointer<PresetBrowser> safe(this);
+    fileChooser->launchAsync(juce::FileBrowserComponent::openMode |
+        juce::FileBrowserComponent::canSelectFiles,
+        [safe](const juce::FileChooser& chooser) {
+            if(!safe)return;
+            safe->setChooserActive(false);
+            const auto file=chooser.getResult();
+            if(!file.existsAsFile())return;
+            if(file.getSize()<=0 || file.getSize()>2*1024*1024){
+                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                    "Artwork too large","Use a PNG/JPG image smaller than 2 MB.");return;
+            }
+            auto image=juce::ImageFileFormat::loadFrom(file);
+            if(!image.isValid() || image.getWidth()>4096 || image.getHeight()>4096){
+                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                    "Invalid artwork","Choose a valid image up to 4096 x 4096.");return;
+            }
+            const auto destination=safe->activeUserPreset.withFileExtension(".png");
+            // Write-then-replace: a failed save must not destroy the previous cover.
+            juce::TemporaryFile staging(destination);
+            juce::PNGImageFormat png;
+            // Preserve portrait and landscape artwork proportions on the 4:3 cover.
+            juce::Image thumbnail(juce::Image::RGB,240,180,true);
+            {
+                juce::Graphics thumbPainter(thumbnail);
+                thumbPainter.fillAll(juce::Colours::black);
+                thumbPainter.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
+                thumbPainter.drawImageWithin(image,0,0,240,180,
+                    juce::RectanglePlacement::centred);
+            }
+            bool written=false;
+            {
+                juce::FileOutputStream output(staging.getFile());
+                if(output.openedOk()) {
+                    written=png.writeImageToStream(thumbnail,output);
+                    output.flush();
+                }
+            }
+            if(!written || !staging.overwriteTargetFileWithTemporary()) {
+                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                    "Cannot save artwork","Your previous cover is unchanged. Check library permissions.");return;
+            }
+            safe->scanLibrary();
+            safe->refreshArtwork();
+        });
+}
 void PresetBrowser::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
-    g.setColour(Theme::panelAlt);g.fillRoundedRectangle(getLocalBounds().toFloat(),11);
-    g.setColour(Theme::stroke.brighter(.5f));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),11,1.4f);
-    Theme::text(g,"BANKS",{19,75,174,20},10,Theme::muted,true);
+    g.setColour(Theme::panel);g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
+    g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),10.f,1.2f);
+    g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,67.f,3.f,23.f),1.5f);
+    Theme::text(g,"LIBRARY",{30,73,154,20},12,Theme::white,true);
     const auto entries=filtered();
-    Theme::text(g,juce::String((int)entries.size())+" PRESETS",{204,75,246,20},10,Theme::muted,true);
+    Theme::text(g,juce::String((int)entries.size())+" SOUNDS",{207,73,246,20},12,Theme::white,true);
     Theme::text(g,"ESC TO CLOSE",{getWidth()-121,75,100,20},10,Theme::muted,false,juce::Justification::centredRight);
-    g.setColour(Theme::stroke);g.drawVerticalLine(195,84.f,(float)getHeight()-20);
     for(int i=0;i<banks.size();i++){
         auto b=juce::Rectangle<float>(17.f,111.f+i*60.f,168.f,52.f);
         g.setColour(i==bank?Theme::green.withAlpha(.11f):Theme::panel);g.fillRoundedRectangle(b,6);
         g.setColour(i==bank?Theme::green.withAlpha(.7f):Theme::stroke);g.drawRoundedRectangle(b,6,1);
-        g.setColour((i==bank?Theme::green:Theme::blue).withAlpha(.20f));
-        for(int j=0;j<4;j++)g.drawLine(b.getRight()-44.f+j*8.f,b.getY()+12.f,
-                                        b.getRight()-56.f+j*8.f,b.getBottom()-9.f,1.3f);
-        Theme::text(g,banks[i],{29,(int)b.getY()+14,133,22},13,Theme::white,i==bank);
+        Theme::text(g,banks[i],{29,(int)b.getY()+14,145,22},14,Theme::white,i==bank);
     }
-    if(processor.loadedFactoryPresetIndex()<0)
-        Theme::text(g,"CUSTOM CHAIN ACTIVE",{18,341,177,20},10,Theme::green,true);
-    Theme::text(g,"FACTORY + YOUR NATIVE PRESETS",{18,369,175,30},9,Theme::muted);
-    Theme::text(g,"Select a sound to audition.",{18,405,172,19},11,Theme::muted);
-    Theme::text(g,juce::String((int)userPresets.size())+" SAVED IN MY PRESETS",{18,425,172,19},10,Theme::amber);
-    Theme::text(g,"Browser stays open on load.",{18,441,172,19},10,Theme::muted);
+    Theme::text(g,juce::String((int)userPresets.size())+" PERSONAL PRESETS",
+        {18,368,175,22},11,Theme::green,true);
+    Theme::text(g,"Select a sound to audition.",{18,390,175,20},11,Theme::muted);
     for(int i=0;i<6;i++){
         const int itemIndex=i+scroll;
         if(itemIndex>=(int)entries.size())break;
@@ -191,34 +315,28 @@ void PresetBrowser::paint(juce::Graphics&g) {
             :juce::String(skellpreset::factoryPresets[(size_t)entry].name);
         const juce::String itemBank=custom?"My Presets":
             juce::String(skellpreset::factoryPresets[(size_t)entry].bank);
-        const int itemColour=custom?2:skellpreset::factoryPresets[(size_t)entry].colour;
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
-        g.setColour(Theme::bg);g.fillRoundedRectangle(rect,6);
-        // A restrained themed gradient and original signal trace replace the
-        // repeated raster skull on every single card.
-        const auto bankTint=(custom || itemBank=="Adlibs")?Theme::green:Theme::blue;
-        juce::ColourGradient fade(Theme::panelAlt.withAlpha(.03f),rect.getRight()-230.f,rect.getCentreY(),
-                                  bankTint.withAlpha(.20f),rect.getRight(),rect.getCentreY(),false);
-        g.setGradientFill(fade);g.fillRoundedRectangle(rect.reduced(.6f),5.f);
-        juce::Path wave;
-        for(int px=0;px<154;px+=4) {
-            const float x=rect.getRight()-173.f+px;
-            const float decay=1.f-std::abs(px-77.f)/77.f;
-            const float waveY=rect.getCentreY()+std::sin(px*.19f+itemColour*2.f)*decay*(9.f+itemColour);
-            if(px==0)wave.startNewSubPath(x,waveY);else wave.lineTo(x,waveY);
-        }
-        g.setColour(bankTint.withAlpha(.37f));g.strokePath(wave,juce::PathStrokeType(1.6f));
+        g.setColour(Theme::panelAlt);g.fillRoundedRectangle(rect,7.f);
+        const std::array<juce::Colour,5> accents{{Theme::green,Theme::blue,Theme::amber,Theme::pink,Theme::white}};
+        const int seed=custom?-entry:entry+1;
+        const auto accent=accents[(size_t)(seed%5)];
+        const auto cover=juce::Rectangle<float>(215.f,(float)y+5.f,67.f,46.f);
+        if(custom && (size_t)(-entry-1)<userArtwork.size() && userArtwork[(size_t)(-entry-1)].isValid()) {
+            g.drawImageWithin(userArtwork[(size_t)(-entry-1)],(int)cover.getX(),(int)cover.getY(),
+                              (int)cover.getWidth(),(int)cover.getHeight(),juce::RectanglePlacement::centred);
+        } else paintCover(g,cover,seed,accent);
+        g.setColour(Theme::stroke.withAlpha(.8f));g.drawRoundedRectangle(cover,5.f,1.f);
         const bool loaded=custom
             ?activeUserPreset==userPresets[(size_t)(-entry-1)]
             :entry==processor.loadedFactoryPresetIndex();
         const bool hovered=itemIndex==hoveredCard;
         g.setColour(loaded?Theme::green:hovered?Theme::blue:Theme::stroke);
-        g.drawRoundedRectangle(rect,6,hovered?1.8f:1.2f);
-        Theme::text(g,itemName,{221,y+8,240,23},16,Theme::white,true);
-        const auto bankColour=(custom || itemBank=="Adlibs")?Theme::green:Theme::blue;
-        Theme::text(g,itemBank,{222,y+34,230,13},10,bankColour,true);
-        if(loaded)Theme::text(g,"ACTIVE",{getWidth()-99,y+19,68,16},9,Theme::green,true,juce::Justification::centredRight);
+        g.drawRoundedRectangle(rect,7,hovered?1.6f:1.f);
+        Theme::text(g,itemName,{294,y+7,260,24},15,Theme::white,true);
+        const auto bankColour=custom?Theme::green:Theme::blue;
+        Theme::text(g,itemBank,{294,y+33,210,16},11,bankColour,true);
+        if(loaded){g.setColour(Theme::green);g.fillEllipse((float)getWidth()-29.f,(float)y+25.f,6.f,6.f);}
     }
     if(entries.empty())Theme::text(g,"NO MATCHING PRESETS",{246,222,350,40},15,Theme::muted,true);
     if((int)entries.size()>6){
@@ -236,6 +354,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
 void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;
     activeUserPreset=juce::File{};
+    refreshArtwork();
     const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
     processor.loadFactoryPreset(index);
     // Preserve Simple workspace and bypass while A/B auditioning.
@@ -260,6 +379,7 @@ void PresetBrowser::loadUserFromBrowser(int index) {
         if(auto* mode=processor.state.getParameter("mode"))
             mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
     activeUserPreset=file;
+    refreshArtwork();
     if(onLoaded)onLoaded();
     repaint();
 }

@@ -92,11 +92,53 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     activeButton.setButtonText("ON");activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
     activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);addAndMakeVisible(activeButton);
     wetKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    wetKnob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,60,18);
+    wetKnob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,70,21);
+    wetKnob.textFromValueFunction=[](double v) {
+        return juce::String(juce::roundToInt(juce::jlimit(0.,1.,v)*100.))+"%";
+    };
+    wetKnob.valueFromTextFunction=[](const juce::String& text) {
+        const double value=text.getDoubleValue();
+        return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
+    };
     addAndMakeVisible(wetKnob);
-    for(auto& k:knobs){
+    for(int i=0;i<4;++i){
+        auto& k=knobs[(size_t)i];
         k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,62,20);
+        k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,76,21);
+        // Human-readable display only; hosts still automate the exact stable
+        // normalized parameter range. Never make display conversions in DSP.
+        k.textFromValueFunction=[this,i](double v)->juce::String {
+            v=juce::jlimit(0.,1.,v);
+            const auto* type=processor.state.getRawParameterValue(
+                "s"+juce::String(slot+1)+"_type");
+            if(type && (int)type->load()==SkellPresetAudioProcessor::EQ) {
+                if(i==0) {
+                    const double hz=40.*std::pow(300.,v);
+                    return hz>=1000.?juce::String(hz/1000.,1)+"kHz":
+                                    juce::String(juce::roundToInt(hz))+"Hz";
+                }
+                if(i==1)return juce::String((v-.5)*24.,1)+"dB";
+                if(i==2)return juce::String(.3+7.*v,2)+" Q";
+                return juce::String(juce::roundToInt(20.+250.*v))+"Hz";
+            }
+            return juce::String(juce::roundToInt(v*100.))+"%";
+        };
+        k.valueFromTextFunction=[this,i](const juce::String& input)->double {
+            const auto text=input.trim().toLowerCase();
+            const double value=text.getDoubleValue();
+            const auto* type=processor.state.getRawParameterValue(
+                "s"+juce::String(slot+1)+"_type");
+            if(type && (int)type->load()==SkellPresetAudioProcessor::EQ) {
+                if(i==0) {
+                    const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
+                    return juce::jlimit(0.,1.,std::log(hz/40.)/std::log(300.));
+                }
+                if(i==1)return juce::jlimit(0.,1.,value/24.+.5);
+                if(i==2)return juce::jlimit(0.,1.,(value-.3)/7.);
+                return juce::jlimit(0.,1.,(value-20.)/250.);
+            }
+            return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
+        };
         k.setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         k.setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         k.setColour(juce::Slider::thumbColourId,Theme::white);
@@ -184,20 +226,26 @@ void SlotEditor::resized() {
     moduleBox.setBounds(489,25,211,29);
     modulePicker.setBounds(405,66,470,400);
     activeButton.setBounds(711,26,70,28);
-    wetKnob.setBounds(802,6,88,78);
-    loadExternal.setBounds(48,437,172,57);
-    editExternal.setBounds(239,437,186,57);
-    for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(42+211*k,437,83,70);
+    wetKnob.setBounds(805,22,86,66);
+    loadExternal.setBounds(52,420,177,62);
+    editExternal.setBounds(246,420,188,62);
+    for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
 }
 void SlotEditor::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
-    Theme::panelBox(g,{0,0,906.f,425.f});
-    Theme::panelBox(g,{0,421.f,906.f,98.f});
+    Theme::panelBox(g,{0,0,906.f,406.f},9.f);
+    Theme::panelBox(g,{0,410.f,906.f,86.f},9.f);
+    // Subtle rack mounting holes make this feel like a physical processor,
+    // without crossing the interactive plot or module controls.
+    for(float sx:{12.f,894.f})for(float sy:{13.f,395.f,422.f,483.f}){
+        g.setColour(Theme::bg);g.fillEllipse(sx-2.5f,sy-2.5f,5.f,5.f);
+        g.setColour(Theme::stroke);g.drawEllipse(sx-2.5f,sy-2.5f,5.f,5.f,1.f);
+    }
     const int type=(int)processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type")->load();
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     Theme::text(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
     Theme::text(g,"MODULE",{491,9,140,15},9,Theme::muted,true);
-    Theme::text(g,"WET",{832,3,50,15},9,Theme::muted,true);
+    Theme::text(g,"WET",{821,5,65,15},11,Theme::muted,true,juce::Justification::centred);
     const auto plot=juce::Rectangle<float>(33,151,835,206);
     g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
@@ -866,8 +914,8 @@ void SlotEditor::paint(juce::Graphics&g) {
             {447,445,424,49},12,Theme::muted,true);
     } else {
         for(int i=0;i<4;i++)
-            Theme::text(g,labels[(size_t)i].toUpperCase(),{133+211*i,459,98,19},
-                        11,Theme::muted,true);
+            Theme::text(g,labels[(size_t)i].toUpperCase(),{148+211*i,438,105,24},
+                        12,Theme::muted,true);
     }
     const juce::String gestureHint="DRAG GREEN HANDLE  /  X: "+
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();

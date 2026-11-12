@@ -36,7 +36,7 @@ public:
 
         chain.onSelection=[this](int s){slot.select(s);chain.setSelectedSlot(s);};
 
-        preset.setButtonText(p.presetName().toUpperCase()+"   v");
+        preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
         preset.onClick=[this]{if(browser.isVisible())browser.setVisible(false);else browser.open();};
         style(preset);addAndMakeVisible(preset);
         match.setButtonText("MATCH");style(match);addAndMakeVisible(match);
@@ -327,7 +327,7 @@ public:
         // PRESET stays true neon green across all three colour skins.
         juce::AttributedString brand;
         brand.setJustification(juce::Justification::centredLeft);
-        brand.append("SKELL-",Theme::white);
+        brand.append("SKELL",Theme::white);
         brand.append("PRESET",juce::Colour(0xff39ff3a));
         // AttributedString::setFont styles existing text; calling it before
         // append() left the new runs at JUCE's tiny default font.
@@ -335,7 +335,7 @@ public:
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,271.f);
         wordmark.draw(g,juce::Rectangle<float>(75.f,18.f,271.f,38.f));
-        Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{76,54,239,17},10,Theme::muted,true);
+        Theme::text(g,"ONE PLUGIN. EVERY SOUND.",{76,54,239,17},11,Theme::muted,true);
         Theme::text(g,processor.state.state.getProperty("presetBank","Main Vocals").toString().toUpperCase(),{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
@@ -355,36 +355,54 @@ public:
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
-            Theme::panelBox(g,{14.f,90.f,1140.f,507.f});
-            Theme::text(g,"SIMPLE  /  VOCAL FINISHING",{54,115,520,25},13,Theme::green,true);
-            Theme::text(g,processor.presetName(),{74,166,988,73},49,Theme::white,true);
-            Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,247,900,24},14,Theme::muted,true);
-            Theme::text(g,"Four macros control the same rack heard in Advanced.",{79,277,900,24},13,Theme::muted);
+            Theme::panelBox(g,{14.f,90.f,1140.f,507.f},11.f);
+            Theme::text(g,"SIMPLE  /  MACRO MIXER",{52,115,520,25},14,Theme::green,true);
+            Theme::text(g,processor.presetName(),{74,164,988,69},47,Theme::white,true);
+            Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,248,900,24},14,Theme::muted,true);
+            Theme::text(g,"Four macros, one full effect rack. Open Advanced to edit every module.",{79,278,960,24},13,Theme::muted);
             g.setColour(Theme::stroke);g.drawHorizontalLine(320,74.f,1084.f);
+            const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
+            const juce::StringArray hints{"COLOR & AIR","TRANSIENT IMPACT","DEPTH & TAILS","EDGE & TEXTURE"};
+            for(int k=0;k<4;k++){
+                const float x=78.f+254.f*k;
+                auto face=juce::Rectangle<float>(x,339.f,220.f,214.f);
+                g.setColour(Theme::panelAlt);g.fillRoundedRectangle(face,9.f);
+                g.setColour(Theme::stroke);g.drawRoundedRectangle(face,9.f,1.f);
+                g.setColour(Theme::green.withAlpha(.78f));g.fillRoundedRectangle(x+18.f,354.f,3.f,21.f,1.5f);
+                Theme::text(g,labels[k],{(int)x+30,349,176,30},17,Theme::white,true);
+                Theme::text(g,hints[k],{(int)x+20,386,179,18},11,Theme::muted,true);
+                const float value=processor.state.getRawParameterValue("macro"+juce::String(k+1))->load();
+                Theme::text(g,juce::String(juce::roundToInt(value*100.f))+"%",
+                    {(int)x+20,501,175,28},19,Theme::green,true,juce::Justification::centred);
+                g.setColour(Theme::stroke.withAlpha(.6f));
+                g.drawLine(x+18.f,533.f,x+201.f,533.f,.9f);
+            }
+        } else {
+            const auto macroDeck=juce::Rectangle<float>(rackOnRight?14.f:247.f,588.f,906.f,46.f);
+            g.setColour(Theme::panel);g.fillRoundedRectangle(macroDeck,7.f);
+            g.setColour(Theme::stroke.withAlpha(.75f));g.drawRoundedRectangle(macroDeck,7.f,1.f);
+            const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
+            for(int k=0;k<4;k++){
+                const int x=(rackOnRight?30:265)+222*k;
+                Theme::text(g,labels[k],{x,590,171,17},12,Theme::muted,true);
+            }
         }
-        const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
-        for(int k=0;k<4;k++){
-            const int x=viewMode==0?96+k*254:(rackOnRight?24+k*222:260+k*222);
-            Theme::text(g,labels[k],{x,viewMode==0?365:611,viewMode==0?200:80,18},11,
-                        current==3?Theme::muted.withAlpha(.5f):Theme::muted,true);
-        }
-        Theme::text(g,"UI SIZE",{1057,637,80,10},8,Theme::muted);
     }
     void resized() override {
         themeButton.setBounds(15,12,53,56);
         chain.setBounds(rackOnRight?939:13,90,216,535);
-        slot.setBounds(rackOnRight?14:247,90,906,519);
+        slot.setBounds(rackOnRight?14:247,90,906,496);
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
         mode[0].setBounds(796,27,176,37);
         mode[1].setBounds(982,27,171,37);
-        help.setBounds(rackOnRight?906:1129,611,24,23);
+        help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
         for(int i=0;i<4;i++)
             macro[(size_t)i].setBounds(display==0?96+i*254:
                 (rackOnRight?97+i*222:333+i*222),
-                display==0?399:614,display==0?192:120,display==0?49:19);
+                display==0?438:607,display==0?192:120,display==0?47:24);
         input.setBounds(80,648,228,34);
         mix.setBounds(433,648,241,34);
         output.setBounds(845,648,172,34);
@@ -392,7 +410,7 @@ public:
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
-                              display==0?1140:906,display==0?507:519);
+                              display==0?1140:906,display==0?507:496);
     }
     void refresh(){
         Theme::select(selectedTheme);
@@ -412,7 +430,7 @@ public:
         bypassShade.setVisible(bypass);
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
-        preset.setButtonText(processor.presetName().toUpperCase()+"  v");
+        preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
         mode[0].setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
         mode[0].setTooltip(display==0?"Open full effect chain":"Switch to four macros");
         mode[1].setButtonText(bypass?"RESTORE":"BYPASS");
@@ -431,7 +449,7 @@ public:
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
         syncSizeControl((float)outer.getWidth()/Theme::width);
-        const auto n=processor.presetName().toUpperCase()+"  v";
+        const auto n=processor.presetName().toUpperCase()+"  ▼";
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int display=m==3?previousMode:(m==0?0:1);
