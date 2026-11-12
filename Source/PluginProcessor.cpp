@@ -126,6 +126,8 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     pitchDry.prepare(skellpreset::dsp::SpectralPitchFormant::latencySamples);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
+    for(auto* value:{&saturatorDrive,&saturatorBlend,&exciterDrive})
+        value->reset(sampleRate,.012);
     limiterDry.prepare(limiter.latencySamples());
     hostDry.prepare(skellpreset::host::HostedVST3::maxTotalLatency);
     phrase.prepare(sampleRate);phrase.setThreshold(.018f);
@@ -198,6 +200,17 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     dryWork.setSize(2,hostChunkCapacity,false,true);
     bypassWork.setSize(2,hostChunkCapacity,false,true);
     for(auto& e:engines)e.prepare(rate);
+    // Initialize drive from the actual saved parameters, not arbitrary 0/1.
+    // This prevents 12 ms startup coloration when loading a saved session.
+    const float initialGrit=rawGlobal.macros[3]->load();
+    for(int s=0;s<slotCount;++s) {
+        auto& engine=engines[(size_t)s];
+        const auto& raw=rawSlots[(size_t)s];
+        engine.saturatorDrive.setCurrentAndTargetValue(
+            dbToGain(24.f*raw.p[0]->load()+10.f*(initialGrit-.5f)));
+        engine.saturatorBlend.setCurrentAndTargetValue(.5f+raw.p[1]->load());
+        engine.exciterDrive.setCurrentAndTargetValue(1.f+10.f*raw.p[0]->load());
+    }
     hosted.prepare(rate,hostChunkCapacity);
     const auto lookahead=engines[0].limiter.latencySamples();
     limiterLookahead.store(lookahead,std::memory_order_release);
@@ -461,6 +474,14 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case Limiter:
                 e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
                 break;
+            case Saturator:
+                e.saturatorDrive.setTargetValue(
+                    dbToGain(24.f*c.p[0]+10.f*(macroGrit-.5f)));
+                e.saturatorBlend.setTargetValue(.5f+c.p[1]);
+                break;
+            case Exciter:
+                e.exciterDrive.setTargetValue(1.f+10.f*c.p[0]);
+                break;
             default: break;
         }
         const float fx=(c.type==Reverb || c.type==Delay)
@@ -488,6 +509,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     std::array<float,slotCount> meter{};
     float inPeak=0.f,outPeak=0.f;
     const int limit=juce::jmax(64,hostChunkCapacity);
+    // A PDC change is rare, but a sudden read-tap jump is audible. Fade
+    // latency-aligned dry and full-bypass taps across 10 ms with no allocations.
+    const int pdcFadeSamples=juce::jlimit(64,2048,juce::roundToInt(rate*.010));
     for(int offset=0;offset<total;offset+=limit) {
         const int frames=juce::jmin(limit,total-offset);
         // Forward host transport to nested VST3s without retaining the DAW's
@@ -505,8 +529,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
-            const auto original=bypassPdc.process(l,r,blockLatency);
-            const auto dry=dryPdc.process(preL,preR,blockLatency);
+            const auto original=bypassPdc.processSmoothed(l,r,blockLatency,pdcFadeSamples);
+            const auto dry=dryPdc.processSmoothed(preL,preR,blockLatency,pdcFadeSamples);
             rackWork.setSample(0,n,preL);rackWork.setSample(1,n,preR);
             dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
             bypassWork.setSample(0,n,original[0]);
@@ -533,16 +557,20 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 for(int n=0;n<frames;++n) {
                     const float l=rackWork.getSample(0,n);
                     const float r=rackWork.getSample(1,n);
-                    const auto aligned=e.hostDry.process(l,r,latency);
+                    const auto aligned=e.hostDry.processSmoothed(l,r,latency,pdcFadeSamples);
                     const float w=slotWetSmooth[(size_t)s].getNextValue();
                     const float wetL=plugin?hostWork.getSample(0,n):aligned[0];
                     const float wetR=plugin?hostWork.getSample(1,n):aligned[1];
                     const float resultL=aligned[0]+(std::isfinite(wetL)?wetL-aligned[0]:0.f)*w;
                     const float resultR=aligned[1]+(std::isfinite(wetR)?wetR-aligned[1]:0.f)*w;
-                    rackWork.setSample(0,n,resultL);
-                    rackWork.setSample(1,n,resultR);
+                    // Faulty hosted DSP must not poison the next insert's
+                    // delay/reverb state with a nonfinite mixed sample.
+                    const float safeL=std::isfinite(resultL)?resultL:aligned[0];
+                    const float safeR=std::isfinite(resultR)?resultR:aligned[1];
+                    rackWork.setSample(0,n,safeL);
+                    rackWork.setSample(1,n,safeR);
                     meter[(size_t)s]=std::max(meter[(size_t)s],
-                        std::max(std::abs(resultL),std::abs(resultR)));
+                        std::max(std::abs(safeL),std::abs(safeR)));
                 }
                 continue;
             }
@@ -658,14 +686,15 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
-                        const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));
-                        const float blend=.5f+c.p[1];
-                        wetL=std::tanh(l*drive*blend)/std::max(.5f,drive*.6f);
-                        wetR=std::tanh(r*drive*blend)/std::max(.5f,drive*.6f);
+                        const float drive=e.saturatorDrive.getNextValue();
+                        const float blend=e.saturatorBlend.getNextValue();
+                        const float inverseNorm=1.f/std::max(.5f,drive*.6f);
+                        wetL=std::tanh(l*drive*blend)*inverseNorm;
+                        wetR=std::tanh(r*drive*blend)*inverseNorm;
                         break;
                     }
                     case Exciter: {
-                        const float drive=1.f+10.f*c.p[0];
+                        const float drive=e.exciterDrive.getNextValue();
                         wetL=(std::tanh(l*drive)-std::tanh(l*drive*.55f))*.4f+l;
                         wetR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*.4f+r;
                         break;
@@ -701,10 +730,15 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 const float wet=slotWetSmooth[(size_t)s].getNextValue();
                 const float processedL=l+(wetL-l)*wet;
                 const float processedR=r+(wetR-r)*wet;
-                rackWork.setSample(0,n,processedL);
-                rackWork.setSample(1,n,processedR);
+                // Keep a fault in one native stage from turning every later
+                // stage's history into NaN/Inf. Preserve finite float audio
+                // without adding normal-signal clipping or a limiter.
+                const float safeL=std::isfinite(processedL)?processedL:l;
+                const float safeR=std::isfinite(processedR)?processedR:r;
+                rackWork.setSample(0,n,safeL);
+                rackWork.setSample(1,n,safeR);
                 meter[(size_t)s]=std::max(meter[(size_t)s],
-                    std::max(std::abs(processedL),std::abs(processedR)));
+                    std::max(std::abs(safeL),std::abs(safeR)));
             }
         }
         for(int n=0;n<frames;++n) {

@@ -344,7 +344,7 @@ public:
            || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
            || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
             issues.add("Master strip displays raw values rather than physical dB/% labels");
-        const std::array<const juce::Component*,4> top{{&preset,&match,&viewSwitch,&powerButton}};
+        const std::array<const juce::Component*,5> top{{&preset,&match,&viewSwitch,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -352,6 +352,9 @@ public:
                                + " / " + juce::String((int)j));
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
         if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
+        if(settings.getY()>75 || settings.getRight()>=powerButton.getX() ||
+           settings.getWidth()>powerButton.getWidth())
+            issues.add("Header settings must sit compactly before the far-right power icon");
         if(chain.getBounds().intersects(slot.getBounds()))
             issues.add("Rack overlaps the module editor");
         if(rackOnRight!=(chain.getX()>slot.getX()))
@@ -414,8 +417,9 @@ public:
         if(!powerButton.isBypassed() || chain.isVisible())
             issues.add("Simple mode power button changed the view or failed");
         if(powerButton.getButtonText().isNotEmpty() ||
-           powerButton.getRight()<Theme::width-18)
-            issues.add("Header power must be icon-only at the far right");
+           powerButton.getRight()<Theme::width-18 ||
+           settings.getRight()>=powerButton.getX())
+            issues.add("Header power must be icon-only at the far right after settings");
         powerButton.onClick();
         configureForScreenshot(0,1,false);
         for(const auto& control:macro)
@@ -603,15 +607,36 @@ public:
                     {695,12,91,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
         g.setColour(Theme::panel);g.fillRect(0,640,Theme::width,48);
+        // Three restrained master-control bays improve hierarchy without
+        // changing any slider, recorder or automation behavior.
+        for(const auto bay:{juce::Rectangle<float>(12.f,643.f,376.f,41.f),
+                            juce::Rectangle<float>(392.f,643.f,369.f,41.f),
+                            juce::Rectangle<float>(766.f,643.f,390.f,41.f)}) {
+            g.setGradientFill(juce::ColourGradient(
+                Theme::panelAlt.brighter(.03f),bay.getTopLeft(),
+                Theme::panel.darker(.14f),bay.getBottomLeft(),false));
+            g.fillRoundedRectangle(bay,5.f);
+            g.setColour(Theme::stroke.withAlpha(.64f));
+            g.drawRoundedRectangle(bay.reduced(.45f),5.f,.85f);
+        }
         Theme::text(g,"INPUT",{22,652,68,23},12,Theme::muted);
         Theme::text(g,"MIX",{398,652,68,23},12,Theme::muted);
         Theme::text(g,"OUTPUT",{773,652,75,23},12,Theme::muted);
+        const float measuredInput=processor.getInputPeak();
+        const float measuredOutput=processor.getOutputPeak();
         for(int ix=0;ix<12;ix++){
-            g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getInputPeak())?Theme::green:Theme::stroke);
-            g.fillRect(310+ix*6,657,4,10);
-            g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getOutputPeak())?Theme::green:Theme::stroke);
-            g.fillRect(1023+ix*6,657,4,10);
+            const bool inputLit=(float)ix<12.f*juce::jlimit(0.f,1.f,measuredInput);
+            const bool outputLit=(float)ix<12.f*juce::jlimit(0.f,1.f,measuredOutput);
+            g.setColour(ix==11 && measuredInput>=1.f?Theme::red:
+                        inputLit?Theme::green:Theme::stroke);
+            g.fillRoundedRectangle(310.f+ix*6.f,657.f,4.f,10.f,1.f);
+            g.setColour(ix==11 && measuredOutput>=1.f?Theme::red:
+                        outputLit?Theme::green:Theme::stroke);
+            g.fillRoundedRectangle(1023.f+ix*6.f,657.f,4.f,10.f,1.f);
         }
+        Theme::text(g,juce::String(sampleRate/1000.,1)+"K",
+                    {1099,653,45,22},10,Theme::muted,true,
+                    juce::Justification::centredRight);
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
@@ -710,6 +735,7 @@ public:
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
         viewSwitch.setBounds(796,27,237,37);
+        settings.setBounds(1047,27,44,38); // one settings icon before master power
         powerButton.setBounds(1104,26,50,40);
         help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
@@ -729,7 +755,6 @@ public:
         mix.setBounds(433,648,185,34);
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
-        settings.setBounds(1094,648,69,26);
         record.setBounds(634,648,115,30);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
@@ -768,6 +793,7 @@ public:
     }
     void timerCallback() override{
         processor.refreshHostedLatency();
+        themeButton.setSignalPeak(processor.getInputPeak());
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
         syncSizeControl((float)outer.getWidth()/Theme::width);

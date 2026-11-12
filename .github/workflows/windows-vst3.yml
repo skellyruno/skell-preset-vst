@@ -28,6 +28,10 @@ jobs:
         run: cmake --build build-test --parallel 2
       - name: Run portable regression suite
         run: ctest --test-dir build-test --output-on-failure
+      # Print measured throughput, peak and discontinuity data even when the
+      # stress test passes (ctest hides successful test output by default).
+      - name: Report actual realtime DSP and dynamic PDC CPU throughput
+        run: ./build-test/tests/SkellPresetRealtimeStressTest
       - name: Test offline reference WAV diagnostics
         run: python3 -m unittest discover -s tests -p test_reference_wav_inspect.py -v
 
