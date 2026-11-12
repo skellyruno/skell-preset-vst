@@ -651,12 +651,12 @@ public:
                 for(int tick=0;tick<=10;++tick){
                     const float a=(1.25f+1.5f*(float)tick/10.f)*pi;
                     const float dx=std::sin(a),dy=-std::cos(a);
-                    const float inner=rad-1.5f,outer=rad+2.5f;
+                    const float tickInner=rad-1.5f,tickOuter=rad+2.5f;
                     g.setColour(tick<=juce::roundToInt(amount*10.f)
                         ?Theme::green.withAlpha(.20f+.37f*amount)
                         :Theme::muted.withAlpha(.21f));
-                    g.drawLine(centreX+dx*inner,centreY+dy*inner,
-                               centreX+dx*outer,centreY+dy*outer,1.4f);
+                    g.drawLine(centreX+dx*tickInner,centreY+dy*tickInner,
+                               centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
                 }
                 Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
                     {(int)x+55,510,110,29},21,Theme::green,true,
