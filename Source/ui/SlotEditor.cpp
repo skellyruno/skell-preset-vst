@@ -86,6 +86,51 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     editExternal.onClick=[this] {
         processor.openHostedVST3Editor(slot);
     };
+    upgradeEq.setTooltip("Convert this classic single-bell EQ into an editable eight-band parametric EQ; previous presets are unchanged.");
+    upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
+    upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
+    addAndMakeVisible(upgradeEq);
+    upgradeEq.setVisible(false);
+    upgradeEq.onClick=[this] {
+        if(processor.slotType(slot)!=SkellPresetAudioProcessor::EQ)return;
+        const float oldFreq=processor.getSlotParam(slot,0);
+        const float oldGain=processor.getSlotParam(slot,1);
+        const float oldQ=processor.getSlotParam(slot,2);
+        const float oldHp=processor.getSlotParam(slot,3);
+        const float frequency=40.f*std::pow(300.f,oldFreq);
+        int target=0;
+        for(int i=1;i<8;++i)
+            if(frequency>=skellpreset::dsp::EightBandTone::edges[(size_t)i])
+                target=i;
+        const float lo=skellpreset::dsp::EightBandTone::edges[(size_t)target];
+        const float hi=skellpreset::dsp::EightBandTone::edges[(size_t)target+1];
+        const float freqNorm=juce::jlimit(0.f,1.f,
+            (float)(std::log(frequency/lo)/std::log(hi/lo)));
+        // The classic EQ is a single peaking filter plus a high pass.
+        // Translate it to one of eight neutral bells and a cutoff rather
+        // than losing edits or mutating earlier factory programs.
+        for(int i=0;i<8;++i){
+            processor.setSlotParam(slot,i*2,.5f);
+            processor.setSlotParam(slot,i*2+1,.5f);
+        }
+        processor.setSlotParam(slot,target*2,freqNorm);
+        processor.setSlotParam(slot,target*2+1,
+            juce::jlimit(0.f,1.f,.5f+(oldGain-.5f)*.8f));
+        const auto prefix="s"+juce::String(slot+1)+"_";
+        if(auto* value=processor.state.getParameter(prefix+"eqQ"+juce::String(target+1)))
+            value->setValueNotifyingHost(
+                skellpreset::dsp::EightBandTone::normalizedFromQ(.3f+7.f*oldQ));
+        const float cutoff=20.f+250.f*oldHp;
+        if(auto* value=processor.state.getParameter(prefix+"eqLowCut"))
+            value->setValueNotifyingHost(juce::jlimit(0.f,1.f,
+                (float)(std::log(cutoff/20.f)/std::log(20.f))));
+        if(auto* value=processor.state.getParameter(prefix+"eqHighCut"))
+            value->setValueNotifyingHost(0.f);
+        processor.setSlotType(slot,SkellPresetAudioProcessor::EightBandToneFX);
+        select(slot);
+        activeEqBand=target;
+        showEqBank(target);
+    };
     eqQSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     eqQSlider.setTextBoxStyle(juce::Slider::TextBoxRight,false,59,22);
     eqQSlider.setRange(0.,1.,.001);
@@ -352,6 +397,8 @@ void SlotEditor::applyTheme() {
         s->setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
         s->setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
     }
+    upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
+    upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
     for(int i=0;i<8;++i) {
         eqBandButtons[(size_t)i].setColour(juce::TextButton::buttonColourId,
             i==activeEqBand?Theme::green.withAlpha(.36f):Theme::panelAlt);
@@ -494,6 +541,7 @@ void SlotEditor::refreshIfChanged() {
     if(!external && installedBrowser.isVisible())installedBrowser.hide();
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
+    upgradeEq.setVisible(type==SkellPresetAudioProcessor::EQ);
     eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& button:eqBandButtons)button.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
@@ -511,6 +559,7 @@ void SlotEditor::resized() {
     loadExternal.setBounds(52,420,177,62);
     installedBrowser.setBounds(85,62,735,385);
     editExternal.setBounds(246,420,188,62);
+    upgradeEq.setBounds(650,97,212,31);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
 }
 void SlotEditor::paint(juce::Graphics&g) {
