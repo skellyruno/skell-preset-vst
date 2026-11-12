@@ -292,8 +292,11 @@ struct StereoSampleDelay {
             fadeDuration=std::max(1,transitionSamples);
             fadeRemaining=fadeDuration;
         }
-        channel[0][head]=std::isfinite(l)?l:0.f;
-        channel[1][head]=std::isfinite(r)?r:0.f;
+        // Retire inaudible subnormal noise before it enters a long PDC ring.
+        // This path is only used for dynamically switched latency; the
+        // original fixed-tap sample-exact process() remains untouched.
+        channel[0][head]=std::isfinite(l) && std::abs(l)>=1.e-25f?l:0.f;
+        channel[1][head]=std::isfinite(r) && std::abs(r)>=1.e-25f?r:0.f;
         const auto previousTap=(head+size-(size_t)fadeFrom)%size;
         const auto nextTap=(head+size-(size_t)fadeTo)%size;
         float blend=1.f;
@@ -304,7 +307,9 @@ struct StereoSampleDelay {
         std::array<float,2> out{};
         for(size_t ch=0;ch<2;++ch) {
             const float a=channel[ch][previousTap],b=channel[ch][nextTap];
-            out[ch]=a+(b-a)*blend;
+            const float sample=a+(b-a)*blend;
+            out[ch]=std::isfinite(sample) && std::abs(sample)>=1.e-25f
+                ?sample:0.f;
         }
         head=(head+1)%size;
         return out;
