@@ -296,7 +296,7 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,active>10?"SCROLL / 2× REPLACE":"2× REPLACE · DRAG WET · DOT POWER",
+    Theme::text(g,active>10?"SCROLL / DBL-CLICK TO SWAP":"DBL-CLICK FX / WET RING / POWER DOT",
         {13,511,193,18},8.5f,Theme::muted,false,juce::Justification::centred);
 }
 void ChainPanel::refreshIfChanged() {
