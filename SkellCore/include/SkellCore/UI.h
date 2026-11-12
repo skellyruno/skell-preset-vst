@@ -47,14 +47,26 @@ public:
         auto r=b.getLocalBounds().toFloat().reduced(.75f);
         if(r.isEmpty())return;
         const auto base=backgroundColour.isTransparent()?colours_.surface:backgroundColour;
-        const auto glow=colours_.accent.withAlpha(b.getToggleState()?.16f:(down?.12f:hovered?.065f:0.f));
-        g.setColour(base);g.fillRoundedRectangle(r,7.f);
-        if(glow.getFloatAlpha()>0.f){g.setColour(glow);g.fillRoundedRectangle(r,7.f);}
-        g.setColour((hovered||b.getToggleState()?colours_.accent:colours_.secondary)
-                        .withAlpha(hovered?.67f:.38f));
-        g.drawRoundedRectangle(r.reduced(.35f),7.f,1.f);
-        g.setColour(colours_.foreground.withAlpha(.07f));
-        g.drawLine(r.getX()+9.f,r.getY()+2.f,r.getRight()-9.f,r.getY()+2.f,.9f);
+        const auto accent=colours_.accent;
+        const bool active=b.getToggleState();
+        const float emphasis=active?.13f:down?.085f:hovered?.055f:0.f;
+        // Restrained depth instead of hard, rounded capsule buttons.
+        g.setGradientFill(juce::ColourGradient(
+            base.brighter(down?.045f:.11f),r.getTopLeft(),
+            base.darker(.17f),r.getBottomRight(),false));
+        g.fillRoundedRectangle(r,6.f);
+        if(emphasis>.0001f){
+            g.setColour(accent.withAlpha(emphasis));
+            g.fillRoundedRectangle(r,6.f);
+        }
+        g.setColour((active||hovered?accent:colours_.secondary)
+                        .withAlpha(active?.62f:hovered?.57f:.31f));
+        g.drawRoundedRectangle(r.reduced(.45f),6.f,1.1f);
+        g.setColour(colours_.foreground.withAlpha(.09f));
+        g.drawLine(r.getX()+9.f,r.getY()+2.f,r.getRight()-9.f,r.getY()+2.f,.85f);
+        g.setColour(colours_.background.withAlpha(.35f));
+        g.drawLine(r.getX()+9.f,r.getBottom()-2.f,r.getRight()-9.f,
+                   r.getBottom()-2.f,.7f);
     }
     // Balanced, labelled hardware-style rotary control. The pointer and arc use
     // the same angle and share an exact centre to avoid off-axis visual wobble.
