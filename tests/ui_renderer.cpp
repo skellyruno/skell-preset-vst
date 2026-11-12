@@ -2,6 +2,7 @@
 // Linux: run under Xvfb. Never instantiate a mock editor or call the audio thread.
 #include "../Source/PluginEditor.h"
 #include "../Source/PluginProcessor.h"
+#include "../Source/host/InstalledVST3Index.h"
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <array>
