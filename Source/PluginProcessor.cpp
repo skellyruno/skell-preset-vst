@@ -488,6 +488,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     std::array<float,slotCount> meter{};
     float inPeak=0.f,outPeak=0.f;
     const int limit=juce::jmax(64,hostChunkCapacity);
+    // A PDC change is rare, but a sudden read-tap jump is audible. Fade
+    // latency-aligned dry and full-bypass taps across 10 ms with no allocations.
+    const int pdcFadeSamples=juce::jlimit(64,2048,juce::roundToInt(rate*.010));
     for(int offset=0;offset<total;offset+=limit) {
         const int frames=juce::jmin(limit,total-offset);
         // Forward host transport to nested VST3s without retaining the DAW's
@@ -505,8 +508,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
-            const auto original=bypassPdc.process(l,r,blockLatency);
-            const auto dry=dryPdc.process(preL,preR,blockLatency);
+            const auto original=bypassPdc.processSmoothed(l,r,blockLatency,pdcFadeSamples);
+            const auto dry=dryPdc.processSmoothed(preL,preR,blockLatency,pdcFadeSamples);
             rackWork.setSample(0,n,preL);rackWork.setSample(1,n,preR);
             dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
             bypassWork.setSample(0,n,original[0]);
@@ -533,7 +536,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 for(int n=0;n<frames;++n) {
                     const float l=rackWork.getSample(0,n);
                     const float r=rackWork.getSample(1,n);
-                    const auto aligned=e.hostDry.process(l,r,latency);
+                    const auto aligned=e.hostDry.processSmoothed(l,r,latency,pdcFadeSamples);
                     const float w=slotWetSmooth[(size_t)s].getNextValue();
                     const float wetL=plugin?hostWork.getSample(0,n):aligned[0];
                     const float wetR=plugin?hostWork.getSample(1,n):aligned[1];
