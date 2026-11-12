@@ -577,20 +577,53 @@ public:
             g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.9f));
             g.strokePath(simpleScope,juce::PathStrokeType(1.7f));
             const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
-            const juce::StringArray hints{"COLOR & AIR","TRANSIENT IMPACT","DEPTH & TAILS","EDGE & TEXTURE"};
+            const juce::StringArray hints{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
             for(int k=0;k<4;k++){
                 const float x=78.f+254.f*k;
-                auto face=juce::Rectangle<float>(x,339.f,220.f,214.f);
-                g.setColour(Theme::panelAlt);g.fillRoundedRectangle(face,9.f);
-                g.setColour(Theme::stroke);g.drawRoundedRectangle(face,9.f,1.f);
-                g.setColour(Theme::green.withAlpha(.78f));g.fillRoundedRectangle(x+18.f,354.f,3.f,21.f,1.5f);
-                Theme::text(g,labels[k],{(int)x+30,349,176,30},17,Theme::white,true);
-                Theme::text(g,hints[k],{(int)x+20,386,179,18},11,Theme::muted,true);
-                const float value=processor.state.getRawParameterValue("macro"+juce::String(k+1))->load();
-                Theme::text(g,juce::String(juce::roundToInt(value*100.f))+"%",
-                    {(int)x+20,501,175,28},19,Theme::green,true,juce::Justification::centred);
-                g.setColour(Theme::stroke.withAlpha(.6f));
-                g.drawLine(x+18.f,533.f,x+201.f,533.f,.9f);
+                const auto raw=processor.state.getRawParameterValue(
+                    "macro"+juce::String(k+1));
+                const float amount=juce::jlimit(0.f,1.f,raw?raw->load():.5f);
+                const auto face=juce::Rectangle<float>(x,339.f,220.f,214.f);
+                g.setGradientFill(juce::ColourGradient(
+                    Theme::panelAlt.brighter(.055f),face.getTopLeft(),
+                    Theme::panelAlt.darker(.12f),face.getBottomRight(),false));
+                g.fillRoundedRectangle(face,9.f);
+                g.setColour(Theme::stroke.withAlpha(.91f));
+                g.drawRoundedRectangle(face.reduced(.5f),9.f,1.f);
+                // One status tick and a hardware dial; all motion below is
+                // derived from the actual host-automated macro, not a mock meter.
+                g.setColour(Theme::green.withAlpha(.22f+.60f*amount));
+                g.fillRoundedRectangle(x+17.f,354.f,3.f,20.f,1.5f);
+                Theme::text(g,labels[k],{(int)x+28,349,177,27},
+                            16,Theme::white,true);
+                Theme::text(g,hints[k],{(int)x+20,377,180,18},
+                            10.5f,Theme::muted,true,
+                            juce::Justification::centred);
+                // Mini hardware scale stays subtle and never competes with
+                // the real rotary control drawn by SkellCore LookAndFeel.
+                constexpr float pi=juce::MathConstants<float>::pi;
+                const float centreX=x+109.f,centreY=454.f,rad=62.f;
+                for(int tick=0;tick<=10;++tick){
+                    const float a=(1.25f+1.5f*(float)tick/10.f)*pi;
+                    const float dx=std::sin(a),dy=-std::cos(a);
+                    const float inner=rad-1.5f,outer=rad+2.5f;
+                    g.setColour(tick<=juce::roundToInt(amount*10.f)
+                        ?Theme::green.withAlpha(.20f+.37f*amount)
+                        :Theme::muted.withAlpha(.21f));
+                    g.drawLine(centreX+dx*inner,centreY+dy*inner,
+                               centreX+dx*outer,centreY+dy*outer,1.4f);
+                }
+                Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
+                    {(int)x+55,510,110,29},21,Theme::green,true,
+                    juce::Justification::centred);
+                Theme::text(g,"/ 100",{(int)x+149,516,58,17},
+                    10,Theme::muted,false);
+                const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
+                g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
+                if(amount>.0001f){
+                    g.setColour(Theme::green.withAlpha(.53f));
+                    g.fillRoundedRectangle(meter.withWidth(182.f*amount),1.f);
+                }
             }
         } else {
             const auto macroDeck=juce::Rectangle<float>(rackOnRight?14.f:247.f,588.f,906.f,46.f);
