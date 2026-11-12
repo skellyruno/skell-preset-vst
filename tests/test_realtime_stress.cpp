@@ -93,7 +93,63 @@ static void testDenormalDrain() {
     for(const auto& line:delay.memory)
         for(float v:line)assert(std::fpclassify(v)!=FP_SUBNORMAL);
 }
+static void testDynamicPdcCrossfade() {
+    // Invariant 1: unchanged latency must be sample-identical to the existing
+    // dry alignment, including an impulse at delay 0 and a fixed 64 samples.
+    for(int fixed:{0,64,256}) {
+        StereoSampleDelay reference,smoothed;
+        reference.prepare(512);smoothed.prepare(512);
+        for(int n=0;n<4096;++n) {
+            const float l=n==0?1.f:.125f*std::sin(.17f*(float)n);
+            const float r=n==0?-.5f:.093f*std::cos(.11f*(float)n);
+            const auto a=reference.process(l,r,fixed);
+            const auto b=smoothed.processSmoothed(l,r,fixed,480);
+            assert(a[0]==b[0] && a[1]==b[1]);
+        }
+    }
+
+    // Invariant 2: unlike a hard delay-tap switch, automation from zero PDC
+    // to 128 samples and back does not create a full-scale single-sample step.
+    const auto sr=48000.;
+    StereoSampleDelay oldTap,newTap;
+    oldTap.prepare(256);newTap.prepare(256);
+    float precedingOld=0.f,precedingNew=0.f;
+    float maxOldJump=0.f,maxNewJump=0.f;
+    for(int n=0;n<12000;++n) {
+        const int desired=(n>=3200 && n<7800)?128:0;
+        const float input=.25f*std::sin(2.f*pi*523.25f*(float)n/(float)sr);
+        const auto old=oldTap.process(input,-input,desired);
+        const auto out=newTap.processSmoothed(input,-input,desired,480);
+        assert(std::isfinite(out[0]) && std::isfinite(out[1]));
+        assert(std::fpclassify(out[0])!=FP_SUBNORMAL);
+        assert(std::abs(out[0])<=.251f && std::abs(out[1])<=.251f);
+        if(n>1) {
+            maxOldJump=std::max(maxOldJump,std::abs(old[0]-precedingOld));
+            maxNewJump=std::max(maxNewJump,std::abs(out[0]-precedingNew));
+        }
+        precedingOld=old[0];precedingNew=out[0];
+    }
+    assert(maxOldJump>.17f); // strong test signal demonstrates old failure
+    assert(maxNewJump<.08f); // new line has neither jump nor peak increase
+
+    // Invariant 3: repeated, even mid-ramp, PDC updates are finite and
+    // produce no out-of-range memory taps or allocations on the audio thread.
+    StereoSampleDelay moving;
+    moving.prepare(1024);
+    for(int n=0;n<250000;++n) {
+        const int requested=(n/47)%3==0?0:(n/47)%3==1?400:1023;
+        const auto output=moving.processSmoothed(
+            n%499==0?std::numeric_limits<float>::quiet_NaN():.07f,
+            n%607==0?std::numeric_limits<float>::infinity():-.07f,
+            requested,441);
+        assert(std::isfinite(output[0]) && std::isfinite(output[1]));
+        assert(std::abs(output[0])<=.071f && std::abs(output[1])<=.071f);
+    }
+    std::cout<<"PASS stereo PDC crossfade / old max step "<<maxOldJump
+             <<" / smoothed max step "<<maxNewJump<<"\n";
+}
 int main(){
+    testDynamicPdcCrossfade();
     testDenormalDrain();
     testCompressorAutomation();
     for(double sr:{44100.,48000.,96000.})stressRate(sr);
