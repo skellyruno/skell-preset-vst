@@ -114,6 +114,10 @@ private:
         skellpreset::dsp::StereoSampleDelay pitchDry;
         skellpreset::dsp::Delay delay;
         skellpreset::dsp::AdlibDoubler doubler;
+        // Saturator and exciter controls are host-automatable, so their
+        // distortion coefficients must interpolate inside the audio block.
+        // One set per physical slot, no shared state or realtime allocation.
+        juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> saturatorDrive,saturatorBlend,exciterDrive;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
         skellcore::TruePeakLimiter limiter;
         skellcore::PhraseTracker phrase;
