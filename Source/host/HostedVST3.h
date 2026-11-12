@@ -11,6 +11,12 @@
 // avoiding use-after-free during host parameter/slot changes. Replacements per
 // slot are capped to prevent unbounded memory retention.
 namespace skellpreset::host {
+// Normalize common product-name spellings before loading any third-party code.
+// Blocking recursive hosting avoids accidentally nesting this same VST3.
+inline bool isSkellPresetProductName(juce::String name) {
+    return name.removeCharacters(" -_\t").containsIgnoreCase("skellpreset");
+}
+
 class HostedVST3 final {
 public:
     static constexpr int slotCount=16;
@@ -43,11 +49,15 @@ public:
         // valid audio effect using its uninitialized scanner channel counts.
         // Instead validate the real instance's stereo bus layout below.
         if(!chosen)return juce::Result::fail("An audio VST3 effect is required (not an instrument)");
+        if(isSkellPresetProductName(chosen->name)
+           || isSkellPresetProductName(chosen->descriptiveName)
+           || isSkellPresetProductName(path.getFileNameWithoutExtension()))
+            return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
         juce::String error;
         auto instance=formats.createPluginInstance(*chosen,std::max(sr,8000.),
                                                    std::max(block,64),error);
         if(!instance)return juce::Result::fail(error.isNotEmpty()?error:"Could not instantiate VST3");
-        if(instance->getName().containsIgnoreCase("Skell-Preset"))
+        if(isSkellPresetProductName(instance->getName()))
             return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
         juce::AudioProcessor::BusesLayout stereo;
         stereo.inputBuses.add(juce::AudioChannelSet::stereo());

@@ -69,6 +69,7 @@ public:
     void openHostedVST3Editor(int slot);
     juce::String hostedVST3Name(int slot) const {return hosted.getName(slot);}
     bool hasHostedVST3(int slot) const noexcept {return hosted.get(slot)!=nullptr;}
+    int hostedVST3LatencySamples(int slot) const noexcept {return hosted.getLatency(slot);}
     void refreshHostedLatency();
     double preparedAudioRate() const noexcept {
         return displayedRate.load(std::memory_order_acquire);

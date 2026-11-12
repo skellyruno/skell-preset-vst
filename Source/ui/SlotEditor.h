@@ -52,6 +52,8 @@ private:
     bool draggingGraph=false;
     bool graphSnapshotValid=false;
     int lastType=-1;
+    int lastHostedLatency=-1;
+    bool lastHostedLoaded=false;
     std::array<float,6> lastControls{};
     std::array<float,24> lastEqControls{};
     void updateGraphNode(juce::Point<float>);

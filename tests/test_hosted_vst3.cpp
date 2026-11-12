@@ -8,6 +8,19 @@
 int main(int argc,char** argv) {
     if(argc<2){std::fprintf(stderr,"Expected plugin bundle path\n");return 2;}
     juce::ScopedJuceInitialiser_GUI gui;
+    // A hosted Skell-Preset would recursively host its own DSP/UI. Reject
+    // product-name spelling variants before instantiating external code.
+    for(const auto* name:{"Skell-Preset", "SKELLPRESET", "Skell Preset", "Skell_Preset"}) {
+        if(!skellpreset::host::isSkellPresetProductName(name)) {
+            std::fprintf(stderr,"Recursive host name was not recognized: %s\n",name);
+            return 8;
+        }
+    }
+    if(skellpreset::host::isSkellPresetProductName("SkellyTune") ||
+       skellpreset::host::isSkellPresetProductName("Skell DeEsser")) {
+        std::fprintf(stderr,"Unrelated Skell products must remain hostable\n");
+        return 9;
+    }
     // Index only directory names. A nested .vst3 is an opaque bundle,
     // not a folder to recurse through, and duplicate roots are harmless.
     const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
@@ -20,7 +33,7 @@ int main(int argc,char** argv) {
         && other.createDirectory().wasOk()
         && hidden.createDirectory().wasOk();
     if(!prepared) {
-        std::fprintf(stderr,"Could not create VST3 discovery fixture\n");return 8;
+        std::fprintf(stderr,"Could not create VST3 discovery fixture\n");return 12;
     }
     juce::Array<juce::File> roots;
     roots.add(root);roots.add(root);
@@ -38,7 +51,7 @@ int main(int argc,char** argv) {
     root.deleteRecursively();
     if(!valid){
         std::fprintf(stderr,"Installed VST3 bundle discovery/search regression\n");
-        return 9;
+        return 13;
     }
 
     skellpreset::host::HostedVST3 host;

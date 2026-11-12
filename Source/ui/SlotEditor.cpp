@@ -378,6 +378,13 @@ void SlotEditor::refreshIfChanged() {
     if(const auto* macro=processor.state.getRawParameterValue("macro2"))current[5]=macro->load();
     bool changed=!graphSnapshotValid || type!=lastType;
     for(int i=0;i<6;++i)changed=changed || std::abs(current[(size_t)i]-lastControls[(size_t)i])>1.e-5f;
+    if(type==SkellPresetAudioProcessor::ExternalVST3) {
+        const int latency=processor.hostedVST3LatencySamples(slot);
+        const bool loaded=processor.hasHostedVST3(slot);
+        changed=changed || latency!=lastHostedLatency || loaded!=lastHostedLoaded;
+        lastHostedLatency=latency;
+        lastHostedLoaded=loaded;
+    }
     if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         for(int k=0;k<16;++k) {
             const float v=processor.getSlotParam(slot,k);
@@ -624,6 +631,16 @@ void SlotEditor::paint(juce::Graphics&g) {
             {83,270,720,23},13,Theme::muted);
         Theme::text(g,"IN-PROCESS HOST  /  THIRD-PARTY CODE RUNS INSIDE YOUR DAW",
             {85,313,735,20},11,Theme::amber);
+        const int samples=processor.hostedVST3LatencySamples(slot);
+        const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
+        const double milliseconds=1000.0*(double)samples/sampleRate;
+        const bool highLatency=milliseconds>5.0;
+        const auto latencyText=name.isEmpty()
+            ? juce::String("NO HOSTED PDC / LOAD AN EFFECT TO MEASURE")
+            : juce::String("REPORTED PDC  /  ")+juce::String(samples)
+                  +" SAMPLES  /  "+juce::String(milliseconds,2)+" MS";
+        Theme::text(g,latencyText,{85,343,735,22},12,
+                    highLatency?Theme::amber:Theme::green,true);
     } else if(type!=SkellPresetAudioProcessor::Empty){
         // Parameter-driven visualizations. These are not fabricated FFT meters:
         // the user can drag the shared edit point to change P1/P2.
