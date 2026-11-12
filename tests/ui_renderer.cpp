@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-module-picker-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,20> effectScenes {{
+        const std::array<std::pair<const char*,int>,24> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -151,7 +151,11 @@ int main(int argc, char** argv) {
             {"voxrack-comp",SkellPresetAudioProcessor::VoxRackSmoothComp},
             {"vocal-chorus",SkellPresetAudioProcessor::VocalChorusFX},
             {"vocal-flanger",SkellPresetAudioProcessor::VocalFlangerFX},
-            {"ring-mod",SkellPresetAudioProcessor::RingModFX}
+            {"ring-mod",SkellPresetAudioProcessor::RingModFX},
+            {"adlib-chop",SkellPresetAudioProcessor::AdlibChop},
+            {"adlib-motion",SkellPresetAudioProcessor::AdlibMotion},
+            {"adlib-filter",SkellPresetAudioProcessor::AdlibFilter},
+            {"adlib-saturate",SkellPresetAudioProcessor::AdlibSaturate}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
@@ -259,15 +263,17 @@ int main(int argc, char** argv) {
             {"obsidian-advanced-70", "obsidian-module-picker-70"},
             {"obsidian-effect-vocal-chorus-70", "obsidian-effect-vocal-flanger-70"},
             {"obsidian-effect-ring-mod-70", "obsidian-effect-vocal-flanger-70"},
-            {"obsidian-factory-wide-choir-70", "obsidian-factory-alien-ring-70"}
+            {"obsidian-factory-wide-choir-70", "obsidian-factory-alien-ring-70"},
+            {"obsidian-effect-adlib-chop-70", "obsidian-effect-ring-mod-70"},
+            {"obsidian-effect-adlib-motion-70", "obsidian-effect-adlib-filter-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 84) {
-            std::fprintf(stderr, "Expected 84 PNGs, captured %d\n", report.captured);
+        if (report.captured != 88) {
+            std::fprintf(stderr, "Expected 88 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
