@@ -335,11 +335,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const bool monoSource=getTotalNumInputChannels()==1;
     // Query the host once per block, never inside the sample loop. The new
     // ducking delay uses a deterministic 120-BPM fallback when stopped/unknown.
-    double hostBpm=120.;
+    juce::Optional<juce::AudioPlayHead::PositionInfo> hostPosition;
     if(auto* playhead=getPlayHead())
-        if(const auto position=playhead->getPosition())
-            if(const auto bpm=position->getBpm())
-                if(std::isfinite(*bpm) && *bpm>=40. && *bpm<=260.)hostBpm=*bpm;
+        hostPosition=playhead->getPosition();
+    double hostBpm=120.;
+    if(hostPosition)
+        if(const auto bpm=hostPosition->getBpm())
+            if(std::isfinite(*bpm) && *bpm>=40. && *bpm<=260.)hostBpm=*bpm;
     const int mode=juce::jlimit(0,3,(int)rawGlobal.mode->load());
     inputSmooth.setTargetValue(dbToGain(rawGlobal.input->load()));
     outputSmooth.setTargetValue(dbToGain(rawGlobal.output->load()));
@@ -488,6 +490,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const int limit=juce::jmax(64,hostChunkCapacity);
     for(int offset=0;offset<total;offset+=limit) {
         const int frames=juce::jmin(limit,total-offset);
+        // Forward host transport to nested VST3s without retaining the DAW's
+        // callback-scoped playhead pointer. Account for our internal chunks.
+        hosted.updateTransport(hostPosition,offset,rate);
         // setSize(...,avoidReallocating=true) reuses prepareToPlay's fixed buffers.
         rackWork.setSize(2,frames,false,false,true);
         dryWork.setSize(2,frames,false,false,true);

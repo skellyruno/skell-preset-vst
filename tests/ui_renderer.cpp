@@ -32,6 +32,31 @@ int main(int argc, char** argv) {
     SkellPresetAudioProcessor processor;
     processor.prepareToPlay(48000.0, 512);
     int failures = 0;
+    // Exact playback/tempo position supplied to hosted effects at each chunk.
+    // This tests the JUCE transport bridge without loading arbitrary DLLs.
+    {
+        skellpreset::host::HostedTransport transport;
+        juce::AudioPlayHead::PositionInfo position;
+        position.setBpm(120.);
+        position.setTimeInSamples(std::int64_t{96000});
+        position.setTimeInSeconds(2.);
+        position.setPpqPosition(4.);
+        position.setIsPlaying(true);
+        transport.update(position,512,48000.);
+        const auto out=transport.getPosition();
+        if(!out || !out->getIsPlaying()
+           || !out->getTimeInSamples() || *out->getTimeInSamples()!=96512
+           || !out->getTimeInSeconds() || std::abs(*out->getTimeInSeconds()-2.010666666666667)>1.e-9
+           || !out->getPpqPosition() || std::abs(*out->getPpqPosition()-4.021333333333333)>1.e-9) {
+            std::fprintf(stderr,"Hosted transport chunk position regression\n");
+            ++failures;
+        }
+        transport.update({},0,48000.);
+        if(transport.getPosition()) {
+            std::fprintf(stderr,"Hosted transport must not invent a missing DAW position\n");
+            ++failures;
+        }
+    }
     // Exercise the real AudioProcessor, not only the portable DSP header.
     // Variable and oversized DAW blocks must be safe after the rack's
     // block-based refactor for external plugin hosting.
