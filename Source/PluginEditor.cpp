@@ -626,6 +626,8 @@ public:
                 processor.isCapturing()?Theme::red:Theme::green,true);
             g.setColour(Theme::stroke.withAlpha(.48f));
             g.drawHorizontalLine(317,202.f,1077.f);
+            std::array<float,128> waveform{};
+            processor.getLiveWaveform(waveform);
             juce::Path simpleScope;
             for(std::size_t n=0;n<waveform.size();++n) {
                 const float x=205.f+(float)n*867.f/(waveform.size()-1);
