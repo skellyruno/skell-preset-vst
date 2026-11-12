@@ -29,6 +29,11 @@ struct Biquad {
         const auto a=std::sin(w)/(2*q), c=std::cos(w), norm=1/(1+a);
         b0=(1+c)*.5*norm;b1=-(1+c)*norm;b2=b0;a1=-2*c*norm;a2=(1-a)*norm;
     }
+    void setLowPass(double sampleRate, double frequency, double q=.7071068) noexcept {
+        const auto w=2*pi*std::clamp(frequency,15.,sampleRate*.46)/sampleRate;
+        const auto a=std::sin(w)/(2*q), c=std::cos(w), norm=1/(1+a);
+        b0=(1-c)*.5*norm;b1=(1-c)*norm;b2=b0;a1=-2*c*norm;a2=(1-a)*norm;
+    }
     // Exact magnitude response of the coefficients used in realtime processing.
     double magnitudeDb(double frequency,double sampleRate) const noexcept {
         if(!(sampleRate>0) || !std::isfinite(frequency))return 0.;
@@ -75,6 +80,9 @@ struct SmoothedBiquad {
     }
     void setHighPass(double sr,double f) noexcept {
         Biquad next;next.setHighPass(sr,f);aim(next);
+    }
+    void setLowPass(double sr,double f) noexcept {
+        Biquad next;next.setLowPass(sr,f);aim(next);
     }
     void tick() noexcept {
         if(remaining<=0)return;
