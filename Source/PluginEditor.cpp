@@ -607,15 +607,36 @@ public:
                     {695,12,91,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
         g.setColour(Theme::panel);g.fillRect(0,640,Theme::width,48);
+        // Three restrained master-control bays improve hierarchy without
+        // changing any slider, recorder or automation behavior.
+        for(const auto bay:{juce::Rectangle<float>(12.f,643.f,376.f,41.f),
+                            juce::Rectangle<float>(392.f,643.f,369.f,41.f),
+                            juce::Rectangle<float>(766.f,643.f,390.f,41.f)}) {
+            g.setGradientFill(juce::ColourGradient(
+                Theme::panelAlt.brighter(.03f),bay.getTopLeft(),
+                Theme::panel.darker(.14f),bay.getBottomLeft(),false));
+            g.fillRoundedRectangle(bay,5.f);
+            g.setColour(Theme::stroke.withAlpha(.64f));
+            g.drawRoundedRectangle(bay.reduced(.45f),5.f,.85f);
+        }
         Theme::text(g,"INPUT",{22,652,68,23},12,Theme::muted);
         Theme::text(g,"MIX",{398,652,68,23},12,Theme::muted);
         Theme::text(g,"OUTPUT",{773,652,75,23},12,Theme::muted);
+        const float measuredInput=processor.getInputPeak();
+        const float measuredOutput=processor.getOutputPeak();
         for(int ix=0;ix<12;ix++){
-            g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getInputPeak())?Theme::green:Theme::stroke);
-            g.fillRect(310+ix*6,657,4,10);
-            g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getOutputPeak())?Theme::green:Theme::stroke);
-            g.fillRect(1023+ix*6,657,4,10);
+            const bool inputLit=(float)ix<12.f*juce::jlimit(0.f,1.f,measuredInput);
+            const bool outputLit=(float)ix<12.f*juce::jlimit(0.f,1.f,measuredOutput);
+            g.setColour(ix==11 && measuredInput>=1.f?Theme::red:
+                        inputLit?Theme::green:Theme::stroke);
+            g.fillRoundedRectangle(310.f+ix*6.f,657.f,4.f,10.f,1.f);
+            g.setColour(ix==11 && measuredOutput>=1.f?Theme::red:
+                        outputLit?Theme::green:Theme::stroke);
+            g.fillRoundedRectangle(1023.f+ix*6.f,657.f,4.f,10.f,1.f);
         }
+        Theme::text(g,juce::String(sampleRate/1000.,1)+"K",
+                    {1099,653,45,22},10,Theme::muted,true,
+                    juce::Justification::centredRight);
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
