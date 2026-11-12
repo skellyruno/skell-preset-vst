@@ -86,12 +86,80 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     editExternal.onClick=[this] {
         processor.openHostedVST3Editor(slot);
     };
+    upgradeEq.setTooltip("Convert this classic single-bell EQ into an editable eight-band parametric EQ; previous presets are unchanged.");
+    upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
+    upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
+    addAndMakeVisible(upgradeEq);
+    upgradeEq.setVisible(false);
+    upgradeEq.onClick=[this] {
+        if(processor.slotType(slot)!=SkellPresetAudioProcessor::EQ)return;
+        const float oldFreq=processor.getSlotParam(slot,0);
+        const float oldGain=processor.getSlotParam(slot,1);
+        const float oldQ=processor.getSlotParam(slot,2);
+        const float oldHp=processor.getSlotParam(slot,3);
+        const float frequency=40.f*std::pow(300.f,oldFreq);
+        int target=0;
+        for(int i=1;i<8;++i)
+            if(frequency>=skellpreset::dsp::EightBandTone::edges[(size_t)i])
+                target=i;
+        const float lo=skellpreset::dsp::EightBandTone::edges[(size_t)target];
+        const float hi=skellpreset::dsp::EightBandTone::edges[(size_t)target+1];
+        const float freqNorm=juce::jlimit(0.f,1.f,
+            (float)(std::log(frequency/lo)/std::log(hi/lo)));
+        // The classic EQ is a single peaking filter plus a high pass.
+        // Translate it to one of eight neutral bells and a cutoff rather
+        // than losing edits or mutating earlier factory programs.
+        for(int i=0;i<8;++i){
+            processor.setSlotParam(slot,i*2,.5f);
+            processor.setSlotParam(slot,i*2+1,.5f);
+        }
+        processor.setSlotParam(slot,target*2,freqNorm);
+        processor.setSlotParam(slot,target*2+1,
+            juce::jlimit(0.f,1.f,.5f+(oldGain-.5f)*.8f));
+        const auto prefix="s"+juce::String(slot+1)+"_";
+        if(auto* value=processor.state.getParameter(prefix+"eqQ"+juce::String(target+1)))
+            value->setValueNotifyingHost(
+                skellpreset::dsp::EightBandTone::normalizedFromQ(.3f+7.f*oldQ));
+        const float cutoff=20.f+250.f*oldHp;
+        if(auto* value=processor.state.getParameter(prefix+"eqLowCut"))
+            value->setValueNotifyingHost(juce::jlimit(0.f,1.f,
+                (float)(std::log(cutoff/20.f)/std::log(20.f))));
+        if(auto* value=processor.state.getParameter(prefix+"eqHighCut"))
+            value->setValueNotifyingHost(0.f);
+        processor.setSlotType(slot,SkellPresetAudioProcessor::EightBandToneFX);
+        select(slot);
+        activeEqBand=target;
+        showEqBank(target);
+    };
     eqQSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     eqQSlider.setTextBoxStyle(juce::Slider::TextBoxRight,false,59,22);
     eqQSlider.setRange(0.,1.,.001);
     eqQSlider.setTooltip("Select an EQ node to edit its independent bandwidth (Q 0.4–8)");
     addAndMakeVisible(eqQSlider);
     eqQSlider.setVisible(false);
+    for(int index=0;index<8;++index) {
+        auto& button=eqBandButtons[(size_t)index];
+        button.setButtonText(juce::String(index+1));
+        button.setTooltip("Edit parametric EQ band "+juce::String(index+1));
+        button.setWantsKeyboardFocus(true);
+        button.onClick=[this,index]{
+            activeEqBand=index;
+            showEqBank(index);
+        };
+        addAndMakeVisible(button);
+        button.setVisible(false);
+    }
+    for(int index=0;index<2;++index) {
+        auto& control=eqCutSliders[(size_t)index];
+        control.setSliderStyle(juce::Slider::LinearHorizontal);
+        control.setTextBoxStyle(juce::Slider::TextBoxRight,false,74,21);
+        control.setRange(0.,1.,.001);
+        control.setTooltip(index==0
+            ?"High-pass cut: OFF or 20-400 Hz, smoothed 12ms"
+            :"Low-pass cut: OFF or 20k-1.8k Hz, smoothed 12ms");
+        addAndMakeVisible(control);
+        control.setVisible(false);
+    }
     for(int i=0;i<4;++i){
         auto& k=knobs[(size_t)i];
         k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
@@ -120,6 +188,31 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
 // Reapply our physical-unit formatting AFTER each (re)attachment, including
 // EQ band-page switches. This affects presentation only, not automatable values.
 void SlotEditor::applyKnobReadouts() {
+    eqCutSliders[0].textFromValueFunction=[](double v){
+        if(v<=.0001)return juce::String("OFF");
+        return juce::String(juce::roundToInt(
+            skellpreset::dsp::EightBandTone::lowCutFrequency((float)v)))+" Hz";
+    };
+    eqCutSliders[1].textFromValueFunction=[](double v){
+        if(v<=.0001)return juce::String("OFF");
+        const float freq=skellpreset::dsp::EightBandTone::highCutFrequency((float)v);
+        return freq>=1000.f ? juce::String(freq/1000.f,1)+" kHz":
+                               juce::String(juce::roundToInt(freq))+" Hz";
+    };
+    eqCutSliders[0].valueFromTextFunction=[](const juce::String& text){
+        const float hz=text.getFloatValue();
+        if(!text.containsAnyOf("0123456789") || hz<=0.f)return 0.0;
+        return (double)juce::jlimit(0.f,1.f,
+            (float)(std::log(juce::jlimit(20.f,400.f,hz)/20.f)/std::log(20.f)));
+    };
+    eqCutSliders[1].valueFromTextFunction=[](const juce::String& input){
+        const auto text=input.trim().toLowerCase();
+        const float hz=text.getFloatValue()*(text.contains("khz")?1000.f:1.f);
+        if(!text.containsAnyOf("0123456789") || hz<=0.f)return 0.0;
+        return (double)juce::jlimit(0.f,1.f,
+            (float)(std::log(juce::jlimit(1800.f,20000.f,hz)/20000.f)/std::log(.09f)));
+    };
+    eqCutSliders[0].updateText();eqCutSliders[1].updateText();
     eqQSlider.textFromValueFunction=[](double normalized) {
         const float q=skellpreset::dsp::EightBandTone::qFromNormalized((float)normalized);
         return "Q "+juce::String(q,2);
@@ -295,13 +388,22 @@ void SlotEditor::applyTheme() {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(auto* s:{&eqQSlider,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
+    for(auto* s:{&eqQSlider,&eqCutSliders[0],&eqCutSliders[1],
+                  &knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         s->setColour(juce::Slider::thumbColourId,Theme::white);
         s->setColour(juce::Slider::textBoxTextColourId,Theme::white);
         s->setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
         s->setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
+    }
+    upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
+    upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
+    for(int i=0;i<8;++i) {
+        eqBandButtons[(size_t)i].setColour(juce::TextButton::buttonColourId,
+            i==activeEqBand?Theme::green.withAlpha(.36f):Theme::panelAlt);
+        eqBandButtons[(size_t)i].setColour(juce::TextButton::textColourOffId,
+            i==activeEqBand?Theme::green:Theme::white);
     }
     repaint();
 }
@@ -320,6 +422,14 @@ void SlotEditor::showEqBank(int firstBand) {
     eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.state,prefix+"eqQ"+juce::String(activeEqBand+1),eqQSlider);
     applyKnobReadouts();
+    for(int i=0;i<8;++i) {
+        const bool active=i==activeEqBand;
+        auto& b=eqBandButtons[(size_t)i];
+        b.setColour(juce::TextButton::buttonColourId,
+            active?Theme::green.withAlpha(.36f):Theme::panelAlt);
+        b.setColour(juce::TextButton::textColourOffId,active?Theme::green:Theme::white);
+        b.repaint();
+    }
     graphSnapshotValid=false;
     repaint();
 }
@@ -336,16 +446,24 @@ void SlotEditor::select(int newSlot) {
     installedBrowser.hide();
     graphSnapshotValid=false;
     eqQAttachment.reset();
+    for(auto& a:eqCutAttachments)a.reset();
     externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
     moduleBox.setSelectedId(processor.slotType(slot)+1,juce::dontSendNotification);
-    if(processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX)
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX) {
         eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             processor.state,prefix+"eqQ1",eqQSlider);
+        eqCutAttachments[0]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            processor.state,prefix+"eqLowCut",eqCutSliders[0]);
+        eqCutAttachments[1]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            processor.state,prefix+"eqHighCut",eqCutSliders[1]);
+    }
     for(int k=0;k<4;k++)knobAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
     refreshIfChanged();
     applyKnobReadouts();
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX)
+        showEqBank(0);
     repaint();
 }
 void SlotEditor::refreshIfChanged() {
@@ -385,6 +503,13 @@ void SlotEditor::refreshIfChanged() {
             changed=changed || std::abs(v-lastEqControls[(size_t)(16+k)])>1.e-5f;
             lastEqControls[(size_t)(16+k)]=v;
         }
+        for(int k=0;k<2;++k) {
+            const auto* value=processor.state.getRawParameterValue(
+                prefix+(k==0?"eqLowCut":"eqHighCut"));
+            const float v=value?value->load():0.f;
+            changed=changed||std::abs(v-lastEqControls[(size_t)(24+k)])>1.e-5f;
+            lastEqControls[(size_t)(24+k)]=v;
+        }
     }
     if(!changed)return;
     if(type!=lastType){
@@ -392,15 +517,23 @@ void SlotEditor::refreshIfChanged() {
         // values while reattaching only the controls visible on this page.
         eqBank=0;activeEqBand=0;
         eqQAttachment.reset();
-        if(type==SkellPresetAudioProcessor::EightBandToneFX)
+        for(auto& attachment:eqCutAttachments)attachment.reset();
+        if(type==SkellPresetAudioProcessor::EightBandToneFX) {
             eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
                 processor.state,prefix+"eqQ1",eqQSlider);
+            eqCutAttachments[0]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"eqLowCut",eqCutSliders[0]);
+            eqCutAttachments[1]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"eqHighCut",eqCutSliders[1]);
+        }
         for(auto& attachment:knobAttachment)attachment.reset();
         for(int k=0;k<4;++k)
             knobAttachment[(size_t)k]=
                 std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
                     processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
+        if(type==SkellPresetAudioProcessor::EightBandToneFX)
+            showEqBank(activeEqBand);
     }
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
@@ -408,7 +541,10 @@ void SlotEditor::refreshIfChanged() {
     if(!external && installedBrowser.isVisible())installedBrowser.hide();
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
+    upgradeEq.setVisible(type==SkellPresetAudioProcessor::EQ);
     eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
+    for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
+    for(auto& button:eqBandButtons)button.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
 }
@@ -417,9 +553,13 @@ void SlotEditor::resized() {
     moduleBox.setBounds(489,25,211,29);
     modulePicker.setBounds(405,66,470,400);
     eqQSlider.setBounds(672,114,186,26);
+    eqCutSliders[0].setBounds(68,125,270,23);
+    eqCutSliders[1].setBounds(370,125,270,23);
+    for(int k=0;k<8;++k)eqBandButtons[(size_t)k].setBounds(219+k*49,96,40,26);
     loadExternal.setBounds(52,420,177,62);
     installedBrowser.setBounds(85,62,735,385);
     editExternal.setBounds(246,420,188,62);
+    upgradeEq.setBounds(650,97,212,31);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
 }
 void SlotEditor::paint(juce::Graphics&g) {
@@ -671,9 +811,21 @@ void SlotEditor::paint(juce::Graphics&g) {
                     qValue?qValue->load():.5f);
                 filter[(size_t)band].setPeak(sr,freq,gain,q);
             }
+            skellpreset::dsp::Biquad lowCutFilter,highCutFilter;
+            const auto* loParam=processor.state.getRawParameterValue(
+                "s"+juce::String(slot+1)+"_eqLowCut");
+            const auto* hiParam=processor.state.getRawParameterValue(
+                "s"+juce::String(slot+1)+"_eqHighCut");
+            const float lo=loParam?loParam->load():0.f;
+            const float hi=hiParam?hiParam->load():0.f;
+            if(lo>.0001f)lowCutFilter.setHighPass(sr,
+                skellpreset::dsp::EightBandTone::lowCutFrequency(lo));
+            if(hi>.0001f)highCutFilter.setLowPass(sr,
+                skellpreset::dsp::EightBandTone::highCutFrequency(hi));
             for(int px=0;px<=835;px+=5) {
                 const double freq=20.*std::pow(1000.,(double)px/835.);
-                double dB=0.;
+                double dB=lowCutFilter.magnitudeDb(freq,sr)
+                          +highCutFilter.magnitudeDb(freq,sr);
                 for(const auto& band:filter)dB+=band.magnitudeDb(freq,sr);
                 const float curveY=juce::jlimit(plot.getY(),plot.getBottom(),
                     plot.getCentreY()-(float)dB*(plot.getHeight()/72.f));
@@ -684,6 +836,19 @@ void SlotEditor::paint(juce::Graphics&g) {
             auto area=response;area.lineTo(plot.getRight(),plot.getBottom());
             area.lineTo(plot.getX(),plot.getBottom());area.closeSubPath();g.fillPath(area);
             g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.7f));
+            // Readable cut-frequency markers, independent of all bell handles.
+            for(int side=0;side<2;++side){
+                const float amount=side==0?lo:hi;
+                if(amount<=.0001f)continue;
+                const float hz=side==0?
+                    skellpreset::dsp::EightBandTone::lowCutFrequency(amount):
+                    skellpreset::dsp::EightBandTone::highCutFrequency(amount);
+                const float x=xFor(hz);
+                g.setColour(Theme::amber.withAlpha(.65f));
+                g.drawVerticalLine((int)x,plot.getY()+3.f,plot.getBottom()-3.f);
+                g.setColour(Theme::amber);
+                g.fillEllipse(x-3.f,plot.getY()+2.f,6.f,6.f);
+            }
             for(int band=0;band<8;++band) {
                 const float low=skellpreset::dsp::EightBandTone::edges[(size_t)band];
                 const float high=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
@@ -1321,6 +1486,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         // Q control has its own legible caption and never overlaps the title.
         Theme::text(g,"BAND "+juce::String(activeEqBand+1)+" Q",
                     {680,96,172,17},11,Theme::green,true);
+        Theme::text(g,"LOW CUT",{67,109,112,15},10,Theme::amber,true);
+        Theme::text(g,"HIGH CUT",{369,109,112,15},10,Theme::amber,true);
     }
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
@@ -1473,20 +1640,32 @@ bool SlotEditor::testEightBandGraphAndQ() {
     const auto physical=slot;
     processor.setSlotType(physical,SkellPresetAudioProcessor::EightBandToneFX);
     select(physical);
-    activeEqBand=7;
-    showEqBank(activeEqBand);
+    // User-facing band buttons must select the right automatable slot band.
+    eqBandButtons[7].onClick();
     const float oldFreq=processor.getSlotParam(physical,14);
     const float oldGain=processor.getSlotParam(physical,15);
     updateGraphNode({790.f,225.f});
     const auto freq=processor.getSlotParam(physical,14);
     const auto gain=processor.getSlotParam(physical,15);
     eqQSlider.setValue(.86,juce::sendNotificationSync);
+    eqCutSliders[0].setValue(.58,juce::sendNotificationSync);
+    eqCutSliders[1].setValue(.45,juce::sendNotificationSync);
+    const auto* cutLo=processor.state.getRawParameterValue(
+        "s"+juce::String(physical+1)+"_eqLowCut");
+    const auto* cutHi=processor.state.getRawParameterValue(
+        "s"+juce::String(physical+1)+"_eqHighCut");
     const auto* q=processor.state.getRawParameterValue(
         "s"+juce::String(physical+1)+"_eqQ8");
     const bool good=eqBank==6 && activeEqBand==7 &&
         std::abs(freq-oldFreq)>.05f && std::abs(gain-oldGain)>.05f
         && q && std::abs(q->load()-.86f)<.015f
+        && cutLo && std::abs(cutLo->load()-.58f)<.015f
+        && cutHi && std::abs(cutHi->load()-.45f)<.015f
         && moduleSelectorMatchesAudio();
+    // Restore neutral filters so screenshot/gesture probes do not alter the
+    // sound of the selected rack slot after testing.
+    eqCutSliders[0].setValue(0.,juce::sendNotificationSync);
+    eqCutSliders[1].setValue(0.,juce::sendNotificationSync);
     return good;
 }
 

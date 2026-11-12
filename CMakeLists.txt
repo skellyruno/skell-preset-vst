@@ -36,12 +36,12 @@ else()
 endif()
 
 
-# GuidedTour is a shared JUCE UI header from the verified, immutable SkellCore
+# GuidedTour and HardwareIconButton come from the same pinned SkellCore
 # revision. Fetch headers only: the existing bundled SkellCore targets are
 # preserved so duplicate CMake targets and DSP changes are impossible.
 FetchContent_Declare(SkellGuidedTourHeaders
-    GIT_REPOSITORY https://github.com/skellyruno/skell-vst-template.git
-    GIT_TAG eb56702153c4373799a4e8e2663e0f158c0115a6
+    GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
+    GIT_TAG 6a2077b3275819dcc1166f8c5a4a04a5f3558caf
     GIT_SHALLOW FALSE
     SOURCE_SUBDIR _guided_tour_headers_only)
 FetchContent_MakeAvailable(SkellGuidedTourHeaders)

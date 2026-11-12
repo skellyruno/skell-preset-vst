@@ -102,6 +102,8 @@ int main(){
         advanced.slots[4].type=30;
         advanced.slots[0].eqQ[0]=.81f;
         advanced.slots[0].eqQ[7]=.12f;
+        advanced.slots[0].eqLowCut=.63f;
+        advanced.slots[0].eqHighCut=.39f;
         const auto file=testFile(dir,"advanced-vocal-suite");
         check(skellpreset::package::write(file,advanced).wasOk(),
               "Export 8-Band EQ, FET+Opto, Harshness and Noise");
@@ -113,8 +115,10 @@ int main(){
               &&loaded.slots[3].type==29
               &&loaded.slots[4].type==30
               &&loaded.slots[0].eqQ[0]==.81f
-              &&loaded.slots[0].eqQ[7]==.12f,
-              "Roundtrip new effect IDs and independent EQ bandwidths");
+              &&loaded.slots[0].eqQ[7]==.12f
+              &&loaded.slots[0].eqLowCut==.63f
+              &&loaded.slots[0].eqHighCut==.39f,
+              "Roundtrip new effect IDs, eight Q bands and high/low cuts");
         // Older schema-v2 packages had no eqQ property; neutral values
         // must be provided automatically rather than failing import.
         juce::ZipFile archive(file);
@@ -124,14 +128,20 @@ int main(){
             if(auto* chain=json.getProperty("chain",{}).getArray())
                 for(auto& entry:*chain)
                     if(auto* item=entry.getDynamicObject())
-                        item->removeProperty("eqQ");
+                        {
+                            item->removeProperty("eqQ");
+                            item->removeProperty("eqLowCut");
+                            item->removeProperty("eqHighCut");
+                        }
             const auto noQ=testFile(dir,"legacy-v2-without-eq-q");
             createArchive(noQ,"preset.json",juce::JSON::toString(json).toStdString());
             skellpreset::package::Document restored;
             check(skellpreset::package::read(noQ,restored).wasOk()
                   &&restored.slots[0].eqQ[0]==.5f
-                  &&restored.slots[0].eqQ[7]==.5f,
-                  "Load old native v2 file with safe neutral EQ bandwidths");
+                  &&restored.slots[0].eqQ[7]==.5f
+                  &&restored.slots[0].eqLowCut==0.f
+                  &&restored.slots[0].eqHighCut==0.f,
+                  "Load old native v2 file with flat EQ cuts and neutral Q");
         }
     }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
@@ -178,6 +188,10 @@ int main(){
     first.slots[2].params[0]=1.2f;
     check(skellpreset::package::write(testFile(dir,"invalid-param"),first).failed(),"Reject out-of-range DSP value");
     first.slots[2].params[0]=.5f;
+    first.slots[2].eqHighCut=1.1f;
+    check(skellpreset::package::write(testFile(dir,"invalid-cut"),first).failed(),
+          "Reject out-of-range EQ cut data before writing ZIP");
+    first.slots[2].eqHighCut=0.f;
     first.slots[2].type=99;
     check(skellpreset::package::write(testFile(dir,"invalid-module"),first).failed(),"Reject undefined module type");
     auto malicious=testFile(dir,"path-traversal");

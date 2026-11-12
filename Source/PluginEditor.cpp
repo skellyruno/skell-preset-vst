@@ -5,6 +5,7 @@
 #include "ui/PresetBrowser.h"
 #include "ui/SkullThemeButton.h"
 #include "ui/SkellPowerButton.h"
+#include "ui/SkellSettingsButton.h"
 #include "ui/SkellActionButton.h"
 #include "ui/SkellMacroKnob.h"
 #include <SkellCore/UI.h>
@@ -151,7 +152,7 @@ public:
         };
         addAndMakeVisible(sizeSelect);
         sizeSelect.setVisible(false); // Internal compatibility adapter only.
-        settings.setButtonText(juce::String::fromUTF8("\xE2\x9A\x99"));
+        // Use the recessed, engraved settings switch from Skell Silence.
         settings.setTooltip("Settings  /  Interface Size");
         style(settings);
         addAndMakeVisible(settings);
@@ -344,7 +345,7 @@ public:
            || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
            || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
             issues.add("Master strip displays raw values rather than physical dB/% labels");
-        const std::array<const juce::Component*,4> top{{&preset,&match,&viewSwitch,&powerButton}};
+        const std::array<const juce::Component*,5> top{{&preset,&match,&viewSwitch,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -729,7 +730,7 @@ public:
         mix.setBounds(433,648,185,34);
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
-        settings.setBounds(1094,648,69,26);
+        settings.setBounds(1046,26,46,40);
         record.setBounds(634,648,115,30);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
@@ -810,7 +811,8 @@ private:
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
-    SkellActionButton preset,match,help,settings,record;
+    SkellActionButton preset,match,help,record;
+    SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
     SkellActionButton viewSwitch;

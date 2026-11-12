@@ -17,7 +17,7 @@ struct Effect {
 };
 inline constexpr std::array<Effect,31> effects{{
     {0,"Empty","Utility","none clear empty bypass",""},
-    {1,"EQ","Tone","frequency bands low high shelf bell filter","322.EQ"},
+    {1,"EQ (Classic)","Tone","frequency bands low high shelf bell filter","322.EQ"},
     {2,"Compressor","Dynamics","compression level loud voice threshold knee","322.COMP"},
     {3,"Limiter","Dynamics","peak safety brickwall ceiling",""},
     {4,"Gate","Dynamics","noise threshold suppression silence hold",""},
@@ -42,7 +42,7 @@ inline constexpr std::array<Effect,31> effects{{
     {23,"Vocal Rider","Dynamics","auto gain phrase levelling vocal chain",""},
     {24,"Ducking Ping-Pong","Space","duck echo ping pong tempo synced delay stereo adlib",""},
     {25,"Vocal Vibrato","Motion","vibrato voice pitch wobble flutter stereo",""},
-    {26,"8-Band EQ","Tone","eight band parametric eq frequency gain bell q equalizer","322.EQ"},
+    {26,"Parametric EQ / 8-Band","Tone","eight band parametric eq frequency gain bell q equalizer","322.EQ"},
     {27,"FET + Opto","Dynamics","serial compressor peak rms parallel smash","322.COMP"},
     {28,"Harshness Tamer","Dynamics","dynamic resonances sibilance soothe harshness",""},
     {29,"Adaptive Noise Control","Dynamics","noise control gate suppress background floor",""},

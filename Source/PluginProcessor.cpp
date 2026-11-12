@@ -30,6 +30,8 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension3=state.getRawParameterValue(prefix+"fxExt3");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
+        r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
+        r.eqHighCut=state.getRawParameterValue(prefix+"eqHighCut");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
         for(int k=0;k<8;++k)r.q[(size_t)k]=state.getRawParameterValue(prefix+"eqQ"+juce::String(k+1));
     }
@@ -110,6 +112,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(s)+"_fxExt3",1},
             "Slot "+juce::String(s)+" studio pitch effect",
             juce::StringArray{"None","Studio Pitch + Formant"},0));
+    // New IDs append after every published parameter. Zero = OFF, so all
+    // imported projects and prior factory banks retain their exact sound.
+    for(int slot=1;slot<=slotCount;++slot) {
+        const auto prefix="s"+juce::String(slot)+"_";
+        fl(prefix+"eqLowCut","Slot "+juce::String(slot)+" Parametric EQ low cut",0,1,0);
+        fl(prefix+"eqHighCut","Slot "+juce::String(slot)+" Parametric EQ high cut",0,1,0);
+    }
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -360,6 +369,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         c.type=slotType(s);
         c.on=raw.on->load()>.5f;
         c.wet=juce::jlimit(0.f,1.f,raw.wet->load());
+        c.eqLowCut=raw.eqLowCut->load();
+        c.eqHighCut=raw.eqHighCut->load();
         for(int k=0;k<16;++k)c.p[(size_t)k]=raw.p[(size_t)k]->load();
         for(int k=0;k<8;++k)c.q[(size_t)k]=raw.q[(size_t)k]->load();
         auto& e=engines[(size_t)s];
@@ -432,6 +443,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 break;
             case EightBandToneFX:
                 e.eightBand.set(rate,c.p,c.q);
+                e.eightBand.setCuts(rate,c.eqLowCut,c.eqHighCut);
                 break;
             case SerialDynamicsFX:
                 e.serialDynamics.set(c.p[0],c.p[1],c.p[2],c.p[3]);
@@ -756,6 +768,8 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotType(s,Empty);setSlotOn(s,false);setReal(slotPrefix(s)+"wet",1);
         for(int k=0;k<16;k++)setSlotParam(s,k,.5f);
         for(int band=1;band<=8;++band)setReal(slotPrefix(s)+"eqQ"+juce::String(band),.5f);
+        setReal(slotPrefix(s)+"eqLowCut",0.f);
+        setReal(slotPrefix(s)+"eqHighCut",0.f);
         
     }
     std::uint64_t seqReset=0;
@@ -985,6 +999,8 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         dst.wet=value(prefix+"wet");
         for(int k=0;k<16;++k)dst.params[(size_t)k]=getSlotParam(dst.slotId,k);
         for(int band=0;band<8;++band)dst.eqQ[(size_t)band]=value(prefix+"eqQ"+juce::String(band+1));
+        dst.eqLowCut=value(prefix+"eqLowCut");
+        dst.eqHighCut=value(prefix+"eqHighCut");
     }
     return skellpreset::package::write(file,doc);
 }
@@ -999,6 +1015,8 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
         setReal(prefix+"wet",slot.wet);
         for(int k=0;k<16;++k)setSlotParam(slot.slotId,k,slot.params[(size_t)k]);
         for(int band=0;band<8;++band)setReal(prefix+"eqQ"+juce::String(band+1),slot.eqQ[(size_t)band]);
+        setReal(prefix+"eqLowCut",slot.eqLowCut);
+        setReal(prefix+"eqHighCut",slot.eqHighCut);
     }
     std::uint64_t next=0;
     for(int position=0;position<slotCount;++position){

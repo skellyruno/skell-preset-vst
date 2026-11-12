@@ -32,6 +32,39 @@ int main(){
             assert(std::isfinite(y[0])&&std::isfinite(y[1]));
             assert(std::abs(y[0])<20.f);
         }
+        // Parametric EQ cuts must perform real, stable filtering at each
+        // supported sample rate; legacy-neutral state is exact bypass.
+        EightBandTone cuts;
+        std::array<float,16> neutral{};
+        neutral.fill(.5f);
+        cuts.prepare(sr);cuts.set(sr,neutral);cuts.setCuts(sr,1.f,0.f);
+        double dryPower=0.,lowCutPower=0.;
+        for(int n=0;n<(int)(sr*.28);++n) {
+            const float x=.12f*std::sin(float(2.*pi*70.*n/sr));
+            const auto y=cuts.process(x,-x);
+            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            if(n>sr*.12) {dryPower+=(double)x*x;lowCutPower+=(double)y[0]*y[0];}
+        }
+        assert(lowCutPower<dryPower*.2);
+        cuts.prepare(sr);cuts.set(sr,neutral);cuts.setCuts(sr,0.f,1.f);
+        dryPower=0.;double highCutPower=0.;
+        const double highTestHz=std::min(sr*.31,4500.);
+        for(int n=0;n<(int)(sr*.14);++n){
+            const float x=.12f*std::sin(float(2.*pi*highTestHz*n/sr));
+            const auto y=cuts.process(x,x);
+            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            if(n>sr*.06){dryPower+=(double)x*x;highCutPower+=(double)y[0]*y[0];}
+        }
+        assert(highCutPower<dryPower*.78);
+        // Zero is OFF. Switching back to identity does not leave a permanent
+        // low-pass colouration from the old filter coefficients.
+        cuts.setCuts(sr,0.f,0.f);
+        for(int n=0;n<(int)(sr*.1);++n){
+            const float x=.1f*std::sin(float(2.*pi*300.*n/sr));
+            const auto y=cuts.process(x,-x);
+            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            if(n>sr*.08)assert(std::abs(y[0]-x)<.006f);
+        }
         SerialVocalDynamics dynamics;
         dynamics.prepare(sr);
         dynamics.set(.35f,.8f,.25f,0.f);
