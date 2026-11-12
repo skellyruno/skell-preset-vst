@@ -27,6 +27,7 @@ public:
     static constexpr int wetControlLeft=149,wetControlRight=181;
     static constexpr int powerControlLeft=182,powerControlRight=206;
     bool testRackControlsAndWet();
+    bool triggerReplaceForTest(int visualRow) {return selectAndReplace(visualRow);}
     std::function<void(bool)> onDockRequest;
     void setDockedRight(bool value) {dockedRight=value;repaint();}
 private:
