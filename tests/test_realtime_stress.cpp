@@ -136,6 +136,7 @@ static void testDynamicPdcCrossfade() {
     // produce no out-of-range memory taps or allocations on the audio thread.
     StereoSampleDelay moving;
     moving.prepare(1024);
+    const auto pdcStarted=std::chrono::steady_clock::now();
     for(int n=0;n<250000;++n) {
         const int requested=(n/47)%3==0?0:(n/47)%3==1?400:1023;
         const auto output=moving.processSmoothed(
@@ -149,8 +150,12 @@ static void testDynamicPdcCrossfade() {
         assert(std::fpclassify(output[1])!=FP_SUBNORMAL);
         assert(std::abs(output[0])<=.071f && std::abs(output[1])<=.071f);
     }
+    const auto pdcSeconds=std::chrono::duration<double>(
+        std::chrono::steady_clock::now()-pdcStarted).count();
     std::cout<<"PASS stereo PDC crossfade / old max step "<<maxOldJump
-             <<" / smoothed max step "<<maxNewJump<<"\n";
+             <<" / smoothed max step "<<maxNewJump
+             <<" / 250k stress frames "<<pdcSeconds<<"s"
+             <<" / x48k realtime "<<(250000./48000.)/std::max(1.e-9,pdcSeconds)<<"\n";
 }
 int main(){
     testDynamicPdcCrossfade();
