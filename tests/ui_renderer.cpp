@@ -178,6 +178,40 @@ int main(int argc, char** argv) {
             }
         }
     }
+    // Drive the full real 7-insert processor with poisoned input once, then
+    // exercise its delay/reverb tails. Neither a single bad sample nor a
+    // misbehaving stage may leave the chain or slot meter in NaN/Inf.
+    {
+        processor.prepareToPlay(48000.,128);
+        processor.loadFactoryPreset(0);
+        for(int block=0;block<16;++block) {
+            juce::AudioBuffer<float> hostile(2,128);
+            for(int ch=0;ch<2;++ch)
+                for(int n=0;n<128;++n)
+                    hostile.setSample(ch,n,.024f*std::sin(.061f*(float)(block*128+n)));
+            if(block==0) {
+                hostile.setSample(0,12,std::numeric_limits<float>::quiet_NaN());
+                hostile.setSample(1,27,std::numeric_limits<float>::infinity());
+            }
+            juce::MidiBuffer midi;
+            processor.processBlock(hostile,midi);
+            for(int ch=0;ch<2;++ch)
+                for(int n=0;n<128;++n) {
+                    const float v=hostile.getSample(ch,n);
+                    if(!std::isfinite(v) || std::fpclassify(v)==FP_SUBNORMAL ||
+                       std::abs(v)>1.f) {
+                        std::fprintf(stderr,"Full rack nonfinite/denormal/clip regression at block %d\n",block);
+                        ++failures;
+                        break;
+                    }
+                }
+            for(int slot=0;slot<processor.activeSlotCount();++slot)
+                if(!std::isfinite(processor.getSlotPeak(processor.slotIdAt(slot)))) {
+                    std::fprintf(stderr,"Full rack metering was poisoned by hostile input\n");
+                    ++failures;break;
+                }
+        }
+    }
     processor.prepareToPlay(48000.,512);
     processor.loadFactoryPreset(25);
     if(auto* mode=processor.state.getParameter("mode"))
