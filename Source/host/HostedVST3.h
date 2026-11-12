@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -16,6 +17,29 @@ namespace skellpreset::host {
 inline bool isSkellPresetProductName(juce::String name) {
     return name.removeCharacters(" -_\t").containsIgnoreCase("skellpreset");
 }
+
+// A read-only transport snapshot for third-party effects. Only the audio thread
+// updates/reads this object while the nested plugin processes its block.
+// Never keep the DAW's ephemeral AudioPlayHead pointer beyond its callback.
+class HostedTransport final : public juce::AudioPlayHead {
+public:
+    void update(juce::Optional<PositionInfo> hostPosition,int chunkOffset,double sampleRate) {
+        position=std::move(hostPosition);
+        if(!position || chunkOffset<=0 || !std::isfinite(sampleRate) || sampleRate<=0.)return;
+        const double elapsed=(double)chunkOffset/sampleRate;
+        if(const auto time=position->getTimeInSamples())
+            position->setTimeInSamples(*time+chunkOffset);
+        if(const auto time=position->getTimeInSeconds())
+            position->setTimeInSeconds(*time+elapsed);
+        if(const auto bpm=position->getBpm())
+            if(std::isfinite(*bpm) && *bpm>0.)
+                if(const auto ppq=position->getPpqPosition())
+                    position->setPpqPosition(*ppq+elapsed*(*bpm)/60.);
+    }
+    juce::Optional<PositionInfo> getPosition() const override {return position;}
+private:
+    juce::Optional<PositionInfo> position;
+};
 
 class HostedVST3 final {
 public:
@@ -64,7 +88,7 @@ public:
         stereo.outputBuses.add(juce::AudioChannelSet::stereo());
         if(!instance->setBusesLayout(stereo))
             return juce::Result::fail("Hosted VST3 must support stereo in/out");
-        instance->setPlayHead(nullptr); // no dangling pointer into the outer processor
+        instance->setPlayHead(&transport); // stable, owned copy of DAW timing
         instance->prepareToPlay(std::max(sr,8000.),std::max(block,64));
         const int latency=instance->getLatencySamples();
         if(latency<0 || latency>maxTotalLatency)
@@ -91,6 +115,11 @@ public:
     }
     int getLatency(int slot) const noexcept {
         return valid(slot)?latencies[(size_t)slot].load(std::memory_order_acquire):0;
+    }
+    // Called on the audio thread before every internally chunked block.
+    void updateTransport(juce::Optional<juce::AudioPlayHead::PositionInfo> position,
+                         int chunkOffset,double sampleRate) {
+        transport.update(std::move(position),chunkOffset,sampleRate);
     }
     void pollLatencies() noexcept {
         // Message-thread-only check for hosted processors that change PDC
@@ -135,6 +164,7 @@ private:
     juce::AudioPluginFormatManager formats;
     std::array<std::atomic<juce::AudioPluginInstance*>,slotCount> active{};
     std::array<std::atomic<int>,slotCount> latencies{};
+    HostedTransport transport; // outlives all owned plug-ins at destruction
     std::array<std::vector<std::unique_ptr<juce::AudioPluginInstance>>,slotCount> owned;
     std::array<juce::String,slotCount> names;
     std::array<juce::File,slotCount> locations;

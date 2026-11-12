@@ -21,6 +21,32 @@ int main(int argc,char** argv) {
         std::fprintf(stderr,"Unrelated Skell products must remain hostable\n");
         return 9;
     }
+    // The nested effect must see accurate tempo, transport and chunk position.
+    juce::AudioPlayHead::PositionInfo position;
+    position.setBpm(96.);
+    position.setPpqPosition(12.);
+    position.setTimeInSamples(std::int64_t{48000});
+    position.setTimeInSeconds(1.);
+    position.setIsPlaying(true);
+    skellpreset::host::HostedTransport transport;
+    transport.update(position,240,48000.);
+    const auto observed=transport.getPosition();
+    if(!observed || !observed->getIsPlaying()
+       || observed->getBpm()!=position.getBpm()
+       || observed->getTimeInSamples()!=juce::Optional<std::int64_t>{48240}
+       || !observed->getTimeInSeconds()
+       || std::abs(*observed->getTimeInSeconds()-1.005)>1.e-9
+       || !observed->getPpqPosition()
+       || std::abs(*observed->getPpqPosition()-12.008)>1.e-9) {
+        std::fprintf(stderr,"Hosted transport BPM, playing or chunk offset wrong\n");
+        return 10;
+    }
+    transport.update({},0,48000.);
+    if(transport.getPosition()) {
+        std::fprintf(stderr,"Missing DAW transport must remain unavailable\n");
+        return 11;
+    }
+
     // Index only directory names. A nested .vst3 is an opaque bundle,
     // not a folder to recurse through, and duplicate roots are harmless.
     const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
@@ -71,11 +97,12 @@ int main(int argc,char** argv) {
         for(int n=0;n<512;++n)
             audio.setSample(ch,n,.25f*std::sin(.02f*(float)n));
     juce::MidiBuffer midi;
+    host.updateTransport(position,240,48000.);
     plugin->processBlock(audio,midi);
     double maxError=0.;
     for(int ch=0;ch<2;++ch)
         for(int n=0;n<512;++n) {
-            const double ideal=.125*std::sin(.02*(double)n);
+            const double ideal=.0625*std::sin(.02*(double)n);
             const double value=audio.getSample(ch,n);
             if(!std::isfinite(value))return 5;
             maxError=std::max(maxError,std::abs(value-ideal));
@@ -87,6 +114,6 @@ int main(int argc,char** argv) {
         std::fprintf(stderr,"Hosted plug-in state was not captured\n");return 7;
     }
     host.release();
-    std::printf("PASS nested JUCE VST3 load, stereo processing, PDC and state\n");
+    std::printf("PASS nested JUCE VST3 load, forwarded transport, stereo processing, PDC and state\n");
     return 0;
 }

@@ -39,7 +39,14 @@ if the third-party plugin is faulty.
 
 The host accepts **stereo-input/stereo-output audio effects only**. Instruments,
 MIDI routing, arbitrary sidechains and external VST2/AU/CLAP formats are not
-supported. Plugin scanning and creation are performed on the JUCE message
+supported. The native rack forwards available DAW tempo, playing/recording state,
+timeline position and timing to nested VST3s. Skell-Preset reads the host
+playhead once per callback, passes a stable snapshot to the hosted effect, and
+advances sample/seconds/PPQ for internal chunks. This is a read-only timeline
+bridge, not transport control, MIDI forwarding or note-trigger support. Timing
+fields absent from FL Studio remain absent rather than guessed. Host loop
+wraps inside unusually large audio buffers are not yet simulated; test real
+looping transport before calling this production-ready. Plugin scanning and creation are performed on the JUCE message
 thread; loading a slow or defective plugin can stall the UI. The current host
 retains replaced instances until the processor is destroyed to prevent
 audio-thread use-after-free; replacements are capped per physical slot.
