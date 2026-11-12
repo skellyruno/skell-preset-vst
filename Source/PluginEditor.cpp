@@ -80,14 +80,22 @@ public:
             s.setDoubleClickReturnValue(true,.5);
             const juce::StringArray macroLabels{"Tone","Punch","Space","Grit"};
             s.setTooltip(macroLabels[k]+"  |  0-100  |  double-click resets to 50");
-            s.textFromValueFunction=[](double n) {
-                return juce::String(juce::roundToInt(juce::jlimit(0.,1.,n)*100.))+"%";
-            };
             s.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
             s.setColour(juce::Slider::trackColourId,Theme::green);
             s.setColour(juce::Slider::thumbColourId,Theme::white);
             addAndMakeVisible(s);
-            macroAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"macro"+juce::String(k+1),s);
+            macroAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                p.state,"macro"+juce::String(k+1),s);
+            // APVTS installs its own decimal formatter. Our 0-100 formatter
+            // must be applied AFTER binding to retain the host's original
+            // parameter normalization while showing integer percentages.
+            s.textFromValueFunction=[](double n) {
+                return juce::String(juce::roundToInt(juce::jlimit(0.,1.,n)*100.))+"%";
+            };
+            s.valueFromTextFunction=[](const juce::String& value) {
+                return juce::jlimit(0.,1.,value.getDoubleValue()/100.);
+            };
+            s.updateText();
         }
         for(auto* s:{&input,&mix,&output}) {
             s->setSliderStyle(juce::Slider::LinearHorizontal);
