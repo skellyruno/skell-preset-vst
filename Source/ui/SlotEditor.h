@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 #include "ModulePicker.h"
+#include "InstalledVST3Browser.h"
 #include <array>
 #include <memory>
 class SlotEditor final:public juce::Component {
@@ -36,6 +37,7 @@ private:
     juce::ComboBox moduleBox;
     juce::TextButton moduleTrigger{"SELECT EFFECT"};
     SkellModulePicker modulePicker;
+    SkellInstalledVST3Browser installedBrowser;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
     std::unique_ptr<juce::FileChooser> externalChooser;
     juce::ToggleButton activeButton;
@@ -52,4 +54,6 @@ private:
     std::array<float,6> lastControls{};
     std::array<float,24> lastEqControls{};
     void updateGraphNode(juce::Point<float>);
+    void chooseVST3File();
+    void loadVST3FromFile(const juce::File& file);
 };
