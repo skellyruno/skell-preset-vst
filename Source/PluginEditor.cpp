@@ -5,6 +5,7 @@
 #include "ui/PresetBrowser.h"
 #include "ui/SkullThemeButton.h"
 #include "ui/SkellPowerButton.h"
+#include "ui/SkellMacroKnob.h"
 #include <SkellCore/UI.h>
 #include <array>
 #include <memory>
@@ -799,7 +800,7 @@ private:
     juce::File lastCaptureFile;
     juce::TextButton viewSwitch;
     SkellPowerButton powerButton;
-    std::array<juce::Slider,4> macro;
+    std::array<SkellMacroKnob,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
     juce::Slider input,mix,output;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputAttachment,mixAttachment,outputAttachment;
