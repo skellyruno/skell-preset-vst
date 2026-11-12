@@ -192,6 +192,9 @@ private:
             case 2:case 3:case 4:case 11:case 17:case 19:return "Dynamics";
             case 6:case 7:case 9:case 10:case 18:return "Space";
             case 15:case 16:case 20:case 21:case 22:return "Motion";
+            case 23:case 26:return "Tone";
+            case 24:return "Motion";
+            case 25:return "Tone";
             case 12:return "External";
             default:return "Utility";
         }
@@ -211,6 +214,10 @@ private:
             case 13:return "radio telephone lo-fi";
             case 15:case 21:return "sweep wobble flange";
             case 22:return "alien metallic voice modulation";
+            case 23:return "adlib chop stutter rhythmic gate";
+            case 24:return "adlib motion autopan stereo";
+            case 25:return "adlib filter radio tone";
+            case 26:return "adlib saturate drive grit";
             default:return {};
         }
     }

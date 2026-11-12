@@ -5,7 +5,7 @@
 using namespace skellpreset;
 using namespace skellpreset::dsp;
 namespace {
-const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator"};
+const juce::StringArray types{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Adlib CHOP","Adlib MOTION","Adlib FILTER","Adlib SATURATE"};
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 }
 
@@ -75,6 +75,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
     voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
     chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
+    adlibFx.prepare(sampleRate);
     delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
@@ -237,6 +238,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const int channels=juce::jmin(2,buffer.getNumChannels());
     const int total=buffer.getNumSamples();
     if(channels<1 || total<=0)return;
+    float hostBpm=120.f;
+    if(auto* playhead=getPlayHead())if(auto position=playhead->getPosition())
+     if(auto tempo=position->getBpm())if(std::isfinite(*tempo)&&*tempo>=20.&&*tempo<=400.)
+      hostBpm=(float)*tempo;
     const bool monoSource=getTotalNumInputChannels()==1;
     const int mode=juce::jlimit(0,3,(int)rawGlobal.mode->load());
     inputSmooth.setTargetValue(dbToGain(rawGlobal.input->load()));
@@ -487,6 +492,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     case RingModFX: {
                         const auto y=e.ring.process(l,r);
                         wetL=y[0];wetR=y[1];break;
+                    }
+                    case AdlibChop:case AdlibMotion:case AdlibFilter:case AdlibSaturate:{
+                        const auto fxType=static_cast<skellcore::adlibfx::Type>(c.type-AdlibChop+1);
+                        const skellcore::adlibfx::Parameters params{
+                            fxType,c.p[0],c.p[1],c.p[2],c.p[3],hostBpm};
+                        const auto out=e.adlibFx.process({l,r},params);
+                        wetL=out.left;wetR=out.right;break;
                     }
                     case Saturator: {
                         const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));

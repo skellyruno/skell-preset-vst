@@ -32,6 +32,46 @@ int main(int argc, char** argv) {
     SkellPresetAudioProcessor processor;
     processor.prepareToPlay(48000.0, 512);
     int failures = 0;
+    // Exercise every newly integrated native AdlibFX through the actual VST3
+    // AudioProcessor path, not only the header-level portable tests.
+    for(double sr:{22050.,48000.,96000.}) {
+        for(int type=SkellPresetAudioProcessor::AdlibChop;
+            type<=SkellPresetAudioProcessor::AdlibSaturate;++type) {
+            processor.prepareToPlay(sr,256);
+            processor.loadFactoryPreset(0);
+            for(int slot=0;slot<processor.slotCount;++slot)processor.setSlotOn(slot,false);
+            processor.setSlotType(0,type);
+            processor.setSlotOn(0,true);
+            for(int k=0;k<4;++k)processor.setSlotParam(0,k,k==0?.88f:k==1?.62f:k==2?.37f:1.f);
+            if(auto* mode=processor.state.getParameter("mode"))
+                mode->setValueNotifyingHost(mode->convertTo0to1(1.f));
+            double delta=0.;
+            for(int block=0;block<5;++block) {
+                juce::AudioBuffer<float> audio(2,256);
+                for(int n=0;n<256;++n){
+                    const auto input=.17f*std::sin((float)(6.28318530718*220.*(n+block*256)/sr));
+                    audio.setSample(0,n,input);
+                    audio.setSample(1,n,input*.6f);
+                }
+                juce::MidiBuffer midi;
+                processor.processBlock(audio,midi);
+                for(int n=0;n<256;++n)for(int ch=0;ch<2;++ch) {
+                    const auto sample=audio.getSample(ch,n);
+                    if(!std::isfinite(sample)||std::abs(sample)>3.f) {
+                        std::fprintf(stderr,"AdlibFX %d invalid sample at %.0f Hz\n",type,sr);
+                        ++failures;break;
+                    }
+                    const auto original=.17f*std::sin((float)(6.28318530718*220.*(n+block*256)/sr))*(ch==0?1.f:.6f);
+                    delta+=std::abs(sample-original);
+                }
+            }
+            if(delta<1.e-3){
+                std::fprintf(stderr,"AdlibFX %d did not alter audio at %.0f Hz\n",type,sr);
+                ++failures;
+            }
+        }
+    }
+    processor.loadFactoryPreset(0);
     // Exercise the real AudioProcessor, not only the portable DSP header.
     // Variable and oversized DAW blocks must be safe after the rack's
     // block-based refactor for external plugin hosting.
@@ -131,7 +171,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-module-picker-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,20> effectScenes {{
+        const std::array<std::pair<const char*,int>,24> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -151,7 +191,11 @@ int main(int argc, char** argv) {
             {"voxrack-comp",SkellPresetAudioProcessor::VoxRackSmoothComp},
             {"vocal-chorus",SkellPresetAudioProcessor::VocalChorusFX},
             {"vocal-flanger",SkellPresetAudioProcessor::VocalFlangerFX},
-            {"ring-mod",SkellPresetAudioProcessor::RingModFX}
+            {"ring-mod",SkellPresetAudioProcessor::RingModFX},
+            {"adlib-chop",SkellPresetAudioProcessor::AdlibChop},
+            {"adlib-motion",SkellPresetAudioProcessor::AdlibMotion},
+            {"adlib-filter",SkellPresetAudioProcessor::AdlibFilter},
+            {"adlib-saturate",SkellPresetAudioProcessor::AdlibSaturate}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
@@ -259,15 +303,17 @@ int main(int argc, char** argv) {
             {"obsidian-advanced-70", "obsidian-module-picker-70"},
             {"obsidian-effect-vocal-chorus-70", "obsidian-effect-vocal-flanger-70"},
             {"obsidian-effect-ring-mod-70", "obsidian-effect-vocal-flanger-70"},
-            {"obsidian-factory-wide-choir-70", "obsidian-factory-alien-ring-70"}
+            {"obsidian-factory-wide-choir-70", "obsidian-factory-alien-ring-70"},
+            {"obsidian-effect-adlib-chop-70", "obsidian-effect-ring-mod-70"},
+            {"obsidian-effect-adlib-motion-70", "obsidian-effect-adlib-filter-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 84) {
-            std::fprintf(stderr, "Expected 84 PNGs, captured %d\n", report.captured);
+        if (report.captured != 88) {
+            std::fprintf(stderr, "Expected 88 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
