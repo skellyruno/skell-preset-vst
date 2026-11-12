@@ -5,6 +5,7 @@
 #include "ui/PresetBrowser.h"
 #include "ui/SkullThemeButton.h"
 #include "ui/SkellPowerButton.h"
+#include "ui/SkellActionButton.h"
 #include "ui/SkellMacroKnob.h"
 #include <SkellCore/UI.h>
 #include <array>
@@ -37,6 +38,11 @@ public:
         chain.onDockRequest=[this](bool right){dockRack(right);};
 
         chain.onSelection=[this](int s){slot.select(s);chain.setSelectedSlot(s);};
+        chain.onReplaceRequest=[this](int s){
+            slot.select(s);
+            chain.setSelectedSlot(s);
+            slot.openModulePicker();
+        };
 
         preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
         preset.onClick=[this]{if(browser.isVisible())browser.setVisible(false);else browser.open();};
@@ -232,9 +238,9 @@ public:
             "Use the single view button to switch between four macros and the full effect rack.");
         if(chain.isVisible() && slot.isVisible()) {
             steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
-                "Select an effect slot or use its add control to build your processing chain.");
+                "Double-click a row to replace its effect. Drag its small ring for wet blend; click the rightmost green dot to bypass.");
             steps.emplace_back(&slot,"EDIT A SLOT",
-                "Adjust the selected effect here. Rack slots keep their own controls and order.");
+                "Adjust the selected effect here. Rack slots keep their own independent controls, order and automation.");
         }
         steps.emplace_back(&powerButton,"POWER / BYPASS",
             "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
@@ -407,6 +413,9 @@ public:
         powerButton.onClick();
         if(!powerButton.isBypassed() || chain.isVisible())
             issues.add("Simple mode power button changed the view or failed");
+        if(powerButton.getButtonText().isNotEmpty() ||
+           powerButton.getRight()<Theme::width-18)
+            issues.add("Header power must be icon-only at the far right");
         powerButton.onClick();
         configureForScreenshot(0,1,false);
         for(const auto& control:macro)
@@ -424,12 +433,20 @@ public:
         dockRack(false);
         if(chain.getX()>=slot.getX())
             issues.add("Rack failed to return left");
+        processor.loadFactoryPreset(0);
+        if(!chain.testRackControlsAndWet())
+            issues.add("Rack wet trim and green bypass dot did not update or restore host parameters");
+        if(!chain.triggerReplaceForTest(0) || !slot.modulePickerVisibleForTest())
+            issues.add("Rack double-click replacement did not open effect library");
+        slot.openModulePicker();
+        if(slot.modulePickerVisibleForTest())
+            issues.add("Rack double-click effect library could not be closed");
         if(!slot.testModulePickerInteraction())
             issues.add("Module browser did not toggle, filter or load Ring Mod");
         if(!slot.testEightBandGraphAndQ())
             issues.add("8-Band EQ graph did not edit the eighth band and its Q");
         if(!slot.testKnobReadouts())
-            issues.add("APVTS overwrote physical Hz/dB/Q/% knob readouts");
+            issues.add("APVTS overwrote physical Hz/dB/Q knob readouts");
         // This drives the same XY mutation code as real mouse dragging:
         // verify the graphical insert is an actual parameter editor.
         processor.loadFactoryPreset(0);
@@ -557,7 +574,7 @@ public:
         g.setColour(Theme::panel);g.fillRect(0,0,Theme::width,76);
         g.setColour(Theme::stroke);g.drawHorizontalLine(75,0.f,(float)Theme::width);
         // One typographic run avoids the clipped hyphen and inconsistent gaps.
-        // PRESET stays true neon green across all three colour skins.
+        // PRESET stays neon green in the main Obsidian skin.
         juce::AttributedString brand;
         brand.setJustification(juce::Justification::centredLeft);
         brand.append("SKELL",Theme::white);
@@ -568,24 +585,17 @@ public:
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,271.f);
         wordmark.draw(g,juce::Rectangle<float>(75.f,18.f,271.f,38.f));
-        // Native post-FX scope from actual plugin output, never a synthetic
-        // animation like 322's placeholder recording thumbnails.
-        std::array<float,128> waveform{};
-        processor.getLiveWaveform(waveform);
-        const float sx=123.f,sw=217.f,sy=62.f;
-        g.setColour(Theme::stroke.withAlpha(.58f));
-        g.drawHorizontalLine((int)sy,sx,sx+sw);
-        juce::Path livePath;
-        for(std::size_t i=0;i<waveform.size();++i) {
-            const float x=sx+(float)i*sw/(waveform.size()-1);
-            const float y=sy-juce::jlimit(-1.f,1.f,waveform[i])*7.f;
-            if(i==0)livePath.startNewSubPath(x,y);
-            else livePath.lineTo(x,y);
-        }
-        g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.92f));
-        g.strokePath(livePath,juce::PathStrokeType(1.25f));
-        Theme::text(g,processor.isCapturing()?"REC":"LIVE",{76,54,46,17},
-                    10,processor.isCapturing()?Theme::red:Theme::green,true);
+        // The new tagline lives directly under SKELLPRESET, rather than
+        // fighting the old waveform strip for the same 14 px.
+        Theme::text(g,"ONE RACK. EVERY PRESET.",{76,54,222,15},
+                    10.3f,Theme::muted,true);
+        const float inputLevel=juce::jlimit(0.f,1.f,processor.getInputPeak());
+        const bool recording=processor.isCapturing();
+        const auto liveColour=recording?Theme::red:Theme::green;
+        g.setColour(liveColour.withAlpha(.23f+.65f*inputLevel));
+        g.fillEllipse(304.f,58.f,6.f,6.f);
+        Theme::text(g,recording?"REC":"LIVE",{315,53,37,17},9.5f,
+                    liveColour,true);
         Theme::text(g,processor.state.state.getProperty("presetBank","Main Vocals").toString().toUpperCase(),{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
@@ -616,6 +626,8 @@ public:
                 processor.isCapturing()?Theme::red:Theme::green,true);
             g.setColour(Theme::stroke.withAlpha(.48f));
             g.drawHorizontalLine(317,202.f,1077.f);
+            std::array<float,128> waveform{};
+            processor.getLiveWaveform(waveform);
             juce::Path simpleScope;
             for(std::size_t n=0;n<waveform.size();++n) {
                 const float x=205.f+(float)n*867.f/(waveform.size()-1);
@@ -698,7 +710,7 @@ public:
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
         viewSwitch.setBounds(796,27,237,37);
-        powerButton.setBounds(1045,27,108,37);
+        powerButton.setBounds(1104,26,50,40);
         help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
@@ -798,10 +810,10 @@ private:
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
-    juce::TextButton preset,match,help,settings,record;
+    SkellActionButton preset,match,help,settings,record;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
-    juce::TextButton viewSwitch;
+    SkellActionButton viewSwitch;
     SkellPowerButton powerButton;
     std::array<SkellMacroKnob,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;

@@ -106,6 +106,59 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
 ChainPanel::ChainPanel(SkellPresetAudioProcessor& p):processor(p) {}
+float ChainPanel::slotWet(int physicalSlot) const noexcept {
+    if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount)return 0.f;
+    const auto* value=processor.state.getRawParameterValue(
+        "s"+juce::String(physicalSlot+1)+"_wet");
+    return value?juce::jlimit(0.f,1.f,value->load()):0.f;
+}
+void ChainPanel::setSlotWet(int physicalSlot,float amount) {
+    if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount)return;
+    const auto name="s"+juce::String(physicalSlot+1)+"_wet";
+    if(auto* parameter=processor.state.getParameter(name)) {
+        // Retain the original host automation ID and physical 0..1 range.
+        const float next=juce::jlimit(0.f,1.f,amount);
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(next));
+    }
+    visualSnapshotValid=false;
+    repaint();
+}
+void ChainPanel::toggleSlotPower(int physicalSlot) {
+    if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount ||
+       processor.slotType(physicalSlot)==SkellPresetAudioProcessor::Empty)return;
+    const auto* value=processor.state.getRawParameterValue(
+        "s"+juce::String(physicalSlot+1)+"_on");
+    processor.setSlotOn(physicalSlot,!(value && value->load()>.5f));
+    visualSnapshotValid=false;
+    repaint();
+}
+bool ChainPanel::selectAndReplace(int visualRow) {
+    if(visualRow<0 || visualRow>=processor.activeSlotCount())return false;
+    const int slot=processor.slotIdAt(visualRow);
+    selected=slot;
+    if(onSelection)onSelection(slot);
+    if(onReplaceRequest)onReplaceRequest(slot);
+    repaint();
+    return (bool)onReplaceRequest;
+}
+bool ChainPanel::testRackControlsAndWet() {
+    const int id=processor.slotIdAt(0);
+    if(processor.slotType(id)==SkellPresetAudioProcessor::Empty)return false;
+    const float previous=slotWet(id);
+    const auto* enabled=processor.state.getRawParameterValue(
+        "s"+juce::String(id+1)+"_on");
+    if(!enabled)return false;
+    const bool wasOn=enabled->load()>.5f;
+    setSlotWet(id,.375f);
+    const bool correctWet=std::abs(slotWet(id)-.375f)<.001f;
+    toggleSlotPower(id);
+    const bool correctToggle=(enabled->load()>.5f)!=wasOn;
+    setSlotWet(id,previous);
+    processor.setSlotOn(id,wasOn);
+    const bool correctRestore=std::abs(slotWet(id)-previous)<.001f &&
+        (enabled->load()>.5f)==wasOn;
+    return correctWet && correctToggle && correctRestore;
+}
 namespace {
 constexpr int rowStart=47, rowStep=42, rowHeight=38;
 constexpr int addTop=472, addHeight=33;
@@ -159,30 +212,73 @@ void ChainPanel::paint(juce::Graphics& g) {
         }
         g.setColour(Theme::muted.withAlpha(.38f));
         for(int dot=0;dot<6;dot++)g.fillEllipse(18.f+(dot%2)*4.f,(float)top+12.f+(dot/2)*4.f,1.6f,1.6f);
-        Theme::text(g,juce::String(row+1).paddedLeft('0',2),{35,top+9,23,18},10,Theme::muted);
-        drawIcon(g,type,69,top+9);
-        // Compact rack names must not clip against the status LED.
+        Theme::text(g,juce::String(row+1).paddedLeft('0',2),{32,top+9,21,18},10,Theme::muted);
+        // Thin bone engraving on each module face; no generic FL clone art.
+        drawIcon(g,type,54,top+10);
+        // Narrow, hardware-like row: effect / FL-style wet trim / power dot.
+        // Wet is the existing 0..1 automatable APVTS slot parameter.
         juce::String compact=processor.moduleName(type);
         if(type==SkellPresetAudioProcessor::VoxRackSmoothComp)compact="Vox Smooth";
         else if(type==SkellPresetAudioProcessor::VoxRackRoom)compact="Vox Room";
-        else if(type==SkellPresetAudioProcessor::ThreeBandDynamics)compact="3-Band Dyn";
-        else if(type==SkellPresetAudioProcessor::ExternalVST3)compact="External VST3";
+        else if(type==SkellPresetAudioProcessor::ThreeBandDynamics)compact="3-Band";
+        else if(type==SkellPresetAudioProcessor::ExternalVST3)compact="VST3 Insert";
         else if(type==SkellPresetAudioProcessor::DuckingPingPongFX)compact="Duck Echo";
         else if(type==SkellPresetAudioProcessor::VocalVibratoFX)compact="Vibrato";
         else if(type==SkellPresetAudioProcessor::EightBandToneFX)compact="8-Band EQ";
-        else if(type==SkellPresetAudioProcessor::SerialDynamicsFX)compact="FET / Opto";
-        else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX)compact="Harsh Tamer";
-        else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX)compact="Noise Guard";
-        else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX)compact="Studio Pitch";
-        const float fontSize=compact.length()>12?11.f:12.4f;
-        Theme::text(g,compact,{97,top+8,88,19},fontSize,
-                    type==0?Theme::muted:Theme::white,selected==slot);
-        g.setColour(enabled?Theme::green:Theme::muted.withAlpha(.37f));
-        g.fillEllipse(188.f,(float)top+15.f,8.f,8.f);
+        else if(type==SkellPresetAudioProcessor::SerialDynamicsFX)compact="FET/Opto";
+        else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX)compact="Harsh";
+        else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX)compact="Noise";
+        else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX)compact="Pitch";
+        const float nameSize=compact.length()>10?9.1f:compact.length()>8?9.9f:10.8f;
+        Theme::text(g,compact,{78,top+8,69,19},nameSize,
+                    type==0?Theme::muted:(enabled?Theme::white:Theme::muted),selected==slot);
+        const float cx=165.f, cy=(float)top+19.f;
+        const float wet=slotWet(slot);
+        // Recessed FL-inspired wet dial, with bone-white marker and true arc.
+        g.setColour(Theme::bg.withAlpha(.94f));
+        g.fillEllipse(cx-12.f,cy-12.f,24.f,24.f);
+        g.setColour(Theme::stroke.brighter(.14f));
+        g.drawEllipse(cx-11.1f,cy-11.1f,22.2f,22.2f,1.1f);
+        juce::Path baseArc,valueArc;
+        constexpr float pi=juce::MathConstants<float>::pi;
+        constexpr float a0=1.24f*pi, a1=2.76f*pi;
+        baseArc.addCentredArc(cx,cy,8.45f,8.45f,0.f,a0,a1,true);
+        valueArc.addCentredArc(cx,cy,8.45f,8.45f,0.f,a0,a0+(a1-a0)*wet,true);
+        g.setColour(Theme::muted.withAlpha(.27f));
+        g.strokePath(baseArc,juce::PathStrokeType(2.2f));
+        if(wet>.001f) {
+            g.setColour((enabled?Theme::green:Theme::muted).withAlpha(enabled?.94f:.40f));
+            g.strokePath(valueArc,juce::PathStrokeType(2.45f));
+        }
+        const float angle=a0+(a1-a0)*wet;
+        g.setColour(enabled?Theme::white:Theme::muted);
+        g.drawLine(cx+std::sin(angle)*3.5f,cy-std::cos(angle)*3.5f,
+                   cx+std::sin(angle)*6.8f,cy-std::cos(angle)*6.8f,1.35f);
+        // Hit target is wider than the dot, for usable control at 70% scale.
+        const float px=193.f,py=cy;
+        if(enabled) {
+            g.setColour(Theme::green.withAlpha(.13f));
+            g.fillEllipse(px-9.5f,py-9.5f,19.f,19.f);
+        }
+        g.setColour(Theme::bg);
+        g.fillEllipse(px-6.2f,py-6.2f,12.4f,12.4f);
+        g.setColour(enabled?Theme::green.withAlpha(.90f):Theme::stroke.brighter(.3f));
+        g.drawEllipse(px-6.2f,py-6.2f,12.4f,12.4f,1.25f);
+        g.setColour(enabled?Theme::green.brighter(.22f):Theme::muted.withAlpha(.28f));
+        g.fillEllipse(px-3.55f,py-3.55f,7.1f,7.1f);
         const auto peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
-        if(peak>0.002f) {
-            g.setColour(Theme::green.withAlpha(enabled?.72f:.18f));
-            g.fillRoundedRectangle(juce::Rectangle<float>(12.f,(float)top+35.f,191.f*peak,2.f),.8f);
+        // Bone-rib activity strip is driven by measured audio, not fabricated
+        // motion. Separate bright vertebrae with dark joints for visual depth.
+        for(int rib=0;rib<13;++rib) {
+            const float x=15.f+14.1f*(float)rib;
+            const bool lit=enabled && peak>(float)rib/13.f;
+            g.setColour(lit?Theme::green.withAlpha(.25f+.55f*peak)
+                           :Theme::stroke.withAlpha(.55f));
+            g.fillRoundedRectangle(x,(float)top+34.3f,9.2f,2.5f,1.1f);
+            if(lit) {
+                g.setColour(Theme::white.withAlpha(.13f));
+                g.fillRoundedRectangle(x+1.f,(float)top+34.25f,6.f,.65f,.3f);
+            }
         }
     }
     if(active>10) {
@@ -200,8 +296,8 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,active>10?"SCROLL / DRAG TO REORDER":"DRAG TO REORDER · RIGHT-CLICK",
-        {13,511,193,18},9,Theme::muted,false,juce::Justification::centred);
+    Theme::text(g,active>10?"SCROLL / DBL-CLICK TO SWAP":"DBL-CLICK FX / WET RING / POWER DOT",
+        {13,511,193,18},8.5f,Theme::muted,false,juce::Justification::centred);
 }
 void ChainPanel::refreshIfChanged() {
     const int currentSlots=processor.activeSlotCount();
@@ -212,10 +308,12 @@ void ChainPanel::refreshIfChanged() {
         const int slot=processor.slotIdAt(row);
         const auto prefix="s"+juce::String(slot+1)+"_";
         const auto* enabled=processor.state.getRawParameterValue(prefix+"on");
-        const int value=slot*4096+processor.slotType(slot)*128
-            +(enabled && enabled->load()>.5f?64:0)
+        const int wetPercent=juce::jlimit(0,100,juce::roundToInt(slotWet(slot)*100.f));
+        const int value=slot*65536+processor.slotType(slot)*4096
+            +(enabled && enabled->load()>.5f?2048:0)
+            +wetPercent*16
             +(std::isfinite(processor.getSlotPeak(slot))
-                ? juce::jlimit(0,63,(int)(processor.getSlotPeak(slot)*64.f)) : 0);
+                ? juce::jlimit(0,15,juce::roundToInt(processor.getSlotPeak(slot)*15.f)) : 0);
         if(value!=lastVisual[(size_t)row])changed=true;
         lastVisual[(size_t)row]=value;
     }
@@ -263,14 +361,27 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     if(index<0 || e.x<10 || e.x>206)return;
     const auto slot=processor.slotIdAt(index);
     if(e.mods.isPopupMenu()){popupFor(slot);return;}
-    if(e.x>=181 && e.x<=206) {
-        auto* v=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");
-        processor.setSlotOn(slot,!(v&&v->load()>.5f));repaint();return;
+    if(e.x>=powerControlLeft && e.x<=powerControlRight) {
+        toggleSlotPower(slot);return;
+    }
+    if(e.x>=wetControlLeft && e.x<=wetControlRight) {
+        selected=slot;
+        if(onSelection)onSelection(slot);
+        wetDragSlot=slot;wetDragStart=slotWet(slot);pressPoint=e.getPosition();
+        if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+"_wet"))
+            p->beginChangeGesture();
+        return;
     }
     selected=slot;if(onSelection)onSelection(slot);
     pendingFrom=index;dragFrom=dragTo=-1;dragging=false;pressPoint=e.getPosition();repaint();
 }
 void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
+    if(wetDragSlot>=0) {
+        const float delta=(float)(pressPoint.y-e.y)*.008f
+                        +(float)(e.x-pressPoint.x)*.003f;
+        setSlotWet(wetDragSlot,wetDragStart+delta);
+        return;
+    }
     if(dockingDrag) {
         if(auto* parent=getParentComponent()) {
             const int parentX=e.getEventRelativeTo(parent).getPosition().x;
@@ -289,6 +400,12 @@ void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
     }
 }
 void ChainPanel::mouseUp(const juce::MouseEvent&) {
+    if(wetDragSlot>=0) {
+        if(auto* p=processor.state.getParameter("s"+juce::String(wetDragSlot+1)+"_wet"))
+            p->endChangeGesture();
+        wetDragSlot=-1;
+        repaint();return;
+    }
     if(dockingDrag) {
         dockingDrag=false;
         setMouseCursor(juce::MouseCursor::NormalCursor);
@@ -298,21 +415,43 @@ void ChainPanel::mouseUp(const juce::MouseEvent&) {
     }
     if(pendingFrom<0)return;
     if(dragging && dragTo>=0 && dragTo!=dragFrom)processor.reorderSlot(dragFrom,dragTo);
-    const int slot=processor.slotIdAt(dragging && dragTo>=0 ? dragTo : pendingFrom);
-    const bool emptyClick=!dragging &&
-        processor.slotType(slot)==SkellPresetAudioProcessor::Empty;
     pendingFrom=dragFrom=dragTo=-1;dragging=false;repaint();
-    if(emptyClick)popupFor(slot);
 }
 
+void ChainPanel::mouseDoubleClick(const juce::MouseEvent& e) {
+    if(e.mods.isPopupMenu())return;
+    const int row=rowAt(e.y);
+    if(row<0 || e.x<10 || e.x>powerControlRight)return;
+    const int slot=processor.slotIdAt(row);
+    if(e.x>=powerControlLeft)return; // power is a single-click switch
+    if(e.x>=wetControlLeft) {
+        if(wetDragSlot==slot) {
+            if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+"_wet"))
+                p->endChangeGesture();
+            wetDragSlot=-1;
+        }
+        setSlotWet(slot,1.f);return; // FL-style double-click resets wet
+    }
+    selectAndReplace(row);
+}
 void ChainPanel::mouseMove(const juce::MouseEvent& e) {
     const int next=(e.x>=10 && e.x<=206)?rowAt(e.y):-1;
     if(next!=hoveredRow){hoveredRow=next;repaint();}
     const bool add=(e.y>=addTop && e.y<addTop+addHeight && e.x>=10 && e.x<=206);
     if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=142)
         setMouseCursor(juce::MouseCursor::DraggingHandCursor);
-    else if(next>=0 && e.x<181)setMouseCursor(juce::MouseCursor::DraggingHandCursor);
-    else if(next>=0 || add)setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    else if(next>=0 && e.x>=wetControlLeft && e.x<wetControlRight) {
+        const int physical=processor.slotIdAt(next);
+        setTooltip("WET "+juce::String(juce::roundToInt(slotWet(physical)*100.f))+
+                   "%  /  drag to blend  /  double-click to reset");
+        setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
+    } else if(next>=0 && e.x>=powerControlLeft) {
+        setTooltip("Click green dot to enable / bypass this effect");
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    } else if(next>=0) {
+        setTooltip("Click to select / double-click to change effect / drag to reorder");
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    } else if(add)setMouseCursor(juce::MouseCursor::PointingHandCursor);
     else setMouseCursor(juce::MouseCursor::NormalCursor);
 }
 void ChainPanel::mouseExit(const juce::MouseEvent&) {

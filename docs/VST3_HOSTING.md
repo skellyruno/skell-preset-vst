@@ -14,8 +14,11 @@ the parent FL Studio process. Save your FL project before testing a new insert.
 4. If your plugin is installed elsewhere, choose **BROWSE FILE...** from the
    browser to manually select its `.vst3` bundle.
 5. Once loaded, click **OPEN PLUGIN UI** to use the third-party editor.
-6. Use Skell-Preset's per-slot wet/bypass and reorder controls. The hosted
-   effect receives genuine multi-sample blocks, not one process call per sample.
+6. In the left rack, drag the circular wet ring for per-effect 0–100% blend,
+   click the far-right green dot to bypass/enable that effect, and double-click
+   the effect name to reopen the searchable replacement library. These controls
+   continue to automate the original `sN_wet` and `sN_on` host parameters.
+   The hosted effect receives genuine multi-sample blocks, not one process call per sample.
    The selected insert panel shows its own reported latency in samples and
    milliseconds, while the rack header shows combined PDC. Search results
    are filenames, not verified plugin metadata; only LOAD validates the VST3.

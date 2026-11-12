@@ -53,21 +53,13 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     moduleBox.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
     addChildComponent(moduleBox); // retain selected IDs for host/UI assertions
     moduleBox.setVisible(false);
-    moduleTrigger.setTooltip("Browse native audio effects by name and category");
-    moduleTrigger.onClick=[this]{
-        installedBrowser.hide();
-        if(modulePicker.isVisible())modulePicker.hide();
-        else modulePicker.open(processor.slotType(slot));
-    };
     modulePicker.onSelect=[this](int type){
         processor.setSlotType(slot,type);
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
-        moduleTrigger.setButtonText(processor.moduleName(type));
         graphSnapshotValid=false;
         refreshIfChanged();
         repaint();
     };
-    addAndMakeVisible(moduleTrigger);
     addAndMakeVisible(modulePicker);
     modulePicker.setVisible(false);
     for(auto* button:{&loadExternal,&editExternal}){
@@ -94,11 +86,6 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     editExternal.onClick=[this] {
         processor.openHostedVST3Editor(slot);
     };
-    activeButton.setButtonText("ON");activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
-    activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);addAndMakeVisible(activeButton);
-    wetKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    wetKnob.setTextBoxStyle(juce::Slider::TextBoxBelow,false,70,21);
-    addAndMakeVisible(wetKnob);
     eqQSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     eqQSlider.setTextBoxStyle(juce::Slider::TextBoxRight,false,59,22);
     eqQSlider.setRange(0.,1.,.001);
@@ -133,13 +120,6 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
 // Reapply our physical-unit formatting AFTER each (re)attachment, including
 // EQ band-page switches. This affects presentation only, not automatable values.
 void SlotEditor::applyKnobReadouts() {
-    wetKnob.textFromValueFunction=[](double v) {
-        return juce::String(juce::roundToInt(juce::jlimit(0.,1.,v)*100.))+"%";
-    };
-    wetKnob.valueFromTextFunction=[](const juce::String& text) {
-        const double value=text.getDoubleValue();
-        return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
-    };
     eqQSlider.textFromValueFunction=[](double normalized) {
         const float q=skellpreset::dsp::EightBandTone::qFromNormalized((float)normalized);
         return "Q "+juce::String(q,2);
@@ -274,7 +254,6 @@ void SlotEditor::applyKnobReadouts() {
     // formatting. Reassigning textFromValueFunction alone leaves that cached
     // raw decimal visible until the user moves a knob. Update the visible
     // contents immediately, including after selecting a different EQ bank.
-    wetKnob.updateText();
     eqQSlider.updateText();
     for(auto& knob:knobs)knob.updateText();
 }
@@ -310,17 +289,13 @@ void SlotEditor::applyTheme() {
     moduleBox.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
     moduleBox.setColour(juce::ComboBox::textColourId,Theme::white);
     moduleBox.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
-    moduleTrigger.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
-    moduleTrigger.setColour(juce::TextButton::textColourOffId,Theme::white);
     modulePicker.applyTheme();
     installedBrowser.applyTheme();
-    activeButton.setColour(juce::ToggleButton::tickColourId,Theme::green);
-    activeButton.setColour(juce::ToggleButton::textColourId,Theme::white);
     for(auto* button:{&loadExternal,&editExternal}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(auto* s:{&wetKnob,&eqQSlider,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
+    for(auto* s:{&eqQSlider,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         s->setColour(juce::Slider::thumbColourId,Theme::white);
@@ -348,19 +323,23 @@ void SlotEditor::showEqBank(int firstBand) {
     graphSnapshotValid=false;
     repaint();
 }
+void SlotEditor::openModulePicker() {
+    installedBrowser.hide();
+    if(modulePicker.isVisible())modulePicker.hide();
+    else modulePicker.open(processor.slotType(slot));
+}
 void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     eqBank=0;activeEqBand=0;
+    lastPeakLevel=-1;
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
     graphSnapshotValid=false;
-    enabledAttachment.reset();wetAttachment.reset();eqQAttachment.reset();
+    eqQAttachment.reset();
     externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
     moduleBox.setSelectedId(processor.slotType(slot)+1,juce::dontSendNotification);
-    enabledAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"on",activeButton);
-    wetAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"wet",wetKnob);
     if(processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX)
         eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             processor.state,prefix+"eqQ1",eqQSlider);
@@ -378,6 +357,14 @@ void SlotEditor::refreshIfChanged() {
     if(const auto* macro=processor.state.getRawParameterValue("macro2"))current[5]=macro->load();
     bool changed=!graphSnapshotValid || type!=lastType;
     for(int i=0;i<6;++i)changed=changed || std::abs(current[(size_t)i]-lastControls[(size_t)i])>1.e-5f;
+    const float measured=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+    const int level=juce::jlimit(0,14,juce::roundToInt(measured*14.f));
+    if(!changed && lastPeakLevel!=level) {
+        lastPeakLevel=level;
+        repaint(juce::Rectangle<int>(178,75,195,22)); // tiny live bone-rib overlay only
+        return;
+    }
+    lastPeakLevel=level;
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
         const int latency=processor.hostedVST3LatencySamples(slot);
         const bool loaded=processor.hasHostedVST3(slot);
@@ -414,7 +401,6 @@ void SlotEditor::refreshIfChanged() {
                 std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
                     processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
-        moduleTrigger.setButtonText(processor.moduleName(type));
     }
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
@@ -427,12 +413,9 @@ void SlotEditor::refreshIfChanged() {
     repaint();
 }
 void SlotEditor::resized() {
-    // 210px avoids "VoxRack Smooth Co..." truncation while preserving ON/WET.
-    moduleTrigger.setBounds(489,25,211,29);
+    // The rack row now owns wet, bypass and module replacement.
     moduleBox.setBounds(489,25,211,29);
     modulePicker.setBounds(405,66,470,400);
-    activeButton.setBounds(711,26,70,28);
-    wetKnob.setBounds(805,22,86,66);
     eqQSlider.setBounds(672,114,186,26);
     loadExternal.setBounds(52,420,177,62);
     installedBrowser.setBounds(85,62,735,385);
@@ -452,8 +435,27 @@ void SlotEditor::paint(juce::Graphics&g) {
     const int type=processor.slotType(slot);
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     Theme::text(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
-    Theme::text(g,"MODULE",{491,9,140,15},9,Theme::muted,true);
-    Theme::text(g,"WET",{821,5,65,15},11,Theme::muted,true,juce::Justification::centred);
+    // Remove the duplicate module dropdown and ON/WET controls. One action
+    // surface lives in the rack, including for external hosted VST3 effects.
+    Theme::text(g,"DOUBLE-CLICK AN EFFECT IN THE RACK TO REPLACE IT",
+                {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
+    // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
+    // vertebrae respond to the signal while leaving parameter graphs readable.
+    Theme::text(g,"BONE SIGNAL",{22,73,158,18},9.8f,Theme::muted,true);
+    const float level=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+    for(int rib=0;rib<14;++rib) {
+        const float x=178.f+13.5f*(float)rib;
+        const bool alive=level>((float)rib/14.f);
+        g.setColour(alive?Theme::green.withAlpha(.33f+.55f*level)
+                         :Theme::stroke.withAlpha(.67f));
+        g.fillRoundedRectangle(x+2.f,79.1f,6.7f,7.4f,2.8f);
+        g.fillEllipse(x,80.2f,4.5f,4.5f);
+        g.fillEllipse(x+6.f,80.2f,4.5f,4.5f);
+        if(alive) {
+            g.setColour(Theme::white.withAlpha(.15f));
+            g.drawLine(x+3.f,79.5f,x+8.f,79.5f,.8f);
+        }
+    }
     const auto plot=juce::Rectangle<float>(33,151,835,206);
     g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
@@ -1461,12 +1463,10 @@ bool SlotEditor::testKnobReadouts() {
     const auto frequency=knobs[0].getTextFromValue(.5);
     const auto gain=knobs[1].getTextFromValue(.5);
     const auto bandwidth=eqQSlider.getTextFromValue(.5);
-    const auto wet=wetKnob.getTextFromValue(1.);
     return processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX
         && frequency.containsIgnoreCase("Hz")
         && gain.containsIgnoreCase("dB")
-        && bandwidth.startsWithIgnoreCase("Q ")
-        && wet.contains("%");
+        && bandwidth.startsWithIgnoreCase("Q ");
 }
 
 bool SlotEditor::testEightBandGraphAndQ() {
@@ -1499,11 +1499,11 @@ bool SlotEditor::testModulePickerInteraction() {
         return false;
     if(modulePicker.filterMatchesForTest("compressor",SkellPresetAudioProcessor::VocalChorusFX))
         return false;
-    moduleTrigger.onClick();
+    openModulePicker();
     if(!modulePicker.isVisible())return false;
-    moduleTrigger.onClick();
+    openModulePicker();
     if(modulePicker.isVisible())return false;
-    moduleTrigger.onClick();
+    openModulePicker();
     modulePicker.chooseForTest(SkellPresetAudioProcessor::RingModFX);
     const auto* type=processor.state.getRawParameterValue(
         "s"+juce::String(slot+1)+"_type");
