@@ -435,10 +435,18 @@ void SlotEditor::paint(juce::Graphics&g) {
     const int type=processor.slotType(slot);
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     Theme::text(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
-    // Remove the duplicate module dropdown and ON/WET controls. One action
-    // surface lives in the rack, including for external hosted VST3 effects.
-    Theme::text(g,"DOUBLE-CLICK AN EFFECT IN THE RACK TO REPLACE IT",
-                {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
+    // No permanently bright instructions in the signal path. The rack,
+    // tooltips and guided tour explain the double-click replacement gesture;
+    // use this space for concise, useful insert-status identification.
+    const juce::String insertLabel=type==SkellPresetAudioProcessor::Empty
+        ?"AVAILABLE INSERT"
+        :type==SkellPresetAudioProcessor::ExternalVST3
+            ?"HOSTED VST3 INSERT":"SKELL NATIVE ENGINE";
+    g.setColour(Theme::stroke.withAlpha(.68f));
+    g.drawLine(675.f,36.f,675.f,51.f,.8f);
+    Theme::text(g,insertLabel,{688,31,177,24},10,
+                Theme::muted.withAlpha(.82f),true,
+                juce::Justification::centredRight);
     // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
     // vertebrae respond to the signal while leaving parameter graphs readable.
     Theme::text(g,"BONE SIGNAL",{22,73,158,18},9.8f,Theme::muted,true);
