@@ -42,6 +42,7 @@ private:
     SkellModulePicker modulePicker;
     SkellInstalledVST3Browser installedBrowser;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
+    juce::TextButton upgradeEq{"UPGRADE TO PARAMETRIC EQ"};
     std::unique_ptr<juce::FileChooser> externalChooser;
     juce::Slider eqQSlider;
     std::array<juce::Slider,2> eqCutSliders;
