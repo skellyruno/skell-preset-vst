@@ -41,7 +41,7 @@ endif()
 # preserved so duplicate CMake targets and DSP changes are impossible.
 FetchContent_Declare(SkellGuidedTourHeaders
     GIT_REPOSITORY https://github.com/skellyruno/skell-vst-template.git
-    GIT_TAG 3306ad495c93e062e39b8abbf079534b0b53da4e
+    GIT_TAG eb56702153c4373799a4e8e2663e0f158c0115a6
     GIT_SHALLOW FALSE
     SOURCE_SUBDIR _guided_tour_headers_only)
 FetchContent_MakeAvailable(SkellGuidedTourHeaders)
