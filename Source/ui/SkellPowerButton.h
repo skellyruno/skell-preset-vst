@@ -46,7 +46,7 @@ public:
             g.fillEllipse(cx-radius-2.f,cy-radius-2.f,
                           radius*2.f+4.f,radius*2.f+4.f);
         }
-        g.setFont(juce::Font(juce::FontOptions(12.5f,juce::Font::bold)));
+        g.setFont(Theme::font(12.5f,true));
         g.setColour(active?Theme::white:Theme::muted);
         g.drawFittedText(active?"ON":"OFF",
                          juce::Rectangle<int>(49,0,getWidth()-53,getHeight()),
