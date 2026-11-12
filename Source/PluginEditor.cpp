@@ -227,6 +227,8 @@ public:
             steps.emplace_back(&slot,"EDIT A SLOT",
                 "Adjust the selected effect here. Rack slots keep their own controls and order.");
         }
+        steps.emplace_back(&powerButton,"POWER / BYPASS",
+            "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
         steps.emplace_back(&mix,"BLEND YOUR SOUND",
             "Use Mix to balance the processed chain against your original audio.");
         steps.emplace_back(&settings,"INTERFACE SIZE",
@@ -360,9 +362,30 @@ public:
         viewSwitch.onClick();
         if(!chain.isVisible())issues.add("Advanced mode toggle failed");
         powerButton.onClick();
-        if(!bypassShade.isVisible())issues.add("Bypass did not enable overlay");
+        if(!bypassShade.isVisible() || !powerButton.isBypassed())
+            issues.add("Power button did not bypass and illuminate OFF state");
         powerButton.onClick();
-        if(bypassShade.isVisible())issues.add("Bypass toggle failed to restore workspace");
+        if(bypassShade.isVisible() || powerButton.isBypassed())
+            issues.add("Power button did not restore the processing ON state");
+        // The Simple macro dials must be real automatable controls, not
+        // decorative painted knobs. Verify 0-100 labels and both view modes.
+        configureForScreenshot(0,0,false);
+        for(int i=0;i<4;++i) {
+            if(macro[(size_t)i].getSliderStyle()!=
+               juce::Slider::RotaryHorizontalVerticalDrag)
+                issues.add("Simple macro is not a functional rotary");
+            if(!macro[(size_t)i].textFromValueFunction ||
+               macro[(size_t)i].getTextFromValue(.371)!="37%")
+                issues.add("Simple macro does not show whole-number 0-100");
+        }
+        powerButton.onClick();
+        if(!powerButton.isBypassed() || chain.isVisible())
+            issues.add("Simple mode power button changed the view or failed");
+        powerButton.onClick();
+        configureForScreenshot(0,1,false);
+        for(const auto& control:macro)
+            if(control.getSliderStyle()!=juce::Slider::LinearHorizontal)
+                issues.add("Advanced macro strip was unexpectedly replaced");
         const int beforeTheme=selectedTheme;
         themeButton.onClick();
         if(selectedTheme!=(beforeTheme+1)%3)
@@ -632,7 +655,13 @@ public:
             const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
             for(int k=0;k<4;k++){
                 const int x=(rackOnRight?30:265)+222*k;
-                Theme::text(g,labels[k],{x,590,171,17},12,Theme::muted,true);
+                Theme::text(g,labels[k],{x,590,105,17},12,Theme::muted,true);
+                const auto* value=processor.state.getRawParameterValue(
+                    "macro"+juce::String(k+1));
+                Theme::text(g,juce::String(juce::roundToInt(100.f*
+                    juce::jlimit(0.f,1.f,value?value->load():.5f))),
+                    {x+108,590,76,17},12,Theme::green,true,
+                    juce::Justification::centredRight);
             }
         }
     }
