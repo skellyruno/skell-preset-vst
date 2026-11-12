@@ -178,6 +178,59 @@ int main(int argc, char** argv) {
             }
         }
     }
+    // Exercise actual nonlinear insert DSP while the host automates drive at
+    // a very aggressive five-block cadence. Without per-sample drive ramping,
+    // parameter jumps could create a click between adjacent audio samples.
+    for(const int effect:{SkellPresetAudioProcessor::Saturator,
+                          SkellPresetAudioProcessor::Exciter}) {
+        processor.prepareToPlay(48000.,64);
+        processor.loadFactoryPreset(0);
+        for(int n=0;n<processor.activeSlotCount();++n) {
+            const int id=processor.slotIdAt(n);
+            processor.setSlotType(id,SkellPresetAudioProcessor::Empty);
+            processor.setSlotOn(id,false);
+        }
+        processor.setSlotType(0,effect);
+        processor.setSlotParam(0,0,0.f);
+        processor.setSlotParam(0,1,.5f);
+        processor.setSlotOn(0,true);
+        if(auto* wet=processor.state.getParameter("s1_wet"))
+            wet->setValueNotifyingHost(wet->convertTo0to1(1.f));
+        if(auto* grit=processor.state.getParameter("macro4"))
+            grit->setValueNotifyingHost(grit->convertTo0to1(.5f));
+        float last=0.f,largestJump=0.f;
+        bool haveLast=false;
+        for(int block=0;block<160;++block) {
+            processor.setSlotParam(0,0,(block/5)%2==0?0.f:1.f);
+            juce::AudioBuffer<float> input(2,64);
+            for(int n=0;n<64;++n) {
+                const int index=block*64+n;
+                const float sample=.09f*std::sin(
+                    .017937f*(float)index);
+                input.setSample(0,n,sample);
+                input.setSample(1,n,sample);
+            }
+            juce::MidiBuffer midi;
+            processor.processBlock(input,midi);
+            for(int n=0;n<64;++n) {
+                const float sample=input.getSample(0,n);
+                if(!std::isfinite(sample) ||
+                   std::fpclassify(sample)==FP_SUBNORMAL ||
+                   std::abs(sample)>1.f) {
+                    std::fprintf(stderr,"Automated nonlinear insert produced invalid audio\n");
+                    ++failures;break;
+                }
+                if(haveLast)
+                    largestJump=std::max(largestJump,std::abs(sample-last));
+                last=sample;haveLast=true;
+            }
+        }
+        if(largestJump>.085f) {
+            std::fprintf(stderr,"Automated nonlinear insert %d clicked: max step %f\n",
+                         effect,largestJump);
+            ++failures;
+        }
+    }
     // Drive the full real 7-insert processor with poisoned input once, then
     // exercise its delay/reverb tails. Neither a single bad sample nor a
     // misbehaving stage may leave the chain or slot meter in NaN/Inf.
