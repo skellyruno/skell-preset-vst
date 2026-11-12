@@ -18,7 +18,10 @@ public:
         return moduleBox.getSelectedId()==processor.slotType(slot)+1;
     }
     void testGraphGesture(juce::Point<float> point) {updateGraphNode(point);}
-    void openModulePickerForScreenshot() {moduleTrigger.onClick();}
+    // Rack double-click opens this search overlay; no duplicate selector.
+    void openModulePicker();
+    void openModulePickerForScreenshot() {openModulePicker();}
+    bool modulePickerVisibleForTest() const noexcept {return modulePicker.isVisible();}
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
     bool testEightBandGraphAndQ();
@@ -36,17 +39,12 @@ private:
     // ComboBox remains as a noninteractive compatibility/synchronization
     // adapter; the user-facing selector is the searchable native overlay.
     juce::ComboBox moduleBox;
-    juce::TextButton moduleTrigger{"SELECT EFFECT"};
     SkellModulePicker modulePicker;
     SkellInstalledVST3Browser installedBrowser;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
     std::unique_ptr<juce::FileChooser> externalChooser;
-    juce::ToggleButton activeButton;
-    juce::Slider wetKnob;
     juce::Slider eqQSlider;
     std::array<juce::Slider,4> knobs;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enabledAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> wetAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> eqQAttachment;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> knobAttachment;
     bool draggingGraph=false;
