@@ -279,15 +279,13 @@ struct StereoSampleDelay {
         const int requested=std::clamp(delay,0,(int)size-2);
         if(fadeTo<0) {
             fadeFrom=fadeTo=requested;fadeRemaining=0;
-        } else if(requested!=fadeTo) {
-            // For another change mid-transition, approximate the effective
-            // current tap before starting a fresh short crossfade.
-            if(fadeRemaining>0)
-                fadeFrom=(int)std::lround(
-                    ((double)fadeFrom*fadeRemaining+
-                     (double)fadeTo*(fadeDuration-fadeRemaining))/
-                    std::max(1,fadeDuration));
-            else fadeFrom=fadeTo;
+        } else if(requested!=fadeTo && fadeRemaining==0) {
+            // Do NOT restart a fade from an approximated intermediate tap.
+            // A weighted average of two audio samples is not equivalent to
+            // reading one sample at an interpolated delay: doing so produced
+            // severe discontinuities under fast automation. Finish the active
+            // fade, then transition to the latest requested value.
+            fadeFrom=fadeTo;
             fadeTo=requested;
             fadeDuration=std::max(1,transitionSamples);
             fadeRemaining=fadeDuration;
