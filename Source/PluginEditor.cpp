@@ -356,6 +356,18 @@ public:
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
             issues.add("Mode visibility did not match the requested workspace");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
+        if(powerButton.isBypassed()!=(current==3))
+            issues.add("Power indicator disagrees with host bypass state");
+        if(!advanced){
+            for(int i=0;i<4;++i) {
+                const auto face=juce::Rectangle<int>(78+i*254,339,220,214);
+                if(!face.contains(macro[(size_t)i].getBounds()))
+                    issues.add("Simple macro dial escapes its card");
+                for(int j=i+1;j<4;++j)
+                    if(macro[(size_t)i].getBounds().intersects(macro[(size_t)j].getBounds()))
+                        issues.add("Simple macro dials overlap");
+            }
+        }
         if(!slot.moduleSelectorMatchesAudio())
             issues.add("Module dropdown differs from the actual selected DSP type");
         return issues;
