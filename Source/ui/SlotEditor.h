@@ -14,9 +14,7 @@ public:
     void refreshIfChanged(); // only redraw when DSP controls or type change
     int selectedSlot()const noexcept{return slot;}
     bool moduleSelectorMatchesAudio() const noexcept {
-        const auto prefix="s"+juce::String(slot+1)+"_type";
-        const auto* value=processor.state.getRawParameterValue(prefix);
-        return value && moduleBox.getSelectedId()==(int)value->load()+1;
+        return moduleBox.getSelectedId()==processor.slotType(slot)+1;
     }
     void testGraphGesture(juce::Point<float> point) {updateGraphNode(point);}
     void openModulePickerForScreenshot() {moduleTrigger.onClick();}

@@ -59,6 +59,22 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
     } else if(type==SkellPresetAudioProcessor::RingModFX) {
         p.addEllipse((float)x+1.f,(float)y+2.f,12.f,12.f);
         p.addEllipse((float)x+10.f,(float)y+2.f,12.f,12.f);
+    } else if(type==SkellPresetAudioProcessor::VocalRiderFX) {
+        p.startNewSubPath((float)x,(float)y+13.f);
+        p.lineTo((float)x+5.f,(float)y+13.f);
+        p.lineTo((float)x+8.f,(float)y+5.f);
+        p.lineTo((float)x+12.f,(float)y+11.f);
+        p.lineTo((float)x+16.f,(float)y+5.f);
+        p.lineTo((float)x+22.f,(float)y+5.f);
+    } else if(type==SkellPresetAudioProcessor::DuckingPingPongFX) {
+        for(int i=0;i<4;++i)
+            p.addEllipse((float)x+1.f+i*6.f,(float)y+6.f+(i%2?4.f:0.f),3.f,3.f);
+        p.startNewSubPath((float)x+1.f,(float)y+14.f);
+        p.lineTo((float)x+22.f,(float)y+14.f);
+    } else if(type==SkellPresetAudioProcessor::VocalVibratoFX) {
+        p.startNewSubPath((float)x,(float)y+9.f);
+        for(int i=1;i<=22;++i)
+            p.lineTo((float)x+i,(float)y+9.f-5.f*std::sin((float)i*.68f));
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
@@ -93,8 +109,7 @@ void ChainPanel::paint(juce::Graphics& g) {
     int used=0;
     for(int row=0;row<active;row++) {
         const int physical=processor.slotIdAt(row);
-        auto* pv=processor.state.getRawParameterValue("s"+juce::String(physical+1)+"_type");
-        if(pv && (int)pv->load()!=SkellPresetAudioProcessor::Empty)++used;
+        if(processor.slotType(physical)!=SkellPresetAudioProcessor::Empty)++used;
     }
     Theme::text(g,"EFFECT RACK",{15,8,148,22},15,Theme::white,true);
     Theme::text(g,dockingDrag?"RELEASE TO DOCK":
@@ -106,9 +121,8 @@ void ChainPanel::paint(juce::Graphics& g) {
         const int row=scrollOffset+visual;
         const int slot=processor.slotIdAt(row),top=rowStart+rowStep*visual;
         auto box=juce::Rectangle<float>(10.f,(float)top,196.f,(float)rowHeight);
-        auto* pv=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
         auto* on=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");
-        const int type=pv?(int)pv->load():0;
+        const int type=processor.slotType(slot);
         const bool enabled=on && on->load()>.5f && type!=0;
         g.setColour(selected==slot?Theme::panelAlt.brighter(.1f):(hoveredRow==row?Theme::green.withAlpha(.12f):Theme::panelAlt.withMultipliedAlpha(row%2?.78f:.96f)));
         g.fillRoundedRectangle(box,6.f);
@@ -163,9 +177,8 @@ void ChainPanel::refreshIfChanged() {
     for(int row=0;row<currentSlots;++row) {
         const int slot=processor.slotIdAt(row);
         const auto prefix="s"+juce::String(slot+1)+"_";
-        const auto* type=processor.state.getRawParameterValue(prefix+"type");
         const auto* enabled=processor.state.getRawParameterValue(prefix+"on");
-        const int value=slot*4096+(type?(int)type->load():0)*128
+        const int value=slot*4096+processor.slotType(slot)*128
             +(enabled && enabled->load()>.5f?64:0)
             +(std::isfinite(processor.getSlotPeak(slot))
                 ? juce::jlimit(0,63,(int)(processor.getSlotPeak(slot)*64.f)) : 0);
@@ -252,8 +265,8 @@ void ChainPanel::mouseUp(const juce::MouseEvent&) {
     if(pendingFrom<0)return;
     if(dragging && dragTo>=0 && dragTo!=dragFrom)processor.reorderSlot(dragFrom,dragTo);
     const int slot=processor.slotIdAt(dragging && dragTo>=0 ? dragTo : pendingFrom);
-    auto* type=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
-    const bool emptyClick=!dragging && type && (int)type->load()==SkellPresetAudioProcessor::Empty;
+    const bool emptyClick=!dragging &&
+        processor.slotType(slot)==SkellPresetAudioProcessor::Empty;
     pendingFrom=dragFrom=dragTo=-1;dragging=false;repaint();
     if(emptyClick)popupFor(slot);
 }

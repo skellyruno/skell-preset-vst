@@ -62,3 +62,8 @@ add_test(NAME SkellPresetVoxRackFXTest COMMAND SkellPresetVoxRackFXTest)
 add_executable(SkellPresetModulationFXTest test_modulation_fx.cpp)
 target_compile_features(SkellPresetModulationFXTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetModulationFXTest COMMAND SkellPresetModulationFXTest)
+
+# User-authorized adaptation regression: Voice Changer vibrato and FLAMEEWRLD vocal rider/ducking delay.
+add_executable(SkellPresetImportedVocalFXTest test_imported_vocal_fx.cpp)
+target_compile_features(SkellPresetImportedVocalFXTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetImportedVocalFXTest COMMAND SkellPresetImportedVocalFXTest)

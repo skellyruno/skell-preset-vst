@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include <cmath>
 namespace {
-const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator"};
+const juce::StringArray names{"Empty","EQ","Compressor","Limiter","Gate","Saturator","Reverb","Delay","Exciter","Adlib Throw","Adlib Doubler","De-Esser","External VST3","Broadcast Radio","Retro Crush","Tremolo","Stereo Width","Three-Band Dynamics","VoxRack Room","VoxRack Smooth Comp","Vocal Chorus","Vocal Flanger","Ring Modulator","Vocal Rider","Ducking Ping-Pong","Vocal Vibrato"};
 std::array<juce::String,4> titles(int type) {
     switch(type){
         case 1:return {"Frequency","Gain","Q","Low Cut"};
@@ -27,6 +27,9 @@ std::array<juce::String,4> titles(int type) {
         case 20:return {"Rate","Depth","Voices","Stereo"};
         case 21:return {"Rate","Sweep","Feedback","Stereo"};
         case 22:return {"Carrier Hz","Depth","Shape","Stereo"};
+        case 23:return {"Amount","Target","Range","Warmth"};
+        case 24:return {"Division","Feedback","Ducking","Tone"};
+        case 25:return {"Rate","Depth","Stereo","Shape"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -42,9 +45,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     moduleTrigger.setTooltip("Browse native audio effects by name and category");
     moduleTrigger.onClick=[this]{
         if(modulePicker.isVisible())modulePicker.hide();
-        else modulePicker.open(
-            (int)processor.state.getRawParameterValue(
-               "s"+juce::String(slot+1)+"_type")->load());
+        else modulePicker.open(processor.slotType(slot));
     };
     modulePicker.onSelect=[this](int type){
         processor.setSlotType(slot,type);
@@ -109,9 +110,8 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         // normalized parameter range. Never make display conversions in DSP.
         k.textFromValueFunction=[this,i](double v)->juce::String {
             v=juce::jlimit(0.,1.,v);
-            const auto* type=processor.state.getRawParameterValue(
-                "s"+juce::String(slot+1)+"_type");
-            if(type && (int)type->load()==SkellPresetAudioProcessor::EQ) {
+            const int selectedType=processor.slotType(slot);
+            if(selectedType==SkellPresetAudioProcessor::EQ) {
                 if(i==0) {
                     const double hz=40.*std::pow(300.,v);
                     return hz>=1000.?juce::String(hz/1000.,1)+"kHz":
@@ -121,14 +121,23 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 if(i==2)return juce::String(.3+7.*v,2)+" Q";
                 return juce::String(juce::roundToInt(20.+250.*v))+"Hz";
             }
+            const int module=selectedType;
+            if(module==SkellPresetAudioProcessor::VocalRiderFX){
+                if(i==1)return juce::String(-26.+14.*v,0)+"dB";
+                if(i==2)return juce::String(3.+12.*v,0)+"dB";
+            } else if(module==SkellPresetAudioProcessor::DuckingPingPongFX && i==0) {
+                return v<.25?"1/16":v<.5?"1/8":v<.75?"1/8D":"1/4";
+            } else if(module==SkellPresetAudioProcessor::VocalVibratoFX) {
+                if(i==0)return juce::String(.3+11.7*v,1)+"Hz";
+                if(i==1)return juce::String(3.5*v,1)+"ms";
+            }
             return juce::String(juce::roundToInt(v*100.))+"%";
         };
         k.valueFromTextFunction=[this,i](const juce::String& input)->double {
             const auto text=input.trim().toLowerCase();
             const double value=text.getDoubleValue();
-            const auto* type=processor.state.getRawParameterValue(
-                "s"+juce::String(slot+1)+"_type");
-            if(type && (int)type->load()==SkellPresetAudioProcessor::EQ) {
+            const int selectedType=processor.slotType(slot);
+            if(selectedType==SkellPresetAudioProcessor::EQ) {
                 if(i==0) {
                     const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
                     return juce::jlimit(0.,1.,std::log(hz/40.)/std::log(300.));
@@ -136,6 +145,19 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                 if(i==1)return juce::jlimit(0.,1.,value/24.+.5);
                 if(i==2)return juce::jlimit(0.,1.,(value-.3)/7.);
                 return juce::jlimit(0.,1.,(value-20.)/250.);
+            }
+            const int module=selectedType;
+            if(module==SkellPresetAudioProcessor::VocalRiderFX){
+                if(i==1)return juce::jlimit(0.,1.,(value+26.)/14.);
+                if(i==2)return juce::jlimit(0.,1.,(value-3.)/12.);
+            } else if(module==SkellPresetAudioProcessor::DuckingPingPongFX && i==0) {
+                if(text=="1/16")return .125;
+                if(text=="1/8")return .375;
+                if(text=="1/8d")return .625;
+                if(text=="1/4")return .875;
+            } else if(module==SkellPresetAudioProcessor::VocalVibratoFX) {
+                if(i==0)return juce::jlimit(0.,1.,(value-.3)/11.7);
+                if(i==1)return juce::jlimit(0.,1.,value/3.5);
             }
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
@@ -189,8 +211,7 @@ void SlotEditor::select(int newSlot) {
     externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
-    if(auto* type=processor.state.getRawParameterValue(prefix+"type"))
-        moduleBox.setSelectedId((int)type->load()+1,juce::dontSendNotification);
+    moduleBox.setSelectedId(processor.slotType(slot)+1,juce::dontSendNotification);
     enabledAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"on",activeButton);
     wetAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"wet",wetKnob);
     for(int k=0;k<4;k++)knobAttachment[(size_t)k]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"p"+juce::String(k+1),knobs[(size_t)k]);
@@ -199,9 +220,7 @@ void SlotEditor::select(int newSlot) {
 }
 void SlotEditor::refreshIfChanged() {
     const auto prefix="s"+juce::String(slot+1)+"_";
-    const auto* typeValue=processor.state.getRawParameterValue(prefix+"type");
-    if(!typeValue)return;
-    const int type=juce::jlimit(0,SkellPresetAudioProcessor::NumberOfModules-1,(int)typeValue->load());
+    const int type=processor.slotType(slot);
     std::array<float,6> current{};
     for(int i=0;i<4;++i)current[(size_t)i]=processor.getSlotParam(slot,i);
     if(const auto* macro=processor.state.getRawParameterValue("macro1"))current[4]=macro->load();
@@ -241,7 +260,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::bg);g.fillEllipse(sx-2.5f,sy-2.5f,5.f,5.f);
         g.setColour(Theme::stroke);g.drawEllipse(sx-2.5f,sy-2.5f,5.f,5.f,1.f);
     }
-    const int type=(int)processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type")->load();
+    const int type=processor.slotType(slot);
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     Theme::text(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
     Theme::text(g,"MODULE",{491,9,140,15},9,Theme::muted,true);
@@ -784,6 +803,59 @@ void SlotEditor::paint(juce::Graphics&g) {
             }
             Theme::text(g,"DOUBLER  /  LEFT + RIGHT MICRO-VOICES",
                 {62,165,700,20},12,Theme::green,true);
+        } else if(type==SkellPresetAudioProcessor::VocalRiderFX) {
+            // Illustrative long-term level tracing, not a claim of live LUFS.
+            const float centre=plot.getCentreY();
+            const float strength=processor.getSlotParam(slot,0);
+            const float target=processor.getSlotParam(slot,1);
+            const float targetY=y0+h*(.76f-.42f*target);
+            g.setColour(Theme::green.withAlpha(.13f));
+            g.fillRoundedRectangle(x0,targetY-13.f,w,26.f,5.f);
+            g.setColour(Theme::green.withAlpha(.6f));
+            g.drawHorizontalLine((int)targetY,x0,x1);
+            for(int lane=0;lane<2;++lane) {
+                juce::Path contour;
+                for(int i=0;i<=100;++i){
+                    const float t=(float)i/100.f;
+                    const float source=std::sin(t*26.f)*(.35f+.65f*std::abs(std::sin(t*5.f)));
+                    const float wave=lane==0?source:source*(1.f-.53f*strength);
+                    const float x=x0+t*w;
+                    const float y=centre-wave*h*.25f-(lane==1?16.f:0.f);
+                    if(i==0)contour.startNewSubPath(x,y);else contour.lineTo(x,y);
+                }
+                g.setColour(lane==0?Theme::muted.withAlpha(.48f):Theme::green);
+                g.strokePath(contour,juce::PathStrokeType(lane==0?1.5f:2.5f));
+            }
+        } else if(type==SkellPresetAudioProcessor::DuckingPingPongFX) {
+            const float feedback=processor.getSlotParam(slot,1);
+            const float duck=processor.getSlotParam(slot,2);
+            g.setColour(Theme::muted.withAlpha(.27f));
+            g.drawHorizontalLine((int)plot.getCentreY(),x0,x1);
+            for(int i=0;i<6;++i) {
+                const float decay=std::pow(.55f+.35f*feedback,(float)i);
+                const float tx=x0+68.f+(float)i*132.f;
+                const float amplitude=decay*(1.f-.60f*duck)*(h*.30f);
+                g.setColour((i%2==0?Theme::green:Theme::blue).withAlpha(.9f));
+                g.drawLine(tx,plot.getCentreY()-amplitude,tx,plot.getCentreY()+amplitude,4.f);
+                g.fillEllipse(tx-5.f,plot.getCentreY()-5.f,10.f,10.f);
+            }
+            Theme::text(g,"L  /  R  /  L  /  R  /  L  /  R",
+                {125,279,675,21},11,Theme::muted,true,juce::Justification::centred);
+        } else if(type==SkellPresetAudioProcessor::VocalVibratoFX) {
+            const float depth=processor.getSlotParam(slot,1);
+            const float stereo=processor.getSlotParam(slot,2);
+            for(int channel=0;channel<2;++channel) {
+                juce::Path curve;
+                for(int i=0;i<=160;++i){
+                    const float t=(float)i/160.f;
+                    const float phase=t*(10.f+28.f*first)+(channel?stereo*3.14159f:0.f);
+                    const float y=plot.getCentreY()+std::sin(phase)*h*(.09f+.22f*depth);
+                    const float x=x0+t*w;
+                    if(i==0)curve.startNewSubPath(x,y);else curve.lineTo(x,y);
+                }
+                g.setColour(channel==0?Theme::green:Theme::blue);
+                g.strokePath(curve,juce::PathStrokeType(channel==0?2.7f:1.9f));
+            }
         } else {
             Theme::text(g,processor.moduleName(type).toUpperCase(),
                 {65,198,740,40},25,Theme::green,true,juce::Justification::centred);
@@ -849,6 +921,22 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String(15.f*std::pow(70.f,processor.getSlotParam(slot,0)),0)+
                      " Hz  /  DEPTH "+
                      juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::VocalRiderFX) {
+        effectTitle="VOCAL RIDER  /  STEREO LINKED LEVELING";
+        effectDetail="TARGET "+juce::String(-26.f+14.f*processor.getSlotParam(slot,1),0)+
+            " dB  /  MAX RANGE "+juce::String(3.f+12.f*processor.getSlotParam(slot,2),0)+
+            " dB  /  ZERO ADDED PDC";
+    } else if(type==SkellPresetAudioProcessor::DuckingPingPongFX) {
+        effectTitle="DUCKING PING-PONG  /  HOST TEMPO ECHO";
+        const float division=processor.getSlotParam(slot,0);
+        effectDetail=juce::String("SYNC ")+(division<.25f?"1/16":division<.5f?"1/8":division<.75f?"1/8D":"1/4")+
+            "  /  DUCK "+juce::String(processor.getSlotParam(slot,2)*100.f,0)+
+            "%  /  HOST BPM FALLBACK 120";
+    } else if(type==SkellPresetAudioProcessor::VocalVibratoFX) {
+        effectTitle="VOCAL VIBRATO  /  STEREO DELAY MODULATION";
+        effectDetail=juce::String(.3f+11.7f*processor.getSlotParam(slot,0),1)+
+            " Hz  /  DEPTH "+juce::String(3.5f*processor.getSlotParam(slot,1),1)+
+            " ms  /  SINE-TRIANGLE";
     } else if(type==SkellPresetAudioProcessor::VoxRackRoom) {
         effectTitle="VOXRACK ROOM  /  COMB + ALLPASS";
         effectDetail=juce::String(processor.getSlotParam(slot,2)*200.f,0)+
@@ -928,8 +1016,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                     : gestureHint,{30,395,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {
-    const auto type=(int)processor.state.getRawParameterValue(
-        "s"+juce::String(slot+1)+"_type")->load();
+    const int type=processor.slotType(slot);
     if(type==SkellPresetAudioProcessor::EQ){
         const auto x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
         const auto y=juce::jlimit(-1.f,1.f,(254.f-point.y)/103.f);
@@ -948,9 +1035,9 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
     repaint();
 }
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
-    auto* t=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_type");
-    if(!t||(int)t->load()==SkellPresetAudioProcessor::Empty
-        || (int)t->load()==SkellPresetAudioProcessor::ExternalVST3
+    const int type=processor.slotType(slot);
+    if(type==SkellPresetAudioProcessor::Empty
+        || type==SkellPresetAudioProcessor::ExternalVST3
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
     draggingGraph=true;
     for(int param:{1,2})if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+"_p"+juce::String(param)))p->beginChangeGesture();

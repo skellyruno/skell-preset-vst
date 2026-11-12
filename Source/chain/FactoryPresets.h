@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,34> factoryPresets {{
+inline constexpr std::array<FactoryPreset,37> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -45,5 +45,8 @@ inline constexpr std::array<FactoryPreset,34> factoryPresets {{
     {"Wide Choir Adlib","Adlibs","Lush moving vocal layers and stereo chorus",0,.60f,.42f,.67f,.19f},
     {"Phantom Sweep","Adlibs","Phased comb motion for energetic adlib sends",5,.55f,.64f,.44f,.32f},
     {"Alien Ring","Adlibs","Metallic ring voice with dark phrase throws",1,.30f,.61f,.56f,.77f},
+    {"Rider Ready","Main Vocals","Steady phrase levelling before compression",0,.55f,.46f,.20f,.08f},
+    {"Ducked Echo","Adlibs","Tempo-locked stereo repeats that duck under the vocal",2,.50f,.52f,.78f,.19f},
+    {"Skell Flutter","Adlibs","Expressive stereo vibrato with soft throws",4,.48f,.39f,.60f,.26f},
 }};
 }

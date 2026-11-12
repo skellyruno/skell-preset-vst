@@ -192,6 +192,9 @@ private:
             case 2:case 3:case 4:case 11:case 17:case 19:return "Dynamics";
             case 6:case 7:case 9:case 10:case 18:return "Space";
             case 15:case 16:case 20:case 21:case 22:return "Motion";
+            case 23:return "Dynamics";
+            case 24:return "Space";
+            case 25:return "Motion";
             case 12:return "External";
             default:return "Utility";
         }
@@ -211,6 +214,9 @@ private:
             case 13:return "radio telephone lo-fi";
             case 15:case 21:return "sweep wobble flange";
             case 22:return "alien metallic voice modulation";
+            case 23:return "vocal rider auto gain phrase leveling vocal chain";
+            case 24:return "duck echo ping pong tempo synced delay stereo adlib";
+            case 25:return "vibrato voice pitch wobble flutter modulation stereo";
             default:return {};
         }
     }

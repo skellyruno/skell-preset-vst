@@ -4,6 +4,7 @@
 #include "chain/BasicDSP.h"
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
+#include "chain/ImportedVocalFX.h"
 #include "chain/VoxRackFX.h"
 #include "chain/FactoryPresets.h"
 #include "chain/PresetPackage.h"
@@ -14,7 +15,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
@@ -55,6 +56,8 @@ public:
     int loadedFactoryPresetIndex() const noexcept {return selectedProgram;}
     juce::String moduleName(int type) const;
     void setSlotType(int slot,int type);
+    // Decodes the backward-compatible legacy type + optional extended effect.
+    int slotType(int slot) const noexcept;
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
@@ -85,6 +88,9 @@ private:
         skellpreset::dsp::VocalChorus chorus;
         skellpreset::dsp::VocalFlanger flanger;
         skellpreset::dsp::VocalRingMod ring;
+        skellpreset::dsp::VocalRider rider;
+        skellpreset::dsp::DuckingPingPongDelay duckingDelay;
+        skellpreset::dsp::VocalVibrato vibrato;
         skellpreset::dsp::Delay delay;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
@@ -108,7 +114,8 @@ private:
     std::atomic<std::uint64_t> packedOrder{0};
     std::atomic<int> activeSlots{defaultSlotCount};
     struct RawSlot {
-        std::atomic<float>* type=nullptr;std::atomic<float>* on=nullptr;
+        std::atomic<float>* type=nullptr;std::atomic<float>* extension=nullptr;
+        std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::array<std::atomic<float>*,16> p{};
     };

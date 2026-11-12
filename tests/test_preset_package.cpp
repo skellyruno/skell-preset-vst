@@ -75,6 +75,22 @@ int main(){
               && restored.slots[2].type==22,
               "Roundtrip chorus/flanger/ring module IDs without remapping");
     }
+    // Imported DSP modules extend the allowed type range without new schema.
+    {
+        auto imported=first;
+        imported.slots[0].type=23; // Vocal Rider
+        imported.slots[1].type=24; // Ducking Ping-Pong
+        imported.slots[2].type=25; // Vocal Vibrato
+        const auto newFile=testFile(dir,"imported-vocal-fx");
+        check(skellpreset::package::write(newFile,imported).wasOk(),
+              "Export Vocal Rider, Ducking Delay and Vibrato effects");
+        skellpreset::package::Document restored;
+        check(skellpreset::package::read(newFile,restored).wasOk()
+              &&restored.slots[0].type==23
+              &&restored.slots[1].type==24
+              &&restored.slots[2].type==25,
+              "Roundtrip new rack effect IDs and retain legacy values");
+    }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
     {
