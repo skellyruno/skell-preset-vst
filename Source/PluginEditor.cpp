@@ -265,7 +265,9 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(auto* b:{&preset,&match,&viewSwitch,&powerButton,&help,&settings,&record})style(*b);
+        for(juce::TextButton* b:std::array<juce::TextButton*,7>{{
+            &preset,&match,&viewSwitch,&powerButton,&help,&settings,&record}})
+            style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
             s.setColour(juce::Slider::thumbColourId,Theme::white);
