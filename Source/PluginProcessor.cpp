@@ -1070,7 +1070,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         // reading them. A malformed order leaves the current permutation intact.
         // JUCE StringArray::addTokens may omit empty fields; require the exact
         // delimiter count so trailing/repeated commas cannot be accepted.
-        const bool exactFields = sequence.countOccurrencesOf(",") == items.size() - 1;
+        const bool exactFields = (sequence.length() - sequence.removeCharacters(",").length()) == items.size() - 1;
         if(exactFields && (items.size()==defaultSlotCount || items.size()==slotCount)) {
             std::array<bool,slotCount> seen{};
             std::array<int,slotCount> proposed{};
