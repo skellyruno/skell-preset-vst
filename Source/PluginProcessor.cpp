@@ -1068,7 +1068,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         juce::StringArray items;items.addTokens(sequence,",","");
         // Stage 8 states had ten positions; append six default identities when
         // reading them. A malformed order leaves the current permutation intact.
-        if(items.size()==defaultSlotCount || items.size()==slotCount) {
+        // JUCE StringArray::addTokens may omit empty fields; require the exact\n        // delimiter count so trailing/repeated commas cannot be accepted.\n        const bool exactFields = sequence.countOccurrencesOf(",") == items.size() - 1;\n        if(exactFields && (items.size()==defaultSlotCount || items.size()==slotCount)) {
             std::array<bool,slotCount> seen{};
             std::array<int,slotCount> proposed{};
             bool valid=true;
