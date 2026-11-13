@@ -96,3 +96,10 @@ VoxRack is now owner-authorized source for carefully selected DSP ports. Its fee
 
 - [2026-11-11 source review and design decisions](docs/VML_SHALLOWHOST_REVIEW.md) — Voice Modulation for Linux (GPL-3.0) and ShallowHost (MIT), including what was implemented, intentionally not copied and known limitations. VML's GPL code was **not incorporated** into SKELL source; the modulation DSP is original.
 - Previous owner-provided local-mic-effects and audio-mixer project reviews remain at [Imported Effects](docs/IMPORTED_EFFECTS.md).
+
+
+## Optional SkellWorld presence (source integration pilot)
+
+**Settings → Join SkellWorld (presence only)** lets the open plugin editor appear in SkellWorld's local Connected plugins panel. The feature is **off by default**. Settings → Leave disconnects, and closing the editor disconnects automatically. The protocol sends only a product ID, display name and ephemeral instance ID; no audio, presets, effect-chain settings, filenames, or automation data are transferred.
+
+The connection uses a pinned, header-only SkellCore WorldLink worker. It neither changes the plugin manufacturer/bundle IDs nor adds an APVTS parameter, adjusts DSP, or adds audio-thread operations. SkellWorld need not be running for the plugin to work. Build/host verification is required before marking the feature production-certified.
