@@ -42,13 +42,13 @@ int main() {
         {"Main Vocals", 18}, {"Adlibs", 17}, {"Vocoding", 8}
     };
     if (bankCounts != expectedBankCounts) {
-        std::cerr << "Factory bank catalog differs from expected counts\\n";
+        std::cerr << "Factory bank catalog differs from expected counts\n";
         for (const auto& [bank, count] : bankCounts)
-            std::cerr << "  " << bank << ": " << count << "\\n";
+            std::cerr << "  " << bank << ": " << count << "\n";
         ++failures;
     }
     if (identities.size() != 43) {
-        std::cerr << "Expected 43 unique factory presets\\n";
+        std::cerr << "Expected 43 unique factory presets\n";
         ++failures;
     }
     std::cout << "Checked " << identities.size() << " unique presets in "
