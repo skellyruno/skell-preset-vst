@@ -1,5 +1,6 @@
 #include "../Source/chain/PresetPackage.h"
 #include <iostream>
+#include <limits>
 #include <string>
 
 namespace {
@@ -165,6 +166,39 @@ int main(){
                 check(restored.activeSlotCount==10&&restored.slots[10].slotId==10
                       &&restored.slots[15].slotId==15,
                       "Legacy rack defaults and slot identity preserved");
+            }
+        }
+    }
+    // EQ Q is a serialized preset parameter: reject invalid values on both
+    // export and import, without changing the last successfully loaded preset.
+    {
+        auto invalidQ=first;
+        invalidQ.slots[0].eqQ[0]=1.01f;
+        check(skellpreset::package::write(testFile(dir,"invalid-eq-q"),invalidQ).failed(),
+              "Reject out-of-range EQ Q on export");
+        invalidQ.slots[0].eqQ[0]=std::numeric_limits<float>::quiet_NaN();
+        check(skellpreset::package::write(testFile(dir,"nan-eq-q"),invalidQ).failed(),
+              "Reject NaN EQ Q on export");
+
+        juce::ZipFile source(path);
+        std::unique_ptr<juce::InputStream> input(source.createStreamForEntry(0));
+        check(input!=nullptr,"EQ Q import fixture opens");
+        if(input){
+            auto json=juce::JSON::parse(input->readEntireStreamAsString());
+            if(auto* chain=json.getProperty("chain",{}).getArray()){
+                if(auto* item=(*chain)[0].getDynamicObject()){
+                    juce::Array<juce::var> badQ;
+                    for(int k=0;k<8;++k)badQ.add(k==3?1.5:0.5);
+                    item->setProperty("eqQ",juce::var(badQ));
+                    const auto badFile=testFile(dir,"bad-import-eq-q");
+                    createArchive(badFile,"preset.json",juce::JSON::toString(json).toStdString());
+                    skellpreset::package::Document retained=second;
+                    check(skellpreset::package::read(badFile,second).failed(),
+                          "Reject out-of-range EQ Q on import");
+                    check(second.name==retained.name && second.bank==retained.bank
+                          && second.slots[0].eqQ==retained.slots[0].eqQ,
+                          "Failed EQ Q import preserves previous preset state");
+                }
             }
         }
     }
