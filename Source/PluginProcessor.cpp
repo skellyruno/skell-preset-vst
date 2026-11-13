@@ -1077,7 +1077,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
                 // Reject malformed/non-numeric slot IDs rather than coercing
                 // them to zero (String::getIntValue accepts invalid text).
                 const auto token=items[i].trim();
-                if(token.isEmpty() || !token.containsOnly("0123456789")) {
+                if(token.isEmpty() || token.length() > 2 || !token.containsOnly("0123456789")) {
                     valid=false;
                     break;
                 }
