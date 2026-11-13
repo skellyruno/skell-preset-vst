@@ -231,6 +231,27 @@ int main(){
                     for(int k=0;k<8;++k)textQ.add(k==3?juce::var("0.5"):juce::var(.5));
                     verifyRejectedQ(juce::var(textQ),"text-element-eq-q",
                                     "Reject text EQ Q element and retain previous preset");
+                    // Duplicate slot IDs in an otherwise well-formed archive
+                    // must not replace the currently loaded preset.
+                    item->setProperty("eqQ", juce::var(juce::Array<juce::var> {
+                        .5, .5, .5, .5, .5, .5, .5, .5
+                    }));
+                    if (auto* secondSlot=(*chain)[1].getDynamicObject()) {
+                        const auto originalId=secondSlot->getProperty("slotId");
+                        secondSlot->setProperty("slotId",item->getProperty("slotId"));
+                        const auto duplicateFile=testFile(dir,"duplicate-import-slot-id");
+                        createArchive(duplicateFile,"preset.json",juce::JSON::toString(json).toStdString());
+                        const auto before=second;
+                        const auto rejected=skellpreset::package::read(duplicateFile,second).failed();
+                        check(rejected && second.name==before.name
+                              && second.bank==before.bank
+                              && second.activeSlotCount==before.activeSlotCount
+                              && second.slots[0].slotId==before.slots[0].slotId
+                              && second.slots[1].slotId==before.slots[1].slotId
+                              && second.slots[0].params==before.slots[0].params,
+                              "Reject duplicate imported slot ID and preserve previous preset");
+                        secondSlot->setProperty("slotId",originalId);
+                    }
 
                 }
             }
