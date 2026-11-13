@@ -1,5 +1,6 @@
 #include "../Source/chain/FactoryPresets.h"
 #include <cmath>
+#include <map>
 #include <iostream>
 #include <set>
 #include <string>
@@ -9,6 +10,7 @@ int main() {
     int failures = 0;
     std::set<std::pair<std::string, std::string>> identities;
     std::set<std::string> banks;
+    std::map<std::string, std::size_t> bankCounts;
     for (const auto& preset : skellpreset::factoryPresets) {
         const std::string name = preset.name ? preset.name : "";
         const std::string bank = preset.bank ? preset.bank : "";
@@ -22,6 +24,7 @@ int main() {
             ++failures;
         }
         banks.insert(bank);
+        ++bankCounts[bank];
         if (preset.colour < 0 || preset.colour > 5) {
             std::cerr << "Invalid factory preset cover index: " << name << "\n";
             ++failures;
@@ -33,7 +36,21 @@ int main() {
             }
         }
     }
-    if (banks.empty()) { std::cerr << "No factory preset banks\n"; ++failures; }
+    // A nonempty, duplicate-free bank can still silently lose presets or an entire bank.
+    // Pin the intended catalog shape so accidental removals fail CI.
+    const std::map<std::string, std::size_t> expectedBankCounts {
+        {"Main Vocals", 16}, {"Adlibs", 19}, {"Vocoding", 8}
+    };
+    if (bankCounts != expectedBankCounts) {
+        std::cerr << "Factory bank catalog differs from expected counts\\n";
+        for (const auto& [bank, count] : bankCounts)
+            std::cerr << "  " << bank << ": " << count << "\\n";
+        ++failures;
+    }
+    if (identities.size() != 43) {
+        std::cerr << "Expected 43 unique factory presets\\n";
+        ++failures;
+    }
     std::cout << "Checked " << identities.size() << " unique presets in "
               << banks.size() << " banks; failures: " << failures << "\n";
     return failures ? 1 : 0;
