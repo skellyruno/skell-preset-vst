@@ -204,6 +204,34 @@ int main(){
                     check(second.name==retained.name && second.bank==retained.bank
                           && second.slots[0].eqQ==retained.slots[0].eqQ,
                           "Failed EQ Q import preserves previous preset state");
+                    // Invalid shape and type must not silently fall back to neutral Q.
+                    // Each rejection must leave the complete prior document intact.
+                    const auto verifyRejectedQ = [&](const juce::var& invalid,
+                                                     const juce::String& filename,
+                                                     const char* label) {
+                        item->setProperty("eqQ", invalid);
+                        const auto file=testFile(dir,filename);
+                        createArchive(file,"preset.json",juce::JSON::toString(json).toStdString());
+                        const auto before=second;
+                        const auto rejected=skellpreset::package::read(file,second).failed();
+                        check(rejected && second.name==before.name
+                              && second.bank==before.bank
+                              && second.activeSlotCount==before.activeSlotCount
+                              && second.slots[0].eqQ==before.slots[0].eqQ
+                              && second.slots[0].params==before.slots[0].params,
+                              label);
+                    };
+                    juce::Array<juce::var> shortQ;
+                    for(int k=0;k<7;++k)shortQ.add(.5);
+                    verifyRejectedQ(juce::var(shortQ),"short-eq-q",
+                                    "Reject seven-band EQ Q and retain previous preset");
+                    verifyRejectedQ(juce::var("invalid"),"string-eq-q",
+                                    "Reject string EQ Q and retain previous preset");
+                    juce::Array<juce::var> textQ;
+                    for(int k=0;k<8;++k)textQ.add(k==3?juce::var("0.5"):juce::var(.5));
+                    verifyRejectedQ(juce::var(textQ),"text-element-eq-q",
+                                    "Reject text EQ Q element and retain previous preset");
+
                 }
             }
         }
