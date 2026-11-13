@@ -176,6 +176,12 @@ int main(){
         invalidQ.slots[0].eqQ[0]=1.01f;
         check(skellpreset::package::write(testFile(dir,"invalid-eq-q"),invalidQ).failed(),
               "Reject out-of-range EQ Q on export");
+        invalidQ.slots[0].eqQ[0]=-0.01f;
+        check(skellpreset::package::write(testFile(dir,"negative-eq-q"),invalidQ).failed(),
+              "Reject negative EQ Q on export");
+        invalidQ.slots[0].eqQ[0]=std::numeric_limits<float>::infinity();
+        check(skellpreset::package::write(testFile(dir,"infinite-eq-q"),invalidQ).failed(),
+              "Reject infinite EQ Q on export");
         invalidQ.slots[0].eqQ[0]=std::numeric_limits<float>::quiet_NaN();
         check(skellpreset::package::write(testFile(dir,"nan-eq-q"),invalidQ).failed(),
               "Reject NaN EQ Q on export");
