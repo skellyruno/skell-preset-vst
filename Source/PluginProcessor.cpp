@@ -1074,7 +1074,14 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             bool valid=true;
             const int oldCount=items.size();
             for(int i=0;i<oldCount;++i) {
-                const int v=items[i].getIntValue();
+                // Reject malformed/non-numeric slot IDs rather than coercing
+                // them to zero (String::getIntValue accepts invalid text).
+                const auto token=items[i].trim();
+                if(token.isEmpty() || !token.containsOnly("0123456789")) {
+                    valid=false;
+                    break;
+                }
+                const int v=token.getIntValue();
                 if(v<0 || v>=oldCount || seen[(size_t)v]){valid=false;break;}
                 seen[(size_t)v]=true;proposed[(size_t)i]=v;
             }
