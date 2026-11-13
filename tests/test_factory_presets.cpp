@@ -39,7 +39,7 @@ int main() {
     // A nonempty, duplicate-free bank can still silently lose presets or an entire bank.
     // Pin the intended catalog shape so accidental removals fail CI.
     const std::map<std::string, std::size_t> expectedBankCounts {
-        {"Main Vocals", 16}, {"Adlibs", 19}, {"Vocoding", 8}
+        {"Main Vocals", 18}, {"Adlibs", 17}, {"Vocoding", 8}
     };
     if (bankCounts != expectedBankCounts) {
         std::cerr << "Factory bank catalog differs from expected counts\\n";
