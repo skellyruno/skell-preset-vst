@@ -113,6 +113,7 @@ private:
     std::array<float,6> lastControls{};
     std::array<float,26> lastEqControls{};
     bool updateMicCard(juce::Point<float> point);
+    bool updateSkelldizerCard(juce::Point<float> point);
     void updateGraphNode(juce::Point<float>);
     void chooseVST3File();
     void loadVST3FromFile(const juce::File& file);

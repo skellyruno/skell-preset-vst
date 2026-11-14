@@ -316,7 +316,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-formant-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,30> effectScenes {{
+        const std::array<std::pair<const char*,int>,31> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -346,7 +346,8 @@ int main(int argc, char** argv) {
             {"adaptive-noise",SkellPresetAudioProcessor::AdaptiveNoiseFX},
             {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX},
             {"alchemist-match-finish",SkellPresetAudioProcessor::AlchemistMatchFinishFX},
-            {"mic-modeling",SkellPresetAudioProcessor::MicModelFX}
+            {"mic-modeling",SkellPresetAudioProcessor::MicModelFX},
+            {"skelldizer",SkellPresetAudioProcessor::SkelldizerFX}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
@@ -553,6 +554,7 @@ int main(int argc, char** argv) {
             {"obsidian-effect-alchemist-calibration-70",
              "obsidian-effect-alchemist-reference-70"},
             {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
+            {"obsidian-effect-skelldizer-70","obsidian-effect-mic-modeling-70"},
             {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-orb-70"},
             {"obsidian-advanced-70","obsidian-mic-panel-70"}
         };
@@ -561,8 +563,8 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 109) {
-            std::fprintf(stderr, "Expected 109 PNGs, captured %d\n", report.captured);
+        if (report.captured != 110) {
+            std::fprintf(stderr, "Expected 110 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 

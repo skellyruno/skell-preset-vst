@@ -10,6 +10,7 @@
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
 #include "chain/MicModelDSP.h"
+#include "chain/SkelldizerDSP.h"
 #include "chain/SpectralPitchFormant.h"
 #include "chain/VoxRackFX.h"
 #include "chain/FactoryPresets.h"
@@ -21,7 +22,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
@@ -112,6 +113,7 @@ private:
         skellpreset::dsp::SerialVocalDynamics serialDynamics;
         skellpreset::dsp::AlchemistMatchFinish matchFinish;
         skellpreset::dsp::MicModelTone micModel;
+        skellpreset::dsp::Skelldizer skelldizer;
         skellpreset::dsp::DynamicHarshness harshness;
         skellpreset::dsp::AdaptiveNoiseControl noiseControl;
         skellpreset::dsp::SpectralPitchFormant studioPitch;
@@ -144,6 +146,7 @@ private:
         std::atomic<float>* extension3=nullptr;
         std::atomic<float>* extension4=nullptr;
         std::atomic<float>* extension5=nullptr;
+        std::atomic<float>* extension6=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;

@@ -49,6 +49,7 @@ std::array<juce::String,4> titles(int type) {
         case 30:return {"Pitch","Formant","Pitch Range","Formant Range"};
         case 31:return {"Harmonic","Envelope","Slow Contour","Fast Attack"};
         case 32:return {"Input Mic","Simulate","Amount","Trim"};
+        case 33:return {"Amount","Character","Output","Level Match"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -869,6 +870,41 @@ void SlotEditor::paint(juce::Graphics&g) {
             {56,325,700,20},10,Theme::muted);
         }
     }
+    if(type==SkellPresetAudioProcessor::SkelldizerFX) {
+        // Character pads change real p2 automation; this is not an FFT meter.
+        const int mode=skellpreset::dsp::Skelldizer::characterIndex(
+            processor.getSlotParam(slot,1));
+        Theme::text(g,"SKELLDIZER / ORIGINAL THREE-BAND ENHANCER",
+                    {54,161,705,20},12,Theme::green,true);
+        for(int k=0;k<4;++k) {
+            const juce::Rectangle<float> card(69.f+k*188.f,190.f,170.f,48.f);
+            const bool selected=k==mode;
+            g.setColour(selected?Theme::green.withAlpha(.20f):Theme::panelAlt);
+            g.fillRoundedRectangle(card,7.f);
+            g.setColour(selected?Theme::green:Theme::stroke);
+            g.drawRoundedRectangle(card,7.f,selected?1.6f:.9f);
+            Theme::text(g,skellpreset::dsp::Skelldizer::characterName(k),
+                {(int)card.getX()+7,201,156,22},14,
+                selected?Theme::green:Theme::white,true,
+                juce::Justification::centred);
+        }
+        constexpr float profiles[4][3]={{1.06f,1.02f,.96f},
+                                         {1.19f,1.03f,.77f},
+                                         {.82f,1.02f,1.23f},
+                                         {1.03f,1.09f,1.03f}};
+        constexpr const char* labels[]={"LOW","MID","HIGH"};
+        for(int band=0;band<3;++band) {
+            const float x=181.f+234.f*band;
+            const float height=24.f+processor.getSlotParam(slot,0)*
+                                    std::abs(profiles[mode][band]-1.f)*190.f;
+            g.setColour(Theme::stroke.withAlpha(.70f));
+            g.fillRoundedRectangle(x,260.f,85.f,68.f,5.f);
+            g.setColour(Theme::green.withAlpha(.55f));
+            g.fillRoundedRectangle(x,328.f-height,85.f,height,5.f);
+            Theme::text(g,labels[band],{(int)x,330,85,19},10,Theme::muted,
+                        true,juce::Justification::centred);
+        }
+    }
     if(type==SkellPresetAudioProcessor::MicModelFX) {
         // Compact Mic Modeling controls INSIDE the existing effect page.
         // Models are generic response profiles, not proprietary brand IRs.
@@ -927,6 +963,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"LOW",{442,325,65,17},10,Theme::muted);
         Theme::text(g,"MID",{615,325,65,17},10,Theme::muted);
         Theme::text(g,"AIR",{793,325,50,17},10,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::SkelldizerFX) {
+        // Custom character pads occupy the visualization above.
     } else if(type==SkellPresetAudioProcessor::EQ) {
         const float normalizedF=processor.getSlotParam(slot,0);
         const auto* tone=processor.state.getRawParameterValue("macro1");
@@ -1825,6 +1863,9 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String("SYNC ")+(division<.25f?"1/16":division<.5f?"1/8":division<.75f?"1/8D":"1/4")+
             "  /  DUCK "+juce::String(processor.getSlotParam(slot,2)*100.f,0)+
             "%  /  HOST BPM FALLBACK 120";
+    } else if(type==SkellPresetAudioProcessor::SkelldizerFX) {
+        effectTitle="SKELLDIZER / PUNCH · WARM · AIR · GRIT";
+        effectDetail="3-BAND HARMONIC CHARACTER / OPTIONAL LEVEL MATCH / ZERO LOOKAHEAD";
     } else if(type==SkellPresetAudioProcessor::MicModelFX) {
         effectTitle="MIC MODELING  /  NATIVE TONAL PROFILE";
         effectDetail="GENERIC COLOR TRANSFER  /  NO PROPRIETARY MIC CAPTURES  /  0ms LATENCY";
@@ -1972,6 +2013,22 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
     graphSnapshotValid=false;
     repaint();
 }
+bool SlotEditor::updateSkelldizerCard(juce::Point<float> point) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::SkelldizerFX)
+        return false;
+    for(int k=0;k<4;++k) {
+        if(!juce::Rectangle<float>(69.f+k*188.f,190.f,170.f,48.f).contains(point))
+            continue;
+        const auto id="s"+juce::String(slot+1)+"_p2";
+        if(auto* v=processor.state.getParameter(id))v->beginChangeGesture();
+        processor.setSlotParam(slot,1,(float)k/3.f);
+        if(auto* v=processor.state.getParameter(id))v->endChangeGesture();
+        graphSnapshotValid=false;
+        refreshIfChanged();repaint();
+        return true;
+    }
+    return false;
+}
 bool SlotEditor::updateMicCard(juce::Point<float> point) {
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::MicModelFX)
         return false;
@@ -2043,6 +2100,10 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
     if(isModulationOrbEffect(type) && modOrbView)
         return; // display-only modulation orb must not alter DSP automation
+    if(type==SkellPresetAudioProcessor::SkelldizerFX) {
+        updateSkelldizerCard(e.position);
+        return; // no invisible XY changes: only pads and rotary knobs edit DSP
+    }
     if(type==SkellPresetAudioProcessor::MicModelFX) {
         // Card clicks are distinct from the generic XY graph gesture.
         updateMicCard(e.position);
