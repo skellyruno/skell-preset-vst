@@ -47,7 +47,9 @@ jobs:
       - name: Compile Windows VST3 and regression fixtures
         run: cmake --build build --config Release --parallel 2
       - name: Validate native preset ZIP import/export and security
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: ctest --test-dir build -C Release --output-on-failure -E SkellPresetRealRackStress
+      - name: Stress compiled full rack and print CPU/latency metrics
+        run: ctest --test-dir build -C Release --verbose -R SkellPresetRealRackStress
       - name: Prove external VST3 load and audio with owned test fixture
         shell: pwsh
         run: |
