@@ -1,17 +1,7 @@
 name: Skell-Preset / Headless JUCE UI screenshots
 
+# Screenshot capture is manual-only. Routine UI QA uses local Quick4.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/ui-screenshots.yml'
-      - 'CMakeLists.txt'
-      - 'Source/**'
-      - 'assets/**'
-      - 'tests/ui_renderer.cpp'
-      - 'SkellCore/include/SkellCore/HeadlessUIRenderer.h'
-      - 'SkellCore/CMakeLists.txt'
-  pull_request:
   workflow_dispatch:
 
 jobs:
