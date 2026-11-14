@@ -63,7 +63,21 @@ jobs:
           # plugin now present in the same build tree.
           $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
           if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
-          Compress-Archive -LiteralPath $vst.FullName -DestinationPath Skell-Preset-Windows-VST3.zip -Force
+          # Embed provenance so a downloaded ZIP can be matched to its source.
+          $bin = Get-ChildItem -LiteralPath $vst.FullName -Recurse -File -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $bin) { throw 'Skell-Preset binary missing inside VST3 bundle' }
+          $hash = (Get-FileHash -LiteralPath $bin.FullName -Algorithm SHA256).Hash
+          $info = @(
+            'Product: Skell-Preset',
+            'Version: 0.7.0',
+            "Commit: ${{ github.sha }}",
+            "Branch: ${{ github.head_ref || github.ref_name }}",
+            "Binary SHA256: $hash",
+            'Bundle: Skell-Preset.vst3',
+            'Unverified installed-copy identity: check DAW plugin path separately'
+          )
+          $info | Set-Content -LiteralPath Skell-Preset-BUILD-INFO.txt -Encoding UTF8
+          Compress-Archive -LiteralPath @($vst.FullName, 'Skell-Preset-BUILD-INFO.txt') -DestinationPath Skell-Preset-Windows-VST3.zip -Force
       - name: Package compiled Alchemist diagnostic renderer
         shell: pwsh
         run: |
