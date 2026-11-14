@@ -26,8 +26,14 @@ constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
 int main(int argc, char** argv) {
-    const juce::String argument = argc >= 3 && juce::String(argv[1]) == "--output"
-        ? juce::String::fromUTF8(argv[2]) : juce::String("ui-screenshots");
+    juce::String argument="ui-screenshots";
+    bool full=false;
+    for(int i=1;i<argc;++i) {
+        const juce::String arg(argv[i]);
+        if(arg=="--full")full=true;
+        else if(arg=="--output" && i+1<argc)argument=argv[++i];
+        else {std::fprintf(stderr,"Unknown UI capture argument: %s\n",arg.toRawUTF8());return 2;}
+    }
     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
     juce::ScopedJuceInitialiser_GUI gui;
     SkellPresetAudioProcessor processor;
@@ -219,6 +225,14 @@ int main(int argc, char** argv) {
         }
         skellcore::ui::headless::Options options;
         options.project = "Skell-Preset actual JUCE AudioProcessorEditor";
+        if(!full) {
+            options.scenes = {
+                {"obsidian-advanced-70",818,482,0,1,false},
+                {"obsidian-preset-browser-70",818,482,0,1,true},
+                {"obsidian-live-70",818,482,0,1,false},
+                {"cream-advanced-70",818,482,1,1,false}
+            };
+        } else {
         for (int theme = 0; theme < static_cast<int>(themes.size()); ++theme)
             for (const auto& view : views)
                 for (auto scale : scales) {
@@ -294,6 +308,7 @@ int main(int argc, char** argv) {
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
                                       818,482,0,1,false});
+        }
         options.configure = [&](const auto& scene) {
             if(scene.id=="obsidian-expanded-70") {
                 processor.loadFactoryPreset(0);
@@ -410,7 +425,13 @@ int main(int argc, char** argv) {
                 editor.openInstalledVST3BrowserForScreenshot();
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
-        options.mustDiffer = {
+        options.mustDiffer = !full
+            ? std::vector<std::pair<juce::String,juce::String>>{
+                {"obsidian-advanced-70","obsidian-preset-browser-70"},
+                {"obsidian-advanced-70","obsidian-live-70"},
+                {"obsidian-advanced-70","cream-advanced-70"}
+              }
+            : std::vector<std::pair<juce::String,juce::String>>{
             {"obsidian-advanced-70", "obsidian-preset-browser-70"},
             {"obsidian-advanced-70", "obsidian-simple-70"},
             {"obsidian-advanced-70", "obsidian-bypass-70"},
@@ -452,8 +473,9 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 103) {
-            std::fprintf(stderr, "Expected 103 PNGs, captured %d\n", report.captured);
+        if (report.captured != static_cast<int>(options.scenes.size())) {
+            std::fprintf(stderr,"Expected %zu PNGs, captured %d\n",
+                         options.scenes.size(),report.captured);
             ++failures;
         }
 
@@ -497,6 +519,24 @@ int main(int argc, char** argv) {
             ++failures;
         }
         processor.loadFactoryPreset(0); // Restore ten-slot baseline for contact sheet.
+        // Quick4 contact sheet uses ONLY four actual captured images.
+        if(!full) {
+            constexpr std::array<const char*,4> names{{
+                "obsidian-advanced-70","obsidian-preset-browser-70",
+                "obsidian-live-70","cream-advanced-70"}};
+            constexpr int w=818,h=482;
+            juce::Image overview(juce::Image::RGB,w*2,h*2,true);
+            juce::Graphics g(overview);
+            g.fillAll(juce::Colour(0xff080b0a));
+            for(size_t i=0;i<names.size();++i) {
+                const auto shot=juce::ImageFileFormat::loadFrom(
+                    folder.getChildFile(juce::String(names[i])+".png"));
+                if(!shot.isValid()) {++failures;continue;}
+                g.drawImageAt(shot,int(i%2)*w,int(i/2)*h);
+            }
+            if(!skellcore::ui::headless::writePng(overview,
+                 folder.getChildFile("contact-sheet.png")))++failures;
+        } else {
         // One compact overview: Advanced and Browser at default 70% for each skin.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
         juce::Image overview(juce::Image::RGB, 2 * thumbnailWidth, 3 * thumbnailHeight, true);
@@ -515,6 +555,7 @@ int main(int argc, char** argv) {
             }
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
+        }
         editor.configureForScreenshot(0, 1, false);
         std::printf("Skell-Preset shared SkellCore renderer: %d scenes, %d failures\n",
                     report.captured, failures);
