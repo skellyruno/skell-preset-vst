@@ -121,3 +121,8 @@ add_test(NAME SkellPresetRealtimePolicyTests COMMAND SkellPresetRealtimePolicyTe
 add_executable(SkellPresetSkelldizerStress test_skelldizer_multinstance_stress.cpp)
 target_compile_features(SkellPresetSkelldizerStress PRIVATE cxx_std_17)
 add_test(NAME SkellPresetSkelldizerStress COMMAND SkellPresetSkelldizerStress)
+
+# Portable, offline-only synchronized A/B metrics (no extra dependency).
+add_executable(SkellPresetABMetricsTest test_alchemist_ab_metrics.cpp)
+target_compile_features(SkellPresetABMetricsTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetABMetricsTest COMMAND SkellPresetABMetricsTest)
