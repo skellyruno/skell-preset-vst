@@ -116,6 +116,59 @@ int main(int argc, char** argv) {
                 }
         }
     }
+    // End-to-end Alchemist regression: THIS tests the same compiled JUCE
+    // processor, seven serial factory stages and actual APVTS controls used
+    // by the shipped VST3. The separate contour-header smoke is insufficient.
+    // Synthetic audio only: owner's reference WAV never enters source control.
+    {
+        auto renderAlchemist=[&](bool withContour) {
+            processor.prepareToPlay(48000.,256);
+            processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+            if(!withContour)
+                processor.setSlotParam(6,8,.5f); // legacy neutral p9
+            const bool correctFactory=processor.slotType(6)==
+                    SkellPresetAudioProcessor::AlchemistMatchFinishFX
+                && processor.getSlotParam(6,8)==(withContour?1.f:.5f)
+                && processor.getLatencySamples()==0;
+            if(!correctFactory) {
+                std::fprintf(stderr,"Alchemist native contour is not wired into the real VST3 rack\\n");
+                ++failures;
+            }
+            double sumSquares=0.;
+            int used=0;
+            for(int block=0;block<150;++block) {
+                juce::AudioBuffer<float> audio(2,256);
+                for(int n=0;n<256;++n) {
+                    constexpr double pi=3.14159265358979323846;
+                    const double t=(block*256+n)/48000.;
+                    const float x=.026f*(float)std::sin(2.*pi*231.*t)
+                                 +.006f*(float)std::sin(2.*pi*3900.*t);
+                    audio.setSample(0,n,x);
+                    audio.setSample(1,n,x*.91f);
+                }
+                juce::MidiBuffer midi;
+                processor.processBlock(audio,midi);
+                for(int n=0;n<256;++n) {
+                    const float y=audio.getSample(0,n);
+                    if(!std::isfinite(y) || std::abs(y)>1.001f) {
+                        std::fprintf(stderr,"Alchemist full native rack produced NaN or clipping\\n");
+                        ++failures;
+                        return 0.;
+                    }
+                    if(block>=35) {sumSquares+=(double)y*y;++used;}
+                }
+            }
+            return used?std::sqrt(sumSquares/used):0.;
+        };
+        const double contourOn=renderAlchemist(true);
+        const double contourOff=renderAlchemist(false);
+        if(contourOff<=1.e-5 || contourOn<=contourOff*1.06) {
+            std::fprintf(stderr,"Alchemist factory contour has no real audible VST3 path:"
+                                " old RMS %.6f, reference RMS %.6f\\n",
+                                contourOff,contourOn);
+            ++failures;
+        }
+    }
     // Genuine processBlock regression for the new FL-style wet/bypass controls.
     // Use a constant, low-level real buffer so a discontinuity is not masked
     // by a waveform transient. The original per-slot APVTS parameters remain
