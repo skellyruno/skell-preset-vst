@@ -47,6 +47,61 @@ int main() {
             std::cerr << "  " << bank << ": " << count << "\n";
         ++failures;
     }
+    // Preserve stable factory identities for saved presets and host sessions.
+    const std::set<std::pair<std::string, std::string>> expectedIdentities {
+        {"Main Vocals", "Clean Lead"},
+        {"Main Vocals", "Dark Trap Lead"},
+        {"Main Vocals", "Airy Pop"},
+        {"Main Vocals", "Gritty Rap"},
+        {"Main Vocals", "Warm R&B"},
+        {"Main Vocals", "Bright Radio"},
+        {"Main Vocals", "Bedroom Intimate"},
+        {"Main Vocals", "Aggressive Hook"},
+        {"Adlibs", "Demon Adlibs"},
+        {"Adlibs", "Ghost Echo"},
+        {"Adlibs", "Radio Adlib"},
+        {"Adlibs", "Wide Stack"},
+        {"Adlibs", "Stutter Throw"},
+        {"Adlibs", "Alien Pulse"},
+        {"Adlibs", "Whisper Trail"},
+        {"Adlibs", "Distorted Shout"},
+        {"Vocoding", "Robot Chorus"},
+        {"Vocoding", "Harmony Pad"},
+        {"Vocoding", "Talkbox Glide"},
+        {"Vocoding", "Neon Droid"},
+        {"Vocoding", "Chrome Choir"},
+        {"Vocoding", "Digital Formant"},
+        {"Vocoding", "Phase Broadcast"},
+        {"Vocoding", "Spectral Glow"},
+        {"Main Vocals", "Skell Vocal Polish"},
+        {"Main Vocals", "Skell Live Lead"},
+        {"Adlibs", "Broadcast Throw"},
+        {"Adlibs", "Digital Bones"},
+        {"Main Vocals", "Three-Band Silk"},
+        {"Main Vocals", "VoxRack Velvet"},
+        {"Adlibs", "VoxRack Chamber"},
+        {"Adlibs", "Wide Choir Adlib"},
+        {"Adlibs", "Phantom Sweep"},
+        {"Adlibs", "Alien Ring"},
+        {"Main Vocals", "Rider Ready"},
+        {"Adlibs", "Ducked Echo"},
+        {"Adlibs", "Skell Flutter"},
+        {"Main Vocals", "Eight-Band Air"},
+        {"Main Vocals", "Opto Punch"},
+        {"Main Vocals", "Smooth Edge"},
+        {"Main Vocals", "Noise Guard"},
+        {"Adlibs", "Formant Sketch"},
+        {"Main Vocals", "Studio Six"}
+    };
+    if (identities != expectedIdentities) {
+        for (const auto& identity : expectedIdentities)
+            if (!identities.count(identity))
+                std::cerr << "Missing factory preset: " << identity.first << "/" << identity.second << "\n";
+        for (const auto& identity : identities)
+            if (!expectedIdentities.count(identity))
+                std::cerr << "Unexpected factory preset: " << identity.first << "/" << identity.second << "\n";
+        ++failures;
+    }
     if (identities.size() != 43) {
         std::cerr << "Expected 43 unique factory presets\n";
         ++failures;
