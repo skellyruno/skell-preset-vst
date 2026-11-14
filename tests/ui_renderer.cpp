@@ -365,8 +365,9 @@ int main(int argc, char** argv) {
                 // Preserve all seven stage types and calibrated controls.
                 // Match Finish is already slot 7 (physical index 6).
                 if(processor.slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX
-                    || processor.loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex) {
-                    std::fprintf(stderr,"Alchemist factory stage 7 missing in screenshot fixture\\n");
+                    || processor.loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex
+                    || processor.getLatencySamples()!=0) {
+                    std::fprintf(stderr,"Alchemist factory stage 7 missing or unexpected latency in screenshot fixture\\n");
                     ++failures;
                 }
             } else if(scene.id.startsWith("obsidian-effect-")) {
