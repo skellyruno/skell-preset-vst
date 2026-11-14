@@ -237,7 +237,25 @@ int main(){
                 if(variant==4)q.set(7,juce::var(true));
                 slot->setProperty("eqQ",juce::var(q));
                 const auto bad=testFile(dir,"invalid-eq-q-"+juce::String(variant));
-                const auto encoded=juce::JSON::toString(json);
+                auto encoded=juce::JSON::toString(json);
+                if(variant==4){
+                    // JUCE may coerce a bool inserted into a numeric var array.
+                    // Write a literal JSON boolean to exercise the importer itself.
+                    const auto marker=juce::String("\"eqQ\":");
+                    const auto key=encoded.indexOf(marker);
+                    if(key>=0){
+                        const auto start=encoded.indexOf(key+marker.length(), "[");
+                        const auto end=start>=0 ? encoded.indexOf(start, "]") : -1;
+                        if(end>=0){
+                            auto arrayText=encoded.substring(start,end+1);
+                            const auto comma=arrayText.lastIndexOfChar(',');
+                            if(comma>=0){
+                                arrayText=arrayText.substring(0,comma+1)+"true]";
+                                encoded=encoded.substring(0,start)+arrayText+encoded.substring(end+1);
+                            }
+                        }
+                    }
+                }
                 // Verify the fixture's actual JSON type before testing the importer.
                 // JUCE var/JSON conversions must not silently turn true into 1.
                 const auto parsed=juce::JSON::parse(encoded);
