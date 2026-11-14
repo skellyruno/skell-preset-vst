@@ -10,7 +10,7 @@
 using skellpreset::registry::effects;
 using skellpreset::visual::LiveAudioScope;
 int main(){
-    static_assert(skellpreset::registry::count()==31);
+    static_assert(skellpreset::registry::count()==34);
     for(int id=0;id<skellpreset::registry::count();++id){
         const auto& effect=skellpreset::registry::at(id);
         assert(effect.id==id);
@@ -28,6 +28,8 @@ int main(){
     assert(matched==6);
     assert(std::string_view(skellpreset::registry::at(26).reference322)=="322.EQ");
     assert(std::string_view(skellpreset::registry::at(20).reference322)=="322.CHORUS");
+    assert(std::string_view(skellpreset::registry::at(32).name)=="Mic Modeling");
+    assert(std::string_view(skellpreset::registry::at(33).name)=="Skelldizer");
 
     LiveAudioScope scope;
     std::array<float,128> display{};

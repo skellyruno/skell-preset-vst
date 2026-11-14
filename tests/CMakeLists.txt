@@ -86,3 +86,30 @@ add_test(NAME SkellPreset322RegistryScopeTest COMMAND SkellPreset322RegistryScop
 add_executable(SkellPresetAlchemistNativeTest test_alchemist_native.cpp)
 target_compile_features(SkellPresetAlchemistNativeTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetAlchemistNativeTest COMMAND SkellPresetAlchemistNativeTest)
+
+# Native causal Alchemist finish is portable, stereo-linked and has no
+# audio-thread allocations, Python dependency, or external VST3.
+add_executable(SkellPresetAlchemistMatchDSPTest test_alchemist_match_dsp.cpp)
+target_compile_features(SkellPresetAlchemistMatchDSPTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAlchemistMatchDSPTest COMMAND SkellPresetAlchemistMatchDSPTest)
+
+# Auditable same-take Alchemist tone-fit constraints. Avoid regressing to the
+# incorrect upper-band cuts from the first native preview.
+add_executable(SkellPresetAlchemistReferenceToneTest test_alchemist_reference_tone.cpp)
+target_compile_features(SkellPresetAlchemistReferenceToneTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAlchemistReferenceToneTest COMMAND SkellPresetAlchemistReferenceToneTest)
+
+# Native Mic Modeling profile (append-only ID 32): frequency coloration,
+# stereo-linked zero-latency processing and safe host automation.
+add_executable(SkellPresetMicModelTest test_mic_model_dsp.cpp)
+target_compile_features(SkellPresetMicModelTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMicModelTest COMMAND SkellPresetMicModelTest)
+
+# The fitted contour is opted into only by Alchemist factory p9=1;
+# all historic p9=0.5 finish slots must retain their original signal path.
+add_executable(SkellPresetAlchemistContourTest test_alchemist_reference_contour.cpp)
+target_compile_features(SkellPresetAlchemistContourTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAlchemistContourTest COMMAND SkellPresetAlchemistContourTest)
+add_executable(SkellPresetSkelldizerDSPTest test_skelldizer_dsp.cpp)
+target_compile_features(SkellPresetSkelldizerDSPTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetSkelldizerDSPTest COMMAND SkellPresetSkelldizerDSPTest)

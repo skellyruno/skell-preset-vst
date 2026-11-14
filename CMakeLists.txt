@@ -86,7 +86,7 @@ juce_add_binary_data(SkellPresetAssets
 target_sources(SkellPreset PRIVATE
     Source/PluginProcessor.h Source/PluginProcessor.cpp
     Source/PluginEditor.h Source/PluginEditor.cpp
-    Source/chain/BasicDSP.h Source/chain/ModulationFX.h Source/chain/ImportedVocalFX.h Source/chain/AdvancedVocalDSP.h Source/chain/SpectralPitchFormant.h Source/chain/EffectRegistry.h Source/chain/LiveAudioScope.h Source/chain/ClipRecorder.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h Source/chain/AlchemistNativePreset.h
+    Source/chain/BasicDSP.h Source/chain/ModulationFX.h Source/chain/ImportedVocalFX.h Source/chain/AdvancedVocalDSP.h Source/chain/SpectralPitchFormant.h Source/chain/EffectRegistry.h Source/chain/LiveAudioScope.h Source/chain/ClipRecorder.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h Source/chain/AlchemistNativePreset.h Source/chain/AlchemistMatchDSP.h Source/chain/AlchemistReferenceContour.h Source/chain/MicModelDSP.h
     Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
     Source/host/HostedVST3.h
     Source/ui/Theme.h Source/ui/ModulePicker.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
@@ -162,6 +162,29 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
         target_compile_definitions(SkellPresetUIRenderer PRIVATE JUCE_PLUGINHOST_VST3=1)
     endif()
     target_compile_features(SkellPresetUIRenderer PRIVATE cxx_std_17)
+endif()
+
+# Optional cross-platform diagnostic: run the exact compiled Skell-Preset factory
+# processBlock against a local owner-provided dry WAV, never embed that audio.
+# This exercises the plugin DSP directly; VST3 wrapper/FL Studio checks remain
+# separate and must not be treated as passing by this tool alone.
+option(SKELL_PRESET_ALCHEMIST_RENDERER "Build same-take Alchemist native WAV renderer" OFF)
+if(SKELL_PRESET_ALCHEMIST_RENDERER)
+    add_executable(SkellPresetAlchemistRender tests/render_alchemist_native.cpp)
+    target_include_directories(SkellPresetAlchemistRender PRIVATE
+        "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include"
+        "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
+    target_compile_definitions(SkellPresetAlchemistRender PRIVATE
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    if(WIN32)
+        target_compile_definitions(SkellPresetAlchemistRender PRIVATE JUCE_PLUGINHOST_VST3=1)
+    endif()
+    target_link_libraries(SkellPresetAlchemistRender PRIVATE SkellPreset
+        SkellPresetAssets SkellCore::DSP SkellCore::UI
+        juce::juce_audio_formats juce::juce_audio_utils juce::juce_gui_extra)
+    target_compile_features(SkellPresetAlchemistRender PRIVATE cxx_std_17)
+    add_test(NAME SkellPresetAlchemistNativeRenderSmoke
+        COMMAND SkellPresetAlchemistRender --smoke)
 endif()
 
 # Windows-only in-process hosting integration fixture. It proves that an

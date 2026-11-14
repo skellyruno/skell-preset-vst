@@ -1,5 +1,11 @@
 name: Skell-Preset | Windows VST3
 
+# On this PR, a newer commit supersedes earlier heavy builds for this workflow.
+# Never cancel main or manual release builds, and never cancel other workflows.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   push:
     branches: [main]
@@ -37,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Configure JUCE 8 and SkellCore
-        run: cmake -S . -B build -A x64
+        run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON
       - name: Compile Windows VST3 and regression fixtures
         run: cmake --build build --config Release --parallel 2
       - name: Validate native preset ZIP import/export and security
@@ -58,6 +64,18 @@ jobs:
           $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
           if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
           Compress-Archive -LiteralPath $vst.FullName -DestinationPath Skell-Preset-Windows-VST3.zip -Force
+      - name: Package compiled Alchemist diagnostic renderer
+        shell: pwsh
+        run: |
+          $renderer = Get-ChildItem build -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Native Alchemist diagnostic renderer missing' }
+          Compress-Archive -LiteralPath $renderer.FullName -DestinationPath Skell-Preset-Alchemist-Renderer.zip -Force
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Skell-Preset-Alchemist-Renderer-Windows
+          path: Skell-Preset-Alchemist-Renderer.zip
+          if-no-files-found: error
+          retention-days: 30
       - uses: actions/upload-artifact@v5
         with:
           name: Skell-Preset-Windows-VST3

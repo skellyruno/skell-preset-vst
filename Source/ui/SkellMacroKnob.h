@@ -2,12 +2,27 @@
 #include <JuceHeader.h>
 #include "Theme.h"
 #include <cmath>
+#include <functional>
 
 // A real JUCE Slider (host automation, mouse and keyboard stay untouched),
 // with a crisp hardware dial ONLY in the Simple macro view. The Advanced view
 // delegates to the existing SkellCore horizontal slider.
 class SkellMacroKnob final : public juce::Slider {
 public:
+    std::function<void()> onReadoutVisibilityChange;
+    bool showsValueForTest() const noexcept {return hovered||adjusting;}
+    void mouseEnter(const juce::MouseEvent& e) override {
+        hovered=true;juce::Slider::mouseEnter(e);updateReadout();
+    }
+    void mouseExit(const juce::MouseEvent& e) override {
+        hovered=false;juce::Slider::mouseExit(e);updateReadout();
+    }
+    void mouseDown(const juce::MouseEvent& e) override {
+        adjusting=true;juce::Slider::mouseDown(e);updateReadout();
+    }
+    void mouseUp(const juce::MouseEvent& e) override {
+        juce::Slider::mouseUp(e);adjusting=false;updateReadout();
+    }
     void paint(juce::Graphics& g) override {
         if(getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag) {
             juce::Slider::paint(g);
@@ -66,4 +81,7 @@ public:
         g.setColour(Theme::white.withAlpha(.24f));
         g.fillEllipse(centreX-1.3f,centreY-1.3f,2.6f,2.6f);
     }
+private:
+    void updateReadout(){if(onReadoutVisibilityChange)onReadoutVisibilityChange();}
+    bool hovered=false,adjusting=false;
 };

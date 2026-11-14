@@ -3,9 +3,10 @@
 #include "Theme.h"
 #include <cmath>
 
-// New original Skell Preset skull: dark machined bone with narrow neon eyes,
-// angular hood and dual rack rails. Not the old bright bubble / patch-forehead
-// skull, nor Skell Key's key-themed identity. Click still cycles host UI skins.
+// Skell Preset skull v3: original minimalist split-jaw bone mark.
+// No borrowed Skell Key silhouette, no hood, no rack rails, and no
+// painted face patch. Geometry stays crisp at the existing 56px button size.
+// Changing the symbol must never affect the theme-click accessibility.
 class SkullThemeButton final : public juce::Button {
 public:
     SkullThemeButton() : juce::Button("Cycle Skell colour theme") {
@@ -13,84 +14,80 @@ public:
         setWantsKeyboardFocus(true);
     }
     void setVariant(int id) {variant=Theme::clampVariant(id);repaint();}
-    void paintButton(juce::Graphics& g,bool over,bool down) override {
+    void paintButton(juce::Graphics& g,bool hovered,bool pressed) override {
         Theme::select(variant);
-        const auto rect=getLocalBounds().toFloat().reduced(.7f);
-        g.setColour(Theme::bg.brighter(.12f));
-        g.fillRoundedRectangle(rect,8.f);
-        g.setColour(Theme::green.withAlpha(over?.82f:.29f));
-        g.drawRoundedRectangle(rect,8.f,over?1.55f:1.05f);
-        juce::Graphics::ScopedSaveState state(g);
+        const auto frame=getLocalBounds().toFloat().reduced(.75f);
+        g.setColour(Theme::bg.brighter(.13f));
+        g.fillRoundedRectangle(frame,8.f);
+        g.setColour(Theme::green.withAlpha(hovered?.76f:.27f));
+        g.drawRoundedRectangle(frame,8.f,hovered?1.6f:1.0f);
+
+        juce::Graphics::ScopedSaveState save(g);
         g.addTransform(juce::AffineTransform::scale(
             (float)getWidth()/56.f,(float)getHeight()/56.f));
-        const auto bone=Theme::white,accent=Theme::green,shadow=Theme::bg;
-        // Deep hood with a pointed bridge; deliberately different silhouette.
-        juce::Path hood;
-        hood.startNewSubPath(7.f,42.f);
-        hood.lineTo(9.f,20.f);hood.lineTo(15.f,9.f);
-        hood.lineTo(28.f,4.5f);hood.lineTo(41.f,9.f);
-        hood.lineTo(47.f,20.f);hood.lineTo(49.f,42.f);
-        hood.lineTo(42.f,37.f);hood.lineTo(42.f,20.f);
-        hood.lineTo(36.f,13.f);hood.lineTo(20.f,13.f);
-        hood.lineTo(14.f,20.f);hood.lineTo(14.f,37.f);
-        hood.closeSubPath();
+        const auto bone=Theme::white,shade=Theme::muted,ink=Theme::bg,accent=Theme::green;
+
+        // A heavier, slightly asymmetrical cranial outline — unmistakably
+        // a skull even at small size, but not cartoon-like or hooded.
+        juce::Path cranium;
+        cranium.startNewSubPath(28.f,7.7f);
+        cranium.cubicTo(12.f,7.7f,9.2f,15.f,10.3f,25.f);
+        cranium.cubicTo(10.6f,30.8f,13.7f,34.f,17.7f,37.5f);
+        cranium.lineTo(18.7f,41.5f);
+        cranium.lineTo(37.3f,41.5f);
+        cranium.lineTo(38.3f,37.5f);
+        cranium.cubicTo(43.1f,34.3f,45.3f,29.3f,45.f,24.f);
+        cranium.cubicTo(44.4f,13.1f,39.4f,7.7f,28.f,7.7f);
+        cranium.closeSubPath();
         g.setGradientFill(juce::ColourGradient(
-            shadow.brighter(.69f),7.f,5.f,shadow.darker(.12f),46.f,47.f,false));
-        g.fillPath(hood);
-        g.setColour(accent.withAlpha(over?.84f:.48f));
-        g.strokePath(hood,juce::PathStrokeType(1.18f));
-        // Sculpted angled cranium and deliberately separated lower jaw.
-        juce::Path skull;
-        skull.startNewSubPath(28.f,11.7f);
-        skull.lineTo(39.2f,15.6f);
-        skull.lineTo(42.3f,22.f);
-        skull.lineTo(40.4f,32.f);
-        skull.lineTo(36.1f,38.f);
-        skull.lineTo(36.1f,42.f);
-        skull.lineTo(19.9f,42.f);
-        skull.lineTo(19.9f,38.f);
-        skull.lineTo(15.6f,32.f);
-        skull.lineTo(13.7f,22.f);
-        skull.lineTo(16.8f,15.6f);
-        skull.closeSubPath();
-        g.setGradientFill(juce::ColourGradient(
-            bone.darker(.27f),15.f,15.f,Theme::muted.darker(.56f),40.f,39.f,false));
-        g.fillPath(skull);
-        g.setColour(bone.withAlpha(.26f));
-        g.strokePath(skull,juce::PathStrokeType(.8f));
-        // Hollow triangular sockets, crisp rather than cartoon circles.
-        juce::Path eyes;
-        eyes.startNewSubPath(17.f,25.f);
-        eyes.lineTo(26.2f,27.7f);eyes.lineTo(24.4f,32.f);
-        eyes.lineTo(18.3f,30.f);eyes.closeSubPath();
-        eyes.startNewSubPath(39.f,25.f);
-        eyes.lineTo(29.8f,27.7f);eyes.lineTo(31.6f,32.f);
-        eyes.lineTo(37.7f,30.f);eyes.closeSubPath();
-        g.setColour(shadow);
-        g.fillPath(eyes);
-        // Tiny inset neon apertures, no cartoon pupils.
-        g.setColour(accent.withAlpha(over?1.f:.84f));
-        g.drawLine(19.1f,27.4f,23.7f,29.1f,1.65f);
-        g.drawLine(36.9f,27.4f,32.3f,29.1f,1.65f);
-        juce::Path nose;
-        nose.addTriangle(28.f,32.f,24.6f,37.2f,31.4f,37.2f);
-        g.setColour(shadow);
-        g.fillPath(nose);
-        g.setColour(bone.darker(.26f));
-        g.fillRoundedRectangle(19.f,42.f,18.f,5.8f,1.5f);
-        g.setColour(shadow);
-        for(int i=0;i<5;++i)
-            g.drawLine(21.f+3.5f*i,42.6f,21.f+3.5f*i,47.1f,.9f);
-        // Rack identity lives OUTSIDE the skull, not stamped over its face.
-        g.setColour(accent.withAlpha(.69f));
-        for(int side=0;side<2;++side) {
-            const float x=side==0?7.f:46.f;
-            for(int k=0;k<3;++k)
-                g.fillRoundedRectangle(x,23.f+5.6f*k,2.f,3.2f,.75f);
+            bone.darker(.05f),16.f,10.f,shade.darker(.56f),40.f,42.f,false));
+        g.fillPath(cranium);
+        g.setColour(bone.withAlpha(.5f));
+        g.strokePath(cranium,juce::PathStrokeType(1.f));
+
+        // High-contrast sockets, hollow rather than angry neon slits.
+        juce::Path leftEye;
+        leftEye.startNewSubPath(15.f,23.f);
+        leftEye.quadraticTo(18.f,19.2f,25.f,23.9f);
+        leftEye.quadraticTo(24.f,31.8f,20.2f,32.7f);
+        leftEye.quadraticTo(15.4f,32.1f,15.f,23.f);
+        leftEye.closeSubPath();
+        juce::Path rightEye;
+        rightEye.startNewSubPath(41.f,23.5f);
+        rightEye.quadraticTo(37.2f,19.8f,31.4f,24.f);
+        rightEye.quadraticTo(31.f,31.4f,34.8f,32.6f);
+        rightEye.quadraticTo(40.8f,32.1f,41.f,23.5f);
+        rightEye.closeSubPath();
+        g.setColour(ink);
+        g.fillPath(leftEye);g.fillPath(rightEye);
+
+        // A slender fracture through the crown is Skell Preset's distinct
+        // mark. Accent stays subtle except when the button is hovered.
+        g.setColour(accent.withAlpha(hovered?.95f:.57f));
+        g.drawLine(30.5f,9.5f,27.f,16.f,1.65f);
+        g.drawLine(27.f,16.f,30.3f,20.f,1.65f);
+        g.drawLine(30.3f,20.f,27.8f,24.1f,1.25f);
+        juce::Path nasal;
+        nasal.addTriangle(28.f,30.7f,24.8f,37.1f,31.1f,37.1f);
+        g.setColour(ink);g.fillPath(nasal);
+
+        // Separately carved jaw with five clear teeth. An actual gap
+        // above the jaw prevents the old blocky/rounded mascot appearance.
+        g.setColour(ink);
+        g.fillRect(18,40,20,2);
+        g.setColour(bone.darker(.13f));
+        g.fillRoundedRectangle(19.f,42.5f,18.f,6.7f,1.35f);
+        g.setColour(ink.withAlpha(.96f));
+        for(int i=1;i<6;++i) {
+            const float x=19.f+3.f*i;
+            g.drawLine(x,43.1f,x,48.8f,.95f);
         }
-        if(down) {
-            g.setColour(shadow.withAlpha(.25f));
-            g.fillRoundedRectangle(5.f,6.f,46.f,45.f,7.f);
+        g.setColour(bone.withAlpha(.7f));
+        g.drawLine(19.2f,43.f,36.8f,43.f,.8f);
+
+        if(pressed) {
+            g.setColour(ink.withAlpha(.22f));
+            g.fillRoundedRectangle(5.f,5.f,46.f,46.f,6.f);
         }
     }
 private:

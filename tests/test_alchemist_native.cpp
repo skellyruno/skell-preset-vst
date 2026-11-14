@@ -5,6 +5,7 @@
 #include "../Source/chain/AdvancedVocalDSP.h"
 #include "../Source/chain/VoxRackFX.h"
 #include "../Source/chain/VocalEffects.h"
+#include "../Source/chain/AlchemistMatchDSP.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -22,14 +23,20 @@ int main() {
     assert(std::strcmp(factoryPresets[43].name,alchemist::name)==0);
     assert(std::strcmp(factoryPresets[43].bank,"Main Vocals")==0);
 
-    const int expectedTypes[6]{1,26,2,19,17,5};
-    for(int i=0;i<6;++i) {
+    const int expectedTypes[7]{1,26,2,19,17,5,31};
+    for(int i=0;i<7;++i) {
         const auto& stage=alchemist::stages[(size_t)i];
         assert(stage.module==expectedTypes[i]);
         assert(stage.wet>=0.f && stage.wet<=1.f);
         for(float v:stage.p)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
         for(float v:stage.q)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
     }
+    // Only this new factory program enables the p9 reference contour.
+    // All older Match Finish effects keep p9=.5 and their original sound.
+    assert(alchemist::stages[6].p[8]>.75f);
+    assert(alchemist::stages[6].p[9]==1.f);
+    assert(alchemist::stages[6].p[10]==1.f);
+    assert(alchemist::stages[6].p[11]==.58f); // factory-only; historic saved states unchanged
     // The final default Fruity Limiter tested effectively transparent on
     // Alchemist's source. Do not add a lookahead limiter to this template.
     for(const auto& stage:alchemist::stages)assert(stage.module!=3);
@@ -62,6 +69,12 @@ int main() {
         const auto& sat=alchemist::stages[5];
         const float drive=dbToGain(sat.p[0]*24.f);
         const float shape=.5f+sat.p[1];
+        AlchemistMatchFinish finish;
+        finish.prepare(sr);
+        const auto& fm=alchemist::stages[6];
+        finish.set(fm.p[0],fm.p[1],fm.p[2],fm.p[3],
+                   fm.p[4],fm.p[5],fm.p[6],fm.p[7],
+                   fm.p[8],fm.p[9],fm.p[10],fm.p[11]);
 
         double dryEnergy=0,wetEnergy=0;
         for(int i=0;i<(int)(sr*.28);++i) {
@@ -88,6 +101,9 @@ int main() {
             const float coloredR=std::tanh(r*drive*shape)/std::max(.5f,drive*.6f);
             l+=(coloredL-l)*sat.wet;
             r+=(coloredR-r)*sat.wet;
+            const auto finished=finish.process(l,r);
+            l+=(finished[0]-l)*fm.wet;
+            r+=(finished[1]-r)*fm.wet;
 
             assert(std::isfinite(l)&&std::isfinite(r));
             assert(std::abs(l)<1.f&&std::abs(r)<1.f);

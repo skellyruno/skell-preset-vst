@@ -3,6 +3,7 @@
 #include "ui/ChainPanel.h"
 #include "ui/SlotEditor.h"
 #include "ui/PresetBrowser.h"
+#include "ui/MicModelPanel.h"
 #include "ui/SkullThemeButton.h"
 #include "ui/SkellPowerButton.h"
 #include "ui/SkellSettingsButton.h"
@@ -22,7 +23,7 @@ void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical
 class SkellPresetAudioProcessorEditor::Canvas final:public juce::Component,private juce::Timer {
 public:
     Canvas(SkellPresetAudioProcessorEditor& owner,SkellPresetAudioProcessor& p)
-    : outer(owner),processor(p),chain(p),slot(p),browser(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
+    : outer(owner),processor(p),chain(p),slot(p),browser(p),micPanel(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
         Theme::selectFor(processor.state);
         setLookAndFeel(skin.get());
         setSize(Theme::width,Theme::height);
@@ -47,8 +48,20 @@ public:
         };
 
         preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
-        preset.onClick=[this]{if(browser.isVisible())browser.setVisible(false);else browser.open();};
+        preset.onClick=[this]{
+            micPanel.setVisible(false);
+            if(browser.isVisible())browser.setVisible(false);else browser.open();
+        };
         style(preset);addAndMakeVisible(preset);
+        micButton.setButtonText("MIC");
+        micButton.setTooltip("Open dedicated input microphone modeling panel");
+        style(micButton);addAndMakeVisible(micButton);
+        micButton.onClick=[this] {
+            if(browser.isVisible())browser.setVisible(false);
+            micPanel.refresh();
+            micPanel.setVisible(!micPanel.isVisible());
+            if(micPanel.isVisible())micPanel.toFront(true);
+        };
         match.setButtonText("MATCH");style(match);addAndMakeVisible(match);
         match.onClick=[this]{
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"MATCH | DEVELOPMENT STAGE",
@@ -60,7 +73,7 @@ public:
         style(viewSwitch);style(powerButton);
         addAndMakeVisible(viewSwitch);addAndMakeVisible(powerButton);
         viewSwitch.onClick=[this] {
-            browser.setVisible(false);
+            browser.setVisible(false);micPanel.setVisible(false);
             const int current=(int)processor.state.getRawParameterValue("mode")->load();
             const int view=current==3?previousMode:(current==0?0:1);
             previousMode=view==0?1:0;
@@ -69,7 +82,7 @@ public:
             refresh();
         };
         powerButton.onClick=[this] {
-            browser.setVisible(false);
+            browser.setVisible(false);micPanel.setVisible(false);
             const int current=juce::jlimit(0,3,
                 (int)processor.state.getRawParameterValue("mode")->load());
             if(current==3)
@@ -83,6 +96,11 @@ public:
         };
         for(int k=0;k<4;k++){
             auto& s=macro[(size_t)k];
+            s.onReadoutVisibilityChange=[this] {
+                // Values live on the Canvas behind the hosted slider.
+                // Repaint the footer only on interaction transitions.
+                repaint(juce::Rectangle<int>(14,480,1144,160));
+            };
             s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
             constexpr float pi=juce::MathConstants<float>::pi;
             s.setRotaryParameters(1.25f*pi,2.75f*pi,true);
@@ -221,6 +239,8 @@ public:
         browser.onClose=[this]{preset.repaint();};
         addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
         addAndMakeVisible(browser);browser.setVisible(false);
+        addAndMakeVisible(micPanel);micPanel.setVisible(false);
+        micPanel.onClose=[this]{micButton.repaint();};
         setTheme((int)processor.state.state.getProperty("uiTheme",0),false);
         addMouseListener(this,true); // Outside clicks on child panels dismiss the overlay.
         resized();refresh();startTimerHz(30);
@@ -271,12 +291,13 @@ public:
         if(persist)processor.state.state.setProperty("uiTheme",selectedTheme,nullptr);
         Theme::select(selectedTheme);
         themeButton.setVariant(selectedTheme);
+        micPanel.refresh();
         setLookAndFeel(nullptr);
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(juce::TextButton* b:std::array<juce::TextButton*,7>{{
-            &preset,&match,&viewSwitch,&powerButton,&help,&settings,&record}})
+        for(juce::TextButton* b:std::array<juce::TextButton*,8>{{
+            &preset,&match,&viewSwitch,&powerButton,&help,&settings,&record,&micButton}})
             style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
@@ -317,6 +338,21 @@ public:
         if(showBrowser)browser.open();
         else browser.setVisible(false);
         repaint();
+    }
+    void setMatchPageForScreenshot(int page) {
+        slot.setMatchPageForScreenshot(page);
+    }
+    void setMicPanelForScreenshot(bool visible) {
+        // A capture of the closed mic panel must not close a completely
+        // independent open preset browser scene. Only opening MIC owns
+        // the overlay-dismiss action.
+        if(visible)browser.setVisible(false);
+        micPanel.refresh();
+        micPanel.setVisible(visible);
+        if(visible)micPanel.toFront(true);
+    }
+    void setModOrbForScreenshot(bool enabled) {
+        slot.setModOrbForScreenshot(enabled);
     }
     void openModulePickerForScreenshot() {
         slot.openModulePickerForScreenshot();
@@ -393,11 +429,21 @@ public:
         // explicitly before asserting its editable factory cover.
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         browser.onLoaded();
+        micButton.onClick();
+        if(!micPanel.isVisible())
+            issues.add("Dedicated MIC panel did not open from header");
+        if(!micPanel.testInputAndBypass())
+            issues.add("Dedicated MIC panel cannot automate target or bypass");
+        micButton.onClick();
+        if(micPanel.isVisible())
+            issues.add("Dedicated MIC panel failed to close");
         preset.onClick();
         if(!browser.isVisible())issues.add("Preset selector did not open browser");
         if(browser.visibleFactoryPresetsForTest()!=1 ||
            !browser.canSetCoverForTest())
             issues.add("Browser must show only Alchemist and allow changing its cover");
+        if(!browser.testFavoritesFilterForTest())
+            issues.add("Favorites category must filter stars without rewriting preset data");
         preset.onClick();
         if(browser.isVisible())issues.add("Preset selector did not close browser");
         viewSwitch.onClick();
@@ -465,6 +511,12 @@ public:
             issues.add("8-Band EQ graph did not edit the eighth band and its Q");
         if(!slot.testKnobReadouts())
             issues.add("APVTS overwrote physical Hz/dB/Q knob readouts");
+        if(!slot.testMatchFinishPages())
+            issues.add("Alchemist Shape/Calibration tabs do not expose all eight real parameters");
+        if(!slot.testMicModelCards())
+            issues.add("Mic Modeling profile cards failed to update stable host parameters");
+        if(!slot.testModOrbToggle())
+            issues.add("Modulation orb/graph toggle is not reversible");
         // This drives the same XY mutation code as real mouse dragging:
         // verify the graphical insert is an actual parameter editor.
         processor.loadFactoryPreset(0);
@@ -513,7 +565,26 @@ public:
                 || (int)extension->load()!=type-SkellPresetAudioProcessor::RingModFX)
                 issues.add("Extended rack module was not mapped to separate host parameter");
         }
+        // The new Alchemist module has an independent fourth-generation
+        // choice. Earlier published type normalizations must remain exact.
+        processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
+        slot.select(0); // Refresh the real selector; don't test stale prior UI.
+        {
+            const auto* modern=processor.state.getRawParameterValue("s1_fxExt4");
+            const auto* legacy=processor.state.getRawParameterValue("s1_type");
+            const auto* a=processor.state.getRawParameterValue("s1_fxExt");
+            const auto* b=processor.state.getRawParameterValue("s1_fxExt2");
+            const auto* c=processor.state.getRawParameterValue("s1_fxExt3");
+            if(processor.slotType(0)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX
+               || !modern || (int)modern->load()!=1 || !legacy || (int)legacy->load()!=0
+               || !a || (int)a->load()!=0 || !b || (int)b->load()!=0
+               || !c || (int)c->load()!=0 || !slot.moduleSelectorMatchesAudio())
+                issues.add("Alchemist match finish changed older automation extension IDs");
+        }
         processor.setSlotType(0,SkellPresetAudioProcessor::RingModFX);
+        if(auto* modern=processor.state.getRawParameterValue("s1_fxExt4"))
+            if((int)modern->load()!=0)
+                issues.add("Legacy module failed to clear Alchemist extension");
         if(auto* extension=processor.state.getRawParameterValue("s1_fxExt"))
             if((int)extension->load()!=0)
                 issues.add("Legacy module did not clear extended host parameter");
@@ -704,11 +775,11 @@ public:
                     g.drawLine(centreX+dx*tickInner,centreY+dy*tickInner,
                                centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
                 }
-                Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
-                    {(int)x+55,510,110,29},21,Theme::green,true,
-                    juce::Justification::centred);
-                Theme::text(g,"/ 100",{(int)x+149,516,58,17},
-                    10,Theme::muted,false);
+                if(macro[(size_t)k].showsValueForTest()) {
+                    Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
+                        {(int)x+55,510,110,29},21,Theme::green,true,
+                        juce::Justification::centred);
+                }
                 const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
                 g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
                 if(amount>.0001f){
@@ -726,10 +797,11 @@ public:
                 Theme::text(g,labels[k],{x,590,105,17},12,Theme::muted,true);
                 const auto* value=processor.state.getRawParameterValue(
                     "macro"+juce::String(k+1));
-                Theme::text(g,juce::String(juce::roundToInt(100.f*
-                    juce::jlimit(0.f,1.f,value?value->load():.5f))),
-                    {x+108,590,76,17},12,Theme::green,true,
-                    juce::Justification::centredRight);
+                if(macro[(size_t)k].showsValueForTest())
+                    Theme::text(g,juce::String(juce::roundToInt(100.f*
+                        juce::jlimit(0.f,1.f,value?value->load():.5f))),
+                        {x+108,590,76,17},12,Theme::green,true,
+                        juce::Justification::centredRight);
             }
         }
     }
@@ -749,9 +821,11 @@ public:
         themeButton.setBounds(15,12,53,56);
         chain.setBounds(rackOnRight?939:13,90,216,535);
         slot.setBounds(rackOnRight?14:247,90,906,496);
+        micPanel.setBounds(702,97,438,406); // compact 16% smaller, right anchored
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
-        viewSwitch.setBounds(796,27,237,37);
+        viewSwitch.setBounds(796,27,218,37);
+        micButton.setBounds(1020,28,44,36);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
         // Compact 36px controls on one baseline, visually grouped.
         powerButton.setBounds(1069,28,36,36);
@@ -798,6 +872,11 @@ public:
         bypassShade.setVisible(bypass);
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
+        if(micPanel.isVisible())micPanel.toFront(true);
+        micButton.setColour(juce::TextButton::buttonColourId,
+            micPanel.on()?Theme::green.withAlpha(.21f):Theme::panelAlt);
+        micButton.setColour(juce::TextButton::textColourOffId,
+            micPanel.on()?Theme::green:Theme::white);
         preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
         viewSwitch.setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
         viewSwitch.setTooltip(display==0?"Open full effect chain":"Switch to four macros");
@@ -812,6 +891,16 @@ public:
     }
     void timerCallback() override{
         processor.refreshHostedLatency();
+        if(micPanel.isVisible())micPanel.refreshIfChanged();
+        const bool micActive=micPanel.on();
+        if(micActive!=lastMicOn) {
+            lastMicOn=micActive;
+            micButton.setColour(juce::TextButton::buttonColourId,
+                micActive?Theme::green.withAlpha(.21f):Theme::panelAlt);
+            micButton.setColour(juce::TextButton::textColourOffId,
+                micActive?Theme::green:Theme::white);
+            micButton.repaint();
+        }
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
         syncSizeControl((float)outer.getWidth()/Theme::width);
@@ -837,24 +926,31 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
+        if(micPanel.isVisible() && !micPanel.getBounds().contains(point)
+           && !micButton.getBounds().contains(point))
+            micPanel.setVisible(false);
         if(browser.isVisible() && !browser.getBounds().contains(point) && !preset.getBounds().contains(point)) {
             browser.setVisible(false);preset.repaint();
         }
     }
     bool keyPressed(const juce::KeyPress& key)override{
+        if(key==juce::KeyPress::escapeKey && micPanel.isVisible()) {
+            micPanel.setVisible(false);return true;
+        }
         if(key==juce::KeyPress::escapeKey&&browser.isVisible()){browser.setVisible(false);return true;}return false;
     }
 private:
     SkellPresetAudioProcessorEditor& outer;
     SkellPresetAudioProcessor& processor;
-    ChainPanel chain;SlotEditor slot;PresetBrowser browser;
+    ChainPanel chain;SlotEditor slot;PresetBrowser browser;SkellMicModelPanel micPanel;
     SkullThemeButton themeButton;
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
-    SkellActionButton preset,match,help,record;
+    bool lastMicOn=false;
+    SkellActionButton preset,match,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
@@ -922,6 +1018,15 @@ juce::StringArray SkellPresetAudioProcessorEditor::runScreenshotInteractionTests
 
 void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
     canvas->selectRackSlotForScreenshot(physicalSlot,scrollOffset);
+}
+void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
+    canvas->setMatchPageForScreenshot(page);
+}
+void SkellPresetAudioProcessorEditor::setMicPanelForScreenshot(bool visible) {
+    canvas->setMicPanelForScreenshot(visible);
+}
+void SkellPresetAudioProcessorEditor::setModOrbForScreenshot(bool enabled) {
+    canvas->setModOrbForScreenshot(enabled);
 }
 
 void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {

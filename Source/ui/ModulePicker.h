@@ -239,7 +239,11 @@ private:
     void filter(){
         results.clear();
         for(int type=0;type<SkellPresetAudioProcessor::NumberOfModules;++type)
-            if(matches(search.getText(),type))results.push_back(type);
+            // New mic modeling is a dedicated pre-rack input panel.
+            // The old slot type 32 still loads and processes saved projects,
+            // but new racks cannot accidentally insert a second mic model.
+            if(type!=SkellPresetAudioProcessor::MicModelFX
+               && matches(search.getText(),type))results.push_back(type);
         // Stable sort within categories retains each existing module ID
         // and automation mapping, while giving users a predictable catalog.
         std::stable_sort(results.begin(),results.end(),[](int a,int b){

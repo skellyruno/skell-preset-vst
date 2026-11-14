@@ -2,6 +2,7 @@
 // Linux: run under Xvfb. Never instantiate a mock editor or call the audio thread.
 #include "../Source/PluginEditor.h"
 #include "../Source/PluginProcessor.h"
+#include "../Source/chain/AlchemistNativePreset.h"
 #include "../Source/host/InstalledVST3Index.h"
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -113,6 +114,59 @@ int main(int argc, char** argv) {
                         break;
                     }
                 }
+        }
+    }
+    // End-to-end Alchemist regression: THIS tests the same compiled JUCE
+    // processor, seven serial factory stages and actual APVTS controls used
+    // by the shipped VST3. The separate contour-header smoke is insufficient.
+    // Synthetic audio only: owner's reference WAV never enters source control.
+    {
+        auto renderAlchemist=[&](bool withContour) {
+            processor.prepareToPlay(48000.,256);
+            processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+            if(!withContour)
+                processor.setSlotParam(6,8,.5f); // legacy neutral p9
+            const bool correctFactory=processor.slotType(6)==
+                    SkellPresetAudioProcessor::AlchemistMatchFinishFX
+                && processor.getSlotParam(6,8)==(withContour?1.f:.5f)
+                && processor.getLatencySamples()==0;
+            if(!correctFactory) {
+                std::fprintf(stderr,"Alchemist native contour is not wired into the real VST3 rack\\n");
+                ++failures;
+            }
+            double sumSquares=0.;
+            int used=0;
+            for(int block=0;block<150;++block) {
+                juce::AudioBuffer<float> audio(2,256);
+                for(int n=0;n<256;++n) {
+                    constexpr double pi=3.14159265358979323846;
+                    const double t=(block*256+n)/48000.;
+                    const float x=.026f*(float)std::sin(2.*pi*231.*t)
+                                 +.006f*(float)std::sin(2.*pi*3900.*t);
+                    audio.setSample(0,n,x);
+                    audio.setSample(1,n,x*.91f);
+                }
+                juce::MidiBuffer midi;
+                processor.processBlock(audio,midi);
+                for(int n=0;n<256;++n) {
+                    const float y=audio.getSample(0,n);
+                    if(!std::isfinite(y) || std::abs(y)>1.001f) {
+                        std::fprintf(stderr,"Alchemist full native rack produced NaN or clipping\\n");
+                        ++failures;
+                        return 0.;
+                    }
+                    if(block>=35) {sumSquares+=(double)y*y;++used;}
+                }
+            }
+            return used?std::sqrt(sumSquares/used):0.;
+        };
+        const double contourOn=renderAlchemist(true);
+        const double contourOff=renderAlchemist(false);
+        if(contourOff<=1.e-5 || contourOn<=contourOff*1.06) {
+            std::fprintf(stderr,"Alchemist factory contour has no real audible VST3 path:"
+                                " old RMS %.6f, reference RMS %.6f\\n",
+                                contourOff,contourOn);
+            ++failures;
         }
     }
     // Genuine processBlock regression for the new FL-style wet/bypass controls.
@@ -233,6 +287,7 @@ int main(int argc, char** argv) {
                     options.scenes.push_back(scene);
                 }
         options.scenes.push_back({"obsidian-guided-tour-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-mic-panel-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
@@ -261,7 +316,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-formant-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,28> effectScenes {{
+        const std::array<std::pair<const char*,int>,31> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -289,12 +344,29 @@ int main(int argc, char** argv) {
             {"fet-opto",SkellPresetAudioProcessor::SerialDynamicsFX},
             {"harshness-tamer",SkellPresetAudioProcessor::DynamicHarshnessFX},
             {"adaptive-noise",SkellPresetAudioProcessor::AdaptiveNoiseFX},
-            {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX}
+            {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX},
+            {"alchemist-match-finish",SkellPresetAudioProcessor::AlchemistMatchFinishFX},
+            {"mic-modeling",SkellPresetAudioProcessor::MicModelFX},
+            {"skelldizer",SkellPresetAudioProcessor::SkelldizerFX}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
                                       818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-chorus-orb-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
+                                  818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-alchemist-reference-70",
+                                  818,482,0,1,false});
         options.configure = [&](const auto& scene) {
+            if(scene.id=="obsidian-mic-panel-70") {
+                processor.loadFactoryPreset(0);
+                if(auto* p=processor.state.getParameter("micPreOn"))
+                    p->setValueNotifyingHost(p->convertTo0to1(1.f));
+                if(auto* p=processor.state.getParameter("micPreInput"))
+                    p->setValueNotifyingHost(p->convertTo0to1(1.f));
+                if(auto* p=processor.state.getParameter("micPreTarget"))
+                    p->setValueNotifyingHost(p->convertTo0to1(3.f));
+            }
             if(scene.id=="obsidian-expanded-70") {
                 processor.loadFactoryPreset(0);
                 while(processor.activeSlotCount()<16)processor.appendRackSlot();
@@ -352,6 +424,27 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
+            } else if(scene.id=="obsidian-effect-chorus-orb-70") {
+                processor.loadFactoryPreset(0);
+                processor.setSlotType(0,SkellPresetAudioProcessor::VocalChorusFX);
+                processor.setSlotOn(0,true);
+                processor.setSlotParam(0,0,.48f);
+                processor.setSlotParam(0,1,.87f);
+            } else if(scene.id=="obsidian-effect-alchemist-calibration-70"
+                      || scene.id=="obsidian-effect-alchemist-match-finish-70"
+                      || scene.id=="obsidian-effect-alchemist-reference-70") {
+                // Both page captures must use the real Alchemist factory
+                // rack and saved match coefficients, not Clean Lead with
+                // generic fixture knob values.
+                processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+                // Preserve all seven stage types and calibrated controls.
+                // Match Finish is already slot 7 (physical index 6).
+                if(processor.slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX
+                    || processor.loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex
+                    || processor.getLatencySamples()!=0) {
+                    std::fprintf(stderr,"Alchemist factory stage 7 missing or unexpected latency in screenshot fixture\\n");
+                    ++failures;
+                }
             } else if(scene.id.startsWith("obsidian-effect-")) {
                 processor.loadFactoryPreset(0);
                 for(const auto& effect:effectScenes)
@@ -376,6 +469,10 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(15,6);
             else if(scene.id=="cream-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
+            else if(scene.id=="obsidian-effect-alchemist-match-finish-70"
+                    || scene.id=="obsidian-effect-alchemist-calibration-70"
+                    || scene.id=="obsidian-effect-alchemist-reference-70")
+                editor.selectRackSlotForScreenshot(6,0);
             else if(scene.id.startsWith("obsidian-effect-")
                     || scene.id=="obsidian-external-70"
                     || scene.id=="obsidian-installed-vst3-browser-70")
@@ -408,6 +505,12 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(8,0);
             if(scene.id=="obsidian-installed-vst3-browser-70")
                 editor.openInstalledVST3BrowserForScreenshot();
+            if(scene.id=="obsidian-effect-alchemist-calibration-70")
+                editor.setMatchPageForScreenshot(1);
+            if(scene.id=="obsidian-effect-alchemist-reference-70")
+                editor.setMatchPageForScreenshot(2);
+            editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-orb-70");
+            editor.setMicPanelForScreenshot(scene.id=="obsidian-mic-panel-70");
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -445,15 +548,23 @@ int main(int argc, char** argv) {
             {"obsidian-effect-eight-band-eq-70", "obsidian-effect-fet-opto-70"},
             {"obsidian-effect-harshness-tamer-70", "obsidian-effect-adaptive-noise-70"},
             {"obsidian-factory-eightband-70", "obsidian-factory-opto-70"},
-            {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"}
+            {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"},
+            {"obsidian-effect-alchemist-match-finish-70",
+             "obsidian-effect-alchemist-calibration-70"},
+            {"obsidian-effect-alchemist-calibration-70",
+             "obsidian-effect-alchemist-reference-70"},
+            {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
+            {"obsidian-effect-skelldizer-70","obsidian-effect-mic-modeling-70"},
+            {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-orb-70"},
+            {"obsidian-advanced-70","obsidian-mic-panel-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 103) {
-            std::fprintf(stderr, "Expected 103 PNGs, captured %d\n", report.captured);
+        if (report.captured != 110) {
+            std::fprintf(stderr, "Expected 110 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 

@@ -12,6 +12,9 @@ public:
     // They exercise the actual editor and controls without a separate mock UI.
     void configureForScreenshot(int themeVariant, int workspaceMode, bool showPresetBrowser);
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
+    void setMatchPageForScreenshot(int page);
+    void setMicPanelForScreenshot(bool visible);
+    void setModOrbForScreenshot(bool enabled);
     void dockRackForScreenshot(bool right);
     void openModulePickerForScreenshot();
     void openInstalledVST3BrowserForScreenshot();

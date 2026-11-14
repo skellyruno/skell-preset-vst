@@ -4,6 +4,12 @@
 #include <cmath>
 #include <limits>
 namespace {
+bool isModulationOrbEffect(int type) noexcept {
+    using P=SkellPresetAudioProcessor;
+    return type==P::Tremolo || type==P::StereoWidth ||
+           type==P::VocalChorusFX || type==P::VocalFlangerFX ||
+           type==P::RingModFX || type==P::VocalVibratoFX;
+}
 const juce::StringArray names=[] {
     juce::StringArray result;
     for(const auto& effect:skellpreset::registry::effects)result.add(effect.name);
@@ -41,6 +47,9 @@ std::array<juce::String,4> titles(int type) {
         case 28:return {"Frequency","Threshold","Reduction","Release"};
         case 29:return {"Threshold","Strength","Hold","Release"};
         case 30:return {"Pitch","Formant","Pitch Range","Formant Range"};
+        case 31:return {"Harmonic","Envelope","Slow Contour","Fast Attack"};
+        case 32:return {"Input Mic","Simulate","Amount","Trim"};
+        case 33:return {"Amount","Character","Output","Level Match"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -91,6 +100,10 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
     addAndMakeVisible(upgradeEq);
     upgradeEq.setVisible(false);
+    modOrbButton.setTooltip("Show a modulation parameter orb; press GRAPH to return");
+    addAndMakeVisible(modOrbButton);
+    modOrbButton.setVisible(false);
+    modOrbButton.onClick=[this]{setModOrbForScreenshot(!modOrbView);};
     upgradeEq.onClick=[this] {
         if(processor.slotType(slot)!=SkellPresetAudioProcessor::EQ)return;
         const float oldFreq=processor.getSlotParam(slot,0);
@@ -149,6 +162,18 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(button);
         button.setVisible(false);
     }
+    for(int page=0;page<3;++page) {
+        auto& button=matchPageButtons[(size_t)page];
+        button.setButtonText(page==0?"SHAPE":page==1?"CALIBRATION":"REFERENCE");
+        button.setTooltip(page==0
+            ?"Edit learned harmonic and envelope weight controls"
+            :page==1?"Edit source-level calibration, reference amplitude, trim and smoothing"
+                   :"Edit native reference-fitted vocal level, air and trim; live DSP parameters");
+        button.onClick=[this,page]{showMatchPage(page);};
+        button.setWantsKeyboardFocus(true);
+        addAndMakeVisible(button);
+        button.setVisible(false);
+    }
     for(int index=0;index<2;++index) {
         auto& control=eqCutSliders[(size_t)index];
         control.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -163,7 +188,8 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     for(int i=0;i<4;++i){
         auto& k=knobs[(size_t)i];
         k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,76,21);
+        k.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
+        k.setTooltip("Hover or adjust for 0-100 numeric value. Double-click resets.");
         // Human-readable display only; hosts still automate the exact stable
         // normalized parameter range. Never make display conversions in DSP.
         k.setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
@@ -248,6 +274,31 @@ void SlotEditor::applyKnobReadouts() {
                 }
                 return juce::String((v-.5)*30.,1)+"dB";
             }
+            if(module==SkellPresetAudioProcessor::MicModelFX) {
+                if(i==0)return skellpreset::dsp::MicModelTone::inputName(
+                    skellpreset::dsp::MicModelTone::index((float)v));
+                if(i==1)return skellpreset::dsp::MicModelTone::targetName(
+                    skellpreset::dsp::MicModelTone::index((float)v));
+                if(i==2)return juce::String(juce::roundToInt(v*100.))+"%";
+                return juce::String(-6.+12.*v,1)+" dB";
+            }
+            if(module==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+                if(matchPage==0) {
+                    if(i==0)return juce::String((v-.5)*6.,2)+"% cubic";
+                    if(i==1)return juce::String(juce::roundToInt(v*100.))+"%";
+                    return juce::String((v-.5)*.7,3)+" x";
+                }
+                if(matchPage==2) {
+                    if(i==0)return v>.75?"ON":"OFF";
+                    if(i==1 || i==2)return juce::String(
+                        juce::roundToInt(juce::jlimit(0.,1.,(v-.5)*2.)*100.))+"%";
+                    return juce::String(4.*v,1)+" dB";
+                }
+                if(i==0)return juce::String(-40.+30.*v,1)+" dBFS";
+                if(i==1)return juce::String(.05+.75*v,3)+" amp";
+                if(i==2)return juce::String(-1.+2.*v,2)+" dB";
+                return juce::String(2.+48.*v,1)+" ms";
+            }
             if(module==SkellPresetAudioProcessor::StudioPitchFormantFX) {
                 if(i==0)return juce::String((v-.5)*2.*
                     (3.+9.*processor.getSlotParam(slot,2)),1)+" st";
@@ -303,6 +354,36 @@ void SlotEditor::applyKnobReadouts() {
                 const double hi=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
                 const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
                 return juce::jlimit(0.,1.,std::log(hz/lo)/std::log(hi/lo));
+            }
+            if(module==SkellPresetAudioProcessor::MicModelFX) {
+                if(i==0 || i==1) {
+                    for(int n=0;n<4;++n) {
+                        const juce::String name=i==0
+                            ?skellpreset::dsp::MicModelTone::inputName(n)
+                            :skellpreset::dsp::MicModelTone::targetName(n);
+                        if(name.toLowerCase()==text)return n/3.;
+                    }
+                    return juce::jlimit(0.,1.,value);
+                }
+                if(i==2)return juce::jlimit(0.,1.,value/100.);
+                return juce::jlimit(0.,1.,(value+6.)/12.);
+            }
+            if(module==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+                if(matchPage==0) {
+                    if(i==0)return juce::jlimit(0.,1.,.5+value/6.);
+                    if(i==1)return juce::jlimit(0.,1.,value/100.);
+                    return juce::jlimit(0.,1.,.5+value/.7);
+                }
+                if(matchPage==2) {
+                    if(i==0)return (text=="on" || value>75.)?1.:0.;
+                    if(i==1 || i==2)
+                        return juce::jlimit(.5,1.,.5+value/200.);
+                    return juce::jlimit(0.,1.,value/4.);
+                }
+                if(i==0)return juce::jlimit(0.,1.,(value+40.)/30.);
+                if(i==1)return juce::jlimit(0.,1.,(value-.05)/.75);
+                if(i==2)return juce::jlimit(0.,1.,(value+1.)/2.);
+                return juce::jlimit(0.,1.,(value-2.)/48.);
             }
             if(module==SkellPresetAudioProcessor::StudioPitchFormantFX) {
                 if(i==0)return juce::jlimit(0.,1.,.5+value/
@@ -388,8 +469,9 @@ void SlotEditor::applyTheme() {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(auto* s:{&eqQSlider,&eqCutSliders[0],&eqCutSliders[1],
-                  &knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
+    for(juce::Slider* s:std::array<juce::Slider*,7>{{
+        &eqQSlider,&eqCutSliders[0],&eqCutSliders[1],
+        &knobs[0],&knobs[1],&knobs[2],&knobs[3]}}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         s->setColour(juce::Slider::thumbColourId,Theme::white);
@@ -399,6 +481,17 @@ void SlotEditor::applyTheme() {
     }
     upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
+    modOrbButton.setColour(juce::TextButton::buttonColourId,
+        modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
+    modOrbButton.setColour(juce::TextButton::textColourOffId,
+        modOrbView?Theme::green:Theme::white);
+    for(int page=0;page<3;++page) {
+        auto& button=matchPageButtons[(size_t)page];
+        button.setColour(juce::TextButton::buttonColourId,
+            page==matchPage?Theme::green.withAlpha(.32f):Theme::panelAlt);
+        button.setColour(juce::TextButton::textColourOffId,
+            page==matchPage?Theme::green:Theme::white);
+    }
     for(int i=0;i<8;++i) {
         eqBandButtons[(size_t)i].setColour(juce::TextButton::buttonColourId,
             i==activeEqBand?Theme::green.withAlpha(.36f):Theme::panelAlt);
@@ -433,6 +526,64 @@ void SlotEditor::showEqBank(int firstBand) {
     graphSnapshotValid=false;
     repaint();
 }
+void SlotEditor::showMatchPage(int page) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX)
+        return;
+    matchPage=juce::jlimit(0,2,page);
+    const auto prefix="s"+juce::String(slot+1)+"_";
+    for(auto& attachment:knobAttachment)attachment.reset();
+    for(int k=0;k<4;++k)
+        knobAttachment[(size_t)k]=
+            std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"p"+juce::String(matchPage*4+k+1),
+                knobs[(size_t)k]);
+    for(int i=0;i<3;++i) {
+        auto& b=matchPageButtons[(size_t)i];
+        b.setColour(juce::TextButton::buttonColourId,
+            i==matchPage?Theme::green.withAlpha(.32f):Theme::panelAlt);
+        b.setColour(juce::TextButton::textColourOffId,
+            i==matchPage?Theme::green:Theme::white);
+        b.repaint();
+    }
+    applyKnobReadouts();
+    graphSnapshotValid=false;
+    repaint();
+}
+bool SlotEditor::testMatchFinishPages() {
+    processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
+    processor.setSlotOn(0,true);
+    processor.setSlotParam(0,0,.20f);
+    processor.setSlotParam(0,4,.67f);
+    processor.setSlotParam(0,5,.335f);
+    processor.setSlotParam(0,8,1.f);
+    processor.setSlotParam(0,9,.95f);
+    processor.setSlotParam(0,10,.85f);
+    processor.setSlotParam(0,11,.50f);
+    select(0);
+    const bool shape=matchPage==0 && matchPageButtons[0].isVisible() &&
+        matchPageButtons[1].isVisible() && matchPageButtons[2].isVisible() &&
+        std::abs(knobs[0].getValue()-.20)<.002;
+    showMatchPage(1);
+    const bool calibrated=matchPage==1 &&
+        std::abs(knobs[0].getValue()-.67)<.002 &&
+        std::abs(knobs[1].getValue()-.335)<.002 &&
+        knobs[0].getTextFromValue(.67).contains("dBFS") &&
+        knobs[3].getTextFromValue(.271).contains("ms");
+    showMatchPage(2);
+    const bool reference=matchPage==2 &&
+        std::abs(knobs[0].getValue()-1.)<.002 &&
+        std::abs(knobs[1].getValue()-.95)<.002 &&
+        std::abs(knobs[2].getValue()-.85)<.002 &&
+        std::abs(knobs[3].getValue()-.50)<.002 &&
+        knobs[0].getTextFromValue(1.).containsIgnoreCase("ON");
+    // Prove the REFERENCE knob edits the host's ninth existing parameter.
+    knobs[1].setValue(.72,juce::sendNotificationSync);
+    const bool routed=std::abs(processor.getSlotParam(0,9)-.72f)<.005f;
+    showMatchPage(0);
+    return shape && calibrated && reference && routed &&
+        std::abs(knobs[0].getValue()-.20)<.002 &&
+        std::abs(processor.getSlotParam(0,4)-.67f)<.002f;
+}
 void SlotEditor::openModulePicker() {
     installedBrowser.hide();
     if(modulePicker.isVisible())modulePicker.hide();
@@ -440,7 +591,7 @@ void SlotEditor::openModulePicker() {
 }
 void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
-    eqBank=0;activeEqBand=0;
+    eqBank=0;activeEqBand=0;matchPage=0;
     lastPeakLevel=-1;
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
@@ -464,6 +615,8 @@ void SlotEditor::select(int newSlot) {
     applyKnobReadouts();
     if(processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX)
         showEqBank(0);
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::AlchemistMatchFinishFX)
+        showMatchPage(0);
     repaint();
 }
 void SlotEditor::refreshIfChanged() {
@@ -479,7 +632,13 @@ void SlotEditor::refreshIfChanged() {
     const int level=juce::jlimit(0,14,juce::roundToInt(measured*14.f));
     if(!changed && lastPeakLevel!=level) {
         lastPeakLevel=level;
-        repaint(juce::Rectangle<int>(178,75,195,22)); // tiny live bone-rib overlay only
+        repaint(juce::Rectangle<int>(178,75,195,22)); // small bone-rib meter
+        // The delay's echo-contour brightness and modulation orb halo
+        // depend on actual measured slot peak. Repaint just the graph,
+        // not the full plugin; the integer peak step bounds idle CPU.
+        if(type==SkellPresetAudioProcessor::Delay ||
+           (isModulationOrbEffect(type) && modOrbView))
+            repaint(juce::Rectangle<int>(33,151,835,206));
         return;
     }
     lastPeakLevel=level;
@@ -511,11 +670,20 @@ void SlotEditor::refreshIfChanged() {
             lastEqControls[(size_t)(24+k)]=v;
         }
     }
+    if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+        for(int k=0;k<12;++k) {
+            const float v=processor.getSlotParam(slot,k);
+            changed=changed || std::abs(v-lastEqControls[(size_t)k])>1.e-5f;
+            lastEqControls[(size_t)k]=v;
+        }
+    }
     if(!changed)return;
     if(type!=lastType){
         // A new effect resets the EQ bank, preserving all saved parameter
         // values while reattaching only the controls visible on this page.
-        eqBank=0;activeEqBand=0;
+        eqBank=0;activeEqBand=0;matchPage=0;
+        modOrbView=false;
+        modOrbButton.setButtonText("ORB");
         eqQAttachment.reset();
         for(auto& attachment:eqCutAttachments)attachment.reset();
         if(type==SkellPresetAudioProcessor::EightBandToneFX) {
@@ -534,6 +702,8 @@ void SlotEditor::refreshIfChanged() {
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
         if(type==SkellPresetAudioProcessor::EightBandToneFX)
             showEqBank(activeEqBand);
+        else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)
+            showMatchPage(0);
     }
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
@@ -542,9 +712,11 @@ void SlotEditor::refreshIfChanged() {
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
     upgradeEq.setVisible(type==SkellPresetAudioProcessor::EQ);
+    modOrbButton.setVisible(isModulationOrbEffect(type));
     eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& button:eqBandButtons)button.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
+    for(auto& button:matchPageButtons)button.setVisible(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX);
     for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
 }
@@ -554,12 +726,16 @@ void SlotEditor::resized() {
     modulePicker.setBounds(405,66,470,400);
     eqQSlider.setBounds(672,114,186,26);
     eqCutSliders[0].setBounds(68,125,270,23);
-    eqCutSliders[1].setBounds(370,125,270,23);
+    eqCutSliders[1].setBounds(425,125,215,23);
     for(int k=0;k<8;++k)eqBandButtons[(size_t)k].setBounds(219+k*49,96,40,26);
+    matchPageButtons[0].setBounds(512,72,105,23);
+    matchPageButtons[1].setBounds(623,72,125,23);
+    matchPageButtons[2].setBounds(754,72,112,23);
     loadExternal.setBounds(52,420,177,62);
     installedBrowser.setBounds(85,62,735,385);
     editExternal.setBounds(246,420,188,62);
     upgradeEq.setBounds(650,97,212,31);
+    modOrbButton.setBounds(764,77,95,23);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
 }
 void SlotEditor::paint(juce::Graphics&g) {
@@ -616,7 +792,180 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(i==3 && type==SkellPresetAudioProcessor::EQ ?Theme::blue.withAlpha(.7f):Theme::stroke);
         g.drawHorizontalLine((int)y,plot.getX(),plot.getRight());
     }
-    if(type==SkellPresetAudioProcessor::EQ) {
+    if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+        if(matchPage==2) {
+            // Exact static target-gain function from AlchemistReferenceContour,
+            // drawn versus incoming RMS level. This is neither a spectrum
+            // analyser nor a generated waveform: dynamic attack/release
+            // and the 14.5kHz shelf remain separate causal processing.
+            const bool enabled=processor.getSlotParam(slot,8)>.75f;
+            const float intensity=juce::jlimit(0.f,1.f,
+                (processor.getSlotParam(slot,9)-.5f)*2.f);
+            const float air=juce::jlimit(0.f,1.f,
+                (processor.getSlotParam(slot,10)-.5f)*2.f);
+            const float baseDb=2.f+4.f*(processor.getSlotParam(slot,11)-.5f);
+            const float xLeft=plot.getX()+23.f;
+            const float xRight=plot.getRight()-23.f;
+            const float baseline=plot.getBottom()-51.f;
+            const float scale=plot.getHeight()/13.2f;
+            g.setColour(Theme::stroke);
+            g.drawHorizontalLine((int)baseline,xLeft,xRight);
+            juce::Path targetGain;
+            for(int index=0;index<=140;++index) {
+                const float db=-60.f+60.f*index/140.f;
+                const float speech=juce::jlimit(0.f,1.f,(db+59.f)/13.f);
+                const float expected=enabled?juce::jlimit(-1.f,10.5f,
+                    (baseDb+.38f*(-20.f-db))*speech*intensity):0.f;
+                const float x=xLeft+(xRight-xLeft)*index/140.f;
+                const float y=baseline-expected*scale;
+                if(index==0)targetGain.startNewSubPath(x,y);
+                else targetGain.lineTo(x,y);
+            }
+            g.setColour(Theme::green);
+            g.strokePath(targetGain,juce::PathStrokeType(2.7f));
+            Theme::text(g,"REFERENCE CONTOUR / RMS INPUT  -60 TO 0 dBFS",
+                        {48,165,680,19},11,Theme::green,true);
+            Theme::text(g,enabled?"REFERENCE MATCH ACTIVE":"REFERENCE MATCH OFF",
+                        {48,193,460,23},13,
+                        enabled?Theme::white:Theme::muted,true);
+            Theme::text(g,"LEVEL "+juce::String(intensity*100.f,0)+"%  /  AIR "+
+                        juce::String(air*100.f,0)+"%  /  BASE "+
+                        juce::String(baseDb,1)+" dB",
+                        {48,327,710,19},10,Theme::muted);
+            Theme::text(g,"35 ms CAUSAL LEVELER / 14.5k AIR / SOFT PEAK SAFETY",
+                        {48,350,760,16},9,Theme::muted);
+        } else {
+        // This is the ACTUAL static cubic transfer implied by the host
+        // parameters, not a pretend live waveform or reference null score.
+        const float amount=(processor.getSlotParam(slot,0)-.5f)*.06f;
+        const float reference=.05f+.75f*processor.getSlotParam(slot,5);
+        const float denom=std::max(.0025f,reference*reference);
+        const float trim=std::pow(10.f,
+            (-1.f+2.f*processor.getSlotParam(slot,6))/20.f);
+        juce::Path neutral,curve;
+        for(int n=0;n<=180;++n) {
+            const float x=-.42f+.84f*(float)n/180.f;
+            const float shaped=(x+amount*x*x*x/denom)*trim;
+            const float px=plot.getX()+plot.getWidth()*(float)n/180.f;
+            const float lineY=plot.getCentreY()-x*plot.getHeight()*.91f;
+            const float shapedY=plot.getCentreY()
+                -std::clamp(shaped,-.56f,.56f)*plot.getHeight()*.91f;
+            if(n==0) {
+                neutral.startNewSubPath(px,lineY);
+                curve.startNewSubPath(px,shapedY);
+            } else {
+                neutral.lineTo(px,lineY);
+                curve.lineTo(px,shapedY);
+            }
+        }
+        g.setColour(Theme::muted.withAlpha(.56f));
+        g.strokePath(neutral,juce::PathStrokeType(1.35f));
+        g.setColour(Theme::green.withAlpha(.96f));
+        g.strokePath(curve,juce::PathStrokeType(2.4f));
+        g.setColour(Theme::green.withAlpha(.08f));
+        g.fillRoundedRectangle(plot.reduced(13.f),4.f);
+        Theme::text(g,"CAUSAL HARMONIC TRANSFER  /  SOLID = ACTIVE · DIM = CLEAN",
+            {56,166,620,19},10,Theme::green,true);
+        Theme::text(g,"20 / 120 / 280ms detector  ·  ±0.6dB bounded contour  ·  0ms lookahead",
+            {56,325,700,20},10,Theme::muted);
+        }
+    }
+    if(type==SkellPresetAudioProcessor::SkelldizerFX) {
+        // Character pads change real p2 automation; this is not an FFT meter.
+        const int mode=skellpreset::dsp::Skelldizer::characterIndex(
+            processor.getSlotParam(slot,1));
+        Theme::text(g,"SKELLDIZER / ORIGINAL THREE-BAND ENHANCER",
+                    {54,161,705,20},12,Theme::green,true);
+        for(int k=0;k<4;++k) {
+            const juce::Rectangle<float> card(69.f+k*188.f,190.f,170.f,48.f);
+            const bool selected=k==mode;
+            g.setColour(selected?Theme::green.withAlpha(.20f):Theme::panelAlt);
+            g.fillRoundedRectangle(card,7.f);
+            g.setColour(selected?Theme::green:Theme::stroke);
+            g.drawRoundedRectangle(card,7.f,selected?1.6f:.9f);
+            Theme::text(g,skellpreset::dsp::Skelldizer::characterName(k),
+                {(int)card.getX()+7,201,156,22},14,
+                selected?Theme::green:Theme::white,true,
+                juce::Justification::centred);
+        }
+        constexpr float profiles[4][3]={{1.06f,1.02f,.96f},
+                                         {1.19f,1.03f,.77f},
+                                         {.82f,1.02f,1.23f},
+                                         {1.03f,1.09f,1.03f}};
+        constexpr const char* labels[]={"LOW","MID","HIGH"};
+        for(int band=0;band<3;++band) {
+            const float x=181.f+234.f*band;
+            const float height=24.f+processor.getSlotParam(slot,0)*
+                                    std::abs(profiles[mode][band]-1.f)*190.f;
+            g.setColour(Theme::stroke.withAlpha(.70f));
+            g.fillRoundedRectangle(x,260.f,85.f,68.f,5.f);
+            g.setColour(Theme::green.withAlpha(.55f));
+            g.fillRoundedRectangle(x,328.f-height,85.f,height,5.f);
+            Theme::text(g,labels[band],{(int)x,330,85,19},10,Theme::muted,
+                        true,juce::Justification::centred);
+        }
+    }
+    if(type==SkellPresetAudioProcessor::MicModelFX) {
+        // Compact Mic Modeling controls INSIDE the existing effect page.
+        // Models are generic response profiles, not proprietary brand IRs.
+        const int input=skellpreset::dsp::MicModelTone::index(processor.getSlotParam(slot,0));
+        const int output=skellpreset::dsp::MicModelTone::index(processor.getSlotParam(slot,1));
+        const float strength=processor.getSlotParam(slot,2);
+        Theme::text(g,"INPUT MIC",{54,162,210,20},11,Theme::muted,true);
+        for(int i=0;i<4;++i) {
+            const juce::Rectangle<float> card(52.f+i*91.f,188.f,85.f,33.f);
+            const bool chosen=i==input;
+            g.setColour(chosen?Theme::green.withAlpha(.17f):Theme::panelAlt);
+            g.fillRoundedRectangle(card,5.f);
+            g.setColour(chosen?Theme::green:Theme::stroke);
+            g.drawRoundedRectangle(card,5.f,chosen?1.55f:.8f);
+            Theme::text(g,skellpreset::dsp::MicModelTone::inputName(i),
+                {(int)card.getX()+2,195,81,19},10.5f,
+                chosen?Theme::green:Theme::white,true,juce::Justification::centred);
+        }
+        Theme::text(g,"SIMULATE",{54,229,210,20},11,Theme::muted,true);
+        for(int i=0;i<4;++i) {
+            const int column=i%2,row=i/2;
+            const juce::Rectangle<float> card(52.f+column*183.f,
+                                              255.f+row*43.f,174.f,37.f);
+            const bool chosen=i==output;
+            g.setColour(chosen?Theme::green.withAlpha(.16f):Theme::panelAlt);
+            g.fillRoundedRectangle(card,5.f);
+            g.setColour(chosen?Theme::green:Theme::stroke);
+            g.drawRoundedRectangle(card,5.f,chosen?1.55f:.8f);
+            g.setColour(chosen?Theme::green:Theme::muted);
+            g.fillEllipse(card.getX()+9.f,card.getY()+15.f,6.f,6.f);
+            Theme::text(g,skellpreset::dsp::MicModelTone::targetName(i),
+                {(int)card.getX()+23,(int)card.getY()+9,139,21},13,
+                chosen?Theme::green:Theme::white,true);
+        }
+        const auto response=skellpreset::dsp::MicModelTone::bandDeltaDb(input,output,strength);
+        const float x1=452.f,x2=629.f,x3=840.f,base=262.f,scale=7.5f;
+        const float a=base-juce::jlimit(-8.f,8.f,response[0])*scale;
+        const float b=base-juce::jlimit(-8.f,8.f,response[1])*scale;
+        const float c=base-juce::jlimit(-8.f,8.f,response[2])*scale;
+        Theme::text(g,"TONAL PROFILE",{449,167,328,20},12,Theme::green,true);
+        g.setColour(Theme::muted.withAlpha(.40f));
+        g.drawLine(x1,base,x3,base,1.3f);
+        juce::Path curve;
+        curve.startNewSubPath(x1,a);
+        curve.cubicTo(x1+84.f,a,x2-88.f,b,x2,b);
+        curve.cubicTo(x2+99.f,b,x3-91.f,c,x3,c);
+        g.setColour(Theme::green.withAlpha(.92f));
+        g.strokePath(curve,juce::PathStrokeType(2.7f));
+        const float xs[]{x1,x2,x3},ys[]{a,b,c};
+        for(int i=0;i<3;++i) {
+            g.setColour(Theme::bg);
+            g.fillEllipse(xs[i]-4.f,ys[i]-4.f,8.f,8.f);
+            g.setColour(Theme::green);
+            g.drawEllipse(xs[i]-4.f,ys[i]-4.f,8.f,8.f,1.5f);
+        }
+        Theme::text(g,"LOW",{442,325,65,17},10,Theme::muted);
+        Theme::text(g,"MID",{615,325,65,17},10,Theme::muted);
+        Theme::text(g,"AIR",{793,325,50,17},10,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::SkelldizerFX) {
+        // Custom character pads occupy the visualization above.
+    } else if(type==SkellPresetAudioProcessor::EQ) {
         const float normalizedF=processor.getSlotParam(slot,0);
         const auto* tone=processor.state.getRawParameterValue("macro1");
         const float macroTone=tone?tone->load():.5f;
@@ -747,22 +1096,38 @@ void SlotEditor::paint(juce::Graphics&g) {
     } else if(type==SkellPresetAudioProcessor::Delay){
         const float seconds=.055f+.85f*processor.getSlotParam(slot,0);
         const float feedback=.8f*processor.getSlotParam(slot,1);
-        const float unit=juce::jmin(175.f,plot.getWidth()/5.f);
-        for(int tap=0;tap<5;tap++){
-            const float amplitude=std::pow(feedback,(float)tap);
-            const float x=plot.getX()+43.f+tap*unit;
-            g.setColour(Theme::green.withAlpha(.3f+.7f*amplitude));
-            g.fillRoundedRectangle(x,plot.getBottom()-amplitude*133.f,
-                                   10.f,amplitude*133.f,3.f);
+        const float signal=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+        const float centre=plot.getCentreY()+12.f;
+        g.setColour(Theme::stroke);
+        g.drawLine(plot.getX()+28.f,centre,plot.getRight()-28.f,centre,1.f);
+        // Echo-envelope illustration derived from the real delay settings
+        // and measured rack slot peak. No fabricated live audio waveform.
+        const float spacing=132.f+30.f*processor.getSlotParam(slot,0);
+        for(int tap=0;tap<5;++tap) {
+            const float decay=std::pow(feedback,(float)tap);
+            const float x0=plot.getX()+46.f+(float)tap*spacing;
+            const float amp=juce::jmax(2.6f,72.f*decay*(.65f+.35f*signal));
+            juce::Path shape;
+            for(int i=0;i<=54;++i) {
+                const float phase=(float)i/54.f;
+                const float x=x0+105.f*phase;
+                const float envelope=std::sin(phase*juce::MathConstants<float>::pi);
+                const float y=centre-std::sin(phase*juce::MathConstants<float>::twoPi*5.f)
+                                      *envelope*amp;
+                if(i==0)shape.startNewSubPath(x,y);
+                else shape.lineTo(x,y);
+            }
+            g.setColour(Theme::green.withAlpha(.26f+.68f*decay));
+            g.strokePath(shape,juce::PathStrokeType(2.f));
             Theme::text(g,juce::String(tap+1),
-                {(int)x-7,(int)plot.getBottom()-20,26,16},9,Theme::muted,
+                {(int)x0+39,(int)plot.getBottom()-24,25,15},9,Theme::muted,
                 false,juce::Justification::centred);
         }
         Theme::text(g,"DELAY  "+juce::String(seconds*1000.f,0)+
                       " ms / FEEDBACK "+juce::String(feedback*100.f,0)+"%",
                     {45,163,700,20},12,Theme::green,true);
-        Theme::text(g,"RELATIVE TAP DECAY / NOT AN AUDIO WAVEFORM",
-                    {43,326,650,17},10,Theme::muted);
+        Theme::text(g,"ECHO ENVELOPE  /  LIVE PEAK MODULATES BRIGHTNESS",
+                    {43,326,690,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::ExternalVST3) {
         const auto name=processor.hostedVST3Name(slot);
         Theme::text(g,"EXTERNAL VST3 INSERT",{80,185,680,31},25,Theme::green,true);
@@ -791,7 +1156,49 @@ void SlotEditor::paint(juce::Graphics&g) {
         const float x0=plot.getX()+24.f, x1=plot.getRight()-24.f;
         const float y0=plot.getY()+20.f, y1=plot.getBottom()-27.f;
         const float w=x1-x0, h=y1-y0;
-        if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        if(isModulationOrbEffect(type) && modOrbView) {
+            // This orb represents MODULATION parameters (rate, depth, stereo).
+            // It never pretends to contain measured FFT or actual LFO phase.
+            const float rate=processor.getSlotParam(slot,0);
+            const float depth=processor.getSlotParam(slot,1);
+            const float stereo=processor.getSlotParam(slot,2);
+            const float peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+            const float cx=430.f,cy=251.f,radius=88.f;
+            g.setColour(Theme::green.withAlpha(.04f+.045f*peak));
+            g.fillEllipse(cx-radius,cy-radius,radius*2.f,radius*2.f);
+            for(int k=-4;k<=4;++k) {
+                const float phi=(float)k*juce::MathConstants<float>::pi/10.f;
+                const float rx=radius*std::cos(phi);
+                g.setColour(Theme::muted.withAlpha(.13f));
+                g.drawEllipse(cx-rx,cy-radius,rx*2.f,radius*2.f,.9f);
+                const float dy=(float)k/5.f*radius;
+                const float latitudeHalfWidth=std::sqrt(1.f-(float)(k*k)/25.f)*radius;
+                g.drawEllipse(cx-latitudeHalfWidth,cy+dy-7.f,
+                              latitudeHalfWidth*2.f,14.f,.6f);
+            }
+            for(int k=0;k<12;++k) {
+                const float phase=(float)k/12.f*juce::MathConstants<float>::twoPi;
+                const float displacement=(.72f+.19f*depth*
+                    std::sin(phase*(1.f+2.f*rate)+stereo*3.f))*radius;
+                const float x=cx+displacement*std::cos(phase);
+                const float y=cy+displacement*std::sin(phase);
+                const float dot=2.4f+depth*2.7f;
+                g.setColour(Theme::green.withAlpha(.29f+.56f*depth));
+                g.fillEllipse(x-dot,y-dot,dot*2.f,dot*2.f);
+            }
+            g.setColour(Theme::green.withAlpha(.2f+.55f*peak));
+            g.drawEllipse(cx-radius-4.f,cy-radius-4.f,2.f*radius+8.f,
+                          2.f*radius+8.f,1.f+peak*1.7f);
+            Theme::text(g,"MODULATION ORB",{579,183,270,23},12,Theme::green,true);
+            Theme::text(g,"RATE  "+juce::String(juce::roundToInt(rate*100.f)),
+                {579,220,250,21},12,Theme::white);
+            Theme::text(g,"DEPTH "+juce::String(juce::roundToInt(depth*100.f)),
+                {579,247,250,21},12,Theme::white);
+            Theme::text(g,"STEREO "+juce::String(juce::roundToInt(stereo*100.f)),
+                {579,274,250,21},12,Theme::white);
+            Theme::text(g,"VISUAL PROFILE / NOT LIVE LFO PHASE",
+                {579,322,275,19},9,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
             // Exact, summed eight-band DSP response. Every dot edits the
             // actual frequency+gain parameters of one independent bell.
             std::array<skellpreset::dsp::Biquad,8> filter{};
@@ -1350,14 +1757,18 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.setColour(channel==0?Theme::green:Theme::blue);
                 g.strokePath(curve,juce::PathStrokeType(channel==0?2.7f:1.9f));
             }
-        } else {
+        } else if(type!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+            // Match Finish already draws its measured harmonic-transfer curve,
+            // a muted clean reference and its own labels above. The generic
+            // fallback title used to cover that curve and the XY edit marker.
             Theme::text(g,processor.moduleName(type).toUpperCase(),
                 {65,198,740,40},25,Theme::green,true,juce::Justification::centred);
             Theme::text(g,"DRAG THE GRAPH TO EDIT THE FIRST TWO CONTROLS",
                 {120,249,620,22},12,Theme::muted,false,juce::Justification::centred);
         }
         // Non-EQ modules share the two-axis universal marker.
-        if(type!=SkellPresetAudioProcessor::EightBandToneFX) {
+        if(type!=SkellPresetAudioProcessor::EightBandToneFX &&
+           !(modOrbView && isModulationOrbEffect(type))) {
         const float markerX=x0+w*first,markerY=y1-h*second;
         g.setColour(Theme::green.withAlpha(.24f));
         g.drawVerticalLine((int)markerX,y0,y1);
@@ -1417,6 +1828,12 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String(15.f*std::pow(70.f,processor.getSlotParam(slot,0)),0)+
                      " Hz  /  DEPTH "+
                      juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+        effectTitle="ALCHEMIST MATCH FINISH  /  LIVE ENVELOPE + HARMONICS";
+        effectDetail=matchPage==2
+            ?"REAL REFERENCE-FITTED LEVEL + AIR / AUTOMATABLE / ZERO LOOKAHEAD"
+            :"v0.7 SOURCE MODEL  /  CAUSAL DETECTORS 20 / 120 / 280 ms"
+             "  /  ZERO ADDED LATENCY";
     } else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX) {
         effectTitle="STUDIO PITCH + FORMANT  /  SPECTRAL COLOUR";
         effectDetail="768 SAMPLES REPORTED HOST PDC  /  NOT LOW-LATENCY AUTOTUNE";
@@ -1446,6 +1863,12 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String("SYNC ")+(division<.25f?"1/16":division<.5f?"1/8":division<.75f?"1/8D":"1/4")+
             "  /  DUCK "+juce::String(processor.getSlotParam(slot,2)*100.f,0)+
             "%  /  HOST BPM FALLBACK 120";
+    } else if(type==SkellPresetAudioProcessor::SkelldizerFX) {
+        effectTitle="SKELLDIZER / PUNCH · WARM · AIR · GRIT";
+        effectDetail="3-BAND HARMONIC CHARACTER / OPTIONAL LEVEL MATCH / ZERO LOOKAHEAD";
+    } else if(type==SkellPresetAudioProcessor::MicModelFX) {
+        effectTitle="MIC MODELING  /  NATIVE TONAL PROFILE";
+        effectDetail="GENERIC COLOR TRANSFER  /  NO PROPRIETARY MIC CAPTURES  /  0ms LATENCY";
     } else if(type==SkellPresetAudioProcessor::VocalVibratoFX) {
         effectTitle="VOCAL VIBRATO  /  STEREO DELAY MODULATION";
         effectDetail=juce::String(.3f+11.7f*processor.getSlotParam(slot,0),1)+
@@ -1462,10 +1885,11 @@ void SlotEditor::paint(juce::Graphics&g) {
                      " dB  /  "+juce::String(1.f+11.f*processor.getSlotParam(slot,1),1)+
                      ":1  /  "+juce::String(18.f*processor.getSlotParam(slot,2),1)+" dB KNEE";
     }
-    if(effectTitle.isNotEmpty()){
-        const bool narrow=type==SkellPresetAudioProcessor::EightBandToneFX;
-        Theme::text(g,effectTitle,{47,103,narrow?595:730,22},14,Theme::green,true);
-        Theme::text(g,effectDetail,{47,128,narrow?595:755,18},12,Theme::muted);
+    // 8-band EQ owns the 96..148px header for its band selectors and
+    // filter controls. Don't draw duplicate effect headings over them.
+    if(effectTitle.isNotEmpty() && type!=SkellPresetAudioProcessor::EightBandToneFX){
+        Theme::text(g,effectTitle,{47,103,730,22},14,Theme::green,true);
+        Theme::text(g,effectDetail,{47,128,755,18},12,Theme::muted);
     }
     if(type==SkellPresetAudioProcessor::Compressor ||
        type==SkellPresetAudioProcessor::Gate ||
@@ -1486,8 +1910,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         // Q control has its own legible caption and never overlaps the title.
         Theme::text(g,"BAND "+juce::String(activeEqBand+1)+" Q",
                     {680,96,172,17},11,Theme::green,true);
-        Theme::text(g,"LOW CUT",{67,109,112,15},10,Theme::amber,true);
-        Theme::text(g,"HIGH CUT",{369,109,112,15},10,Theme::amber,true);
+        Theme::text(g,"LOW CUT",{20,127,48,16},9,Theme::amber,true);
+        Theme::text(g,"HIGH CUT",{342,127,80,16},9,Theme::amber,true);
     }
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
@@ -1520,6 +1944,10 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"ECHO NUMBER  1 - 5",{38,364,360,17},10,Theme::muted);
     }
     auto labels=titles(type);
+    if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage==1)
+        labels={"Envelope Centre","Reference Level","Output Trim","Gain Smoothing"};
+    if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage==2)
+        labels={"Reference On","Level Match","Air Match","Base Gain"};
     if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         labels={ "B"+juce::String(eqBank+1)+" FREQ", "B"+juce::String(eqBank+1)+" GAIN",
                  "B"+juce::String(eqBank+2)+" FREQ", "B"+juce::String(eqBank+2)+" GAIN" };
@@ -1542,10 +1970,13 @@ void SlotEditor::paint(juce::Graphics&g) {
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
+                  isModulationOrbEffect(type) && modOrbView ? "MODULATION ORB IS VISUAL ONLY / EDIT WITH KNOBS BELOW" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::EightBandToneFX ? "CLICK ANY OF EIGHT NODES  /  DRAG TO CHANGE ITS FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::AdaptiveNoiseFX ? "ADAPTIVE GATE  /  NOT AN RNNOISE NEURAL MODEL" :
                   type==SkellPresetAudioProcessor::StudioPitchFormantFX ? "SPECTRAL PITCH / FORMANT  ·  ALIGNED HOST LATENCY 768 SAMPLES" :
+                  type==SkellPresetAudioProcessor::AlchemistMatchFinishFX ? "CAUSAL REFERENCE-LEARNED CONTOUR  /  CALIBRATE FOR EACH DIFFERENT VOICE" :
+                  type==SkellPresetAudioProcessor::MicModelFX ? "TONAL RESPONSE SKETCH  /  NOT A MEASURED HARDWARE MICROPHONE IMPULSE" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   type==SkellPresetAudioProcessor::ExternalVST3
                     ? juce::String("EXTERNAL VST3  /  THIRD-PARTY EDITOR OPENS SEPARATELY")
@@ -1582,8 +2013,102 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
     graphSnapshotValid=false;
     repaint();
 }
+bool SlotEditor::updateSkelldizerCard(juce::Point<float> point) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::SkelldizerFX)
+        return false;
+    for(int k=0;k<4;++k) {
+        if(!juce::Rectangle<float>(69.f+k*188.f,190.f,170.f,48.f).contains(point))
+            continue;
+        const auto id="s"+juce::String(slot+1)+"_p2";
+        if(auto* v=processor.state.getParameter(id))v->beginChangeGesture();
+        processor.setSlotParam(slot,1,(float)k/3.f);
+        if(auto* v=processor.state.getParameter(id))v->endChangeGesture();
+        graphSnapshotValid=false;
+        refreshIfChanged();repaint();
+        return true;
+    }
+    return false;
+}
+bool SlotEditor::updateMicCard(juce::Point<float> point) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::MicModelFX)
+        return false;
+    int parameter=-1,index=-1;
+    for(int n=0;n<4;++n) {
+        if(juce::Rectangle<float>(52.f+n*91.f,188.f,85.f,33.f).contains(point)) {
+            parameter=0;index=n;break;
+        }
+        const int column=n%2,row=n/2;
+        if(juce::Rectangle<float>(52.f+column*183.f,255.f+row*43.f,174.f,37.f)
+               .contains(point)) {
+            parameter=1;index=n;break;
+        }
+    }
+    if(parameter<0)return false;
+    if(auto* host=processor.state.getParameter(
+            "s"+juce::String(slot+1)+"_p"+juce::String(parameter+1)))
+        host->beginChangeGesture();
+    processor.setSlotParam(slot,parameter,(float)index/3.f);
+    if(auto* host=processor.state.getParameter(
+            "s"+juce::String(slot+1)+"_p"+juce::String(parameter+1)))
+        host->endChangeGesture();
+    graphSnapshotValid=false;
+    refreshIfChanged();
+    repaint();
+    return true;
+}
+bool SlotEditor::testMicModelCards() {
+    const int oldType=processor.slotType(slot);
+    std::array<float,4> old{};
+    for(int i=0;i<4;++i)old[(size_t)i]=processor.getSlotParam(slot,i);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::MicModelFX);
+    select(slot);
+    const bool a=updateMicCard({343.f,205.f}); // input: Ribbon
+    const bool b=updateMicCard({258.f,312.f}); // target: Air
+    const bool passed=a&&b&&
+        skellpreset::dsp::MicModelTone::index(processor.getSlotParam(slot,0))==3 &&
+        skellpreset::dsp::MicModelTone::index(processor.getSlotParam(slot,1))==3 &&
+        processor.slotType(slot)==SkellPresetAudioProcessor::MicModelFX;
+    processor.setSlotType(slot,oldType);
+    for(int i=0;i<4;++i)processor.setSlotParam(slot,i,old[(size_t)i]);
+    select(slot);
+    return passed;
+}
+void SlotEditor::setModOrbForScreenshot(bool enabled) {
+    modOrbView=enabled;
+    modOrbButton.setButtonText(modOrbView?"GRAPH":"ORB");
+    modOrbButton.setColour(juce::TextButton::buttonColourId,
+        modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
+    modOrbButton.setColour(juce::TextButton::textColourOffId,
+        modOrbView?Theme::green:Theme::white);
+    graphSnapshotValid=false;
+    repaint();
+}
+bool SlotEditor::testModOrbToggle() {
+    const auto previousType=processor.slotType(slot);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::VocalChorusFX);
+    select(slot);
+    setModOrbForScreenshot(false);
+    modOrbButton.onClick();
+    const bool on=modOrbView && modOrbButton.getButtonText()=="GRAPH";
+    modOrbButton.onClick();
+    const bool off=!modOrbView && modOrbButton.getButtonText()=="ORB";
+    processor.setSlotType(slot,previousType);
+    select(slot);
+    return on && off;
+}
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
+    if(isModulationOrbEffect(type) && modOrbView)
+        return; // display-only modulation orb must not alter DSP automation
+    if(type==SkellPresetAudioProcessor::SkelldizerFX) {
+        updateSkelldizerCard(e.position);
+        return; // no invisible XY changes: only pads and rotary knobs edit DSP
+    }
+    if(type==SkellPresetAudioProcessor::MicModelFX) {
+        // Card clicks are distinct from the generic XY graph gesture.
+        updateMicCard(e.position);
+        return;
+    }
     if(type==SkellPresetAudioProcessor::Empty
         || type==SkellPresetAudioProcessor::ExternalVST3
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
