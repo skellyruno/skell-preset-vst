@@ -28,6 +28,8 @@ public:
     bool testKnobReadouts();
     bool testMatchFinishPages();
     bool testMicModelCards();
+    bool testEqOrbToggle();
+    void setEqOrbForScreenshot(bool enabled);
     void setMatchPageForScreenshot(int page) {showMatchPage(page);}
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -48,6 +50,8 @@ private:
     SkellInstalledVST3Browser installedBrowser;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
     juce::TextButton upgradeEq{"UPGRADE TO PARAMETRIC EQ"};
+    juce::TextButton eqOrbButton{"ORB"};
+    bool eqOrbView=false; // UI-only; never serialized or used in DSP
     std::unique_ptr<juce::FileChooser> externalChooser;
     juce::Slider eqQSlider;
     std::array<juce::Slider,2> eqCutSliders;
