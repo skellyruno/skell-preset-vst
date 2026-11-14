@@ -388,6 +388,11 @@ public:
     juce::StringArray runScreenshotInteractionTests(){
         juce::StringArray issues;
         configureForScreenshot(0,1,false);
+        // The headless renderer reuses a processor that may have loaded a
+        // legacy factory sound for compatibility tests. Select Alchemist
+        // explicitly before asserting its editable factory cover.
+        processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+        browser.onLoaded();
         preset.onClick();
         if(!browser.isVisible())issues.add("Preset selector did not open browser");
         if(browser.visibleFactoryPresetsForTest()!=1 ||
