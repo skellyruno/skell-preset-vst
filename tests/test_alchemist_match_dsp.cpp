@@ -26,7 +26,9 @@ int main() {
         neutral.set(.5f,0.f,.5f,.5f,.5f,.5f,.5f,.5f);
         for(int i=0;i<512;++i) {
             const auto z=p.process(0.f,0.f);
+            const auto z2=clone.process(0.f,0.f);
             assert(z[0]==0.f && z[1]==0.f);
+            assert(z2[0]==0.f && z2[1]==0.f);
         }
         // Test stereo linking, gain bounds, and continuous response to
         // recorded-tone plus short transients at all live sample rates.
