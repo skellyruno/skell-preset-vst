@@ -101,6 +101,7 @@ int main(){
         advanced.slots[3].type=29;
         advanced.slots[4].type=30;
         advanced.slots[5].type=31; // Alchemist causal finish, append-only native module
+        advanced.slots[6].type=32; // Mic Modeling must roundtrip in schema v2
         advanced.slots[0].eqQ[0]=.81f;
         advanced.slots[0].eqQ[7]=.12f;
         advanced.slots[0].eqLowCut=.63f;
@@ -116,6 +117,7 @@ int main(){
               &&loaded.slots[3].type==29
               &&loaded.slots[4].type==30
               &&loaded.slots[5].type==31
+              &&loaded.slots[6].type==32
               &&loaded.slots[0].eqQ[0]==.81f
               &&loaded.slots[0].eqQ[7]==.12f
               &&loaded.slots[0].eqLowCut==.63f
