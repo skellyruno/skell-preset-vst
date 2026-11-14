@@ -536,7 +536,7 @@ void SlotEditor::showMatchPage(int page) {
             std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
                 processor.state,prefix+"p"+juce::String(matchPage*4+k+1),
                 knobs[(size_t)k]);
-    for(int i=0;i<2;++i) {
+    for(int i=0;i<3;++i) {
         auto& b=matchPageButtons[(size_t)i];
         b.setColour(juce::TextButton::buttonColourId,
             i==matchPage?Theme::green.withAlpha(.32f):Theme::panelAlt);
@@ -554,9 +554,13 @@ bool SlotEditor::testMatchFinishPages() {
     processor.setSlotParam(0,0,.20f);
     processor.setSlotParam(0,4,.67f);
     processor.setSlotParam(0,5,.335f);
+    processor.setSlotParam(0,8,1.f);
+    processor.setSlotParam(0,9,.95f);
+    processor.setSlotParam(0,10,.85f);
+    processor.setSlotParam(0,11,.50f);
     select(0);
     const bool shape=matchPage==0 && matchPageButtons[0].isVisible() &&
-        matchPageButtons[1].isVisible() &&
+        matchPageButtons[1].isVisible() && matchPageButtons[2].isVisible() &&
         std::abs(knobs[0].getValue()-.20)<.002;
     showMatchPage(1);
     const bool calibrated=matchPage==1 &&
@@ -564,8 +568,18 @@ bool SlotEditor::testMatchFinishPages() {
         std::abs(knobs[1].getValue()-.335)<.002 &&
         knobs[0].getTextFromValue(.67).contains("dBFS") &&
         knobs[3].getTextFromValue(.271).contains("ms");
+    showMatchPage(2);
+    const bool reference=matchPage==2 &&
+        std::abs(knobs[0].getValue()-1.)<.002 &&
+        std::abs(knobs[1].getValue()-.95)<.002 &&
+        std::abs(knobs[2].getValue()-.85)<.002 &&
+        std::abs(knobs[3].getValue()-.50)<.002 &&
+        knobs[0].getTextFromValue(1.).containsIgnoreCase("ON");
+    // Prove the REFERENCE knob edits the host's ninth existing parameter.
+    knobs[1].setValue(.72,juce::sendNotificationSync);
+    const bool routed=std::abs(processor.getSlotParam(0,9)-.72f)<.005f;
     showMatchPage(0);
-    return shape && calibrated &&
+    return shape && calibrated && reference && routed &&
         std::abs(knobs[0].getValue()-.20)<.002 &&
         std::abs(processor.getSlotParam(0,4)-.67f)<.002f;
 }
