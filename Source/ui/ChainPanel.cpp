@@ -369,7 +369,9 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
         return;
     }
     if(e.x>=10 && e.x<=206 && e.y>=addTop && e.y<addTop+addHeight) {
-        if(!e.mods.isPopupMenu())addModule();return;
+        if(!e.mods.isPopupMenu())
+            addModule();
+        return;
     }
     const int index=rowAt(e.y);
     if(index<0 || e.x<10 || e.x>206)return;
