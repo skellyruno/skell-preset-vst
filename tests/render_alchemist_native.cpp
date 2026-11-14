@@ -85,11 +85,12 @@ int render(const juce::File& source, const juce::File& destination) {
         std::fprintf(stderr,"ERROR: refusing to overwrite existing output\n");
         return 4;
     }
-    std::unique_ptr<juce::OutputStream> stream(destination.createOutputStream());
-    if (!stream || stream->failedToOpen()) {
+    std::unique_ptr<juce::FileOutputStream> fileStream(destination.createOutputStream());
+    if (!fileStream || !fileStream->openedOk()) {
         std::fprintf(stderr,"ERROR: cannot create destination WAV\n");
         return 5;
     }
+    std::unique_ptr<juce::OutputStream> stream(std::move(fileStream));
     juce::WavAudioFormat wav;
     const auto options = juce::AudioFormatWriter::Options{}
         .withSampleRate(reader->sampleRate).withNumChannels(2)
