@@ -17,8 +17,11 @@ public:
     bool keyPressed(const juce::KeyPress&) override;
     void open();
     void applyTheme();
+    // Cached on the message thread; no image file I/O from paint/audio.
+    juce::Image selectedCover() const;
     std::function<void()> onClose;
     std::function<void()> onLoaded;
+    std::function<void()> onCoverChanged;
 private:
     SkellPresetAudioProcessor& processor;
     juce::TextEditor search;
@@ -33,9 +36,13 @@ private:
     int bank=0,scroll=0,hoveredCard=-1;
     std::vector<juce::File> userPresets;
     std::vector<juce::Image> userArtwork; // UI-thread thumbnail cache, no filesystem in paint()
+    juce::Image alchemistArtwork; // editable factory cover, stored separately
     juce::File activeUserPreset;
     std::vector<int> filtered() const; // >=0 factory ID; <0 user library index (-i-1)
     juce::File libraryDirectory() const;
+    juce::File activeArtworkDestination() const;
+    bool canEditCover() const;
+    void reloadAlchemistArtwork();
     void scanLibrary();
     void copyToLibrary(const juce::File& file);
     void loadFactoryFromBrowser(int index);
