@@ -25,6 +25,15 @@ public:
         static constexpr const char* names[]{"Flat","Warm","Focus","Air"};
         return names[std::clamp(i,0,3)];
     }
+    static std::array<float,3> bandDeltaDb(int input,int output,float amount) noexcept {
+        if(!std::isfinite(amount))amount=0.f;
+        amount=std::clamp(amount,0.f,1.f);
+        const auto from=inputResponse(std::clamp(input,0,3));
+        const auto to=targetResponse(std::clamp(output,0,3));
+        return {{(to[0]-from[0])*amount,
+                 (to[1]-from[1])*amount,
+                 (to[2]-from[2])*amount}};
+    }
     void prepare(double rate) noexcept {
         if(!std::isfinite(rate))rate=48000.;
         const float sr=(float)std::clamp(rate,8000.,192000.);
@@ -46,11 +55,9 @@ public:
         if(!std::isfinite(trim))trim=.5f;
         amount=std::clamp(amount,0.f,1.f);
         trim=std::clamp(trim,0.f,1.f);
-        const auto from=inputResponse(in), to=targetResponse(out);
-        for(int b=0;b<3;++b) {
-            const float db=(to[(size_t)b]-from[(size_t)b])*amount;
-            target[(size_t)b]=std::pow(10.f,db/20.f);
-        }
+        const auto diff=bandDeltaDb(in,out,amount);
+        for(int b=0;b<3;++b)
+            target[(size_t)b]=std::pow(10.f,diff[(size_t)b]/20.f);
         target[3]=std::pow(10.f,(-6.f+12.f*trim)/20.f);
     }
     std::array<float,2> process(float l,float r) noexcept {
