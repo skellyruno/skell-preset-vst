@@ -34,14 +34,24 @@ constexpr auto makeStages() noexcept {
     highpass.p[2]=.50f; highpass.p[3]=.18f; // 65Hz cutoff
 
     auto tone=neutral(26); // 8-Band EQ
-    // Band frequency, gain and independent Q: conservative listening-start
-    // estimates, NOT the original FL plugin state or a fitted transfer curve.
-    tone.p={{.733907f,.500000f, .781054f,.446667f,
-             .761258f,.466667f, .717780f,.446667f,
-             .713961f,.520000f, .725537f,.526667f,
-             .474552f,.433333f, .554709f,.470000f}};
-    tone.q={{.418183f,.694135f,.672591f,.704406f,
-             .418183f,.441213f,.800437f,.637421f}};
+    // Measured dry-vs-original-processed Alchemist reference suggested
+    // a broad +10 to +12.5 dB increase in the upper vocal spectrum.
+    // v0.1 incorrectly CUT the 5k/12k bands and sounded much too dull.
+    // These eight bounded native bands are a regularised static fit to
+    // source-relative Welch spectra (44.1 kHz, same take, 70Hz–12kHz);
+    // they are a *test candidate*, not exact FL EQ knob positions and
+    // not proof the full plugin chain will match after compression.
+    // Freq, gain, Q physical units per band:
+    // 70 Hz +3.39dB Q1.40; 158Hz -2.97dB Q.66;
+    // 320Hz +3.30dB Q2.37; 660Hz -1.31dB Q1.54;
+    // 1380Hz +.26dB Q1.02; 2930Hz -1.64dB Q.68;
+    // 5100Hz +7.77dB Q.65; 12000Hz +11dB Q.65.
+    tone.p={{.733907f,.612931f, .781054f,.400911f,
+             .761258f,.610014f, .717780f,.456181f,
+             .713961f,.508726f, .725537f,.445201f,
+             .474552f,.758915f, .554709f,.866667f}};
+    tone.q={{.419053f,.164853f,.593330f,.449351f,
+             .311338f,.175704f,.162066f,.162066f}};
 
     // Fast CLA-76-role stage. Threshold/ratio come from the bounded v0.5
     // envelope-fit hypothesis (-34.76 dBFS, ~7:1); partial wet protects
