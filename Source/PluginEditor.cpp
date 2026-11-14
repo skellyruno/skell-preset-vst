@@ -403,6 +403,8 @@ public:
         if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
         if(chain.getBounds().intersects(slot.getBounds()))
             issues.add("Rack overlaps the module editor");
+        if(slot.getHeight()!=chain.getHeight())
+            issues.add("Advanced control deck does not fill the rack height");
         if(rackOnRight!=(chain.getX()>slot.getX()))
             issues.add("Rack dock state disagrees with displayed position");
         const int current=(int)processor.state.getRawParameterValue("mode")->load();

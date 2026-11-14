@@ -743,15 +743,16 @@ void SlotEditor::resized() {
     editExternal.setBounds(246,420,188,62);
     upgradeEq.setBounds(650,97,212,31);
     modOrbButton.setBounds(764,77,95,23);
-    for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
+    // Center the four effect controls inside the expanded Advanced deck.
+    for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,433,97,78);
 }
 void SlotEditor::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
     Theme::panelBox(g,{0,0,906.f,406.f},9.f);
-    Theme::panelBox(g,{0,410.f,906.f,86.f},9.f);
+    Theme::panelBox(g,{0,410.f,906.f,125.f},9.f);
     // Subtle rack mounting holes make this feel like a physical processor,
     // without crossing the interactive plot or module controls.
-    for(float sx:{12.f,894.f})for(float sy:{13.f,395.f,422.f,483.f}){
+    for(float sx:{12.f,894.f})for(float sy:{13.f,395.f,422.f,521.f}){
         g.setColour(Theme::bg);g.fillEllipse(sx-2.5f,sy-2.5f,5.f,5.f);
         g.setColour(Theme::stroke);g.drawEllipse(sx-2.5f,sy-2.5f,5.f,5.f,1.f);
     }
@@ -1961,7 +1962,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     }
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
         Theme::text(g,"HOSTED VST3  /  USE ITS OWN UI TO EDIT PARAMETERS",
-            {447,445,424,49},12,Theme::muted,true);
+            {447,462,424,49},12,Theme::muted,true);
     } else {
         for(int i=0;i<4;i++) {
             // At the 70% default display scale the previous 12px muted
@@ -1969,7 +1970,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             // Give each hardware rotary a high-contrast, full-width legend.
             const int available=i==3?115:142;
             Theme::text(g,labels[(size_t)i].toUpperCase(),
-                        {146+211*i,438,available,25},
+                        {146+211*i,455,available,25},
                         13.3f,Theme::white.withAlpha(.78f),true);
         }
     }
