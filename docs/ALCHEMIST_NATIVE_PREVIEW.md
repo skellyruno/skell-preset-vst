@@ -50,6 +50,35 @@ The current causal math was independently simulated on the previously processed 
 The model was evaluated on the same archival performance used during development; it is **not** independently validated on other vocals, and the first six VST3 processors have not recreated the v0.6B input to this finishing stage. These figures cannot be marketed as the current plugin's match score. Match Finish source and tests are included, and native VST3/FL Studio tests must still pass.
  No original reference WAV, screenshot, commercial plugin data or proprietary state is bundled into the distributable.
 
+## Measured same-take tonal mismatch and experimental revision v0.3
+
+The user's **actual dry** Alchemist vocal (`alchemist test vocals no main effects.wav`) and **actual Waves / FL-processed reference** (`alchemist test main effects on .wav`) were compared in 44.1 kHz stereo as power-spectrum density ratios. These *source-relative* differences are not normalized EQ presets:
+
+| Frequency band | Original processed vs dry, power dB |
+|---|---:|
+| 40–80 Hz | +2.3 |
+| 80–150 Hz | -0.1 |
+| 150–300 Hz | -2.3 |
+| 300–600 Hz | +0.1 |
+| 600–1200 Hz | -1.1 |
+| 1200–2400 Hz | +1.2 |
+| 2400–4500 Hz | +4.5 |
+| 4500–8000 Hz | **+10.2** |
+| 8000–14000 Hz | **+12.5** |
+
+The first native Skell preset incorrectly attenuated the high bands, making it especially dull relative to the reference. Version 0.3 uses a deliberately limited/regularised eight-bell biquad fit, constrained to **+11 dB maximum high-band boost** rather than attempting the unrestricted solution. Its native bell profile is:
+
+- 70 Hz +3.39 dB, Q1.40
+- 158 Hz -2.97 dB, Q0.66
+- 320 Hz +3.30 dB, Q2.37
+- 660 Hz -1.31 dB, Q1.54
+- 1380 Hz +0.26 dB, Q1.02
+- 2930 Hz -1.64 dB, Q0.68
+- 5100 Hz +7.77 dB, Q0.65
+- 12000 Hz +11.00 dB, Q0.65
+
+**Interpretation:** these are analysis-derived native coefficient targets, **not** recovered Fruity Parametric EQ 2 settings. The measured ratio includes Waves / Soundgoodizer distortion, envelope shaping and level changes, so forcing the whole wet/dry spectral difference through EQ alone can over-brighten or overdrive some vocals. In particular, the upper bands must be measured after the downstream saturator/comp and in a true same-input VST3 export. The first listening test was poor, so this is explicitly an **experimental second tonal hypothesis**, not a validated match. `SkellPresetAlchemistReferenceToneTest` keeps the bright high-band response from accidentally reverting to negative treble gains.
+
 ## Regression and listening gates
 
 1. Portable `SkellPresetAlchemistNativeTest` checks append-only factory IDs, exact stage order, bounded parameters and representative processing at 44.1/48/96 kHz. **Source test added; inspect CI results before claiming a pass.**
