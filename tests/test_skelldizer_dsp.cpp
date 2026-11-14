@@ -33,6 +33,36 @@ int main() {
             const double db=10.*std::log10(out/in);
             assert(maximum<.99&&difference>1.&&db>-5.&&db<5.);
         }
+        // Repeated identical host automation must produce the exact same
+        // output as one parameter update; block-sized scheduling does not
+        // alter Skelldizer's envelope or parameter smoothing trajectories.
+        Skelldizer once, repeatedly;
+        once.prepare(sr);repeatedly.prepare(sr);
+        once.set(.62f,2.f/3.f,.77f,1.f);
+        for(int i=0;i<4096;++i) {
+            repeatedly.set(.62f,2.f/3.f,.77f,1.f);
+            const float x=.13f*std::sin((float)i*.044f);
+            const auto a=once.process(x,-x);
+            const auto b=repeatedly.process(x,-x);
+            assert(a==b);
+        }
+        // A corrupt upstream host/plugin may emit finite FLT_MAX instead of
+        // NaN/Inf. The squared band envelopes must not stay poisoned.
+        e.reset();e.set(.95f,1.f,.5f,1.f);
+        for(int i=0;i<4096;++i) {
+            const float v=i%2?std::numeric_limits<float>::max():
+                                std::numeric_limits<float>::lowest();
+            const auto y=e.process(v,-v);
+            for(float z:y)assert(std::isfinite(z)&&std::abs(z)<1.f);
+        }
+        double recovered=0.;
+        for(int i=0;i<(int)sr*2;++i) {
+            const float x=.06f*std::sin((float)(2.*3.14159265358979323846*i*270./sr));
+            const auto y=e.process(x,-x);
+            for(float z:y)assert(std::isfinite(z)&&std::abs(z)<1.f);
+            if(i>(int)sr)recovered+=std::abs(y[0]);
+        }
+        assert(recovered>1.); // finite normal speech remains audible
         e.reset();e.set(1.f,1.f,.5f,1.f);
         for(int i=0;i<500;++i) {
             const auto y=e.process(i%2?1.f:-1.f,1.2f);
