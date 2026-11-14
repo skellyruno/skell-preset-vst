@@ -41,6 +41,7 @@ std::array<juce::String,4> titles(int type) {
         case 28:return {"Frequency","Threshold","Reduction","Release"};
         case 29:return {"Threshold","Strength","Hold","Release"};
         case 30:return {"Pitch","Formant","Pitch Range","Formant Range"};
+        case 31:return {"Amount","Character","Tone","Output"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
