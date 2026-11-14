@@ -465,6 +465,8 @@ public:
             issues.add("8-Band EQ graph did not edit the eighth band and its Q");
         if(!slot.testKnobReadouts())
             issues.add("APVTS overwrote physical Hz/dB/Q knob readouts");
+        if(!slot.testMatchFinishPages())
+            issues.add("Alchemist Shape/Calibration tabs do not expose all eight real parameters");
         // This drives the same XY mutation code as real mouse dragging:
         // verify the graphical insert is an actual parameter editor.
         processor.loadFactoryPreset(0);
