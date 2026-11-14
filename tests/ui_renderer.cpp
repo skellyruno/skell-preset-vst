@@ -27,6 +27,9 @@ constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
 int main(int argc, char** argv) {
+    bool quick4=false;
+    for(int i=1;i<argc;++i)
+        if(juce::String(argv[i])=="--quick4")quick4=true;
     const juce::String argument = argc >= 3 && juce::String(argv[1]) == "--output"
         ? juce::String::fromUTF8(argv[2]) : juce::String("ui-screenshots");
     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
@@ -357,6 +360,16 @@ int main(int argc, char** argv) {
                                   818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-reference-70",
                                   818,482,0,1,false});
+        if(quick4) {
+            // Opt-in four actual-editor views; the original full 110-scene
+            // matrix and its independent regressions remain available.
+            options.scenes={
+                {"obsidian-simple-100",1168,688,0,0,false},
+                {"obsidian-advanced-100",1168,688,0,1,false},
+                {"obsidian-module-picker-70",818,482,0,1,false},
+                {"obsidian-mic-panel-70",818,482,0,1,false}
+            };
+        }
         options.configure = [&](const auto& scene) {
             if(scene.id=="obsidian-mic-panel-70") {
                 processor.loadFactoryPreset(0);
@@ -558,13 +571,21 @@ int main(int argc, char** argv) {
             {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-orb-70"},
             {"obsidian-advanced-70","obsidian-mic-panel-70"}
         };
+        if(quick4) {
+            options.mustDiffer={
+                {"obsidian-simple-100","obsidian-advanced-100"},
+                {"obsidian-advanced-100","obsidian-module-picker-70"},
+                {"obsidian-advanced-100","obsidian-mic-panel-70"}
+            };
+        }
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 110) {
-            std::fprintf(stderr, "Expected 110 PNGs, captured %d\n", report.captured);
+        if (report.captured != (quick4?4:110)) {
+            std::fprintf(stderr,"Expected %d PNGs, captured %d\n",
+                         quick4?4:110,report.captured);
             ++failures;
         }
 
@@ -608,22 +629,42 @@ int main(int argc, char** argv) {
             ++failures;
         }
         processor.loadFactoryPreset(0); // Restore ten-slot baseline for contact sheet.
-        // One compact overview: Advanced and Browser at default 70% for each skin.
+        // Quick4 captures exactly the 4 current-source real editor scenes.
+        // Full audits keep the old six-view overview.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
-        juce::Image overview(juce::Image::RGB, 2 * thumbnailWidth, 3 * thumbnailHeight, true);
+        juce::Image overview(juce::Image::RGB,2*thumbnailWidth,
+                             (quick4?2:3)*thumbnailHeight,true);
         juce::Graphics g(overview);
-        for (int theme = 0; theme < static_cast<int>(themes.size()); ++theme)
-            for (int column = 0; column < 2; ++column) {
-                editor.configureForScreenshot(theme, views[(size_t)column].mode,
-                                              views[(size_t)column].browser);
-                const auto capture = skellcore::ui::headless::capture(editor, thumbnailWidth, thumbnailHeight);
-                if (!capture.image.isValid() || capture.distinctColours < 12) {
-                    std::fprintf(stderr, "Contact sheet scene failed\n");
+        if(quick4) {
+            for(int i=0;i<4;++i) {
+                const auto& scene=options.scenes[(size_t)i];
+                options.configure(scene);
+                const auto capture=skellcore::ui::headless::capture(
+                    editor,thumbnailWidth,thumbnailHeight);
+                if(!capture.image.isValid() || capture.distinctColours<12) {
+                    std::fprintf(stderr,"Quick4 contact sheet scene failed\n");
                     ++failures;
                 } else {
-                    g.drawImageAt(capture.image, column * thumbnailWidth, theme * thumbnailHeight);
+                    g.drawImageAt(capture.image,(i%2)*thumbnailWidth,
+                                 (i/2)*thumbnailHeight);
                 }
             }
+        } else {
+            for(int theme=0;theme<(int)themes.size();++theme)
+                for(int column=0;column<2;++column) {
+                    editor.configureForScreenshot(theme,views[(size_t)column].mode,
+                                                  views[(size_t)column].browser);
+                    const auto capture=skellcore::ui::headless::capture(
+                        editor,thumbnailWidth,thumbnailHeight);
+                    if(!capture.image.isValid() || capture.distinctColours<12) {
+                        std::fprintf(stderr,"Contact sheet scene failed\n");
+                        ++failures;
+                    } else {
+                        g.drawImageAt(capture.image,column*thumbnailWidth,
+                                     theme*thumbnailHeight);
+                    }
+                }
+        }
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
         editor.configureForScreenshot(0, 1, false);
