@@ -31,12 +31,15 @@ is enabled immediately; replacing an intentionally bypassed effect preserves
 its bypass state.
 
 The top-right power control bypasses the rack without clearing its state.
-The Simple screen is now a clean sound overview; Tone/Punch/Space/Grit are
-**hidden from both views** but their published `macro1..macro4` automation
-parameters remain available to old sessions. The three **Input / Mix /
-Output** master controls are rotary knobs at the bottom-right; master gain
-and mix parameter IDs are unchanged. REC WAV has been removed from the visible
-UI, with the historical capture code retained for state compatibility.
+Simple mode retains its original **Tone / Punch / Space / Grit** cards,
+rotary knobs, live waveform and whole-number percentage readouts. The four
+macro sliders and their entire bottom deck are **removed only from Advanced**,
+giving the effect editor a full-height work area. The original published
+`macro1..macro4` parameter IDs and their DSP mappings are unchanged for
+saved sessions. The three **Input / Mix / Output** master controls stay
+as bottom-right rotary knobs in both views with unchanged gain and dry/wet
+automation. REC WAV stays hidden, with its historical capture code retained
+for compatibility.
 
 Wheel up/down **over an effect row** moves that physical effect earlier/later
 in the processing order; scroll over empty rack space or the rail to browse

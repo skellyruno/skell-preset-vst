@@ -405,20 +405,29 @@ public:
             issues.add("Rack overlaps the module editor");
         if(rackOnRight!=(chain.getX()>slot.getX()))
             issues.add("Rack dock state disagrees with displayed position");
-        const int currentMode=(int)processor.state.getRawParameterValue("mode")->load();
-        for(const auto& control:macro)
-            if(control.isVisible())
-                issues.add("Legacy macro is visible despite clean UI");
         const int current=(int)processor.state.getRawParameterValue("mode")->load();
         const bool advanced=current==1 || (current==3 && previousMode==1);
+        for(const auto& control:macro)
+            if(control.isVisible()==advanced)
+                issues.add(advanced?"Advanced mode still shows a legacy macro":
+                                  "Simple mode lost a macro control");
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
             issues.add("Mode visibility did not match the requested workspace");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
         if(powerButton.isBypassed()!=(current==3))
             issues.add("Power indicator disagrees with host bypass state");
-        if(!advanced && (input.getWidth()<48 || mix.getWidth()<48 ||
-                         output.getWidth()<48))
-            issues.add("Master knobs must remain usable in Simple mode");
+        if(!advanced) {
+            for(int i=0;i<4;++i) {
+                const auto card=juce::Rectangle<int>(78+i*254,339,220,214);
+                if(!card.contains(macro[(size_t)i].getBounds()))
+                    issues.add("Simple macro dial escapes its card");
+                for(int j=i+1;j<4;++j)
+                    if(macro[(size_t)i].getBounds().intersects(macro[(size_t)j].getBounds()))
+                        issues.add("Simple macro dials overlap");
+            }
+            if(input.getWidth()<48 || mix.getWidth()<48 || output.getWidth()<48)
+                issues.add("Master footer knobs unusable in Simple mode");
+        }
         if(!slot.moduleSelectorMatchesAudio())
             issues.add("Module dropdown differs from the actual selected DSP type");
         return issues;
@@ -459,12 +468,17 @@ public:
         powerButton.onClick();
         if(bypassShade.isVisible() || powerButton.isBypassed())
             issues.add("Power button did not restore the processing ON state");
-        // The four legacy macro APVTS IDs must remain reachable by
-        // existing hosts, but no macro widget should appear in either view.
+        // Simple mode retains the four original rotary macros and their
+        // stable host automation. Advanced must hide all four.
         configureForScreenshot(0,0,false);
         for(int i=0;i<4;++i) {
-            if(macro[(size_t)i].isVisible())
-                issues.add("Legacy macro is still visible in Simple");
+            if(!macro[(size_t)i].isVisible()
+               || macro[(size_t)i].getSliderStyle()!=
+                   juce::Slider::RotaryHorizontalVerticalDrag)
+                issues.add("Simple rotary Tone/Punch/Space/Grit macro missing");
+            if(!macro[(size_t)i].textFromValueFunction
+               || macro[(size_t)i].getTextFromValue(.371)!="37%")
+                issues.add("Simple macro percentage display regressed");
             if(!processor.state.getParameter("macro"+juce::String(i+1)))
                 issues.add("Legacy macro automation ID was removed");
         }
@@ -644,8 +658,8 @@ public:
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);
         refresh();
-        if(chain.isVisible() || macro[0].isVisible())
-            issues.add("Simple overview must hide rack and legacy macro controls");
+        if(chain.isVisible() || !macro[0].isVisible())
+            issues.add("Simple mode must show macro cards and hide the rack");
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         slot.select(0);
         chain.setSelectedSlot(0);
@@ -723,30 +737,76 @@ public:
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
             Theme::panelBox(g,{14.f,90.f,1140.f,507.f},11.f);
-            Theme::text(g,"SOUND OVERVIEW",{52,113,520,25},14,Theme::green,true);
-            Theme::text(g,processor.presetName(),{75,160,980,70},46,
-                        Theme::white,true);
-            const bool empty=processor.presetName().equalsIgnoreCase("Empty Rack");
-            Theme::text(g,empty
-                ? "CLEAN SIGNAL · NO EFFECTS INSERTED · ZERO ADDED PROCESSING LATENCY"
-                : "YOUR CHAIN IS READY · SWITCH TO ADVANCED TO EDIT ITS ORDER",
-                {78,260,994,27},13,Theme::muted,true);
-            Theme::text(g,"LIVE SIGNAL",{77,327,160,20},11,Theme::green,true);
-            g.setColour(Theme::stroke.withAlpha(.60f));
-            g.drawHorizontalLine(416,85.f,1080.f);
+            Theme::text(g,"SIMPLE  /  MACRO MIXER",{52,115,520,25},14,Theme::green,true);
+            Theme::text(g,processor.presetName(),{74,164,988,69},47,Theme::white,true);
+            Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,248,900,24},14,Theme::muted,true);
+            Theme::text(g,"Four macros, one full effect rack. Open Advanced to edit every module.",{79,278,960,24},13,Theme::muted);
+            // Expanded live scope in the Simple view: this is actual
+            // post-effects output, not a random waveform drawn for decoration.
+            Theme::text(g,"LIVE AUDIO",{79,306,110,20},11,
+                processor.isCapturing()?Theme::red:Theme::green,true);
+            g.setColour(Theme::stroke.withAlpha(.48f));
+            g.drawHorizontalLine(317,202.f,1077.f);
             std::array<float,128> waveform{};
             processor.getLiveWaveform(waveform);
-            juce::Path scope;
-            for(std::size_t i=0;i<waveform.size();++i) {
-                const float x=85.f+(float)i*995.f/(float)(waveform.size()-1);
-                const float y=416.f-juce::jlimit(-1.f,1.f,waveform[i])*42.f;
-                if(i==0)scope.startNewSubPath(x,y);
-                else scope.lineTo(x,y);
+            juce::Path simpleScope;
+            for(std::size_t n=0;n<waveform.size();++n) {
+                const float x=205.f+(float)n*867.f/(waveform.size()-1);
+                const float y=317.f-juce::jlimit(-1.f,1.f,waveform[n])*10.f;
+                if(n==0)simpleScope.startNewSubPath(x,y);
+                else simpleScope.lineTo(x,y);
             }
-            g.setColour(Theme::green.withAlpha(.88f));
-            g.strokePath(scope,juce::PathStrokeType(1.7f));
-            Theme::text(g,"SELECT A PRESET ABOVE OR OPEN THE EFFECT RACK",
-                        {78,519,975,19},11,Theme::muted);
+            g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.9f));
+            g.strokePath(simpleScope,juce::PathStrokeType(1.7f));
+            const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
+            const juce::StringArray hints{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
+            for(int k=0;k<4;k++){
+                const float x=78.f+254.f*k;
+                const auto raw=processor.state.getRawParameterValue(
+                    "macro"+juce::String(k+1));
+                const float amount=juce::jlimit(0.f,1.f,raw?raw->load():.5f);
+                const auto face=juce::Rectangle<float>(x,339.f,220.f,214.f);
+                g.setGradientFill(juce::ColourGradient(
+                    Theme::panelAlt.brighter(.055f),face.getTopLeft(),
+                    Theme::panelAlt.darker(.12f),face.getBottomRight(),false));
+                g.fillRoundedRectangle(face,9.f);
+                g.setColour(Theme::stroke.withAlpha(.91f));
+                g.drawRoundedRectangle(face.reduced(.5f),9.f,1.f);
+                // One status tick and a hardware dial; all motion below is
+                // derived from the actual host-automated macro, not a mock meter.
+                g.setColour(Theme::green.withAlpha(.22f+.60f*amount));
+                g.fillRoundedRectangle(x+17.f,354.f,3.f,20.f,1.5f);
+                Theme::text(g,labels[k],{(int)x+28,349,177,27},
+                            16,Theme::white,true);
+                Theme::text(g,hints[k],{(int)x+20,377,180,18},
+                            10.5f,Theme::muted,true,
+                            juce::Justification::centred);
+                // Mini hardware scale stays subtle and never competes with
+                // the real rotary control drawn by SkellCore LookAndFeel.
+                constexpr float pi=juce::MathConstants<float>::pi;
+                const float centreX=x+109.f,centreY=454.f,rad=62.f;
+                for(int tick=0;tick<=10;++tick){
+                    const float a=(1.25f+1.5f*(float)tick/10.f)*pi;
+                    const float dx=std::sin(a),dy=-std::cos(a);
+                    const float tickInner=rad-1.5f,tickOuter=rad+2.5f;
+                    g.setColour(tick<=juce::roundToInt(amount*10.f)
+                        ?Theme::green.withAlpha(.20f+.37f*amount)
+                        :Theme::muted.withAlpha(.21f));
+                    g.drawLine(centreX+dx*tickInner,centreY+dy*tickInner,
+                               centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
+                }
+                if(macro[(size_t)k].showsValueForTest()) {
+                    Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
+                        {(int)x+55,510,110,29},21,Theme::green,true,
+                        juce::Justification::centred);
+                }
+                const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
+                g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
+                if(amount>.0001f){
+                    g.setColour(Theme::green.withAlpha(.53f));
+                    g.fillRoundedRectangle(meter.withWidth(182.f*amount),1.f);
+                }
+            }
         }
     }
     void paintOverChildren(juce::Graphics& g) override {
@@ -764,7 +824,9 @@ public:
     void resized() override {
         themeButton.setBounds(15,12,53,56);
         chain.setBounds(rackOnRight?939:13,90,216,535);
-        slot.setBounds(rackOnRight?14:247,90,906,496);
+        // The Advanced footer macro strip is gone: let the module editor
+        // fill the space down to the shared master-control footer.
+        slot.setBounds(rackOnRight?14:247,90,906,535);
         // Smaller floating MIC widget; do not snap it back after a drag.
         constexpr int micWidth=375,micHeight=326;
         if(!micPanel.hasBeenMoved())
@@ -785,11 +847,13 @@ public:
         help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
-        for(auto& knob:macro) {
-            // Keep all four legacy automation attachments and DSP mapping,
-            // but remove Tone/Punch/Space/Grit from both visible views.
-            knob.setVisible(false);
-            knob.setBounds(0,0,1,1);
+        for(int i=0;i<4;++i) {
+            auto& knob=macro[(size_t)i];
+            // Original Simple-mode hardware cards and rotary controls;
+            // Advanced hides them without changing automatable macro IDs.
+            knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            knob.setBounds(127+i*254,398,120,113);
+            knob.setVisible(display==0);
         }
         input.setBounds(842,646,65,37);
         mix.setBounds(947,646,65,37);
@@ -801,7 +865,7 @@ public:
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
-                              display==0?1140:906,display==0?507:496);
+                              display==0?1140:906,display==0?507:535);
     }
     void refresh(){
         Theme::select(selectedTheme);
@@ -816,7 +880,11 @@ public:
         chain.setVisible(display==1);slot.setVisible(display==1);
         chain.setAlpha(bypass?.30f:1.f);slot.setAlpha(bypass?.30f:1.f);
         chain.setEnabled(!bypass);slot.setEnabled(!bypass);
-        for(auto& s:macro){s.setEnabled(!bypass);s.setAlpha(bypass?.35f:1.f);}
+        for(auto& s:macro){
+            s.setVisible(display==0);
+            s.setEnabled(!bypass);
+            s.setAlpha(bypass?.35f:1.f);
+        }
         for(auto* s:{&input,&mix,&output}){s->setEnabled(!bypass);s->setAlpha(bypass?.35f:1.f);}
         bypassShade.setVisible(bypass);
         if(bypass)bypassShade.toFront(false);
@@ -881,7 +949,9 @@ public:
             repaint(juce::Rectangle<int>(73,51,271,25));
             const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
             if(activeView==0 || (activeView==3 && previousMode==0))
-                repaint(juce::Rectangle<int>(78,303,1010,29));
+                // Original Simple waveform lives around y=317; repaint the
+                // small live strip, not the entire row of rotary cards.
+                repaint(juce::Rectangle<int>(79,300,1000,34));
         }
     }
     void mouseDown(const juce::MouseEvent& e)override {
