@@ -80,6 +80,9 @@ public:
     template<std::size_t N> void getLiveWaveform(std::array<float,N>& samples) const noexcept {
         liveScope.snapshot(samples);
     }
+    // Audio producer progress is lock-free; the editor can avoid repainting
+    // an unchanged waveform while FL Studio's transport is idle.
+    unsigned liveScopeSampleCount() const noexcept {return liveScope.samplesCaptured();}
     // UI-triggered WAV capture of the processed host channel; never opens a
     // microphone independently or overwrites DAW input/recording settings.
     juce::Result startCapture(const juce::File& path);
