@@ -86,3 +86,9 @@ add_test(NAME SkellPreset322RegistryScopeTest COMMAND SkellPreset322RegistryScop
 add_executable(SkellPresetAlchemistNativeTest test_alchemist_native.cpp)
 target_compile_features(SkellPresetAlchemistNativeTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetAlchemistNativeTest COMMAND SkellPresetAlchemistNativeTest)
+
+# Native causal Alchemist finish is portable, stereo-linked and has no
+# audio-thread allocations, Python dependency, or external VST3.
+add_executable(SkellPresetAlchemistMatchDSPTest test_alchemist_match_dsp.cpp)
+target_compile_features(SkellPresetAlchemistMatchDSPTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAlchemistMatchDSPTest COMMAND SkellPresetAlchemistMatchDSPTest)
