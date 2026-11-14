@@ -10,6 +10,7 @@
 // cannot run as-is in a causal VST3. Here we use continuous IIR detectors,
 // causal one-pole gain smoothing, calibrated v0.7 coefficients and explicit
 // 0ms host latency. A/B equivalence is NOT claimed.
+#include "AlchemistReferenceContour.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -24,6 +25,7 @@ public:
         gatePole=std::exp(-1.f/(sr*.120f));
         slowPole=std::exp(-1.f/(sr*.280f));
         reset();
+        referenceContour.prepare(sr);
         set(.2001f,1.f,.323236f,0.f,.670724f,.335037f,.53875f,.270833f);
     }
     void reset() noexcept {
@@ -32,6 +34,7 @@ public:
         currentCubic=0.f;
         currentTrimGain=1.f;
         currentCubicDenominator=1.f/(.3012775f*.3012775f);
+        referenceContour.reset();
     }
     // Eight normalized, automatable values, original slot parameter storage.
     // 0 harmonic coeff -0.030..+0.030 (neutral 0.5).
@@ -43,7 +46,9 @@ public:
     // 6 post-shaping gain trim -1..+1 dB.
     // 7 causal smoothing 2..50ms.
     void set(float harmonic,float dynamics,float slowWeight,float fastWeight,
-             float center,float p99,float trim,float smooth) noexcept {
+             float center,float p99,float trim,float smooth,
+             float referenceEnable=.5f,float referenceStrength=.5f,
+             float referenceAir=.5f,float referenceTrim=.5f) noexcept {
         auto unit=[](float v)noexcept{
             return std::isfinite(v)?std::clamp(v,0.f,1.f):.5f;
         };
@@ -57,6 +62,7 @@ public:
         targetTrimGain=std::pow(10.f,(-1.f+2.f*unit(trim))/20.f);
         gainPole=std::exp(-1.f/(sr*(.002f+.048f*unit(smooth))));
         cubicPole=std::exp(-1.f/(sr*.020f));
+        referenceContour.set(referenceEnable,referenceStrength,referenceAir,referenceTrim);
     }
     std::array<float,2> process(float left,float right) noexcept {
         if(!std::isfinite(left))left=0.f;
@@ -85,8 +91,9 @@ public:
         const float mult=currentTrimGain*dyn;
         const float outL=(left+amount*left*left*left)*mult;
         const float outR=(right+amount*right*right*right)*mult;
-        return {std::isfinite(outL)?std::clamp(outL,-8.f,8.f):0.f,
-                std::isfinite(outR)?std::clamp(outR,-8.f,8.f):0.f};
+        return referenceContour.process(
+            std::isfinite(outL)?std::clamp(outL,-8.f,8.f):0.f,
+            std::isfinite(outR)?std::clamp(outR,-8.f,8.f):0.f);
     }
     float lastGainDb() const noexcept {return gainDb;}
 private:
@@ -105,5 +112,6 @@ private:
     float targetCubicDenominator=1.f/(.3012775f*.3012775f);
     float currentCubicDenominator=1.f/(.3012775f*.3012775f);
     float targetTrimGain=1.00896f,currentTrimGain=1.f;
+    AlchemistReferenceContour referenceContour;
 };
 } // namespace skellpreset::dsp
