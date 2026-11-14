@@ -96,3 +96,34 @@ VoxRack is now owner-authorized source for carefully selected DSP ports. Its fee
 
 - [2026-11-11 source review and design decisions](docs/VML_SHALLOWHOST_REVIEW.md) — Voice Modulation for Linux (GPL-3.0) and ShallowHost (MIT), including what was implemented, intentionally not copied and known limitations. VML's GPL code was **not incorporated** into SKELL source; the modulation DSP is original.
 - Previous owner-provided local-mic-effects and audio-mixer project reviews remain at [Imported Effects](docs/IMPORTED_EFFECTS.md).
+
+## Alchemist native WAV renderer (diagnostic executable)
+
+The optional `SkellPresetAlchemistRender.exe` is an **offline test runner**, not a
+second VST3 or a substitute for FL Studio. Build with
+`-DSKELL_PRESET_ALCHEMIST_RENDERER=ON`. It calls the actual compiled
+`SkellPresetAudioProcessor::processBlock` and factory Alchemist chain.
+
+```powershell
+.\SkellPresetAlchemistRender.exe --smoke
+.\SkellPresetAlchemistRender.exe --smoke-mono
+.\SkellPresetAlchemistRender.exe --stress
+.\SkellPresetAlchemistRender.exe ".\dry-vocal.wav" ".\alchemist-preview.wav"
+```
+
+Input is **mono or stereo WAV, 8–192 kHz**. Mono is intentionally duplicated
+into the two input channels before running the native stereo chain. Output is
+stereo **32-bit floating-point WAV** at the original sample rate; the runner
+refuses to overwrite an existing output. Keep the source and your original
+FL Studio processed reference untouched. The `--smoke-mono` test generates
+temporary mono audio, renders it through Alchemist and checks that the
+resulting stereo WAV is readable, finite and non-silent.
+
+The `--stress` mode measures 5/10/20 serialized full-processor instances at
+44.1/48/96 kHz and 64/128/256-sample buffer sizes. It checks output finiteness,
+level bounds and host-reported latency and prints DSP callback timings. CI runner
+numbers are **not** proof of performance on the user's PC. Alchemist's native
+rack should report **0 samples added latency**; vintage lookahead limiters and
+spectral pitch are separate, deliberately nonzero-latency algorithms. Actual
+A/B matching to the owner-supplied FL Studio reference still requires synchronized,
+loudness-matched recordings and host-level tests.
