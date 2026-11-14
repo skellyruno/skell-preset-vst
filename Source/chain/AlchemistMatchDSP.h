@@ -30,6 +30,8 @@ public:
         power20=power120=power280=0.f;
         gainDb=0.f;
         currentCubic=0.f;
+        currentTrimGain=1.f;
+        currentCubicDenominator=1.f/(.3012775f*.3012775f);
     }
     // Eight normalized, automatable values, original slot parameter storage.
     // 0 harmonic coeff -0.030..+0.030 (neutral 0.5).
@@ -51,8 +53,8 @@ public:
         aFast=(unit(fastWeight)-.5f)*.7f;
         centerDb=-40.f+30.f*unit(center);
         const float calibration=.05f+.75f*unit(p99);
-        cubicDenominator=1.f/std::max(.0025f,calibration*calibration);
-        trimGain=std::pow(10.f,(-1.f+2.f*unit(trim))/20.f);
+        targetCubicDenominator=1.f/std::max(.0025f,calibration*calibration);
+        targetTrimGain=std::pow(10.f,(-1.f+2.f*unit(trim))/20.f);
         gainPole=std::exp(-1.f/(sr*(.002f+.048f*unit(smooth))));
         cubicPole=std::exp(-1.f/(sr*.020f));
     }
@@ -75,9 +77,12 @@ public:
         const float capped=std::clamp(proposed,-.6f,.6f)*gate*dynamicsAmount;
         gainDb=advance(gainDb,capped,gainPole);
         currentCubic=advance(currentCubic,targetCubic,cubicPole);
+        currentCubicDenominator=advance(
+            currentCubicDenominator,targetCubicDenominator,cubicPole);
+        currentTrimGain=advance(currentTrimGain,targetTrimGain,cubicPole);
         const float dyn=std::exp(gainDb*.11512925465f); // ln(10)/20
-        const float amount=currentCubic*cubicDenominator;
-        const float mult=trimGain*dyn;
+        const float amount=currentCubic*currentCubicDenominator;
+        const float mult=currentTrimGain*dyn;
         const float outL=(left+amount*left*left*left)*mult;
         const float outR=(right+amount*right*right*right)*mult;
         return {std::isfinite(outL)?std::clamp(outL,-8.f,8.f):0.f,
@@ -96,7 +101,9 @@ private:
     float gainPole=.995f,cubicPole=.999f;
     float targetCubic=-.017994f,dynamicsAmount=1.f;
     float aSlow=-.123735f,aFast=-.35f;
-    float centerDb=-19.87828f,cubicDenominator=1.f/(.3012775f*.3012775f);
-    float trimGain=1.00896f;
+    float centerDb=-19.87828f;
+    float targetCubicDenominator=1.f/(.3012775f*.3012775f);
+    float currentCubicDenominator=1.f/(.3012775f*.3012775f);
+    float targetTrimGain=1.00896f,currentTrimGain=1.f;
 };
 } // namespace skellpreset::dsp
