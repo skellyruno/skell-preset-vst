@@ -21,6 +21,7 @@ public:
         scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),offset);
         visualSnapshotValid=false;repaint();
     }
+    bool testMouseWheelScroll();
     bool canScrollForTest() const noexcept {
         return processor.activeSlotCount()>visibleRows;
     }
@@ -48,6 +49,7 @@ private:
     bool visualSnapshotValid=false;
     int rowAt(int y) const;
     void clampScroll();
+    void applyWheelDelta(float deltaY);
     void addModule();
     void popupFor(int physicalSlot);
     float slotWet(int physicalSlot) const noexcept;
