@@ -640,9 +640,8 @@ void PresetBrowser::mouseMove(const juce::MouseEvent& e){
     const int candidate=e.x>=207&&e.y>=110&&e.y<476 ? (e.y-110)/61+scroll : -1;
     const int next=candidate>=0&&candidate<(int)filtered().size()?candidate:-1;
     if(next!=hoveredCard){hoveredCard=next;repaint();}
-    const bool star=next>=0 && e.x>=getWidth()-77 && e.x<=getWidth()-38;
-    setTooltip(star?"Star / unstar preset; favorites are saved locally":"");
-    setMouseCursor(next>=0?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor);
+    setMouseCursor(next>=0?juce::MouseCursor::PointingHandCursor
+                          :juce::MouseCursor::NormalCursor);
 }
 void PresetBrowser::mouseExit(const juce::MouseEvent&){hoveredCard=-1;repaint();}
 void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel){
