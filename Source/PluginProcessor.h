@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include <SkellCore/Core.h>
 #include "chain/BasicDSP.h"
+#include "chain/Skelldizer.h"
 #include "chain/LiveAudioScope.h"
 #include "chain/ClipRecorder.h"
 #include "chain/VocalEffects.h"
@@ -19,7 +20,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, SkelldizerFX, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
@@ -91,6 +92,7 @@ private:
     struct EngineSlot {
         skellpreset::dsp::SmoothedBiquad peak, highpass;
         skellpreset::dsp::Compressor comp;
+        skellpreset::dsp::Skelldizer skelldizer;
         skellpreset::dsp::Gate gate;
         skellpreset::dsp::SplitDeEsser deesser;
         skellpreset::dsp::BroadcastRadio radio;
@@ -138,6 +140,7 @@ private:
         std::atomic<float>* type=nullptr;std::atomic<float>* extension=nullptr;
         std::atomic<float>* extension2=nullptr;
         std::atomic<float>* extension3=nullptr;
+        std::atomic<float>* extension4=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::array<std::atomic<float>*,16> p{};
