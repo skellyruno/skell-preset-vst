@@ -14,7 +14,7 @@ public:
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
     void setMatchPageForScreenshot(int page);
     void setMicPanelForScreenshot(bool visible);
-    void setEqOrbForScreenshot(bool enabled);
+    void setModOrbForScreenshot(bool enabled);
     void dockRackForScreenshot(bool right);
     void openModulePickerForScreenshot();
     void openInstalledVST3BrowserForScreenshot();
