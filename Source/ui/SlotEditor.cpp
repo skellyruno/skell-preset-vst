@@ -1810,8 +1810,57 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
     graphSnapshotValid=false;
     repaint();
 }
+bool SlotEditor::updateMicCard(juce::Point<float> point) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::MicModelFX)
+        return false;
+    int parameter=-1,index=-1;
+    for(int n=0;n<4;++n) {
+        if(juce::Rectangle<float>(52.f+n*91.f,188.f,85.f,33.f).contains(point)) {
+            parameter=0;index=n;break;
+        }
+        const int column=n%2,row=n/2;
+        if(juce::Rectangle<float>(52.f+column*183.f,255.f+row*43.f,174.f,37.f)
+               .contains(point)) {
+            parameter=1;index=n;break;
+        }
+    }
+    if(parameter<0)return false;
+    if(auto* host=processor.state.getParameter(
+            "s"+juce::String(slot+1)+"_p"+juce::String(parameter+1)))
+        host->beginChangeGesture();
+    processor.setSlotParam(slot,parameter,(float)index/3.f);
+    if(auto* host=processor.state.getParameter(
+            "s"+juce::String(slot+1)+"_p"+juce::String(parameter+1)))
+        host->endChangeGesture();
+    graphSnapshotValid=false;
+    refreshIfChanged();
+    repaint();
+    return true;
+}
+bool SlotEditor::testMicModelCards() {
+    const int oldType=processor.slotType(slot);
+    std::array<float,4> old{};
+    for(int i=0;i<4;++i)old[(size_t)i]=processor.getSlotParam(slot,i);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::MicModelFX);
+    select(slot);
+    const bool a=updateMicCard({343.f,205.f}); // input: Ribbon
+    const bool b=updateMicCard({258.f,312.f}); // target: Air
+    const bool passed=a&&b&&
+        skellpreset::dsp::MicModelTone::index(processor.getSlotParam(slot,0))==3 &&
+        skellpreset::dsp::MicModelTone::index(processor.getSlotParam(slot,1))==3 &&
+        processor.slotType(slot)==SkellPresetAudioProcessor::MicModelFX;
+    processor.setSlotType(slot,oldType);
+    for(int i=0;i<4;++i)processor.setSlotParam(slot,i,old[(size_t)i]);
+    select(slot);
+    return passed;
+}
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
+    if(type==SkellPresetAudioProcessor::MicModelFX) {
+        // Card clicks are distinct from the generic XY graph gesture.
+        updateMicCard(e.position);
+        return;
+    }
     if(type==SkellPresetAudioProcessor::Empty
         || type==SkellPresetAudioProcessor::ExternalVST3
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
