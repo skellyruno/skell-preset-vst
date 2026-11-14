@@ -124,7 +124,7 @@ void PresetBrowser::scanLibrary() {
         const auto base=userPresets[i];
         auto cover=base.withFileExtension(".png");
         if(!cover.existsAsFile())cover=base.withFileExtension(".jpg");
-        if(cover.existsAsFile() && cover.getSize()>0 && cover.getSize()<=2*1024*1024) {
+        if(cover.existsAsFile() && cover.getSize()>0 && cover.getSize()<=8*1024*1024) {
             auto image=juce::ImageFileFormat::loadFrom(cover);
             if(image.isValid() && image.getWidth()<=4096 && image.getHeight()<=4096)
                 userArtwork[i]=image.rescaled(128,96,juce::Graphics::mediumResamplingQuality);
@@ -146,7 +146,7 @@ bool PresetBrowser::canEditCover() const {
 void PresetBrowser::reloadAlchemistArtwork() {
     alchemistArtwork={};
     const auto path=libraryDirectory().getChildFile("Covers").getChildFile("Alchemist.png");
-    if(!path.existsAsFile()||path.getSize()<=0||path.getSize()>2*1024*1024)return;
+    if(!path.existsAsFile()||path.getSize()<=0||path.getSize()>8*1024*1024)return;
     auto img=juce::ImageFileFormat::loadFrom(path);
     if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096)
         alchemistArtwork=img.rescaled(1200,900,juce::Graphics::highResamplingQuality);
@@ -276,7 +276,7 @@ void PresetBrowser::refreshArtwork() {
         auto candidate=activeUserPreset.withFileExtension(".png");
         if(!candidate.existsAsFile())candidate=activeUserPreset.withFileExtension(".jpg");
         if(candidate.existsAsFile() && candidate.getSize()>0 &&
-            candidate.getSize()<=2*1024*1024) {
+            candidate.getSize()<=8*1024*1024) {
             auto img=juce::ImageFileFormat::loadFrom(candidate);
             if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096) {
                 const float scale=std::min({1.f,1600.f/(float)img.getWidth(),
@@ -304,9 +304,9 @@ void PresetBrowser::chooseArtwork() {
             safe->setChooserActive(false);
             const auto file=chooser.getResult();
             if(!file.existsAsFile())return;
-            if(file.getSize()<=0 || file.getSize()>2*1024*1024){
+            if(file.getSize()<=0 || file.getSize()>8*1024*1024){
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                    "Artwork too large","Use a PNG/JPG image smaller than 2 MB.");return;
+                    "Artwork too large","Use a PNG/JPG image smaller than 8 MB.");return;
             }
             auto image=juce::ImageFileFormat::loadFrom(file);
             if(!image.isValid() || image.getWidth()>4096 || image.getHeight()>4096){
@@ -318,20 +318,20 @@ void PresetBrowser::chooseArtwork() {
             // Write-then-replace: a failed save must not destroy the previous cover.
             juce::TemporaryFile staging(destination);
             juce::PNGImageFormat png;
-            // Preserve portrait and landscape artwork proportions on the 4:3 cover.
-            juce::Image thumbnail(juce::Image::RGB,240,180,true);
-            {
-                juce::Graphics thumbPainter(thumbnail);
-                thumbPainter.fillAll(juce::Colours::black);
-                thumbPainter.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
-                thumbPainter.drawImageWithin(image,0,0,240,180,
-                    juce::RectanglePlacement::centred);
-            }
+            // Preserve the source image's aspect ratio in its saved cover.
+            // The browser builds its own lightweight 128x96 thumbnail.
+            // Never save only a 240x180 thumbnail as full-plugin wallpaper.
+            const float scale=std::min({1.f,1600.f/(float)image.getWidth(),
+                                            1000.f/(float)image.getHeight()});
+            auto coverImage=image.rescaled(
+                juce::jmax(1,juce::roundToInt(image.getWidth()*scale)),
+                juce::jmax(1,juce::roundToInt(image.getHeight()*scale)),
+                juce::Graphics::highResamplingQuality);
             bool written=false;
             {
                 juce::FileOutputStream output(staging.getFile());
                 if(output.openedOk()) {
-                    written=png.writeImageToStream(thumbnail,output);
+                    written=png.writeImageToStream(coverImage,output);
                     output.flush();
                 }
             }
