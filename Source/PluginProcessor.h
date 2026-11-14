@@ -150,6 +150,15 @@ private:
         std::array<std::atomic<float>*,16> p{};
         std::array<std::atomic<float>*,8> q{};
     };
+    struct RawMic {
+        std::atomic<float>* on=nullptr;
+        std::atomic<float>* input=nullptr;
+        std::atomic<float>* target=nullptr;
+        std::atomic<float>* amount=nullptr;
+        std::atomic<float>* trim=nullptr;
+    } rawMic;
+    skellpreset::dsp::MicModelTone micFrontEnd;
+    juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet;
     struct RawGlobal {
         std::atomic<float>* mode=nullptr;std::atomic<float>* input=nullptr;
         std::atomic<float>* mix=nullptr;std::atomic<float>* output=nullptr;
