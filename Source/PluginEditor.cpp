@@ -389,6 +389,9 @@ public:
         configureForScreenshot(0,1,false);
         preset.onClick();
         if(!browser.isVisible())issues.add("Preset selector did not open browser");
+        if(browser.visibleFactoryPresetsForTest()!=1 ||
+           !browser.canSetCoverForTest())
+            issues.add("Browser must show only Alchemist and allow changing its cover");
         preset.onClick();
         if(browser.isVisible())issues.add("Preset selector did not close browser");
         viewSwitch.onClick();
@@ -439,8 +442,9 @@ public:
             issues.add("Rack failed to return left");
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         chain.setScreenshotScrollOffset(2);
-        if(!chain.canScrollForTest() || chain.scrollPositionForTest()!=2)
-            issues.add("Default ten-slot rack is not wheel-scrollable with eight visible rows");
+        if(!chain.canScrollForTest() || chain.scrollPositionForTest()!=2 ||
+           !chain.testMouseWheelScroll())
+            issues.add("Default rack wheel-down/wheel-up scrolling failed");
         chain.setScreenshotScrollOffset(0);
         if(!chain.testRackControlsAndWet())
             issues.add("Rack wet trim and green bypass dot did not update or restore host parameters");
