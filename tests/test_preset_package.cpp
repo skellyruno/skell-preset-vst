@@ -180,16 +180,38 @@ int main(){
     first.slots[2].params[0]=.5f;
     first.slots[2].type=99;
     check(skellpreset::package::write(testFile(dir,"invalid-module"),first).failed(),"Reject undefined module type");
+    // Rejected imports must preserve the entire previously loaded document,
+    // not merely its name. This protects active rack, EQ Q and automation data.
+    const auto previous=second;
+    const auto unchanged=[&] {
+        if(second.name!=previous.name || second.author!=previous.author
+           || second.bank!=previous.bank || second.mode!=previous.mode
+           || second.activeSlotCount!=previous.activeSlotCount
+           || second.inputDb!=previous.inputDb || second.mix!=previous.mix
+           || second.outputDb!=previous.outputDb || second.macros!=previous.macros)
+            return false;
+        for(size_t i=0;i<second.slots.size();++i){
+            const auto& a=second.slots[i];
+            const auto& b=previous.slots[i];
+            if(a.slotId!=b.slotId || a.type!=b.type || a.enabled!=b.enabled
+               || a.wet!=b.wet || a.params!=b.params || a.eqQ!=b.eqQ)
+                return false;
+        }
+        return true;
+    };
     auto malicious=testFile(dir,"path-traversal");
     createArchive(malicious,"../evil.json","{}");
     check(skellpreset::package::read(malicious,second).failed(),"Reject malicious ZIP path");
+    check(unchanged(), "Rejected import leaves all preset fields unchanged");
     auto oversize=testFile(dir,"oversize");
     createArchive(oversize,"preset.json",std::string(300000,'a'));
     check(skellpreset::package::read(oversize,second).failed(),"Reject compressed oversized entry");
+    check(unchanged(), "Rejected import leaves all preset fields unchanged");
     auto malformed=testFile(dir,"malformed");
     createArchive(malformed,"preset.json","not json");
     check(skellpreset::package::read(malformed,second).failed(),"Reject malformed JSON");
-    check(second.name==first.name || second.name=="Wide Ghost Vocal", "Bad input keeps previous successful document");
+    check(unchanged(), "Rejected import leaves all preset fields unchanged");
+    check(unchanged(), "Rejected imports preserve the complete previous document");
     dir.deleteRecursively();
     if(failures)std::cerr<<failures<<" package tests failed\n";
     return failures?1:0;
