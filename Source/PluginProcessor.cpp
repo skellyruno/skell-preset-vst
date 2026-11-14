@@ -469,11 +469,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     // no preset parameters, automation IDs or engine states are discarded.
     const int chainCount=activeSlotCount();
     const auto packed=packedOrder.load(std::memory_order_acquire);
-    std::uint32_t activeMask=0;
-    for(int position=0;position<chainCount;++position) {
-        const int id=(int)((packed>>(4*position))&0x0fU);
-        if(id>=0 && id<slotCount)activeMask|=(std::uint32_t{1}<<id);
-    }
+    const std::uint32_t activeMask=skellpreset::realtime::activeSlotMask(packed,chainCount,slotCount);
     // Native algorithms share one preallocated engine per physical slot;
     // no allocation, file access or locks in this path.
     for(int s=0;s<slotCount;++s) {
