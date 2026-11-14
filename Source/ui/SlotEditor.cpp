@@ -374,7 +374,7 @@ void SlotEditor::applyKnobReadouts() {
                     return juce::jlimit(0.,1.,.5+value/.7);
                 }
                 if(matchPage==2) {
-                    if(i==0)return text=="on" || value>75. ? 1.:0.;
+                    if(i==0)return (text=="on" || value>75.)?1.:0.;
                     if(i==1 || i==2)
                         return juce::jlimit(.5,1.,.5+value/200.);
                     return juce::jlimit(0.,1.,value/4.);
@@ -778,6 +778,48 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.drawHorizontalLine((int)y,plot.getX(),plot.getRight());
     }
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+        if(matchPage==2) {
+            // Exact static target-gain function from AlchemistReferenceContour,
+            // drawn versus incoming RMS level. This is neither a spectrum
+            // analyser nor a generated waveform: dynamic attack/release
+            // and the 14.5kHz shelf remain separate causal processing.
+            const bool enabled=processor.getSlotParam(slot,8)>.75f;
+            const float intensity=juce::jlimit(0.f,1.f,
+                (processor.getSlotParam(slot,9)-.5f)*2.f);
+            const float air=juce::jlimit(0.f,1.f,
+                (processor.getSlotParam(slot,10)-.5f)*2.f);
+            const float baseDb=2.f+4.f*(processor.getSlotParam(slot,11)-.5f);
+            const float xLeft=plot.getX()+23.f;
+            const float xRight=plot.getRight()-23.f;
+            const float baseline=plot.getBottom()-51.f;
+            const float scale=plot.getHeight()/13.2f;
+            g.setColour(Theme::stroke);
+            g.drawHorizontalLine((int)baseline,xLeft,xRight);
+            juce::Path targetGain;
+            for(int index=0;index<=140;++index) {
+                const float db=-60.f+60.f*index/140.f;
+                const float speech=juce::jlimit(0.f,1.f,(db+59.f)/13.f);
+                const float expected=enabled?juce::jlimit(-1.f,10.5f,
+                    (baseDb+.38f*(-20.f-db))*speech*intensity):0.f;
+                const float x=xLeft+(xRight-xLeft)*index/140.f;
+                const float y=baseline-expected*scale;
+                if(index==0)targetGain.startNewSubPath(x,y);
+                else targetGain.lineTo(x,y);
+            }
+            g.setColour(Theme::green);
+            g.strokePath(targetGain,juce::PathStrokeType(2.7f));
+            Theme::text(g,"REFERENCE CONTOUR / RMS INPUT  -60 TO 0 dBFS",
+                        {48,165,680,19},11,Theme::green,true);
+            Theme::text(g,enabled?"REFERENCE MATCH ACTIVE":"REFERENCE MATCH OFF",
+                        {48,193,460,23},13,
+                        enabled?Theme::white:Theme::muted,true);
+            Theme::text(g,"LEVEL "+juce::String(intensity*100.f,0)+"%  /  AIR "+
+                        juce::String(air*100.f,0)+"%  /  BASE "+
+                        juce::String(baseDb,1)+" dB",
+                        {48,327,710,19},10,Theme::muted);
+            Theme::text(g,"35 ms CAUSAL LEVELER / 14.5k AIR / SOFT PEAK SAFETY",
+                        {48,350,760,16},9,Theme::muted);
+        } else {
         // This is the ACTUAL static cubic transfer implied by the host
         // parameters, not a pretend live waveform or reference null score.
         const float amount=(processor.getSlotParam(slot,0)-.5f)*.06f;
@@ -811,6 +853,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             {56,166,620,19},10,Theme::green,true);
         Theme::text(g,"20 / 120 / 280ms detector  ·  ±0.6dB bounded contour  ·  0ms lookahead",
             {56,325,700,20},10,Theme::muted);
+        }
     }
     if(type==SkellPresetAudioProcessor::MicModelFX) {
         // Compact Mic Modeling controls INSIDE the existing effect page.
