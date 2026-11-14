@@ -36,6 +36,7 @@ int main() {
     assert(alchemist::stages[6].p[8]>.75f);
     assert(alchemist::stages[6].p[9]==1.f);
     assert(alchemist::stages[6].p[10]==1.f);
+    assert(alchemist::stages[6].p[11]==.58f); // factory-only; historic saved states unchanged
     // The final default Fruity Limiter tested effectively transparent on
     // Alchemist's source. Do not add a lookahead limiter to this template.
     for(const auto& stage:alchemist::stages)assert(stage.module!=3);

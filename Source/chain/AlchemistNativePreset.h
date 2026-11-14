@@ -103,7 +103,7 @@ constexpr auto makeStages() noexcept {
     finish.p[8]=1.f;  // enable fitted contour (p9)
     finish.p[9]=1.f;  // full causal upward level conditioning (p10)
     finish.p[10]=1.f; // high-frequency shelf intensity (p11)
-    finish.p[11]=.5f; // calibrated +2dB base, neutral trim (p12)
+    finish.p[11]=.58f; // gain-matched to owner's FL Studio reference (-14.22 LUFS, 19-35s)
     return std::array<NativeStage,7>{{
         highpass,tone,fast,slow,multiband,colour,finish
     }};
