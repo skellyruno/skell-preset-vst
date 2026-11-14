@@ -4,6 +4,12 @@
 #include <cmath>
 #include <limits>
 namespace {
+bool isModulationOrbEffect(int type) noexcept {
+    using P=SkellPresetAudioProcessor;
+    return type==P::Tremolo || type==P::StereoWidth ||
+           type==P::VocalChorusFX || type==P::VocalFlangerFX ||
+           type==P::RingModFX || type==P::VocalVibratoFX;
+}
 const juce::StringArray names=[] {
     juce::StringArray result;
     for(const auto& effect:skellpreset::registry::effects)result.add(effect.name);
@@ -93,10 +99,10 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
     addAndMakeVisible(upgradeEq);
     upgradeEq.setVisible(false);
-    eqOrbButton.setTooltip("Switch between editable 8-band graph and EQ orb");
-    addAndMakeVisible(eqOrbButton);
-    eqOrbButton.setVisible(false);
-    eqOrbButton.onClick=[this]{setEqOrbForScreenshot(!eqOrbView);};
+    modOrbButton.setTooltip("Show a modulation parameter orb; press GRAPH to return");
+    addAndMakeVisible(modOrbButton);
+    modOrbButton.setVisible(false);
+    modOrbButton.onClick=[this]{setModOrbForScreenshot(!modOrbView);};
     upgradeEq.onClick=[this] {
         if(processor.slotType(slot)!=SkellPresetAudioProcessor::EQ)return;
         const float oldFreq=processor.getSlotParam(slot,0);
@@ -461,10 +467,10 @@ void SlotEditor::applyTheme() {
     }
     upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
-    eqOrbButton.setColour(juce::TextButton::buttonColourId,
-        eqOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
-    eqOrbButton.setColour(juce::TextButton::textColourOffId,
-        eqOrbView?Theme::green:Theme::white);
+    modOrbButton.setColour(juce::TextButton::buttonColourId,
+        modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
+    modOrbButton.setColour(juce::TextButton::textColourOffId,
+        modOrbView?Theme::green:Theme::white);
     for(int page=0;page<2;++page) {
         auto& button=matchPageButtons[(size_t)page];
         button.setColour(juce::TextButton::buttonColourId,
@@ -603,7 +609,7 @@ void SlotEditor::refreshIfChanged() {
         // depend on actual measured slot peak. Repaint just the graph,
         // not the full plugin; the integer peak step bounds idle CPU.
         if(type==SkellPresetAudioProcessor::Delay ||
-           (type==SkellPresetAudioProcessor::EightBandToneFX && eqOrbView))
+           (isModulationOrbEffect(type) && modOrbView))
             repaint(juce::Rectangle<int>(33,151,835,206));
         return;
     }
@@ -648,6 +654,8 @@ void SlotEditor::refreshIfChanged() {
         // A new effect resets the EQ bank, preserving all saved parameter
         // values while reattaching only the controls visible on this page.
         eqBank=0;activeEqBand=0;matchPage=0;
+        modOrbView=false;
+        modOrbButton.setButtonText("ORB");
         eqQAttachment.reset();
         for(auto& attachment:eqCutAttachments)attachment.reset();
         if(type==SkellPresetAudioProcessor::EightBandToneFX) {
@@ -676,7 +684,7 @@ void SlotEditor::refreshIfChanged() {
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
     upgradeEq.setVisible(type==SkellPresetAudioProcessor::EQ);
-    eqOrbButton.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
+    modOrbButton.setVisible(isModulationOrbEffect(type));
     eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& button:eqBandButtons)button.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
@@ -698,7 +706,7 @@ void SlotEditor::resized() {
     installedBrowser.setBounds(85,62,735,385);
     editExternal.setBounds(246,420,188,62);
     upgradeEq.setBounds(650,97,212,31);
-    eqOrbButton.setBounds(771,87,89,23);
+    modOrbButton.setBounds(764,77,95,23);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
 }
 void SlotEditor::paint(juce::Graphics&g) {
@@ -848,52 +856,6 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"LOW",{442,325,65,17},10,Theme::muted);
         Theme::text(g,"MID",{615,325,65,17},10,Theme::muted);
         Theme::text(g,"AIR",{793,325,50,17},10,Theme::muted);
-    } else if(type==SkellPresetAudioProcessor::EightBandToneFX && eqOrbView) {
-        // Optional lightweight visualisation; the existing exact frequency
-        // response graph remains the default. No fake live FFT is presented.
-        g.setColour(Theme::plot);
-        g.fillRoundedRectangle(plot,5.f);
-        const float cx=451.f,cy=250.f,radius=86.f;
-        g.setColour(Theme::green.withAlpha(.045f));
-        g.fillEllipse(cx-radius,cy-radius,radius*2.f,radius*2.f);
-        for(int latitude=-4;latitude<=4;++latitude) {
-            const float v=(float)latitude/5.f;
-            const float yy=cy+v*radius,width=std::sqrt(1.f-v*v)*radius;
-            g.setColour(Theme::muted.withAlpha(.16f));
-            g.drawEllipse(cx-width,yy-8.f,width*2.f,16.f,.85f);
-        }
-        for(int longitude=-4;longitude<=4;++longitude) {
-            const float phi=longitude*juce::MathConstants<float>::pi/10.f;
-            juce::Path meridian;
-            for(int i=0;i<=48;++i) {
-                const float theta=-juce::MathConstants<float>::halfPi+
-                                   i*juce::MathConstants<float>::pi/48.f;
-                const float xx=cx+radius*std::cos(theta)*std::sin(phi);
-                const float yy=cy+radius*std::sin(theta);
-                if(i==0)meridian.startNewSubPath(xx,yy);
-                else meridian.lineTo(xx,yy);
-            }
-            g.setColour(Theme::muted.withAlpha(.13f));
-            g.strokePath(meridian,juce::PathStrokeType(.75f));
-        }
-        for(int band=0;band<8;++band) {
-            const float gain=(processor.getSlotParam(slot,band*2+1)-.5f)*30.f;
-            const float radians=(float)band*juce::MathConstants<float>::twoPi/8.f;
-            const float orbit=radius*.77f+juce::jlimit(-12.f,12.f,gain)*.65f;
-            const float xx=cx+orbit*std::cos(radians),yy=cy+orbit*std::sin(radians);
-            const bool selected=band==activeEqBand;
-            g.setColour(Theme::green.withAlpha(selected?.95f:.32f));
-            const float size=selected?9.f:5.f;
-            g.fillEllipse(xx-size*.5f,yy-size*.5f,size,size);
-        }
-        Theme::text(g,"EQ ORB  /  8 PARAMETER NODES",{584,184,268,21},12,Theme::green,true);
-        Theme::text(g,"Illustrative tone map",{588,222,260,19},12,Theme::white);
-        Theme::text(g,"Not a live FFT analyser",{588,247,267,19},10,Theme::muted);
-        const float peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
-        g.setColour(Theme::green.withAlpha(.15f+.65f*peak));
-        g.drawEllipse(cx-radius-5.f,cy-radius-5.f,2.f*(radius+5.f),
-                      2.f*(radius+5.f),1.1f+peak*2.f);
-        Theme::text(g,"GRAPH restores the editable EQ",{588,302,269,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::EQ) {
         const float normalizedF=processor.getSlotParam(slot,0);
         const auto* tone=processor.state.getRawParameterValue("macro1");
@@ -1085,7 +1047,48 @@ void SlotEditor::paint(juce::Graphics&g) {
         const float x0=plot.getX()+24.f, x1=plot.getRight()-24.f;
         const float y0=plot.getY()+20.f, y1=plot.getBottom()-27.f;
         const float w=x1-x0, h=y1-y0;
-        if(type==SkellPresetAudioProcessor::EightBandToneFX) {
+        if(isModulationOrbEffect(type) && modOrbView) {
+            // This orb represents MODULATION parameters (rate, depth, stereo).
+            // It never pretends to contain measured FFT or actual LFO phase.
+            const float rate=processor.getSlotParam(slot,0);
+            const float depth=processor.getSlotParam(slot,1);
+            const float stereo=processor.getSlotParam(slot,2);
+            const float peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+            const float cx=430.f,cy=251.f,radius=88.f;
+            g.setColour(Theme::green.withAlpha(.04f+.045f*peak));
+            g.fillEllipse(cx-radius,cy-radius,radius*2.f,radius*2.f);
+            for(int k=-4;k<=4;++k) {
+                const float phi=(float)k*juce::MathConstants<float>::pi/10.f;
+                const float rx=radius*std::cos(phi);
+                g.setColour(Theme::muted.withAlpha(.13f));
+                g.drawEllipse(cx-rx,cy-radius,rx*2.f,radius*2.f,.9f);
+                const float dy=(float)k/5.f*radius;
+                const float w=std::sqrt(1.f-(float)(k*k)/25.f)*radius;
+                g.drawEllipse(cx-w,cy+dy-7.f,w*2.f,14.f,.6f);
+            }
+            for(int k=0;k<12;++k) {
+                const float phase=(float)k/12.f*juce::MathConstants<float>::twoPi;
+                const float displacement=(.72f+.19f*depth*
+                    std::sin(phase*(1.f+2.f*rate)+stereo*3.f))*radius;
+                const float x=cx+displacement*std::cos(phase);
+                const float y=cy+displacement*std::sin(phase);
+                const float dot=2.4f+depth*2.7f;
+                g.setColour(Theme::green.withAlpha(.29f+.56f*depth));
+                g.fillEllipse(x-dot,y-dot,dot*2.f,dot*2.f);
+            }
+            g.setColour(Theme::green.withAlpha(.2f+.55f*peak));
+            g.drawEllipse(cx-radius-4.f,cy-radius-4.f,2.f*radius+8.f,
+                          2.f*radius+8.f,1.f+peak*1.7f);
+            Theme::text(g,"MODULATION ORB",{579,183,270,23},12,Theme::green,true);
+            Theme::text(g,"RATE  "+juce::String(juce::roundToInt(rate*100.f)),
+                {579,220,250,21},12,Theme::white);
+            Theme::text(g,"DEPTH "+juce::String(juce::roundToInt(depth*100.f)),
+                {579,247,250,21},12,Theme::white);
+            Theme::text(g,"STEREO "+juce::String(juce::roundToInt(stereo*100.f)),
+                {579,274,250,21},12,Theme::white);
+            Theme::text(g,"VISUAL PROFILE / NOT LIVE LFO PHASE",
+                {579,322,275,19},9,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
             // Exact, summed eight-band DSP response. Every dot edits the
             // actual frequency+gain parameters of one independent bell.
             std::array<skellpreset::dsp::Biquad,8> filter{};
@@ -1654,7 +1657,8 @@ void SlotEditor::paint(juce::Graphics&g) {
                 {120,249,620,22},12,Theme::muted,false,juce::Justification::centred);
         }
         // Non-EQ modules share the two-axis universal marker.
-        if(type!=SkellPresetAudioProcessor::EightBandToneFX) {
+        if(type!=SkellPresetAudioProcessor::EightBandToneFX &&
+           !(modOrbView && isModulationOrbEffect(type))) {
         const float markerX=x0+w*first,markerY=y1-h*second;
         g.setColour(Theme::green.withAlpha(.24f));
         g.drawVerticalLine((int)markerX,y0,y1);
@@ -1934,33 +1938,33 @@ bool SlotEditor::testMicModelCards() {
     select(slot);
     return passed;
 }
-void SlotEditor::setEqOrbForScreenshot(bool enabled) {
-    eqOrbView=enabled;
-    eqOrbButton.setButtonText(eqOrbView?"GRAPH":"ORB");
-    eqOrbButton.setColour(juce::TextButton::buttonColourId,
-        eqOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
-    eqOrbButton.setColour(juce::TextButton::textColourOffId,
-        eqOrbView?Theme::green:Theme::white);
+void SlotEditor::setModOrbForScreenshot(bool enabled) {
+    modOrbView=enabled;
+    modOrbButton.setButtonText(modOrbView?"GRAPH":"ORB");
+    modOrbButton.setColour(juce::TextButton::buttonColourId,
+        modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
+    modOrbButton.setColour(juce::TextButton::textColourOffId,
+        modOrbView?Theme::green:Theme::white);
     graphSnapshotValid=false;
     repaint();
 }
-bool SlotEditor::testEqOrbToggle() {
+bool SlotEditor::testModOrbToggle() {
     const auto previousType=processor.slotType(slot);
-    processor.setSlotType(slot,SkellPresetAudioProcessor::EightBandToneFX);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::VocalChorusFX);
     select(slot);
-    setEqOrbForScreenshot(false);
-    eqOrbButton.onClick();
-    const bool on=eqOrbView && eqOrbButton.getButtonText()=="GRAPH";
-    eqOrbButton.onClick();
-    const bool off=!eqOrbView && eqOrbButton.getButtonText()=="ORB";
+    setModOrbForScreenshot(false);
+    modOrbButton.onClick();
+    const bool on=modOrbView && modOrbButton.getButtonText()=="GRAPH";
+    modOrbButton.onClick();
+    const bool off=!modOrbView && modOrbButton.getButtonText()=="ORB";
     processor.setSlotType(slot,previousType);
     select(slot);
     return on && off;
 }
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
-    if(type==SkellPresetAudioProcessor::EightBandToneFX && eqOrbView)
-        return; // visual-only orb must not accidentally modify EQ nodes
+    if(isModulationOrbEffect(type) && modOrbView)
+        return; // display-only modulation orb must not alter DSP automation
     if(type==SkellPresetAudioProcessor::MicModelFX) {
         // Card clicks are distinct from the generic XY graph gesture.
         updateMicCard(e.position);
