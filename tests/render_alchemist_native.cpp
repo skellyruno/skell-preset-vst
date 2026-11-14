@@ -36,6 +36,56 @@ int process(juce::AudioBuffer<float>& block, SkellPresetAudioProcessor& plugin,
     return 0;
 }
 
+// Newly added instances must start without an effect or hidden lookahead.
+// A restored FL Studio state must still recall its former preset/latency.
+int blankSmoke() {
+    auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+    if(plugin->loadedFactoryPresetIndex()!=-1
+       || plugin->presetName()!="Empty Rack"
+       || plugin->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount)
+        return 31;
+    for(int s=0;s<SkellPresetAudioProcessor::slotCount;++s) {
+        const auto* active=plugin->state.getRawParameterValue(
+            "s"+juce::String(s+1)+"_on");
+        if(plugin->slotType(s)!=SkellPresetAudioProcessor::Empty
+           || !active || active->load()>.5f)return 32;
+    }
+    plugin->prepareToPlay(48000.,128);
+    if(plugin->getLatencySamples()!=0)return 33;
+    juce::AudioBuffer<float> signal(2,128);
+    juce::MidiBuffer midi;
+    for(int block=0;block<8;++block) {
+        for(int i=0;i<128;++i) {
+            const float x=.10f*std::sin((float)(.017*(block*128+i)));
+            signal.setSample(0,i,x);
+            signal.setSample(1,i,-.83f*x);
+        }
+        juce::AudioBuffer<float> original;
+        original.makeCopyOf(signal);
+        plugin->processBlock(signal,midi);
+        for(int ch=0;ch<2;++ch)
+            for(int i=0;i<128;++i)
+                if(std::abs(signal.getSample(ch,i)-original.getSample(ch,i))>1.e-6f)
+                    return 34;
+    }
+    // Test actual state save/restore, not just loading a factory preset.
+    plugin->loadFactoryPreset(0); // published legacy limiter chain
+    if(plugin->slotType(6)!=SkellPresetAudioProcessor::Limiter)return 35;
+    juce::MemoryBlock save;
+    plugin->getStateInformation(save);
+    auto restored=std::make_unique<SkellPresetAudioProcessor>();
+    if(restored->loadedFactoryPresetIndex()!=-1)return 36;
+    restored->setStateInformation(save.getData(),(int)save.getSize());
+    restored->prepareToPlay(48000.,128);
+    if(restored->loadedFactoryPresetIndex()!=0
+        || restored->slotType(6)!=SkellPresetAudioProcessor::Limiter
+        || restored->getLatencySamples()<=0)return 37;
+    restored->releaseResources();
+    plugin->releaseResources();
+    std::puts("PASS: blank rack 0-PDC identity and legacy FL Studio preset-state restore");
+    return 0;
+}
+
 int smoke() {
     // Large rack engines must be allocated on the heap: Windows main thread
     // defaults to a substantially smaller stack than the Linux renderer.
@@ -388,6 +438,7 @@ int monoSmoke() {
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
     if(argc==2 && juce::String(argv[1])=="--smoke")return smoke();
+    if(argc==2 && juce::String(argv[1])=="--smoke-blank")return blankSmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
     if(argc==4 && juce::String(argv[1])=="--compare")

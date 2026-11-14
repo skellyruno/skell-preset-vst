@@ -20,20 +20,32 @@ Old `sN_type` effect choice automation is preserved exactly. New effects are sel
 
 Read the [DSP integration audit](docs/ZIP_DSP_INTEGRATION_AUDIT.md) and [advanced suite release gates](docs/ADVANCED_VOCAL_SUITE.md) for provenance, verification status, and unfinished model/host work. **PR #5 is stacked on #4, #3 and #2**; do not merge out of order or interpret passing portable tests as a released VST3.
 
-## Power button, Simple macros and MATCH readiness
+## Clean startup, rack wheel and MATCH readiness
 
-The top-right **power switch** replaces the old BYPASS/RESTORE label:
-green **ON** runs the complete rack; red **OFF** bypasses with the existing
-smoothed host mode parameter. Turning power back on restores the last Simple
-or Advanced workspace without clearing modules or automation.
+New Windows VST3 instances start with ten visible **empty/off slots** (up to
+sixteen available) and **zero reported rack PDC**. This changes only the new
+instance startup—not the factory presets, recalled audio chains, automation
+IDs or saved FL Studio projects. Selecting the Alchemist factory preset
+still loads all seven native stages. A new effect chosen for an empty slot
+is enabled immediately; replacing an intentionally bypassed effect preserves
+its bypass state.
 
-Simple mode keeps exactly four macros—**Tone, Punch, Space and Grit**—but now
-uses matching SkellCore hardware rotary controls with whole-number **0–100**
-readouts and subtle parameter-accurate indicators. There are no new DSP
-parameters and no migration of the existing `macro1..macro4` automation IDs.
-Advanced mode retains its compact macro sliders and full module editor.
-The shared button chrome is slightly more tactile while keeping Obsidian,
-Cream and Crimson colour themes and the clickable skull.
+The top-right power control bypasses the rack without clearing its state.
+The Simple screen is now a clean sound overview; Tone/Punch/Space/Grit are
+**hidden from both views** but their published `macro1..macro4` automation
+parameters remain available to old sessions. The three **Input / Mix /
+Output** master controls are rotary knobs at the bottom-right; master gain
+and mix parameter IDs are unchanged. REC WAV has been removed from the visible
+UI, with the historical capture code retained for state compatibility.
+
+Wheel up/down **over an effect row** moves that physical effect earlier/later
+in the processing order; scroll over empty rack space or the rail to browse
+large chains. Right-click offers Edit, Choose Effect, Move Up/Down,
+Enable/Bypass and Clear. Double-click opens the searchable **movable** effect
+picker: drag its title to reposition without changing anything in the audio
+graph. The rack's top-right microphone icon opens a smaller **draggable MIC**
+widget. The new one-jaw vector skull continues to cycle the saved themes.
+The tagline is **ONE PLUGIN. EVERY PRESET.**
 
 The offline reference-audio alignment in `Source/match/MatchCore.h` now
 compares **overlap-normalized correlation**, avoiding high-energy or short
@@ -46,8 +58,8 @@ multistage plugin matching**. The MATCH UI still describes that limitation.
 ## 322 DAW-informed workflow (optional, no processor replacement)
 
 The source review of 322.BOOTH added a **canonical searchable effect registry**,
-**real post-FX live waveform** (no fake/random animation), a host-fed **REC WAV**
-button that writes 24-bit stereo files on a background thread, and the new
+**real post-FX live waveform** (no fake/random animation), optional host-fed
+audio capture infrastructure (no longer shown as REC WAV), and the new
 native **Studio Six** factory chain at index 42. All 322 Web Audio effects
 already have Skell native equivalents, so **none of the original simpler or
 advanced Skell DSP modules were overwritten**. FL Studio supplies all audio
@@ -64,7 +76,7 @@ The factory bank preserves its first 34 Main Vocals/Adlibs program IDs including
 
 ## UI and rendering
 
-Obsidian/neon-green, Cream and Crimson skins, 70/85/100/125% resize choices, whole-row drag-reordering, a scrollable expandable rack, graphical module editors, visual bypass and preset browser. A **native searchable effect library** replaces the default module selector; search by instrument/effect category, use Up/Down/Enter or click a row, and click the selector again to close. Creative modulation modules have bespoke parameter-driven vector displays (not fake FFT activity). The headless renderer uses the **actual JUCE editor/processor**, not a mockup. Its matrix covers themes, sizes and modes, plus extended rack and De-Esser/Live Lead scenes.
+Obsidian/neon-green, Cream and Crimson skins, 70/85/100/125% resize choices, wheel-up/down or drag reordering of effects, a scrollable expandable rack, movable MIC and effect picker widgets, three footer master knobs, graphical module editors, visual bypass and preset browser. A **native searchable effect library** replaces the default module selector; search by instrument/effect category, use Up/Down/Enter or click a row, and click the selector again to close. Creative modulation modules have bespoke parameter-driven vector displays (not fake FFT activity). The headless renderer uses the **actual JUCE editor/processor**, not a mockup. Its matrix covers themes, sizes and modes, plus extended rack and De-Esser/Live Lead scenes.
 
 See [UI renderer instructions](docs/UI_RENDERER.md). The screenshot and Windows VST3 workflows upload artifacts to [GitHub Actions](https://github.com/skellyruno/skell-preset-vst/actions).
 

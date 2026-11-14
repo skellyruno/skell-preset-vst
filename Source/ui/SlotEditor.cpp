@@ -63,7 +63,14 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     addChildComponent(moduleBox); // retain selected IDs for host/UI assertions
     moduleBox.setVisible(false);
     modulePicker.onSelect=[this](int type){
+        const bool wasEmpty=processor.slotType(slot)==SkellPresetAudioProcessor::Empty;
         processor.setSlotType(slot,type);
+        // New blank instances must make an inserted effect audible. Preserve
+        // an intentionally bypassed existing effect on replacement.
+        if(type==SkellPresetAudioProcessor::Empty)
+            processor.setSlotOn(slot,false);
+        else if(wasEmpty)
+            processor.setSlotOn(slot,true);
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
         graphSnapshotValid=false;
         refreshIfChanged();
