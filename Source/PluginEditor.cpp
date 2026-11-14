@@ -551,14 +551,14 @@ public:
                 issues.add("Studio Six native effect chain is missing a stage");
         }
         if(processor.getNumPrograms()!=44)
-            issues.add("Studio Six factory program did not append at index 42");
+            issues.add("Alchemist factory program did not append at index 43");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);
         refresh();
         if(chain.isVisible() || macro[0].getWidth()<=0)
             issues.add("322 integration broke the original Simple macro mixer");
-        processor.loadFactoryPreset(0);
+        processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         slot.select(0);
         chain.setSelectedSlot(0);
         refresh(); // Restore actual Advanced workspace after Simple-mode QA.
