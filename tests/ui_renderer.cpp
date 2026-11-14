@@ -297,6 +297,7 @@ int main(int argc, char** argv) {
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
                                       818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-eight-band-orb-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
                                   818,482,0,1,false});
         options.configure = [&](const auto& scene) {
@@ -356,6 +357,10 @@ int main(int argc, char** argv) {
                       scene.id=="obsidian-installed-vst3-browser-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
+                processor.setSlotOn(0,true);
+            } else if(scene.id=="obsidian-effect-eight-band-orb-70") {
+                processor.loadFactoryPreset(0);
+                processor.setSlotType(0,SkellPresetAudioProcessor::EightBandToneFX);
                 processor.setSlotOn(0,true);
             } else if(scene.id=="obsidian-effect-alchemist-calibration-70"
                       || scene.id=="obsidian-effect-alchemist-match-finish-70") {
@@ -432,6 +437,7 @@ int main(int argc, char** argv) {
                 editor.openInstalledVST3BrowserForScreenshot();
             if(scene.id=="obsidian-effect-alchemist-calibration-70")
                 editor.setMatchPageForScreenshot(1);
+            editor.setEqOrbForScreenshot(scene.id=="obsidian-effect-eight-band-orb-70");
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -472,15 +478,16 @@ int main(int argc, char** argv) {
             {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"},
             {"obsidian-effect-alchemist-match-finish-70",
              "obsidian-effect-alchemist-calibration-70"},
-            {"obsidian-effect-mic-modeling-70","obsidian-effect-eq-70"}
+            {"obsidian-effect-mic-modeling-70","obsidian-effect-eq-70"},
+            {"obsidian-effect-eight-band-eq-70","obsidian-effect-eight-band-orb-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 106) {
-            std::fprintf(stderr, "Expected 106 PNGs, captured %d\n", report.captured);
+        if (report.captured != 107) {
+            std::fprintf(stderr, "Expected 107 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
