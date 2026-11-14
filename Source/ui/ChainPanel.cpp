@@ -474,9 +474,25 @@ void ChainPanel::mouseExit(const juce::MouseEvent&) {
     repaint();
 }
 
-void ChainPanel::mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails& wheel) {
-    if(wheel.deltaY==0.f)return;
-    const int change=wheel.deltaY<0.f?1:-1;
-    const int next=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset+change);
+void ChainPanel::applyWheelDelta(float deltaY) {
+    if(deltaY==0.f)return;
+    const int change=deltaY<0.f?1:-1;
+    const int next=juce::jlimit(0,
+        juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset+change);
     if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;visualSnapshotValid=false;repaint();}
+}
+void ChainPanel::mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails& wheel) {
+    applyWheelDelta(wheel.deltaY);
+}
+bool ChainPanel::testMouseWheelScroll() {
+    const int prior=scrollOffset;
+    if(processor.activeSlotCount()<=visibleRows)return false;
+    scrollOffset=0;
+    applyWheelDelta(-1.f);
+    const bool down=scrollOffset==1;
+    applyWheelDelta(1.f);
+    const bool up=scrollOffset==0;
+    scrollOffset=prior;
+    repaint();
+    return down&&up;
 }
