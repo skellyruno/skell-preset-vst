@@ -471,10 +471,10 @@ void ChainPanel::mouseDoubleClick(const juce::MouseEvent& e) {
 }
 void ChainPanel::mouseMove(const juce::MouseEvent& e) {
     const int next=(e.x>=10 && e.x<=206)?rowAt(e.y):-1;
-    const int physical=next>=0?processor.slotIdAt(next):-1;
-    const int nextWet=(physical>=0 &&
-                       processor.slotType(physical)!=SkellPresetAudioProcessor::Empty &&
-                       e.x>=wetControlLeft && e.x<=wetControlRight)?physical:-1;
+    const int hoveredPhysical=next>=0?processor.slotIdAt(next):-1;
+    const int nextWet=(hoveredPhysical>=0 &&
+                       processor.slotType(hoveredPhysical)!=SkellPresetAudioProcessor::Empty &&
+                       e.x>=wetControlLeft && e.x<=wetControlRight)?hoveredPhysical:-1;
     if(next!=hoveredRow || nextWet!=hoveredWetSlot) {
         hoveredRow=next;hoveredWetSlot=nextWet;repaint();
     }
