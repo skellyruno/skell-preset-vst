@@ -92,3 +92,9 @@ add_test(NAME SkellPresetAlchemistNativeTest COMMAND SkellPresetAlchemistNativeT
 add_executable(SkellPresetAlchemistMatchDSPTest test_alchemist_match_dsp.cpp)
 target_compile_features(SkellPresetAlchemistMatchDSPTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetAlchemistMatchDSPTest COMMAND SkellPresetAlchemistMatchDSPTest)
+
+# Auditable same-take Alchemist tone-fit constraints. Avoid regressing to the
+# incorrect upper-band cuts from the first native preview.
+add_executable(SkellPresetAlchemistReferenceToneTest test_alchemist_reference_tone.cpp)
+target_compile_features(SkellPresetAlchemistReferenceToneTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAlchemistReferenceToneTest COMMAND SkellPresetAlchemistReferenceToneTest)
