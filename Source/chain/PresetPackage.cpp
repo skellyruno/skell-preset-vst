@@ -37,7 +37,11 @@ juce::Result validate(const Document& d) {
         || ! validText(d.bank, 64)) return juce::Result::fail("Invalid preset name, author or bank");
     if (d.mode < 0 || d.mode > 3 || d.activeSlotCount < legacySlotCount
         || d.activeSlotCount > slotCount || ! finiteRange(d.inputDb, -24, 24)
-        || ! finiteRange(d.mix, 0, 1) || ! finiteRange(d.outputDb, -24, 24))
+        || ! finiteRange(d.mix, 0, 1) || ! finiteRange(d.outputDb, -24, 24)
+        || d.micPreInput < 0 || d.micPreInput > 3
+        || d.micPreTarget < 0 || d.micPreTarget > 3
+        || ! finiteRange(d.micPreAmount,0,1)
+        || ! finiteRange(d.micPreTrim,0,1))
         return juce::Result::fail("Invalid global parameter range");
     for (const auto v : d.macros)
         if (! finiteRange(v, 0, 1)) return juce::Result::fail("Invalid macro value");
@@ -69,6 +73,11 @@ juce::var toJson(const Document& d) {
     global->setProperty("inputDb", d.inputDb);
     global->setProperty("mix", d.mix);
     global->setProperty("outputDb", d.outputDb);
+    global->setProperty("micPreOn", d.micPreOn);
+    global->setProperty("micPreInput", d.micPreInput);
+    global->setProperty("micPreTarget", d.micPreTarget);
+    global->setProperty("micPreAmount", d.micPreAmount);
+    global->setProperty("micPreTrim", d.micPreTrim);
     juce::Array<juce::var> macros;
     for (float value : d.macros) macros.add(value);
     global->setProperty("macros", juce::var(macros));
@@ -116,6 +125,28 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         || ! decodeFloat(globals.getProperty("mix", {}), 0, 1, candidate.mix)
         || ! decodeFloat(globals.getProperty("outputDb", {}), -24, 24, candidate.outputDb))
         return juce::Result::fail("Invalid global values");
+    // Optional added fields: do not invalidate v1 or v2 user archives.
+    const auto maybeMicOn=globals.getProperty("micPreOn",{});
+    if(!maybeMicOn.isVoid()) {
+        if(!maybeMicOn.isBool())return juce::Result::fail("Invalid mic enabled value");
+        candidate.micPreOn=(bool)maybeMicOn;
+    }
+    const auto maybeMicInput=globals.getProperty("micPreInput",{});
+    if(!maybeMicInput.isVoid() &&
+       !decodeInteger(maybeMicInput,0,3,candidate.micPreInput))
+        return juce::Result::fail("Invalid mic input profile");
+    const auto maybeMicTarget=globals.getProperty("micPreTarget",{});
+    if(!maybeMicTarget.isVoid() &&
+       !decodeInteger(maybeMicTarget,0,3,candidate.micPreTarget))
+        return juce::Result::fail("Invalid mic target profile");
+    const auto maybeMicAmount=globals.getProperty("micPreAmount",{});
+    if(!maybeMicAmount.isVoid() &&
+       !decodeFloat(maybeMicAmount,0,1,candidate.micPreAmount))
+        return juce::Result::fail("Invalid mic amount");
+    const auto maybeMicTrim=globals.getProperty("micPreTrim",{});
+    if(!maybeMicTrim.isVoid() &&
+       !decodeFloat(maybeMicTrim,0,1,candidate.micPreTrim))
+        return juce::Result::fail("Invalid mic trim");
     const auto macros=globals.getProperty("macros", {});
     if (! macros.isArray() || macros.getArray()->size() != (int)candidate.macros.size())
         return juce::Result::fail("Eight macros required");
