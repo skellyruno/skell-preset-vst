@@ -27,6 +27,7 @@ public:
     bool testEightBandGraphAndQ();
     bool testKnobReadouts();
     bool testMatchFinishPages();
+    void setMatchPageForScreenshot(int page) {showMatchPage(page);}
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
