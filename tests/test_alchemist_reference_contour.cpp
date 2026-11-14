@@ -46,8 +46,12 @@ int main() {
         const auto after=matched.process(.03f,-.03f);
         assert(std::isfinite(after[0])&&std::isfinite(after[1]));
         // Disable and confirm an automatable, continuous fade to old output.
-        matched.set(0.f,1.f,1.f,.5f);
+        // First settle the FIR/IIR high-shelf and envelope at the SAME
+        // sample input; otherwise this tests an input transient instead
+        // of a click introduced by the automation bypass gesture.
+        for(int n=0;n<4096;++n)matched.process(.12f,.12f);
         const float pre=matched.process(.12f,.12f)[0];
+        matched.set(0.f,1.f,1.f,.5f);
         const float immediate=matched.process(.12f,.12f)[0];
         assert(std::abs(immediate-pre)<.02f);
         for(int i=0;i<(int)(sr*.30);++i)matched.process(.12f,.12f);
