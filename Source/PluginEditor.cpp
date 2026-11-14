@@ -882,6 +882,16 @@ public:
     }
     void timerCallback() override{
         processor.refreshHostedLatency();
+        if(micPanel.isVisible())micPanel.refreshIfChanged();
+        const bool micActive=micPanel.on();
+        if(micActive!=lastMicOn) {
+            lastMicOn=micActive;
+            micButton.setColour(juce::TextButton::buttonColourId,
+                micActive?Theme::green.withAlpha(.21f):Theme::panelAlt);
+            micButton.setColour(juce::TextButton::textColourOffId,
+                micActive?Theme::green:Theme::white);
+            micButton.repaint();
+        }
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
         syncSizeControl((float)outer.getWidth()/Theme::width);
@@ -930,6 +940,7 @@ private:
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
+    bool lastMicOn=false;
     SkellActionButton preset,match,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
