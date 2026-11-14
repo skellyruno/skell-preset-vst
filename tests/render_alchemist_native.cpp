@@ -5,6 +5,7 @@
 #include <JuceHeader.h>
 #include "../Source/PluginProcessor.h"
 #include "../Source/chain/AlchemistNativePreset.h"
+#include "../Source/chain/ABMetrics.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -266,6 +267,76 @@ int render(const juce::File& source, const juce::File& destination) {
     std::puts("NOTE: this uses the plugin's compiled processBlock, not a hosted VST3. A/B and FL Studio checks are separate.");
     return 0;
 }
+// Compare the first 15 seconds of sample-aligned same-take stereo (or mono)
+// WAVs. No hidden time alignment, resampling, signal modification or LUFS
+// claims. Use with Alchemist render (candidate) and FL Studio wet print (ref).
+int compareWavs(const juce::File& candidateFile,const juce::File& referenceFile) {
+    if(candidateFile.getFileExtension().toLowerCase()!=".wav"
+        || referenceFile.getFileExtension().toLowerCase()!=".wav") {
+        std::fprintf(stderr,"ERROR: --compare expects two WAV files\n");
+        return 23;
+    }
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> candidate(
+        formats.createReaderFor(candidateFile));
+    std::unique_ptr<juce::AudioFormatReader> reference(
+        formats.createReaderFor(referenceFile));
+    if(!candidate || !reference
+        || candidate->numChannels<1 || candidate->numChannels>2
+        || reference->numChannels<1 || reference->numChannels>2
+        || std::abs(candidate->sampleRate-reference->sampleRate)>.001
+        || candidate->lengthInSamples<=0 || reference->lengthInSamples<=0) {
+        std::fprintf(stderr,
+            "ERROR: WAVs need equal sample rates, 1 or 2 channels, and audio\n");
+        return 24;
+    }
+    const auto length=std::min({
+        (juce::int64)candidate->lengthInSamples,
+        (juce::int64)reference->lengthInSamples,
+        (juce::int64)(candidate->sampleRate*15.)});
+    juce::AudioBuffer<float> candidateBlock(2,2048),referenceBlock(2,2048);
+    skellpreset::analysis::ComparisonAccumulator stats;
+    for(juce::int64 pos=0;pos<length;pos+=2048) {
+        const int count=(int)std::min((juce::int64)2048,length-pos);
+        candidateBlock.clear();
+        referenceBlock.clear();
+        if(!candidate->read(&candidateBlock,0,count,pos,true,
+                            candidate->numChannels==2)
+           ||!reference->read(&referenceBlock,0,count,pos,true,
+                              reference->numChannels==2)) {
+            std::fprintf(stderr,"ERROR: WAV decode failed during A/B comparison\n");
+            return 25;
+        }
+        if(candidate->numChannels==1)
+            candidateBlock.copyFrom(1,0,candidateBlock,0,0,count);
+        if(reference->numChannels==1)
+            referenceBlock.copyFrom(1,0,referenceBlock,0,0,count);
+        for(int n=0;n<count;++n)
+            for(int ch=0;ch<2;++ch)
+                stats.push(candidateBlock.getSample(ch,n),
+                           referenceBlock.getSample(ch,n));
+    }
+    const auto result=stats.result();
+    if(!result.hasSignal || result.rejected!=0) {
+        std::fprintf(stderr,
+            "ERROR: A/B signal silent, nonfinite or otherwise unusable\n");
+        return 26;
+    }
+    std::printf("SKELL A/B first %.3f seconds at %.0f Hz\n",
+                (double)length/candidate->sampleRate,candidate->sampleRate);
+    std::printf("Candidate minus reference RMS: %+.3f dB\n",
+                result.candidateMinusReferenceRmsDb);
+    std::printf("Candidate peak: %+.3f dBFS; reference peak: %+.3f dBFS\n",
+                result.candidatePeakDbfs,result.referencePeakDbfs);
+    std::printf("Sample correlation: %.6f (signed); normalized level-matched "
+                "RMS error: %.2f%%\n",
+                result.sampleCorrelation,result.levelMatchedNrmse*100.);
+    std::puts("NOTE: same performance, start sample and sample rate required.");
+    std::puts("NOTE: RMS/correlation are diagnostics, not LUFS or perceptual quality.");
+    return 0;
+}
+
 // Exercise real mono WAV decoding, native Alchemist processing and stereo WAV
 // encoding. File cleanup is automatic even if a regression assertion fails.
 int monoSmoke() {
@@ -307,6 +378,7 @@ int monoSmoke() {
         stereoDifference+=std::abs((double)l-r);
     }
     if(energy<1.e-5 || stereoDifference>1.e-3)return 21;
+    if(compareWavs(output,output)!=0)return 22;
     std::puts("PASS: mono WAV processed through full Alchemist rack to finite stereo output");
     return 0;
 }
@@ -318,8 +390,12 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--smoke")return smoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
+    if(argc==4 && juce::String(argv[1])=="--compare")
+        return compareWavs(juce::File(juce::String::fromUTF8(argv[2])),
+                           juce::File(juce::String::fromUTF8(argv[3])));
     if(argc!=3) {
         std::fprintf(stderr,"Usage: SkellPresetAlchemistRender INPUT_MONO_OR_STEREO.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
     }
     return render(juce::File(juce::String::fromUTF8(argv[1])),
