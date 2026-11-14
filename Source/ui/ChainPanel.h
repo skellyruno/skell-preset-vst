@@ -58,7 +58,7 @@ private:
     void applyWheelDelta(float deltaY);
     bool moveSlotByWheel(int row,float deltaY);
     void addModule();
-    void popupFor(int physicalSlot);
+    void popupFor(int physicalSlot,juce::Point<int> screenPoint);
     float slotWet(int physicalSlot) const noexcept;
     void setSlotWet(int physicalSlot,float wet);
     void toggleSlotPower(int physicalSlot);

@@ -353,7 +353,7 @@ void ChainPanel::refreshIfChanged() {
     visualSnapshotValid=true;
     if(changed)repaint();
 }
-void ChainPanel::popupFor(int physicalSlot) {
+void ChainPanel::popupFor(int physicalSlot,juce::Point<int> screenPoint) {
     // The old 34-item popup was unsearchable, included an obsolete MicModel
     // rack insert, and could send users to the wrong UI. Right-click is now
     // a compact, deterministic action menu. The searchable library is the
@@ -378,7 +378,9 @@ void ChainPanel::popupFor(int physicalSlot) {
                  processor.slotType(physicalSlot)!=SkellPresetAudioProcessor::Empty);
     menu.addItem(206,"Clear effect",processor.slotType(physicalSlot)!=SkellPresetAudioProcessor::Empty);
     juce::Component::SafePointer<ChainPanel> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+    menu.showMenuAsync(juce::PopupMenu::Options()
+        .withTargetComponent(this)
+        .withTargetScreenArea({screenPoint.x,screenPoint.y,1,1}),
         [safe,physicalSlot,position](int id) {
             if(safe==nullptr || id==0)return;
             if(id==203 && position>0)safe->processor.reorderSlot(position,position-1);
@@ -429,7 +431,7 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     const int index=rowAt(e.y);
     if(index<0 || e.x<10 || e.x>206)return;
     const auto slot=processor.slotIdAt(index);
-    if(e.mods.isPopupMenu()){popupFor(slot);return;}
+    if(e.mods.isPopupMenu()){popupFor(slot,e.getScreenPosition());return;}
     if(e.x>=powerControlLeft && e.x<=powerControlRight) {
         toggleSlotPower(slot);return;
     }

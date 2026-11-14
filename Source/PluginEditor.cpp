@@ -431,12 +431,13 @@ public:
         // explicitly before asserting its editable factory cover.
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         browser.onLoaded();
-        micButton.onClick();
+        if(!chain.triggerMicForTest())
+            issues.add("Rack MIC icon has no click action");
         if(!micPanel.isVisible())
-            issues.add("Dedicated MIC panel did not open from header");
+            issues.add("Dedicated MIC panel did not open from rack icon");
         if(!micPanel.testInputAndBypass())
             issues.add("Dedicated MIC panel cannot automate target or bypass");
-        micButton.onClick();
+        chain.triggerMicForTest();
         if(micPanel.isVisible())
             issues.add("Dedicated MIC panel failed to close");
         preset.onClick();
