@@ -41,6 +41,13 @@ int smoke() {
         return 2;
     }
     plugin.prepareToPlay(44100.,blockSize);
+    // This seven-stage factory has no limiter, spectral pitch, or hosted
+    // processor; Match Finish itself must not introduce host PDC.
+    if(plugin.getLatencySamples()!=0) {
+        std::fprintf(stderr,"ERROR: Alchemist unexpectedly reports %d latency samples\\n",
+                     plugin.getLatencySamples());
+        return 6;
+    }
     double peak=0.,energy=0.,difference=0.;
     std::int64_t count=0;
     for (int blockIndex=0;blockIndex<100;++blockIndex) {
