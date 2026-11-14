@@ -338,7 +338,10 @@ public:
         slot.setMatchPageForScreenshot(page);
     }
     void setMicPanelForScreenshot(bool visible) {
-        browser.setVisible(false);
+        // A capture of the closed mic panel must not close a completely
+        // independent open preset browser scene. Only opening MIC owns
+        // the overlay-dismiss action.
+        if(visible)browser.setVisible(false);
         micPanel.refresh();
         micPanel.setVisible(visible);
         if(visible)micPanel.toFront(true);
