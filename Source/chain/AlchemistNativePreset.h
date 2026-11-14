@@ -96,6 +96,14 @@ constexpr auto makeStages() noexcept {
     finish.p[5]=.335037f; // 0.3012775 training signal 99th percentile
     finish.p[6]=.53875f;  // +0.0775dB normalized harmonic makeup
     finish.p[7]=.270833f; // causal ~15ms smoothing
+    // Real native-vs-original render (2026-11-14): baseline was 3.78dB
+    // quieter in 19–35s and lacked low-level vocal density and 14k+ air.
+    // Additional reference contour is deliberately OFF for all legacy
+    // presets (their p9 stays .5), but ON for this Alchemist factory.
+    finish.p[8]=1.f;  // enable fitted contour (p9)
+    finish.p[9]=1.f;  // full causal upward level conditioning (p10)
+    finish.p[10]=1.f; // high-frequency shelf intensity (p11)
+    finish.p[11]=.5f; // calibrated +2dB base, neutral trim (p12)
     return std::array<NativeStage,7>{{
         highpass,tone,fast,slow,multiband,colour,finish
     }};
