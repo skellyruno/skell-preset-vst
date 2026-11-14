@@ -627,6 +627,41 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(i==3 && type==SkellPresetAudioProcessor::EQ ?Theme::blue.withAlpha(.7f):Theme::stroke);
         g.drawHorizontalLine((int)y,plot.getX(),plot.getRight());
     }
+    if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+        // This is the ACTUAL static cubic transfer implied by the host
+        // parameters, not a pretend live waveform or reference null score.
+        const float amount=(processor.getSlotParam(slot,0)-.5f)*.06f;
+        const float reference=.05f+.75f*processor.getSlotParam(slot,5);
+        const float denom=std::max(.0025f,reference*reference);
+        const float trim=std::pow(10.f,
+            (-1.f+2.f*processor.getSlotParam(slot,6))/20.f);
+        juce::Path neutral,curve;
+        for(int n=0;n<=180;++n) {
+            const float x=-.42f+.84f*(float)n/180.f;
+            const float shaped=(x+amount*x*x*x/denom)*trim;
+            const float px=plot.getX()+plot.getWidth()*(float)n/180.f;
+            const float lineY=plot.getCentreY()-x*plot.getHeight()*.91f;
+            const float shapedY=plot.getCentreY()
+                -std::clamp(shaped,-.56f,.56f)*plot.getHeight()*.91f;
+            if(n==0) {
+                neutral.startNewSubPath(px,lineY);
+                curve.startNewSubPath(px,shapedY);
+            } else {
+                neutral.lineTo(px,lineY);
+                curve.lineTo(px,shapedY);
+            }
+        }
+        g.setColour(Theme::muted.withAlpha(.56f));
+        g.strokePath(neutral,juce::PathStrokeType(1.35f));
+        g.setColour(Theme::green.withAlpha(.96f));
+        g.strokePath(curve,juce::PathStrokeType(2.4f));
+        g.setColour(Theme::green.withAlpha(.08f));
+        g.fillRoundedRectangle(plot.reduced(13.f),4.f);
+        Theme::text(g,"CAUSAL HARMONIC TRANSFER  /  SOLID = ACTIVE · DIM = CLEAN",
+            {56,166,620,19},10,Theme::green,true);
+        Theme::text(g,"20 / 120 / 280ms detector  ·  ±0.6dB bounded contour  ·  0ms lookahead",
+            {56,325,700,20},10,Theme::muted);
+    }
     if(type==SkellPresetAudioProcessor::EQ) {
         const float normalizedF=processor.getSlotParam(slot,0);
         const auto* tone=processor.state.getRawParameterValue("macro1");
