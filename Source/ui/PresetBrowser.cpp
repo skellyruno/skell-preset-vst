@@ -1,12 +1,13 @@
 #include "PresetBrowser.h"
 #include "Theme.h"
+#include "../chain/AlchemistNativePreset.h"
 #include <algorithm>
 #include <cmath>
 #include <array>
 
 namespace {
 const juce::StringArray banks{"All presets","Main Vocals","My Presets"};
-constexpr int alchemistIndex=43;
+constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
 // Each factory sound has deterministic original cover art; no bitmap decoding
 // or file I/O during a repaint. User-selected images override this motif.
 void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
@@ -171,7 +172,16 @@ void PresetBrowser::copyToLibrary(const juce::File& source) {
     const auto dest=folder.getNonexistentChildFile(
         juce::File::createLegalFileName(source.getFileNameWithoutExtension()),
         ".skellpreset",true);
-    if(source.copyFileTo(dest))activeUserPreset=dest;
+    if(source.copyFileTo(dest)) {
+        activeUserPreset=dest;
+        // Keep a validated sidecar cover when importing from another
+        // library. This is data only, never executable preset content.
+        auto originalCover=source.withFileExtension(".png");
+        if(!originalCover.existsAsFile())originalCover=source.withFileExtension(".jpg");
+        if(originalCover.existsAsFile() && originalCover.getSize()>0 &&
+           originalCover.getSize()<=8*1024*1024)
+            originalCover.copyFileTo(dest.withFileExtension(originalCover.getFileExtension()));
+    }
     scanLibrary();
     refreshArtwork();
 }
@@ -224,13 +234,23 @@ void PresetBrowser::chooseExport() {
             auto file=chooser.getResult();
             if(file==juce::File{})return;
             if(!file.hasFileExtension(".skellpreset"))file=file.withFileExtension(".skellpreset");
+            const auto oldCover=safe->activeArtworkDestination();
             const auto result=safe->processor.exportPreset(file);
             if(result.failed()) {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot save preset",result.getErrorMessage());
                 return;
             }
             safe->copyToLibrary(file);
+            // Saving a tweaked Alchemist or personal preset should preserve
+            // its current cover even if the destination preset name changes.
+            if(oldCover.existsAsFile() && safe->activeUserPreset.existsAsFile()) {
+                const auto newCover=safe->activeUserPreset.withFileExtension(".png");
+                if(oldCover!=newCover)
+                    oldCover.copyFileTo(newCover);
+            }
+            safe->scanLibrary();
             safe->refreshArtwork();
+            if(safe->onCoverChanged)safe->onCoverChanged();
             safe->repaint();
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"Preset saved",file.getFullPathName());
         });
