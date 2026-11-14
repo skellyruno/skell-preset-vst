@@ -185,6 +185,11 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
     target_compile_features(SkellPresetAlchemistRender PRIVATE cxx_std_17)
     add_test(NAME SkellPresetAlchemistNativeRenderSmoke
         COMMAND SkellPresetAlchemistRender --smoke)
+    # Serial 5/10/20-instance workload of the real native processor with
+    # finite/peak checks and host-PDC assertions (not DAW CPU certification).
+    add_test(NAME SkellPresetRealRackStress
+        COMMAND SkellPresetAlchemistRender --stress)
+    set_tests_properties(SkellPresetRealRackStress PROPERTIES TIMEOUT 240)
 endif()
 
 # Windows-only in-process hosting integration fixture. It proves that an
