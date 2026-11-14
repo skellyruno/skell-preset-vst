@@ -10,7 +10,7 @@
 using skellpreset::registry::effects;
 using skellpreset::visual::LiveAudioScope;
 int main(){
-    static_assert(skellpreset::registry::count()==31);
+    static_assert(skellpreset::registry::count()==32);
     for(int id=0;id<skellpreset::registry::count();++id){
         const auto& effect=skellpreset::registry::at(id);
         assert(effect.id==id);
