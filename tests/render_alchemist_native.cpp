@@ -94,7 +94,10 @@ int render(const juce::File& source, const juce::File& destination) {
     juce::WavAudioFormat wav;
     const auto options = juce::AudioFormatWriter::Options{}
         .withSampleRate(reader->sampleRate).withNumChannels(2)
-        .withBitsPerSample(32);
+        .withBitsPerSample(32)
+        // IEEE float WAV preserves >0 dBFS samples for meaningful clipping
+        // and intersample-peak diagnostics. PCM32 would silently clip them.
+        .withSampleFormat(juce::AudioFormatWriter::Options::SampleFormat::floatingPoint);
     auto writer = wav.createWriterFor(stream,options);
     if(!writer) {
         destination.deleteFile();
