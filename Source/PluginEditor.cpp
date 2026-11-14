@@ -518,6 +518,7 @@ public:
         // The new Alchemist module has an independent fourth-generation
         // choice. Earlier published type normalizations must remain exact.
         processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
+        slot.select(0); // Refresh the real selector; don't test stale prior UI.
         {
             const auto* modern=processor.state.getRawParameterValue("s1_fxExt4");
             const auto* legacy=processor.state.getRawParameterValue("s1_type");
