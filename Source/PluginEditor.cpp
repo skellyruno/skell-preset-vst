@@ -286,12 +286,13 @@ public:
         if(persist)processor.state.state.setProperty("uiTheme",selectedTheme,nullptr);
         Theme::select(selectedTheme);
         themeButton.setVariant(selectedTheme);
+        micPanel.refresh();
         setLookAndFeel(nullptr);
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(juce::TextButton* b:std::array<juce::TextButton*,7>{{
-            &preset,&match,&viewSwitch,&powerButton,&help,&settings,&record}})
+        for(juce::TextButton* b:std::array<juce::TextButton*,8>{{
+            &preset,&match,&viewSwitch,&powerButton,&help,&settings,&record,&micButton}})
             style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
@@ -335,6 +336,12 @@ public:
     }
     void setMatchPageForScreenshot(int page) {
         slot.setMatchPageForScreenshot(page);
+    }
+    void setMicPanelForScreenshot(bool visible) {
+        browser.setVisible(false);
+        micPanel.refresh();
+        micPanel.setVisible(visible);
+        if(visible)micPanel.toFront(true);
     }
     void setEqOrbForScreenshot(bool enabled) {
         slot.setEqOrbForScreenshot(enabled);
@@ -414,6 +421,14 @@ public:
         // explicitly before asserting its editable factory cover.
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         browser.onLoaded();
+        micButton.onClick();
+        if(!micPanel.isVisible())
+            issues.add("Dedicated MIC panel did not open from header");
+        if(!micPanel.testInputAndBypass())
+            issues.add("Dedicated MIC panel cannot automate target or bypass");
+        micButton.onClick();
+        if(micPanel.isVisible())
+            issues.add("Dedicated MIC panel failed to close");
         preset.onClick();
         if(!browser.isVisible())issues.add("Preset selector did not open browser");
         if(browser.visibleFactoryPresetsForTest()!=1 ||
@@ -986,6 +1001,9 @@ void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSl
 }
 void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
     canvas->setMatchPageForScreenshot(page);
+}
+void SkellPresetAudioProcessorEditor::setMicPanelForScreenshot(bool visible) {
+    canvas->setMicPanelForScreenshot(visible);
 }
 void SkellPresetAudioProcessorEditor::setEqOrbForScreenshot(bool enabled) {
     canvas->setEqOrbForScreenshot(enabled);
