@@ -23,7 +23,7 @@ public:
             refresh();
         };
         addAndMakeVisible(enabled);
-        input.addItemList({"Neutral","Condenser","Dynamic","Ribbon"},1);
+        input.addItemList(juce::StringArray{"Neutral","Condenser","Dynamic","Ribbon"},1);
         input.onChange=[this] {
             if(input.getSelectedId()>0)
                 setPhysical("micPreInput",(float)(input.getSelectedId()-1));
@@ -72,12 +72,23 @@ public:
         const auto* p=processor.state.getRawParameterValue("micPreOn");
         return p!=nullptr && p->load()>.5f;
     }
+    void refreshIfChanged() {
+        const auto* in=processor.state.getRawParameterValue("micPreInput");
+        const auto* out=processor.state.getRawParameterValue("micPreTarget");
+        const int inputIndex=in?juce::jlimit(0,3,(int)in->load()):0;
+        const int targetIndex=out?juce::jlimit(0,3,(int)out->load()):0;
+        const bool enabledNow=on();
+        if(inputIndex!=lastInput || targetIndex!=lastTarget ||
+           enabledNow!=lastEnabled)
+            refresh();
+    }
     void refresh() {
         Theme::selectFor(processor.state);
         const auto* in=processor.state.getRawParameterValue("micPreInput");
         const auto* out=processor.state.getRawParameterValue("micPreTarget");
         const int source=in?juce::jlimit(0,3,(int)in->load()):0;
         const int model=out?juce::jlimit(0,3,(int)out->load()):0;
+        lastInput=source;lastTarget=model;lastEnabled=on();
         if(input.getSelectedId()!=source+1)
             input.setSelectedId(source+1,juce::dontSendNotification);
         enabled.setButtonText(on()?"ON":"OFF");
@@ -176,4 +187,6 @@ private:
     std::array<juce::TextButton,4> simulations;
     juce::Slider amount,trim;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountLink,trimLink;
+    int lastInput=-1,lastTarget=-1;
+    bool lastEnabled=false;
 };
