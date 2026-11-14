@@ -26,6 +26,7 @@ public:
     bool testModulePickerInteraction();
     bool testEightBandGraphAndQ();
     bool testKnobReadouts();
+    bool testMatchFinishPages();
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
