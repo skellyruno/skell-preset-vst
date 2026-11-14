@@ -206,3 +206,8 @@ if(WIN32 AND SKELL_PRESET_HOST_TESTS)
         juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
     target_include_directories(SkellPresetHostProbe PRIVATE Source)
 endif()
+
+# Standalone native DSP validation; no JUCE or VST3 host needed.
+add_executable(SkellPresetSkelldizerTests tests/test_skelldizer.cpp)
+target_compile_features(SkellPresetSkelldizerTests PRIVATE cxx_std_17)
+add_test(NAME SkellPresetSkelldizerTests COMMAND SkellPresetSkelldizerTests)
