@@ -513,7 +513,25 @@ public:
                 || (int)extension->load()!=type-SkellPresetAudioProcessor::RingModFX)
                 issues.add("Extended rack module was not mapped to separate host parameter");
         }
+        // The new Alchemist module has an independent fourth-generation
+        // choice. Earlier published type normalizations must remain exact.
+        processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
+        {
+            const auto* modern=processor.state.getRawParameterValue("s1_fxExt4");
+            const auto* legacy=processor.state.getRawParameterValue("s1_type");
+            const auto* a=processor.state.getRawParameterValue("s1_fxExt");
+            const auto* b=processor.state.getRawParameterValue("s1_fxExt2");
+            const auto* c=processor.state.getRawParameterValue("s1_fxExt3");
+            if(processor.slotType(0)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX
+               || !modern || (int)modern->load()!=1 || !legacy || (int)legacy->load()!=0
+               || !a || (int)a->load()!=0 || !b || (int)b->load()!=0
+               || !c || (int)c->load()!=0 || !slot.moduleSelectorMatchesAudio())
+                issues.add("Alchemist match finish changed older automation extension IDs");
+        }
         processor.setSlotType(0,SkellPresetAudioProcessor::RingModFX);
+        if(auto* modern=processor.state.getRawParameterValue("s1_fxExt4"))
+            if((int)modern->load()!=0)
+                issues.add("Legacy module failed to clear Alchemist extension");
         if(auto* extension=processor.state.getRawParameterValue("s1_fxExt"))
             if((int)extension->load()!=0)
                 issues.add("Legacy module did not clear extended host parameter");
