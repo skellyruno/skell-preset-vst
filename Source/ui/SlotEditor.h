@@ -34,7 +34,9 @@ private:
     int slot=0;
     int eqBank=0; // two editable EQ bands per knob row; graph shows all eight
     int activeEqBand=0;
+    int matchPage=0; // 0: sound shape / 1: calibrated fit inputs
     void showEqBank(int firstBand);
+    void showMatchPage(int page);
     void applyKnobReadouts();
     // ComboBox remains as a noninteractive compatibility/synchronization
     // adapter; the user-facing selector is the searchable native overlay.
@@ -47,6 +49,7 @@ private:
     juce::Slider eqQSlider;
     std::array<juce::Slider,2> eqCutSliders;
     std::array<juce::TextButton,8> eqBandButtons;
+    std::array<juce::TextButton,2> matchPageButtons;
     std::array<juce::Slider,4> knobs;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> eqQAttachment;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,2> eqCutAttachments;
