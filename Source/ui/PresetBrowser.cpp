@@ -238,7 +238,7 @@ void PresetBrowser::chooseExport() {
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
     const auto q=search.getText().toLowerCase().trim();
-    if(bank!=3)for(int i=0;i<(int)skellpreset::factoryPresets.size();++i) {
+    if(bank==0 || bank==1)for(int i=0;i<(int)skellpreset::factoryPresets.size();++i) {
         const auto& item=skellpreset::factoryPresets[(size_t)i];
         const juce::String name(item.name),b(item.bank),desc(item.description);
         if(i!=alchemistIndex)continue; // Hide old factory sounds, preserve their host program IDs.
@@ -369,7 +369,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
             g.reduceClipRegion(cover.toNearestInt());
             g.drawImageWithin(coverArt,(int)cover.getX(),(int)cover.getY(),
                               (int)cover.getWidth(),(int)cover.getHeight(),
-                              juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize);
+                              juce::RectanglePlacement::centred);
         } else paintCover(g,cover,seed,accent);
         g.setColour(Theme::stroke.withAlpha(.8f));g.drawRoundedRectangle(cover,5.f,1.f);
         const bool loaded=custom
@@ -399,9 +399,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
 void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;
     activeUserPreset=juce::File{};
-    refreshArtwork();
     const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
     processor.loadFactoryPreset(index);
+    refreshArtwork(); // Cover follows the selected factory sound.
     // Preserve Simple workspace and bypass while A/B auditioning.
     if(previousMode==0 || previousMode==3) {
         if(auto* mode=processor.state.getParameter("mode"))
