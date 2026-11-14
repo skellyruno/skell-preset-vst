@@ -959,6 +959,9 @@ void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSl
 void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
     canvas->setMatchPageForScreenshot(page);
 }
+void SkellPresetAudioProcessorEditor::setEqOrbForScreenshot(bool enabled) {
+    canvas->setEqOrbForScreenshot(enabled);
+}
 
 void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
     canvas->dockRackForScreenshot(right);
