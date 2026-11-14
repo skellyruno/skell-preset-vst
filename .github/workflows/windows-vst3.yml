@@ -43,8 +43,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Configure JUCE 8 and SkellCore
-        run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON
-      - name: Compile Windows VST3 and regression fixtures
+        run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON -DSKELL_PRESET_BUILD_UI_RENDERER=ON
+      - name: Compile Windows VST3, regression fixtures and real UI renderer (do not capture images)
         run: cmake --build build --config Release --parallel 2
       - name: Validate native preset ZIP import/export and security
         run: ctest --test-dir build -C Release --output-on-failure -E SkellPresetRealRackStress

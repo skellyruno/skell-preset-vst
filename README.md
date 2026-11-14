@@ -151,3 +151,20 @@ rack should report **0 samples added latency**; vintage lookahead limiters and
 spectral pitch are separate, deliberately nonzero-latency algorithms. Actual
 A/B matching to the owner-supplied FL Studio reference still requires synchronized,
 loudness-matched recordings and host-level tests.
+
+## Persistent local Quick4 UI capture
+
+The source of truth for screenshots is the **compiled current JUCE editor**.
+SkellCore now provides persistent quick4.ps1 and quick4.sh launchers
+(see skellcore-vst-template/docs/QUICK4_PERSISTENT_WORKSPACE.md).
+The source, pinned JUCE and incremental Ninja build cache live under
+~/Skelly/Quick4 by default; no need to reclone on a fresh chat. Skell Preset
+has an opt-in --quick4 mode with four real views (Simple, Advanced, effect
+library and MIC), and preserves the original full renderer test matrix.
+
+Each local capture ZIP is named with the exact source Git SHA and includes
+manifest and verification details so a different chat can inspect it
+without claiming stale UI screenshots are current. Screenshot workflows
+are manual-only. Windows VST3 CI compiles (but never runs) the UI renderer
+as an additional source integrity gate; this does not prove FL Studio
+compatibility, visual perfection or audio sound quality.
