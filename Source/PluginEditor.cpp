@@ -472,6 +472,8 @@ public:
             issues.add("APVTS overwrote physical Hz/dB/Q knob readouts");
         if(!slot.testMatchFinishPages())
             issues.add("Alchemist Shape/Calibration tabs do not expose all eight real parameters");
+        if(!slot.testMicModelCards())
+            issues.add("Mic Modeling profile cards failed to update stable host parameters");
         // This drives the same XY mutation code as real mouse dragging:
         // verify the graphical insert is an actual parameter editor.
         processor.loadFactoryPreset(0);
