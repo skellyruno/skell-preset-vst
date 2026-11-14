@@ -378,7 +378,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
     g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,67.f,3.f,23.f),1.5f);
     Theme::text(g,"LIBRARY",{30,73,154,20},12,Theme::white,true);
     const auto entries=filtered();
-    Theme::text(g,juce::String((int)entries.size())+" SOUNDS",{207,73,246,20},12,Theme::white,true);
+    Theme::text(g,juce::String((int)entries.size())+
+        (entries.size()==1?" SOUND":" SOUNDS"),{207,73,246,20},12,Theme::white,true);
     Theme::text(g,"ESC TO CLOSE",{getWidth()-121,75,100,20},10,Theme::muted,false,juce::Justification::centredRight);
     for(int i=0;i<banks.size();i++){
         auto b=juce::Rectangle<float>(17.f,111.f+i*60.f,168.f,52.f);
@@ -438,7 +439,39 @@ void PresetBrowser::paint(juce::Graphics&g) {
         Theme::text(g,itemBank,{294,y+33,210,16},11,bankColour,true);
         if(loaded){g.setColour(Theme::green);g.fillEllipse((float)getWidth()-29.f,(float)y+25.f,6.f,6.f);}
     }
-    if(entries.empty())Theme::text(g,"NO MATCHING PRESETS",{246,222,350,40},15,Theme::muted,true);
+    if(entries.size()==1 && search.getText().trim().isEmpty()) {
+        // A single active factory sound shouldn't produce an unexplained
+        // empty browser. Preview the editable cover instead; no fake
+        // content, duplicate presets or heavy image loads in paint().
+        const int entry=entries[0];
+        const bool custom=entry<0;
+        const auto art=custom?userArtwork[(size_t)(-entry-1)]:alchemistArtwork;
+        const auto frame=juce::Rectangle<float>(229.f,277.f,177.f,167.f);
+        g.setColour(Theme::bg);g.fillRoundedRectangle(frame,8.f);
+        if(art.isValid()) {
+            juce::Graphics::ScopedSaveState saved(g);
+            g.reduceClipRegion(frame.toNearestInt());
+            g.drawImageWithin(art,(int)frame.getX(),(int)frame.getY(),
+                (int)frame.getWidth(),(int)frame.getHeight(),
+                juce::RectanglePlacement::centred);
+        } else paintCover(g,frame,43,Theme::green);
+        g.setColour(Theme::green.withAlpha(.40f));
+        g.drawRoundedRectangle(frame.reduced(.7f),7.6f,1.15f);
+        Theme::text(g,"COVER PREVIEW",{424,282,191,20},10,Theme::green,true);
+        Theme::text(g,custom?"YOUR PRESET":"ALCHEMIST",
+                    {424,308,193,25},16,Theme::white,true);
+        Theme::text(g,"Use SET COVER to", {424,347,190,18},12,Theme::muted);
+        Theme::text(g,"personalize this sound.",{424,367,190,18},12,Theme::muted);
+        Theme::text(g,"Artwork also becomes",{424,407,196,18},11,Theme::muted);
+        Theme::text(g,"your plugin backdrop.",{424,424,196,18},11,Theme::muted);
+    }
+    if(entries.empty()) {
+        Theme::text(g,bank==2?"NO SAVED PRESETS":"NO MATCHING PRESETS",
+                    {246,222,350,40},15,Theme::muted,true);
+        if(bank==2)
+            Theme::text(g,"Save your current rack to build a personal library.",
+                {246,255,370,23},11,Theme::muted);
+    }
     if((int)entries.size()>6){
         const float railTop=110.f,railHeight=361.f;
         const float thumbHeight=juce::jmax(30.f,railHeight*6.f/(float)entries.size());
