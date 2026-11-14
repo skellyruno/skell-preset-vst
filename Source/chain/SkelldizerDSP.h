@@ -35,12 +35,23 @@ public:
     void set(float strength,float character,float output,float levelMatch) noexcept {
         desiredAmount=unit(strength);
         mode=characterIndex(character);
-        desiredTrim=std::pow(10.f,12.f*(unit(output)-.5f)/20.f);
+        const float nextOutput=unit(output);
+        if(nextOutput!=lastOutput) {
+            // Output automation is block-rate: avoid pow() on unchanged
+            // settings without altering the existing trim law or sound.
+            desiredTrim=std::pow(10.f,12.f*(nextOutput-.5f)/20.f);
+            lastOutput=nextOutput;
+        }
         desiredMatch=unit(levelMatch)>=.5f?1.f:0.f;
     }
     std::array<float,2> process(float left,float right) noexcept {
-        if(!std::isfinite(left))left=0.f;
-        if(!std::isfinite(right))right=0.f;
+        // A finite-but-extreme sample (e.g. FLT_MAX from a corrupt upstream
+        // effect) otherwise overflows squared band/RMS envelopes and can
+        // poison the processor state long after the bad sample has passed.
+        // 32x full-scale is far outside normal audio; audible-range samples
+        // and existing mode/trim curves are left completely unchanged.
+        left=std::isfinite(left)?std::clamp(left,-32.f,32.f):0.f;
+        right=std::isfinite(right)?std::clamp(right,-32.f,32.f):0.f;
         if(desiredAmount==0.f && amount<1.e-6f)return {{left,right}};
         amount=advance(amount,desiredAmount,controlPole);
         trim=advance(trim,desiredTrim,controlPole);
@@ -71,9 +82,17 @@ public:
             const float power=.5f*(bands[0][b]*bands[0][b]+bands[1][b]*bands[1][b]);
             bandPower[(size_t)b]=advance(bandPower[(size_t)b],power,
                                          power>bandPower[(size_t)b]?attack:release);
-            const float excess=std::max(0.f,
-                std::sqrt(std::max(0.f,bandPower[(size_t)b]))/thresholds[b]-1.f);
-            bandGain[b]=1.f/(1.f+compression*excess/(1.f+.6f*excess));
+            // At/below threshold gain is exactly unity. Avoid three sqrt()
+            // calls per sample on quiet material; do not change the
+            // over-threshold compression law or character tuning.
+            const float powerEnvelope=std::max(0.f,bandPower[(size_t)b]);
+            if(powerEnvelope<=thresholds[b]*thresholds[b]) {
+                bandGain[b]=1.f;
+            } else {
+                const float excess=std::max(0.f,
+                    std::sqrt(powerEnvelope)/thresholds[b]-1.f);
+                bandGain[b]=1.f/(1.f+compression*excess/(1.f+.6f*excess));
+            }
         }
         std::array<float,2> wet{};
         for(int ch=0;ch<2;++ch) {
@@ -112,6 +131,7 @@ private:
     std::array<float,3> bandPower{},weights{{1.f,1.f,1.f}};
     float inputPower=0.f,outputPower=0.f,amount=0.f,trim=1.f,match=0.f;
     float desiredAmount=0.f,desiredTrim=1.f,desiredMatch=0.f;
+    float lastOutput=.5f;
     float drive=.25f,compression=.28f;
     int mode=0;
 };
