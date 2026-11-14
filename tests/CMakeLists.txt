@@ -113,3 +113,11 @@ add_test(NAME SkellPresetAlchemistContourTest COMMAND SkellPresetAlchemistContou
 add_executable(SkellPresetSkelldizerDSPTest test_skelldizer_dsp.cpp)
 target_compile_features(SkellPresetSkelldizerDSPTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetSkelldizerDSPTest COMMAND SkellPresetSkelldizerDSPTest)
+
+# Portable zero-latency policy and 20-instance Skelldizer CPU stress.
+add_executable(SkellPresetRealtimePolicyTests test_rack_realtime_policy.cpp)
+target_compile_features(SkellPresetRealtimePolicyTests PRIVATE cxx_std_17)
+add_test(NAME SkellPresetRealtimePolicyTests COMMAND SkellPresetRealtimePolicyTests)
+add_executable(SkellPresetSkelldizerStress test_skelldizer_multinstance_stress.cpp)
+target_compile_features(SkellPresetSkelldizerStress PRIVATE cxx_std_17)
+add_test(NAME SkellPresetSkelldizerStress COMMAND SkellPresetSkelldizerStress)

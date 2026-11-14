@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "chain/EffectRegistry.h"
 #include "chain/AlchemistNativePreset.h"
+#include "chain/RackRealtimePolicy.h"
 #include <cmath>
 
 using namespace skellpreset;
@@ -223,9 +224,10 @@ void SkellPresetAudioProcessor::updateHostLatency() {
         const int id=(int)((order >> (4*position)) & 0x0fU);
         if(id<0 || id>=slotCount || !rawSlots[(size_t)id].type)continue;
         const int type=slotType(id);
-        if(type==Limiter) total+=latency;
-        else if(type==ExternalVST3) total+=hosted.getLatency(id);
-        else if(type==StudioPitchFormantFX)total+=skellpreset::dsp::SpectralPitchFormant::latencySamples;
+        total+=skellpreset::realtime::stageLatency(
+            type,Limiter,ExternalVST3,StudioPitchFormantFX,latency,
+            type==ExternalVST3?hosted.getLatency(id):0,
+            skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
     if(total!=currentReportedLatency){currentReportedLatency=total;setLatencySamples(total);}
 }
@@ -602,9 +604,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         const int id=sequence[(size_t)position];
         if(id<0 || id>=slotCount)continue;
         const auto type=controlCache[(size_t)id].type;
-        if(type==Limiter)blockLatency+=lookahead;
-        else if(type==ExternalVST3)blockLatency+=hosted.getLatency(id);
-        else if(type==StudioPitchFormantFX)blockLatency+=skellpreset::dsp::SpectralPitchFormant::latencySamples;
+        blockLatency+=skellpreset::realtime::stageLatency(
+            type,Limiter,ExternalVST3,StudioPitchFormantFX,lookahead,
+            type==ExternalVST3?hosted.getLatency(id):0,
+            skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
     blockLatency=juce::jlimit(0,slotCount*(lookahead+skellpreset::dsp::SpectralPitchFormant::latencySamples)+
         skellpreset::host::HostedVST3::maxTotalLatency,blockLatency);
@@ -689,6 +692,14 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 c.type==StudioPitchFormantFX;
             if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
+            // These controls are constant for the callback. In particular,
+            // dbToGain() involves pow(): never call it on every audio sample.
+            const float limiterDrive=c.type==Limiter?dbToGain(c.p[1]*18.f):1.f;
+            const float saturatorDrive=c.type==Saturator
+                ?dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f)):1.f;
+            const float saturatorBlend=.5f+c.p[1];
+            const float saturatorDenom=std::max(.5f,saturatorDrive*.6f);
+            const float exciterDrive=1.f+10.f*c.p[0];
             for(int n=0;n<frames;++n) {
                 float l=rackWork.getSample(0,n);
                 float r=rackWork.getSample(1,n);
@@ -704,8 +715,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=l*g;wetR=r*g;break;
                     }
                     case Limiter: {
-                        const float drive=dbToGain(c.p[1]*18.f);
-                        const float input[2]{l*drive,r*drive};
+                        // Preserve historical limiter PDC, but don't spend
+                        // detector CPU when the wet fade is completely dry.
+                        const auto& wetSmoother=slotWetSmooth[(size_t)s];
+                        if(!skellpreset::realtime::needsLimiterWetRender(
+                               wetSmoother.getCurrentValue(),wetSmoother.getTargetValue()))
+                            break;
+                        const float input[2]{l*limiterDrive,r*limiterDrive};
                         float output[2]{};
                         e.limiter.processFrame(input,output,2);
                         wetL=output[0];wetR=output[1];break;
@@ -805,16 +821,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
-                        const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));
-                        const float blend=.5f+c.p[1];
-                        wetL=std::tanh(l*drive*blend)/std::max(.5f,drive*.6f);
-                        wetR=std::tanh(r*drive*blend)/std::max(.5f,drive*.6f);
+                        wetL=std::tanh(l*saturatorDrive*saturatorBlend)/saturatorDenom;
+                        wetR=std::tanh(r*saturatorDrive*saturatorBlend)/saturatorDenom;
                         break;
                     }
                     case Exciter: {
-                        const float drive=1.f+10.f*c.p[0];
-                        wetL=(std::tanh(l*drive)-std::tanh(l*drive*.55f))*.4f+l;
-                        wetR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*.4f+r;
+                        wetL=(std::tanh(l*exciterDrive)-std::tanh(l*exciterDrive*.55f))*.4f+l;
+                        wetR=(std::tanh(r*exciterDrive)-std::tanh(r*exciterDrive*.55f))*.4f+r;
                         break;
                     }
                     case Delay: {
