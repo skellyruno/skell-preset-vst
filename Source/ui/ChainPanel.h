@@ -5,9 +5,10 @@
 #include <array>
 class ChainPanel final:public juce::Component,public juce::SettableTooltipClient {
 public:
+    static constexpr int visibleRows=8; // Two offscreen rows so the wheel can scroll a default ten-slot rack.
     explicit ChainPanel(SkellPresetAudioProcessor& p);
     void paint(juce::Graphics&) override;
-    void refreshIfChanged(); // avoid painting all ten rows while the chain is idle
+    void refreshIfChanged(); // avoid painting unchanged effect rows
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -17,9 +18,14 @@ public:
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
     void setSelectedSlot(int s) {selected=s;repaint();}
     void setScreenshotScrollOffset(int offset) {
-        scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-10),offset);
+        scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),offset);
         visualSnapshotValid=false;repaint();
     }
+    bool testMouseWheelScroll();
+    bool canScrollForTest() const noexcept {
+        return processor.activeSlotCount()>visibleRows;
+    }
+    int scrollPositionForTest() const noexcept {return scrollOffset;}
     std::function<void(int)> onSelection;
     // Double-clicking an effect opens the searchable replacement overlay.
     std::function<void(int)> onReplaceRequest;
@@ -43,6 +49,7 @@ private:
     bool visualSnapshotValid=false;
     int rowAt(int y) const;
     void clampScroll();
+    void applyWheelDelta(float deltaY);
     void addModule();
     void popupFor(int physicalSlot);
     float slotWet(int physicalSlot) const noexcept;

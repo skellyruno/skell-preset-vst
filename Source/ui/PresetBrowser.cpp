@@ -1,11 +1,13 @@
 #include "PresetBrowser.h"
 #include "Theme.h"
+#include "../chain/AlchemistNativePreset.h"
 #include <algorithm>
 #include <cmath>
 #include <array>
 
 namespace {
-const juce::StringArray banks{"All presets","Main Vocals","Adlibs","My Presets"};
+const juce::StringArray banks{"All presets","Main Vocals","My Presets"};
+constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
 // Each factory sound has deterministic original cover art; no bitmap decoding
 // or file I/O during a repaint. User-selected images override this motif.
 void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
@@ -76,8 +78,11 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     }
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
     exportButton.setTooltip("Save the active chain, slot order, macros and global controls");
-    artworkButton.setTooltip("Add custom PNG/JPG cover art to a saved My Presets entry");
+    artworkButton.setTooltip("Choose a cover for Alchemist or any selected saved preset");
     artworkButton.setEnabled(false);
+    reloadAlchemistArtwork();
+    scanLibrary();
+    refreshArtwork();
     importButton.onClick=[this] {chooseImport();};
     exportButton.onClick=[this] {chooseExport();};
     artworkButton.onClick=[this] {chooseArtwork();};
@@ -115,17 +120,49 @@ void PresetBrowser::scanLibrary() {
         });
     if(userPresets.size()>200)userPresets.resize(200);
     userArtwork.clear();userArtwork.resize(userPresets.size());
+    reloadAlchemistArtwork();
     for(size_t i=0;i<userPresets.size();++i) {
         const auto base=userPresets[i];
         auto cover=base.withFileExtension(".png");
         if(!cover.existsAsFile())cover=base.withFileExtension(".jpg");
-        if(cover.existsAsFile() && cover.getSize()>0 && cover.getSize()<=2*1024*1024) {
+        if(cover.existsAsFile() && cover.getSize()>0 && cover.getSize()<=8*1024*1024) {
             auto image=juce::ImageFileFormat::loadFrom(cover);
             if(image.isValid() && image.getWidth()<=4096 && image.getHeight()<=4096)
                 userArtwork[i]=image.rescaled(128,96,juce::Graphics::mediumResamplingQuality);
         }
     }
 }
+
+juce::File PresetBrowser::activeArtworkDestination() const {
+    if(activeUserPreset.existsAsFile())
+        return activeUserPreset.withFileExtension(".png");
+    if(processor.loadedFactoryPresetIndex()==alchemistIndex)
+        return libraryDirectory().getChildFile("Covers").getChildFile("Alchemist.png");
+    return {};
+}
+bool PresetBrowser::canEditCover() const {
+    return activeUserPreset.existsAsFile() ||
+        processor.loadedFactoryPresetIndex()==alchemistIndex;
+}
+void PresetBrowser::reloadAlchemistArtwork() {
+    alchemistArtwork={};
+    const auto path=libraryDirectory().getChildFile("Covers").getChildFile("Alchemist.png");
+    if(!path.existsAsFile()||path.getSize()<=0||path.getSize()>8*1024*1024)return;
+    auto img=juce::ImageFileFormat::loadFrom(path);
+    if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096)
+        alchemistArtwork=img.rescaled(1200,900,juce::Graphics::highResamplingQuality);
+}
+juce::Image PresetBrowser::selectedCover() const {
+    if(activeUserPreset.existsAsFile()) {
+        for(size_t i=0;i<userPresets.size();++i)
+            if(userPresets[i]==activeUserPreset && i<userArtwork.size())
+                return selectedUserBackdrop.isValid()?selectedUserBackdrop:userArtwork[i];
+    }
+    if(processor.loadedFactoryPresetIndex()==alchemistIndex)
+        return alchemistArtwork;
+    return {};
+}
+
 void PresetBrowser::copyToLibrary(const juce::File& source) {
     const auto folder=libraryDirectory();
     if(folder.createDirectory().failed())return;
@@ -135,22 +172,32 @@ void PresetBrowser::copyToLibrary(const juce::File& source) {
     const auto dest=folder.getNonexistentChildFile(
         juce::File::createLegalFileName(source.getFileNameWithoutExtension()),
         ".skellpreset",true);
-    if(source.copyFileTo(dest))activeUserPreset=dest;
+    if(source.copyFileTo(dest)) {
+        activeUserPreset=dest;
+        // Keep a validated sidecar cover when importing from another
+        // library. This is data only, never executable preset content.
+        auto originalCover=source.withFileExtension(".png");
+        if(!originalCover.existsAsFile())originalCover=source.withFileExtension(".jpg");
+        if(originalCover.existsAsFile() && originalCover.getSize()>0 &&
+           originalCover.getSize()<=8*1024*1024)
+            originalCover.copyFileTo(dest.withFileExtension(originalCover.getFileExtension()));
+    }
     scanLibrary();
     refreshArtwork();
 }
 void PresetBrowser::open(){scanLibrary();refreshArtwork();bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
-    importButton.setBounds(18,419,166,31);
-    exportButton.setBounds(18,456,166,31);
-    artworkButton.setBounds(18,493,166,31);
+    // Smaller, compact actions with breathing room below the bank list.
+    importButton.setBounds(18,427,128,26);
+    exportButton.setBounds(18,462,128,26);
+    artworkButton.setBounds(18,497,128,26);
 }
 void PresetBrowser::setChooserActive(bool active) {
     chooserActive=active;
     importButton.setEnabled(!active);
     exportButton.setEnabled(!active);
-    artworkButton.setEnabled(!active && activeUserPreset.existsAsFile());
+    artworkButton.setEnabled(!active && canEditCover());
 }
 void PresetBrowser::chooseImport() {
     if(chooserActive)return;
@@ -187,24 +234,41 @@ void PresetBrowser::chooseExport() {
             auto file=chooser.getResult();
             if(file==juce::File{})return;
             if(!file.hasFileExtension(".skellpreset"))file=file.withFileExtension(".skellpreset");
+            auto oldCover=safe->activeArtworkDestination();
+            if(!oldCover.existsAsFile() && safe->activeUserPreset.existsAsFile())
+                oldCover=safe->activeUserPreset.withFileExtension(".jpg");
             const auto result=safe->processor.exportPreset(file);
             if(result.failed()) {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot save preset",result.getErrorMessage());
                 return;
             }
             safe->copyToLibrary(file);
+            // Saving a tweaked Alchemist or personal preset should preserve
+            // its current cover even if the destination preset name changes.
+            if(oldCover.existsAsFile() && safe->activeUserPreset.existsAsFile()) {
+                const auto newCover=safe->activeUserPreset.withFileExtension(".png");
+                if(oldCover!=newCover)
+                    oldCover.copyFileTo(newCover);
+            }
+            safe->scanLibrary();
             safe->refreshArtwork();
+            if(safe->onCoverChanged)safe->onCoverChanged();
             safe->repaint();
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"Preset saved",file.getFullPathName());
         });
 }
+int PresetBrowser::visibleFactoryPresetsForTest() const {
+    int count=0;
+    for(const int entry:filtered())if(entry>=0)++count;
+    return count;
+}
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
     const auto q=search.getText().toLowerCase().trim();
-    if(bank!=3)for(int i=0;i<(int)skellpreset::factoryPresets.size();++i) {
+    if(bank==0 || bank==1)for(int i=0;i<(int)skellpreset::factoryPresets.size();++i) {
         const auto& item=skellpreset::factoryPresets[(size_t)i];
         const juce::String name(item.name),b(item.bank),desc(item.description);
-        if(b=="Vocoding")continue; // Reserved/unfinished source presets are hidden.
+        if(i!=alchemistIndex)continue; // Hide old factory sounds, preserve their host program IDs.
         if(bank>0 && b!=banks[bank])continue;
         bool found=q.isEmpty() || name.containsIgnoreCase(q) ||
                    b.containsIgnoreCase(q) || desc.containsIgnoreCase(q);
@@ -218,7 +282,7 @@ std::vector<int> PresetBrowser::filtered() const {
         if(q.startsWith("fav:")||q.startsWith("match:"))found=false;
         if(found)list.push_back(i);
     }
-    if(bank==0 || bank==3)for(int i=0;i<(int)userPresets.size();++i) {
+    if(bank==0 || bank==2)for(int i=0;i<(int)userPresets.size();++i) {
         const auto label=userPresets[(size_t)i].getFileNameWithoutExtension();
         bool found=q.isEmpty() || label.containsIgnoreCase(q) ||
                    juce::String("My Presets").containsIgnoreCase(q);
@@ -232,14 +296,32 @@ std::vector<int> PresetBrowser::filtered() const {
     return list;
 }
 void PresetBrowser::refreshArtwork() {
-    artworkButton.setEnabled(!chooserActive && activeUserPreset.existsAsFile());
+    artworkButton.setEnabled(!chooserActive && canEditCover());
+    // 128x96 thumbnails are only for cards; never scale them to wallpaper.
+    selectedUserBackdrop={};
+    if(activeUserPreset.existsAsFile()) {
+        auto candidate=activeUserPreset.withFileExtension(".png");
+        if(!candidate.existsAsFile())candidate=activeUserPreset.withFileExtension(".jpg");
+        if(candidate.existsAsFile() && candidate.getSize()>0 &&
+            candidate.getSize()<=8*1024*1024) {
+            auto img=juce::ImageFileFormat::loadFrom(candidate);
+            if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096) {
+                const float scale=std::min({1.f,1600.f/(float)img.getWidth(),
+                                                1000.f/(float)img.getHeight()});
+                selectedUserBackdrop=img.rescaled(
+                    juce::jmax(1,juce::roundToInt(img.getWidth()*scale)),
+                    juce::jmax(1,juce::roundToInt(img.getHeight()*scale)),
+                    juce::Graphics::highResamplingQuality);
+            }
+        }
+    }
     repaint();
 }
 void PresetBrowser::chooseArtwork() {
-    if(chooserActive || !activeUserPreset.existsAsFile())return;
+    if(chooserActive || !canEditCover())return;
     setChooserActive(true);
     fileChooser=std::make_unique<juce::FileChooser>(
-        "Choose artwork for "+activeUserPreset.getFileNameWithoutExtension(),
+        "Choose artwork for "+(activeUserPreset.existsAsFile()?activeUserPreset.getFileNameWithoutExtension():juce::String("Alchemist")),
         juce::File{}, "*.png;*.jpg;*.jpeg");
     juce::Component::SafePointer<PresetBrowser> safe(this);
     fileChooser->launchAsync(juce::FileBrowserComponent::openMode |
@@ -249,33 +331,34 @@ void PresetBrowser::chooseArtwork() {
             safe->setChooserActive(false);
             const auto file=chooser.getResult();
             if(!file.existsAsFile())return;
-            if(file.getSize()<=0 || file.getSize()>2*1024*1024){
+            if(file.getSize()<=0 || file.getSize()>8*1024*1024){
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                    "Artwork too large","Use a PNG/JPG image smaller than 2 MB.");return;
+                    "Artwork too large","Use a PNG/JPG image smaller than 8 MB.");return;
             }
             auto image=juce::ImageFileFormat::loadFrom(file);
             if(!image.isValid() || image.getWidth()>4096 || image.getHeight()>4096){
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
                     "Invalid artwork","Choose a valid image up to 4096 x 4096.");return;
             }
-            const auto destination=safe->activeUserPreset.withFileExtension(".png");
+            const auto destination=safe->activeArtworkDestination();
+            if(destination==juce::File{} || destination.getParentDirectory().createDirectory().failed())return;
             // Write-then-replace: a failed save must not destroy the previous cover.
             juce::TemporaryFile staging(destination);
             juce::PNGImageFormat png;
-            // Preserve portrait and landscape artwork proportions on the 4:3 cover.
-            juce::Image thumbnail(juce::Image::RGB,240,180,true);
-            {
-                juce::Graphics thumbPainter(thumbnail);
-                thumbPainter.fillAll(juce::Colours::black);
-                thumbPainter.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
-                thumbPainter.drawImageWithin(image,0,0,240,180,
-                    juce::RectanglePlacement::centred);
-            }
+            // Preserve the source image's aspect ratio in its saved cover.
+            // The browser builds its own lightweight 128x96 thumbnail.
+            // Never save only a 240x180 thumbnail as full-plugin wallpaper.
+            const float scale=std::min({1.f,1600.f/(float)image.getWidth(),
+                                            1000.f/(float)image.getHeight()});
+            auto coverImage=image.rescaled(
+                juce::jmax(1,juce::roundToInt(image.getWidth()*scale)),
+                juce::jmax(1,juce::roundToInt(image.getHeight()*scale)),
+                juce::Graphics::highResamplingQuality);
             bool written=false;
             {
                 juce::FileOutputStream output(staging.getFile());
                 if(output.openedOk()) {
-                    written=png.writeImageToStream(thumbnail,output);
+                    written=png.writeImageToStream(coverImage,output);
                     output.flush();
                 }
             }
@@ -285,6 +368,7 @@ void PresetBrowser::chooseArtwork() {
             }
             safe->scanLibrary();
             safe->refreshArtwork();
+            if(safe->onCoverChanged)safe->onCoverChanged();
         });
 }
 void PresetBrowser::paint(juce::Graphics&g) {
@@ -318,13 +402,29 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         g.setColour(Theme::panelAlt);g.fillRoundedRectangle(rect,7.f);
+        const juce::Image& tileArt=custom
+            ?userArtwork[(size_t)(-entry-1)]:alchemistArtwork;
+        if(tileArt.isValid()) {
+            juce::Graphics::ScopedSaveState cardArtwork(g);
+            g.reduceClipRegion(rect.toNearestInt());
+            g.setOpacity(.13f);
+            g.drawImageWithin(tileArt,(int)rect.getX(),(int)rect.getY(),
+                (int)rect.getWidth(),(int)rect.getHeight(),
+                juce::RectanglePlacement::fillDestination);
+        }
         const std::array<juce::Colour,5> accents{{Theme::green,Theme::blue,Theme::amber,Theme::pink,Theme::white}};
         const int seed=custom?-entry:entry+1;
         const auto accent=accents[(size_t)(seed%5)];
         const auto cover=juce::Rectangle<float>(215.f,(float)y+5.f,67.f,46.f);
-        if(custom && (size_t)(-entry-1)<userArtwork.size() && userArtwork[(size_t)(-entry-1)].isValid()) {
-            g.drawImageWithin(userArtwork[(size_t)(-entry-1)],(int)cover.getX(),(int)cover.getY(),
-                              (int)cover.getWidth(),(int)cover.getHeight(),juce::RectanglePlacement::centred);
+        const juce::Image& coverArt=custom
+            ?userArtwork[(size_t)(-entry-1)]:alchemistArtwork;
+        if(coverArt.isValid()) {
+            // Full-bleed card artwork; graphics clipping keeps rounded card edges.
+            juce::Graphics::ScopedSaveState artworkSave(g);
+            g.reduceClipRegion(cover.toNearestInt());
+            g.drawImageWithin(coverArt,(int)cover.getX(),(int)cover.getY(),
+                              (int)cover.getWidth(),(int)cover.getHeight(),
+                              juce::RectanglePlacement::centred);
         } else paintCover(g,cover,seed,accent);
         g.setColour(Theme::stroke.withAlpha(.8f));g.drawRoundedRectangle(cover,5.f,1.f);
         const bool loaded=custom
@@ -354,9 +454,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
 void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;
     activeUserPreset=juce::File{};
-    refreshArtwork();
     const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
     processor.loadFactoryPreset(index);
+    refreshArtwork(); // Cover follows the selected factory sound.
     // Preserve Simple workspace and bypass while A/B auditioning.
     if(previousMode==0 || previousMode==3) {
         if(auto* mode=processor.state.getParameter("mode"))
