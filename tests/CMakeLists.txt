@@ -126,3 +126,8 @@ add_test(NAME SkellPresetSkelldizerStress COMMAND SkellPresetSkelldizerStress)
 add_executable(SkellPresetABMetricsTest test_alchemist_ab_metrics.cpp)
 target_compile_features(SkellPresetABMetricsTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetABMetricsTest COMMAND SkellPresetABMetricsTest)
+
+# Exact output parity against uncached 8-band filter coefficient designs.
+add_executable(SkellPresetEightBandCacheParityTest test_eight_band_cache.cpp)
+target_compile_features(SkellPresetEightBandCacheParityTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetEightBandCacheParityTest COMMAND SkellPresetEightBandCacheParityTest)
