@@ -88,20 +88,16 @@ int stress() {
     const int instances[]{5,10,20};
     const int buffers[]{64,128,256};
     const double rates[]{44100.,48000.,96000.};
-    const int limiterPreset=0;
-    const int livePreset=25;
     for(const double sr:rates) {
-        // Validate latency from the actual compiled processor, including a
-        // legacy limiter chain and the dedicated no-lookahead tracking chain.
-        for(const int preset:{skellpreset::alchemist::factoryIndex,livePreset,limiterPreset}) {
+        // Check actual host-facing processor PDC, not a helper's estimate.
+        for(const int preset:{skellpreset::alchemist::factoryIndex,25,0}) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
             p->loadFactoryPreset(preset);
             p->prepareToPlay(sr,64);
-            const int expected=preset==limiterPreset
-                ?std::max(48,(int)(sr*.003)):0;
+            const int expected=preset==0?std::max(48,(int)(sr*.003)):0;
             if(p->getLatencySamples()!=expected) {
                 std::fprintf(stderr,
-                    "FAIL: factory %d at %.0f Hz reports %d, expected %d samples\\n",
+                    "FAIL factory %d / %.0f Hz: reported=%d expected=%d samples\n",
                     preset,sr,p->getLatencySamples(),expected);
                 return 9;
             }
@@ -109,47 +105,62 @@ int stress() {
         }
         for(const int frames:buffers) {
             for(const int count:instances) {
-                // Construction and prepare are deliberately OUTSIDE timing:
-                // host startup allocation isn't real-time audio callback work.
+                // Construct/prepare and allocate audio buffers outside timing.
                 std::vector<std::unique_ptr<SkellPresetAudioProcessor>> plugins;
+                std::vector<std::unique_ptr<juce::AudioBuffer<float>>> work;
                 plugins.reserve((size_t)count);
+                work.reserve((size_t)count);
                 for(int n=0;n<count;++n) {
                     auto p=std::make_unique<SkellPresetAudioProcessor>();
                     p->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
                     p->prepareToPlay(sr,frames);
                     if(p->getLatencySamples()!=0)return 10;
                     plugins.push_back(std::move(p));
+                    work.push_back(std::make_unique<juce::AudioBuffer<float>>(2,frames));
                 }
-                juce::AudioBuffer<float> block(2,frames);
+                juce::AudioBuffer<float> source(2,frames);
                 juce::MidiBuffer midi;
                 const int blocks=std::max(1,(int)(sr*.20/frames));
-                double peak=0.,energy=0.,worstCallback=0.;
-                const auto started=std::chrono::steady_clock::now();
+                double peak=0.,energy=0.,dspSeconds=0.,worstCallback=0.;
                 for(int k=0;k<blocks;++k) {
-                    const auto callbackStart=std::chrono::steady_clock::now();
+                    // Generate once per device callback, outside DSP timing.
+                    // Source contains vocals, upper harmonics, transients,
+                    // silence windows and deliberately invalid input.
+                    for(int i=0;i<frames;++i) {
+                        const auto n=(std::int64_t)k*frames+i;
+                        const double t=(double)n/sr;
+                        const float x=(float)(
+                            .12*std::sin(2.*juce::MathConstants<double>::pi*207.*t)
+                            +.035*std::sin(2.*juce::MathConstants<double>::pi*6100.*t)
+                            +((n%1223)==0?.21:0.));
+                        const float y=(n%7117)==0
+                            ?std::numeric_limits<float>::quiet_NaN()
+                            :(n%9001)==0?std::numeric_limits<float>::infinity():x;
+                        source.setSample(0,i,y);
+                        source.setSample(1,i,((n/500)%3)==0?-y:y);
+                    }
                     for(int inst=0;inst<count;++inst) {
-                        for(int i=0;i<frames;++i) {
-                            const auto n=(std::int64_t)k*frames+i;
-                            const double t=(double)n/sr;
-                            // Vocal-like fundamental, high-frequency sibilance,
-                            // regular transients, quiet segments and corrupt data.
-                            const float x=(float)(
-                                .12*std::sin(2.*juce::MathConstants<double>::pi*207.*t)
-                                +.035*std::sin(2.*juce::MathConstants<double>::pi*6100.*t)
-                                +((n%1223)==0?.21:0.));
-                            const float y=(n%7117)==0
-                                ?std::numeric_limits<float>::quiet_NaN()
-                                :(n%9001)==0?std::numeric_limits<float>::infinity():x;
-                            block.setSample(0,i,y);
-                            block.setSample(1,i,((n/500)%3)==0?-y:y);
-                        }
-                        plugins[(size_t)inst]->processBlock(block,midi);
+                        auto& dst=*work[(size_t)inst];
+                        dst.copyFrom(0,0,source,0,0,frames);
+                        dst.copyFrom(1,0,source,1,0,frames);
+                    }
+                    // Measure ONLY processBlock() calls, not test-signal
+                    // synthesis, buffer copies, assertions or metrics.
+                    const auto callbackStart=std::chrono::steady_clock::now();
+                    for(int inst=0;inst<count;++inst)
+                        plugins[(size_t)inst]->processBlock(*work[(size_t)inst],midi);
+                    const double elapsed=std::chrono::duration<double>(
+                        std::chrono::steady_clock::now()-callbackStart).count();
+                    dspSeconds+=elapsed;
+                    worstCallback=std::max(worstCallback,elapsed);
+                    for(int inst=0;inst<count;++inst) {
+                        const auto& dst=*work[(size_t)inst];
                         for(int i=0;i<frames;++i) {
                             for(int ch=0;ch<2;++ch) {
-                                const double value=block.getSample(ch,i);
+                                const double value=dst.getSample(ch,i);
                                 if(!std::isfinite(value) || std::abs(value)>32.) {
                                     std::fprintf(stderr,
-                                        "FAIL: nonfinite/unbounded signal count=%d rate=%.0f block=%d at %d\\n",
+                                        "FAIL nonfinite/unbounded count=%d rate=%.0f block=%d sample=%d\n",
                                         count,sr,frames,i);
                                     return 11;
                                 }
@@ -158,19 +169,14 @@ int stress() {
                             }
                         }
                     }
-                    const double elapsed=std::chrono::duration<double>(
-                        std::chrono::steady_clock::now()-callbackStart).count();
-                    worstCallback=std::max(worstCallback,elapsed);
                 }
-                const double elapsed=std::chrono::duration<double>(
-                    std::chrono::steady_clock::now()-started).count();
                 const double audioSeconds=(double)(blocks*frames)/sr;
                 const double callbackBudget=(double)frames/sr;
-                std::printf("REAL-RACK instances=%d rate=%.0f block=%d audio_s=%.3f wall_s=%.3f "
-                            "wall_vs_realtime=%.3f worst_callback_vs_budget=%.3f "
-                            "peak=%.4f RMS=%.4f\\n",
-                            count,sr,frames,audioSeconds,elapsed,
-                            elapsed/audioSeconds,worstCallback/callbackBudget,peak,
+                std::printf("REAL-RACK instances=%d rate=%.0f block=%d audio_s=%.3f dsp_s=%.3f "
+                            "dsp_cpu_vs_realtime=%.3f worst_callback_vs_budget=%.3f "
+                            "peak=%.4f RMS=%.4f\n",
+                            count,sr,frames,audioSeconds,dspSeconds,
+                            dspSeconds/audioSeconds,worstCallback/callbackBudget,peak,
                             std::sqrt(energy/(2.*blocks*frames*count)));
                 if(!std::isfinite(energy) || energy<=0. || peak<=0.)return 12;
                 for(auto& p:plugins)p->releaseResources();
