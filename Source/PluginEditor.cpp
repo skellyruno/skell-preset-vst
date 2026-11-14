@@ -416,8 +416,10 @@ public:
         if(!powerButton.isBypassed() || chain.isVisible())
             issues.add("Simple mode power button changed the view or failed");
         if(powerButton.getButtonText().isNotEmpty() ||
-           powerButton.getRight()<Theme::width-18)
-            issues.add("Header power must be icon-only at the far right");
+           settings.getX()<=powerButton.getX() ||
+           settings.getX()-powerButton.getRight()>8 ||
+           settings.getWidth()>37 || powerButton.getWidth()>37)
+            issues.add("Header controls must be compact Power then Settings");
         powerButton.onClick();
         configureForScreenshot(0,1,false);
         for(const auto& control:macro)
@@ -435,7 +437,11 @@ public:
         dockRack(false);
         if(chain.getX()>=slot.getX())
             issues.add("Rack failed to return left");
-        processor.loadFactoryPreset(0);
+        processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+        chain.setScreenshotScrollOffset(2);
+        if(!chain.canScrollForTest() || chain.scrollPositionForTest()!=2)
+            issues.add("Default ten-slot rack is not wheel-scrollable with eight visible rows");
+        chain.setScreenshotScrollOffset(0);
         if(!chain.testRackControlsAndWet())
             issues.add("Rack wet trim and green bypass dot did not update or restore host parameters");
         if(!chain.triggerReplaceForTest(0) || !slot.modulePickerVisibleForTest())
