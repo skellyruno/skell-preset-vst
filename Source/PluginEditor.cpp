@@ -216,6 +216,7 @@ public:
                 });
         };
         browser.onLoaded=[this]{slot.select(0);chain.setSelectedSlot(0);refresh();};
+        browser.onCoverChanged=[this]{repaint();};
         browser.onClose=[this]{preset.repaint();};
         addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
         addAndMakeVisible(browser);browser.setVisible(false);
@@ -549,7 +550,7 @@ public:
                !on || on->load()<.5f)
                 issues.add("Studio Six native effect chain is missing a stage");
         }
-        if(processor.getNumPrograms()!=43)
+        if(processor.getNumPrograms()!=44)
             issues.add("Studio Six factory program did not append at index 42");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
@@ -572,6 +573,18 @@ public:
     void paint(juce::Graphics& g) override {
         Theme::select(selectedTheme);
         g.fillAll(Theme::bg);
+        // Selected preset artwork as a full-UI, low-contrast wallpaper.
+        // The real modules and labels remain foreground components.
+        const auto cover=browser.selectedCover();
+        if(cover.isValid()) {
+            juce::Graphics::ScopedSaveState art(g);
+            g.setOpacity(.16f);
+            g.drawImageWithin(cover,0,0,Theme::width,Theme::height,
+                juce::RectanglePlacement::fillDestination);
+            g.setOpacity(1.f);
+            g.setColour(Theme::bg.withAlpha(.57f));
+            g.fillRect(0,0,Theme::width,Theme::height);
+        }
         g.setColour(Theme::panel);g.fillRect(0,0,Theme::width,76);
         g.setColour(Theme::stroke);g.drawHorizontalLine(75,0.f,(float)Theme::width);
         // One typographic run avoids the clipped hyphen and inconsistent gaps.
@@ -704,6 +717,18 @@ public:
             }
         }
     }
+    void paintOverChildren(juce::Graphics& g) override {
+        // A subtle second wallpaper pass keeps cover art visible across the
+        // whole plugin, including panel surfaces, without hiding controls.
+        if(browser.isVisible())return;
+        const auto cover=browser.selectedCover();
+        if(!cover.isValid())return;
+        juce::Graphics::ScopedSaveState art(g);
+        g.reduceClipRegion(juce::Rectangle<int>(14,78,1140,555));
+        g.setOpacity(.045f);
+        g.drawImageWithin(cover,14,78,1140,555,
+            juce::RectanglePlacement::fillDestination);
+    }
     void resized() override {
         themeButton.setBounds(15,12,53,56);
         chain.setBounds(rackOnRight?939:13,90,216,535);
@@ -711,7 +736,9 @@ public:
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
         viewSwitch.setBounds(796,27,237,37);
-        powerButton.setBounds(1104,26,50,40);
+        // Same approved header direction as AdlibLab: POWER then SETTINGS.
+        // Compact 36px controls on one baseline, visually grouped.
+        powerButton.setBounds(1069,28,36,36);
         help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
@@ -730,7 +757,7 @@ public:
         mix.setBounds(433,648,185,34);
         output.setBounds(845,648,172,34);
         sizeSelect.setBounds(1094,648,69,26);
-        settings.setBounds(1046,26,46,40);
+        settings.setBounds(1110,28,36,36);
         record.setBounds(634,648,115,30);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
