@@ -140,7 +140,7 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         auto& slot=candidate.slots[(size_t)i];
         const auto enabled=item.getProperty("enabled", {});
         if (! decodeInteger(item.getProperty("slotId", {}),0,encodedSlots-1,slot.slotId)
-            || ! decodeInteger(item.getProperty("type", {}),0,31,slot.type)
+            || ! decodeInteger(item.getProperty("type", {}),0,32,slot.type)
             || ! enabled.isBool()
             || ! decodeFloat(item.getProperty("wet", {}),0,1,slot.wet))
             return juce::Result::fail("Invalid chain metadata");
