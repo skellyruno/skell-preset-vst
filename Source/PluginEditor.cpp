@@ -318,6 +318,9 @@ public:
         else browser.setVisible(false);
         repaint();
     }
+    void setMatchPageForScreenshot(int page) {
+        slot.setMatchPageForScreenshot(page);
+    }
     void openModulePickerForScreenshot() {
         slot.openModulePickerForScreenshot();
     }
@@ -943,6 +946,9 @@ juce::StringArray SkellPresetAudioProcessorEditor::runScreenshotInteractionTests
 
 void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
     canvas->selectRackSlotForScreenshot(physicalSlot,scrollOffset);
+}
+void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
+    canvas->setMatchPageForScreenshot(page);
 }
 
 void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
