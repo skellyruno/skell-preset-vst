@@ -82,8 +82,8 @@ private:
         std::array<double,2> z1{},z2{};
         void reset() noexcept {z1.fill(0.);z2.fill(0.);}
         void configure(double sr,double freq,double boostDb,double steepness) noexcept {
-            constexpr double pi=3.14159265358979323846;
-            const double w=2.*pi*std::clamp(freq,1000.,sr*.46)/sr;
+            constexpr double referenceContourPi=3.14159265358979323846;
+            const double w=2.*referenceContourPi*std::clamp(freq,1000.,sr*.46)/sr;
             const double co=std::cos(w),sn=std::sin(w);
             const double A=std::pow(10.,boostDb/40.);
             const double alpha=sn*.5*std::sqrt((A+1./A)*(1./steepness-1.)+2.);
