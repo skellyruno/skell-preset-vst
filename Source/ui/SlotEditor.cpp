@@ -161,12 +161,13 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(button);
         button.setVisible(false);
     }
-    for(int page=0;page<2;++page) {
+    for(int page=0;page<3;++page) {
         auto& button=matchPageButtons[(size_t)page];
-        button.setButtonText(page==0?"SHAPE":"CALIBRATION");
+        button.setButtonText(page==0?"SHAPE":page==1?"CALIBRATION":"REFERENCE");
         button.setTooltip(page==0
             ?"Edit learned harmonic and envelope weight controls"
-            :"Edit source-level calibration, reference amplitude, trim and smoothing");
+            :page==1?"Edit source-level calibration, reference amplitude, trim and smoothing"
+                   :"Edit native reference-fitted vocal level, air and trim; live DSP parameters");
         button.onClick=[this,page]{showMatchPage(page);};
         button.setWantsKeyboardFocus(true);
         addAndMakeVisible(button);
@@ -471,7 +472,7 @@ void SlotEditor::applyTheme() {
         modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
     modOrbButton.setColour(juce::TextButton::textColourOffId,
         modOrbView?Theme::green:Theme::white);
-    for(int page=0;page<2;++page) {
+    for(int page=0;page<3;++page) {
         auto& button=matchPageButtons[(size_t)page];
         button.setColour(juce::TextButton::buttonColourId,
             page==matchPage?Theme::green.withAlpha(.32f):Theme::panelAlt);
@@ -515,7 +516,7 @@ void SlotEditor::showEqBank(int firstBand) {
 void SlotEditor::showMatchPage(int page) {
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX)
         return;
-    matchPage=juce::jlimit(0,1,page);
+    matchPage=juce::jlimit(0,2,page);
     const auto prefix="s"+juce::String(slot+1)+"_";
     for(auto& attachment:knobAttachment)attachment.reset();
     for(int k=0;k<4;++k)
@@ -643,7 +644,7 @@ void SlotEditor::refreshIfChanged() {
         }
     }
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
-        for(int k=0;k<8;++k) {
+        for(int k=0;k<12;++k) {
             const float v=processor.getSlotParam(slot,k);
             changed=changed || std::abs(v-lastEqControls[(size_t)k])>1.e-5f;
             lastEqControls[(size_t)k]=v;
@@ -700,8 +701,9 @@ void SlotEditor::resized() {
     eqCutSliders[0].setBounds(68,125,270,23);
     eqCutSliders[1].setBounds(370,125,270,23);
     for(int k=0;k<8;++k)eqBandButtons[(size_t)k].setBounds(219+k*49,96,40,26);
-    matchPageButtons[0].setBounds(571,72,135,23);
-    matchPageButtons[1].setBounds(713,72,151,23);
+    matchPageButtons[0].setBounds(512,72,105,23);
+    matchPageButtons[1].setBounds(623,72,125,23);
+    matchPageButtons[2].setBounds(754,72,112,23);
     loadExternal.setBounds(52,420,177,62);
     installedBrowser.setBounds(85,62,735,385);
     editExternal.setBounds(246,420,188,62);
@@ -1720,8 +1722,10 @@ void SlotEditor::paint(juce::Graphics&g) {
                      juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
     } else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
         effectTitle="ALCHEMIST MATCH FINISH  /  LIVE ENVELOPE + HARMONICS";
-        effectDetail="v0.7 SOURCE MODEL  /  CAUSAL DETECTORS 20 / 120 / 280 ms"
-                     "  /  ZERO ADDED LATENCY";
+        effectDetail=matchPage==2
+            ?"REAL REFERENCE-FITTED LEVEL + AIR / AUTOMATABLE / ZERO LOOKAHEAD"
+            :"v0.7 SOURCE MODEL  /  CAUSAL DETECTORS 20 / 120 / 280 ms"
+             "  /  ZERO ADDED LATENCY";
     } else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX) {
         effectTitle="STUDIO PITCH + FORMANT  /  SPECTRAL COLOUR";
         effectDetail="768 SAMPLES REPORTED HOST PDC  /  NOT LOW-LATENCY AUTOTUNE";
@@ -1830,6 +1834,8 @@ void SlotEditor::paint(juce::Graphics&g) {
     auto labels=titles(type);
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage==1)
         labels={"Envelope Centre","Reference Level","Output Trim","Gain Smoothing"};
+    if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage==2)
+        labels={"Reference On","Level Match","Air Match","Base Gain"};
     if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         labels={ "B"+juce::String(eqBank+1)+" FREQ", "B"+juce::String(eqBank+1)+" GAIN",
                  "B"+juce::String(eqBank+2)+" FREQ", "B"+juce::String(eqBank+2)+" GAIN" };
