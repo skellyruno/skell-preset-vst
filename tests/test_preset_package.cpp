@@ -219,7 +219,7 @@ int main(){
         check(input!=nullptr, "EQ rejection fixture has valid source JSON");
         if(input){
             const auto original=juce::JSON::parse(input->readEntireStreamAsString());
-            for(int variant=0;variant<3;++variant){
+            for(int variant=0;variant<5;++variant){
                 auto json=original.clone();
                 auto* chain=json.getProperty("chain",{}).getArray();
                 if(!chain || chain->isEmpty()){
@@ -233,11 +233,13 @@ int main(){
                 if(variant==0)q.set(0,-0.01);
                 if(variant==1)q.set(7,1.01);
                 if(variant==2)q.removeLast();
+                if(variant==3)q.set(0,juce::var("invalid"));
+                if(variant==4)q.set(7,juce::var(true));
                 slot->setProperty("eqQ",juce::var(q));
                 const auto bad=testFile(dir,"invalid-eq-q-"+juce::String(variant));
                 createArchive(bad,"preset.json",juce::JSON::toString(json).toStdString());
                 check(skellpreset::package::read(bad,second).failed(),
-                      "Reject out-of-range or truncated EQ bandwidth array");
+                      "Reject invalid EQ bandwidth value or array");
                 check(unchanged(), "Invalid EQ import preserves entire previous document");
             }
         }
