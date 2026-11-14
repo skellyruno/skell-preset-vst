@@ -234,7 +234,9 @@ void PresetBrowser::chooseExport() {
             auto file=chooser.getResult();
             if(file==juce::File{})return;
             if(!file.hasFileExtension(".skellpreset"))file=file.withFileExtension(".skellpreset");
-            const auto oldCover=safe->activeArtworkDestination();
+            auto oldCover=safe->activeArtworkDestination();
+            if(!oldCover.existsAsFile() && safe->activeUserPreset.existsAsFile())
+                oldCover=safe->activeUserPreset.withFileExtension(".jpg");
             const auto result=safe->processor.exportPreset(file);
             if(result.failed()) {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot save preset",result.getErrorMessage());
@@ -254,6 +256,11 @@ void PresetBrowser::chooseExport() {
             safe->repaint();
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"Preset saved",file.getFullPathName());
         });
+}
+int PresetBrowser::visibleFactoryPresetsForTest() const {
+    int count=0;
+    for(const int entry:filtered())if(entry>=0)++count;
+    return count;
 }
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
