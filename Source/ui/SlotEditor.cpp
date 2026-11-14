@@ -287,6 +287,12 @@ void SlotEditor::applyKnobReadouts() {
                     if(i==1)return juce::String(juce::roundToInt(v*100.))+"%";
                     return juce::String((v-.5)*.7,3)+" x";
                 }
+                if(matchPage==2) {
+                    if(i==0)return v>.75?"ON":"OFF";
+                    if(i==1 || i==2)return juce::String(
+                        juce::roundToInt(juce::jlimit(0.,1.,(v-.5)*2.)*100.))+"%";
+                    return juce::String(4.*v,1)+" dB";
+                }
                 if(i==0)return juce::String(-40.+30.*v,1)+" dBFS";
                 if(i==1)return juce::String(.05+.75*v,3)+" amp";
                 if(i==2)return juce::String(-1.+2.*v,2)+" dB";
@@ -366,6 +372,12 @@ void SlotEditor::applyKnobReadouts() {
                     if(i==0)return juce::jlimit(0.,1.,.5+value/6.);
                     if(i==1)return juce::jlimit(0.,1.,value/100.);
                     return juce::jlimit(0.,1.,.5+value/.7);
+                }
+                if(matchPage==2) {
+                    if(i==0)return text=="on" || value>75. ? 1.:0.;
+                    if(i==1 || i==2)
+                        return juce::jlimit(.5,1.,.5+value/200.);
+                    return juce::jlimit(0.,1.,value/4.);
                 }
                 if(i==0)return juce::jlimit(0.,1.,(value+40.)/30.);
                 if(i==1)return juce::jlimit(0.,1.,(value-.05)/.75);
