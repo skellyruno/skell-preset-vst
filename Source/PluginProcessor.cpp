@@ -698,7 +698,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float saturatorDrive=c.type==Saturator
                 ?dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f)):1.f;
             const float saturatorBlend=.5f+c.p[1];
-            const float saturatorNorm=1.f/std::max(.5f,saturatorDrive*.6f);
+            const float saturatorDenom=std::max(.5f,saturatorDrive*.6f);
             const float exciterDrive=1.f+10.f*c.p[0];
             for(int n=0;n<frames;++n) {
                 float l=rackWork.getSample(0,n);
@@ -821,8 +821,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
-                        wetL=std::tanh(l*saturatorDrive*saturatorBlend)*saturatorNorm;
-                        wetR=std::tanh(r*saturatorDrive*saturatorBlend)*saturatorNorm;
+                        wetL=std::tanh(l*saturatorDrive*saturatorBlend)/saturatorDenom;
+                        wetR=std::tanh(r*saturatorDrive*saturatorBlend)/saturatorDenom;
                         break;
                     }
                     case Exciter: {
