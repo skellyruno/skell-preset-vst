@@ -1,17 +1,7 @@
 name: Skell-Preset / Headless JUCE UI screenshots
 
+# Routine screenshots now run locally with Quick4; this is a MANUAL deep-audit fallback.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/ui-screenshots.yml'
-      - 'CMakeLists.txt'
-      - 'Source/**'
-      - 'assets/**'
-      - 'tests/ui_renderer.cpp'
-      - 'SkellCore/include/SkellCore/HeadlessUIRenderer.h'
-      - 'SkellCore/CMakeLists.txt'
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -42,7 +32,7 @@ jobs:
           set -euo pipefail
           renderer=$(find build-ui -type f -name SkellPresetUIRenderer -executable | head -n 1)
           test -n "$renderer"
-          xvfb-run -a -s '-screen 0 1920x1080x24' "$renderer" --output ui-screenshots
+          xvfb-run -a -s '-screen 0 1920x1080x24' "$renderer" --output ui-screenshots --full
           test "$(find ui-screenshots -name '*.png' | wc -l)" -eq 104
       - name: Upload PNG screenshots and contact sheet
         if: always()
