@@ -28,6 +28,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension=state.getRawParameterValue(prefix+"fxExt");
         r.extension2=state.getRawParameterValue(prefix+"fxExt2");
         r.extension3=state.getRawParameterValue(prefix+"fxExt3");
+        r.extension4=state.getRawParameterValue(prefix+"fxExt4");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
@@ -110,10 +111,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(s)+"_fxExt3",1},
             "Slot "+juce::String(s)+" studio pitch effect",
             juce::StringArray{"None","Studio Pitch + Formant"},0));
+    // Separate appended extension: never change old VST3 choice ranges or IDs.
+    for(int s=1;s<=slotCount;++s)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(s)+"_fxExt4",1},
+            "Slot "+juce::String(s)+" Skelldizer effect",
+            juce::StringArray{"None","Skelldizer"},0));
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     peak.prepare(sampleRate);highpass.prepare(sampleRate);comp.prepare(sampleRate);gate.prepare(sampleRate);
+    skelldizer.prepare(sampleRate);
     deesser.prepare(sampleRate);
     radio.prepare(sampleRate);crusher.prepare(sampleRate);tremolo.prepare(sampleRate);
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
@@ -244,7 +252,9 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int extra=raw.extension?juce::jlimit(0,3,(int)raw.extension->load()):0;
     const int advanced=raw.extension2?juce::jlimit(0,4,(int)raw.extension2->load()):0;
     const int studio=raw.extension3?juce::jlimit(0,1,(int)raw.extension3->load()):0;
+    const int skelldizer=raw.extension4?juce::jlimit(0,1,(int)raw.extension4->load()):0;
     if(oldType!=Empty)return oldType;
+    if(skelldizer>0)return (int)StudioPitchFormantFX+skelldizer;
     if(studio>0)return (int)AdaptiveNoiseFX+studio;
     if(advanced>0)return (int)VocalVibratoFX+advanced;
     return extra>0 ? (int)RingModFX+extra : (int)Empty;
@@ -253,7 +263,12 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(slot<0 || slot>=slotCount)return;
     const auto id=slotPrefix(slot);
     const int chosen=juce::jlimit(0,NumberOfModules-1,type);
-    if(chosen>AdaptiveNoiseFX) {
+    if(chosen<=StudioPitchFormantFX)setReal(id+"fxExt4",0.f);
+    if(chosen>StudioPitchFormantFX) {
+        setReal(id+"type",(float)Empty);
+        setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);setReal(id+"fxExt3",0.f);
+        setReal(id+"fxExt4",(float)(chosen-StudioPitchFormantFX));
+    } else if(chosen>AdaptiveNoiseFX) {
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt3",(float)(chosen-AdaptiveNoiseFX));
@@ -444,6 +459,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 break;
             case StudioPitchFormantFX:
                 e.studioPitch.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
+            case SkelldizerFX:
+                e.skelldizer.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
@@ -655,6 +673,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case StudioPitchFormantFX: {
                         const auto y=e.studioPitch.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case SkelldizerFX: {
+                        const auto y=e.skelldizer.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
