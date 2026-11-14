@@ -237,7 +237,19 @@ int main(){
                 if(variant==4)q.set(7,juce::var(true));
                 slot->setProperty("eqQ",juce::var(q));
                 const auto bad=testFile(dir,"invalid-eq-q-"+juce::String(variant));
-                createArchive(bad,"preset.json",juce::JSON::toString(json).toStdString());
+                const auto encoded=juce::JSON::toString(json);
+                // Verify the fixture's actual JSON type before testing the importer.
+                // JUCE var/JSON conversions must not silently turn true into 1.
+                const auto parsed=juce::JSON::parse(encoded);
+                const auto parsedChain=parsed.getProperty("chain", {});
+                const auto* parsedSlots=parsedChain.getArray();
+                const auto parsedQ=(parsedSlots && !parsedSlots->isEmpty())
+                    ? (*parsedSlots)[0].getProperty("eqQ", {}) : juce::var();
+                const auto* parsedValues=parsedQ.getArray();
+                check(parsedValues != nullptr && parsedValues->size()==(variant==2?7:8)
+                      && (variant!=4 || (*parsedValues)[7].isBool()),
+                      "Malformed EQ fixture retains expected array shape and boolean type");
+                createArchive(bad,"preset.json",encoded.toStdString());
                 check(skellpreset::package::read(bad,second).failed(),
                       "Reject invalid EQ bandwidth value or array");
                 check(unchanged(), "Invalid EQ import preserves entire previous document");
