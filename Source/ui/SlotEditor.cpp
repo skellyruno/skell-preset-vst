@@ -1017,22 +1017,38 @@ void SlotEditor::paint(juce::Graphics&g) {
     } else if(type==SkellPresetAudioProcessor::Delay){
         const float seconds=.055f+.85f*processor.getSlotParam(slot,0);
         const float feedback=.8f*processor.getSlotParam(slot,1);
-        const float unit=juce::jmin(175.f,plot.getWidth()/5.f);
-        for(int tap=0;tap<5;tap++){
-            const float amplitude=std::pow(feedback,(float)tap);
-            const float x=plot.getX()+43.f+tap*unit;
-            g.setColour(Theme::green.withAlpha(.3f+.7f*amplitude));
-            g.fillRoundedRectangle(x,plot.getBottom()-amplitude*133.f,
-                                   10.f,amplitude*133.f,3.f);
+        const float signal=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+        const float centre=plot.getCentreY()+12.f;
+        g.setColour(Theme::stroke);
+        g.drawLine(plot.getX()+28.f,centre,plot.getRight()-28.f,centre,1.f);
+        // Echo-envelope illustration derived from the real delay settings
+        // and measured rack slot peak. No fabricated live audio waveform.
+        const float spacing=132.f+30.f*processor.getSlotParam(slot,0);
+        for(int tap=0;tap<5;++tap) {
+            const float decay=std::pow(feedback,(float)tap);
+            const float x0=plot.getX()+46.f+(float)tap*spacing;
+            const float amp=juce::jmax(2.6f,72.f*decay*(.65f+.35f*signal));
+            juce::Path shape;
+            for(int i=0;i<=54;++i) {
+                const float phase=(float)i/54.f;
+                const float x=x0+105.f*phase;
+                const float envelope=std::sin(phase*juce::MathConstants<float>::pi);
+                const float y=centre-std::sin(phase*juce::MathConstants<float>::twoPi*5.f)
+                                      *envelope*amp;
+                if(i==0)shape.startNewSubPath(x,y);
+                else shape.lineTo(x,y);
+            }
+            g.setColour(Theme::green.withAlpha(.26f+.68f*decay));
+            g.strokePath(shape,juce::PathStrokeType(2.f));
             Theme::text(g,juce::String(tap+1),
-                {(int)x-7,(int)plot.getBottom()-20,26,16},9,Theme::muted,
+                {(int)x0+39,(int)plot.getBottom()-24,25,15},9,Theme::muted,
                 false,juce::Justification::centred);
         }
         Theme::text(g,"DELAY  "+juce::String(seconds*1000.f,0)+
                       " ms / FEEDBACK "+juce::String(feedback*100.f,0)+"%",
                     {45,163,700,20},12,Theme::green,true);
-        Theme::text(g,"RELATIVE TAP DECAY / NOT AN AUDIO WAVEFORM",
-                    {43,326,650,17},10,Theme::muted);
+        Theme::text(g,"ECHO ENVELOPE  /  LIVE PEAK MODULATES BRIGHTNESS",
+                    {43,326,690,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::ExternalVST3) {
         const auto name=processor.hostedVST3Name(slot);
         Theme::text(g,"EXTERNAL VST3 INSERT",{80,185,680,31},25,Theme::green,true);
