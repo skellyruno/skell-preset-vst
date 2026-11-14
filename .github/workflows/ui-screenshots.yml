@@ -33,9 +33,24 @@ jobs:
         run: |
           cmake -S . -B build-ui -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DSKELL_PRESET_BUILD_UI_RENDERER=ON \
+            -DSKELL_PRESET_ALCHEMIST_RENDERER=ON \
             -DSKELL_PRESET_PACKAGE_TESTS=OFF
       - name: Compile actual JUCE editor and renderer
-        run: cmake --build build-ui --target SkellPresetUIRenderer --parallel 2
+        run: cmake --build build-ui --target SkellPresetUIRenderer SkellPresetAlchemistRender --parallel 2
+      - name: Smoke-test the same compiled native Alchemist audio chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          renderer=$(find build-ui -type f -name SkellPresetAlchemistRender -executable | head -n 1)
+          test -n "$renderer"
+          xvfb-run -a "$renderer" --smoke
+      - name: Upload cross-platform native Alchemist WAV renderer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Skell-Preset-Alchemist-Renderer-Linux
+          path: build-ui/SkellPresetAlchemistRender
+          if-no-files-found: error
+          retention-days: 7
       - name: Capture and validate real editor PNGs
         shell: bash
         run: |
