@@ -923,11 +923,17 @@ public:
             record.setColour(juce::TextButton::buttonColourId,
                 armed?Theme::red.withAlpha(.27f):Theme::panelAlt);
         }
-        // Only the small scope strip needs refresh at 30 Hz.
-        repaint(juce::Rectangle<int>(73,51,271,25));
-        const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
-        if(activeView==0 || (activeView==3 && previousMode==0))
-            repaint(juce::Rectangle<int>(78,303,1010,29));
+        // Do not invalidate the scope and activity strip while the audio
+        // producer has not advanced. During playback these still refresh at
+        // 30 Hz, preserving animation timing and UI responsiveness.
+        const unsigned count=processor.liveScopeSampleCount();
+        if(count!=lastScopeSampleCount) {
+            lastScopeSampleCount=count;
+            repaint(juce::Rectangle<int>(73,51,271,25));
+            const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
+            if(activeView==0 || (activeView==3 && previousMode==0))
+                repaint(juce::Rectangle<int>(78,303,1010,29));
+        }
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
@@ -956,6 +962,7 @@ private:
     int lastInputMeter=-1,lastOutputMeter=-1;
     bool lastMicOn=false;
     int lastRecordingState=-1;
+    unsigned lastScopeSampleCount=~0u;
     SkellActionButton preset,match,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
