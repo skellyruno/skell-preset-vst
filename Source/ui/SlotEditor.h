@@ -33,7 +33,6 @@ protected:
     void paintOverChildren(juce::Graphics& g) override {
         juce::Slider::paintOverChildren(g);
         if(!hovered && !editing)return;
-        Theme::select(Theme::variant); // neutral UI path, uses existing theme
         const float w=(float)getWidth();
         const auto rect=juce::Rectangle<float>(w*.5f-23.f,(float)getHeight()-19.f,46.f,18.f);
         g.setColour(Theme::panelAlt);
@@ -41,7 +40,7 @@ protected:
         g.setColour(Theme::green.withAlpha(.7f));
         g.drawRoundedRectangle(rect,4.f,.85f);
         g.setColour(Theme::white);
-        g.setFont(juce::FontOptions(13.f,juce::Font::bold));
+        g.setFont(Theme::font(13.f,true));
         g.drawFittedText(juce::String(juce::roundToInt(
             juce::jlimit(0.,1.,getValue())*100.)),rect.toNearestInt(),
             juce::Justification::centred,1);
