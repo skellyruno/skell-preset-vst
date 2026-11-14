@@ -180,16 +180,69 @@ int main(){
     first.slots[2].params[0]=.5f;
     first.slots[2].type=99;
     check(skellpreset::package::write(testFile(dir,"invalid-module"),first).failed(),"Reject undefined module type");
+    // Rejected imports must preserve the entire previously loaded document,
+    // not merely its name. This protects active rack, EQ Q and automation data.
+    const auto previous=second;
+    const auto unchanged=[&] {
+        if(second.name!=previous.name || second.author!=previous.author
+           || second.bank!=previous.bank || second.mode!=previous.mode
+           || second.activeSlotCount!=previous.activeSlotCount
+           || second.inputDb!=previous.inputDb || second.mix!=previous.mix
+           || second.outputDb!=previous.outputDb || second.macros!=previous.macros)
+            return false;
+        for(size_t i=0;i<second.slots.size();++i){
+            const auto& a=second.slots[i];
+            const auto& b=previous.slots[i];
+            if(a.slotId!=b.slotId || a.type!=b.type || a.enabled!=b.enabled
+               || a.wet!=b.wet || a.params!=b.params || a.eqQ!=b.eqQ)
+                return false;
+        }
+        return true;
+    };
     auto malicious=testFile(dir,"path-traversal");
     createArchive(malicious,"../evil.json","{}");
     check(skellpreset::package::read(malicious,second).failed(),"Reject malicious ZIP path");
+    check(unchanged(), "Rejected import leaves all preset fields unchanged");
     auto oversize=testFile(dir,"oversize");
     createArchive(oversize,"preset.json",std::string(300000,'a'));
     check(skellpreset::package::read(oversize,second).failed(),"Reject compressed oversized entry");
+    check(unchanged(), "Rejected import leaves all preset fields unchanged");
     auto malformed=testFile(dir,"malformed");
     createArchive(malformed,"preset.json","not json");
     check(skellpreset::package::read(malformed,second).failed(),"Reject malformed JSON");
-    check(second.name==first.name || second.name=="Wide Ghost Vocal", "Bad input keeps previous successful document");
+    check(unchanged(), "Rejected import leaves all preset fields unchanged");
+    // Invalid EQ bandwidths in an otherwise valid archive must be rejected
+    // transactionally, leaving the previously loaded document untouched.
+    {
+        juce::ZipFile archive(path);
+        std::unique_ptr<juce::InputStream> input(archive.createStreamForEntry(0));
+        check(input!=nullptr, "EQ rejection fixture has valid source JSON");
+        if(input){
+            const auto original=juce::JSON::parse(input->readEntireStreamAsString());
+            for(int variant=0;variant<3;++variant){
+                auto json=original.clone();
+                auto* chain=json.getProperty("chain",{}).getArray();
+                if(!chain || chain->isEmpty()){
+                    check(false, "EQ rejection fixture contains chain entries");
+                    break;
+                }
+                auto* slot=(*chain)[0].getDynamicObject();
+                if(!slot){check(false, "EQ rejection fixture has a slot object");break;}
+                juce::Array<juce::var> q;
+                for(int i=0;i<8;++i)q.add(0.5);
+                if(variant==0)q.set(0,-0.01);
+                if(variant==1)q.set(7,1.01);
+                if(variant==2)q.removeLast();
+                slot->setProperty("eqQ",juce::var(q));
+                const auto bad=testFile(dir,"invalid-eq-q-"+juce::String(variant));
+                createArchive(bad,"preset.json",juce::JSON::toString(json).toStdString());
+                check(skellpreset::package::read(bad,second).failed(),
+                      "Reject out-of-range or truncated EQ bandwidth array");
+                check(unchanged(), "Invalid EQ import preserves entire previous document");
+            }
+        }
+    }
+    check(unchanged(), "Rejected imports preserve the complete previous document");
     dir.deleteRecursively();
     if(failures)std::cerr<<failures<<" package tests failed\n";
     return failures?1:0;
