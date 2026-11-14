@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "chain/EffectRegistry.h"
 #include "chain/AlchemistNativePreset.h"
+#include "chain/RackRealtimePolicy.h"
 #include <cmath>
 
 using namespace skellpreset;
@@ -223,9 +224,10 @@ void SkellPresetAudioProcessor::updateHostLatency() {
         const int id=(int)((order >> (4*position)) & 0x0fU);
         if(id<0 || id>=slotCount || !rawSlots[(size_t)id].type)continue;
         const int type=slotType(id);
-        if(type==Limiter) total+=latency;
-        else if(type==ExternalVST3) total+=hosted.getLatency(id);
-        else if(type==StudioPitchFormantFX)total+=skellpreset::dsp::SpectralPitchFormant::latencySamples;
+        total+=skellpreset::realtime::stageLatency(
+            type,Limiter,ExternalVST3,StudioPitchFormantFX,latency,
+            type==ExternalVST3?hosted.getLatency(id):0,
+            skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
     if(total!=currentReportedLatency){currentReportedLatency=total;setLatencySamples(total);}
 }
@@ -602,9 +604,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         const int id=sequence[(size_t)position];
         if(id<0 || id>=slotCount)continue;
         const auto type=controlCache[(size_t)id].type;
-        if(type==Limiter)blockLatency+=lookahead;
-        else if(type==ExternalVST3)blockLatency+=hosted.getLatency(id);
-        else if(type==StudioPitchFormantFX)blockLatency+=skellpreset::dsp::SpectralPitchFormant::latencySamples;
+        blockLatency+=skellpreset::realtime::stageLatency(
+            type,Limiter,ExternalVST3,StudioPitchFormantFX,lookahead,
+            type==ExternalVST3?hosted.getLatency(id):0,
+            skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
     blockLatency=juce::jlimit(0,slotCount*(lookahead+skellpreset::dsp::SpectralPitchFormant::latencySamples)+
         skellpreset::host::HostedVST3::maxTotalLatency,blockLatency);
@@ -704,6 +707,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=l*g;wetR=r*g;break;
                     }
                     case Limiter: {
+                        // Preserve historical limiter PDC, but don't spend
+                        // detector CPU when the wet fade is completely dry.
+                        const auto& wetSmoother=slotWetSmooth[(size_t)s];
+                        if(!skellpreset::realtime::needsLimiterWetRender(
+                               wetSmoother.getCurrentValue(),wetSmoother.getTargetValue()))
+                            break;
                         const float drive=dbToGain(c.p[1]*18.f);
                         const float input[2]{l*drive,r*drive};
                         float output[2]{};
