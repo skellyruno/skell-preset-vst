@@ -3,6 +3,7 @@
 #include "ui/ChainPanel.h"
 #include "ui/SlotEditor.h"
 #include "ui/PresetBrowser.h"
+#include "ui/MicModelPanel.h"
 #include "ui/SkullThemeButton.h"
 #include "ui/SkellPowerButton.h"
 #include "ui/SkellSettingsButton.h"
@@ -22,7 +23,7 @@ void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical
 class SkellPresetAudioProcessorEditor::Canvas final:public juce::Component,private juce::Timer {
 public:
     Canvas(SkellPresetAudioProcessorEditor& owner,SkellPresetAudioProcessor& p)
-    : outer(owner),processor(p),chain(p),slot(p),browser(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
+    : outer(owner),processor(p),chain(p),slot(p),browser(p),micPanel(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
         Theme::selectFor(processor.state);
         setLookAndFeel(skin.get());
         setSize(Theme::width,Theme::height);
@@ -47,8 +48,20 @@ public:
         };
 
         preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
-        preset.onClick=[this]{if(browser.isVisible())browser.setVisible(false);else browser.open();};
+        preset.onClick=[this]{
+            micPanel.setVisible(false);
+            if(browser.isVisible())browser.setVisible(false);else browser.open();
+        };
         style(preset);addAndMakeVisible(preset);
+        micButton.setButtonText("MIC");
+        micButton.setTooltip("Open dedicated input microphone modeling panel");
+        style(micButton);addAndMakeVisible(micButton);
+        micButton.onClick=[this] {
+            if(browser.isVisible())browser.setVisible(false);
+            micPanel.refresh();
+            micPanel.setVisible(!micPanel.isVisible());
+            if(micPanel.isVisible())micPanel.toFront(true);
+        };
         match.setButtonText("MATCH");style(match);addAndMakeVisible(match);
         match.onClick=[this]{
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"MATCH | DEVELOPMENT STAGE",
@@ -60,7 +73,7 @@ public:
         style(viewSwitch);style(powerButton);
         addAndMakeVisible(viewSwitch);addAndMakeVisible(powerButton);
         viewSwitch.onClick=[this] {
-            browser.setVisible(false);
+            browser.setVisible(false);micPanel.setVisible(false);
             const int current=(int)processor.state.getRawParameterValue("mode")->load();
             const int view=current==3?previousMode:(current==0?0:1);
             previousMode=view==0?1:0;
@@ -69,7 +82,7 @@ public:
             refresh();
         };
         powerButton.onClick=[this] {
-            browser.setVisible(false);
+            browser.setVisible(false);micPanel.setVisible(false);
             const int current=juce::jlimit(0,3,
                 (int)processor.state.getRawParameterValue("mode")->load());
             if(current==3)
@@ -221,6 +234,8 @@ public:
         browser.onClose=[this]{preset.repaint();};
         addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
         addAndMakeVisible(browser);browser.setVisible(false);
+        addAndMakeVisible(micPanel);micPanel.setVisible(false);
+        micPanel.onClose=[this]{micButton.repaint();};
         setTheme((int)processor.state.state.getProperty("uiTheme",0),false);
         addMouseListener(this,true); // Outside clicks on child panels dismiss the overlay.
         resized();refresh();startTimerHz(30);
@@ -782,9 +797,11 @@ public:
         themeButton.setBounds(15,12,53,56);
         chain.setBounds(rackOnRight?939:13,90,216,535);
         slot.setBounds(rackOnRight?14:247,90,906,496);
+        micPanel.setBounds(622,87,520,477);
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
-        viewSwitch.setBounds(796,27,237,37);
+        viewSwitch.setBounds(796,27,218,37);
+        micButton.setBounds(1020,28,44,36);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
         // Compact 36px controls on one baseline, visually grouped.
         powerButton.setBounds(1069,28,36,36);
@@ -831,6 +848,11 @@ public:
         bypassShade.setVisible(bypass);
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
+        if(micPanel.isVisible())micPanel.toFront(true);
+        micButton.setColour(juce::TextButton::buttonColourId,
+            micPanel.on()?Theme::green.withAlpha(.21f):Theme::panelAlt);
+        micButton.setColour(juce::TextButton::textColourOffId,
+            micPanel.on()?Theme::green:Theme::white);
         preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
         viewSwitch.setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
         viewSwitch.setTooltip(display==0?"Open full effect chain":"Switch to four macros");
@@ -870,24 +892,30 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
+        if(micPanel.isVisible() && !micPanel.getBounds().contains(point)
+           && !micButton.getBounds().contains(point))
+            micPanel.setVisible(false);
         if(browser.isVisible() && !browser.getBounds().contains(point) && !preset.getBounds().contains(point)) {
             browser.setVisible(false);preset.repaint();
         }
     }
     bool keyPressed(const juce::KeyPress& key)override{
+        if(key==juce::KeyPress::escapeKey && micPanel.isVisible()) {
+            micPanel.setVisible(false);return true;
+        }
         if(key==juce::KeyPress::escapeKey&&browser.isVisible()){browser.setVisible(false);return true;}return false;
     }
 private:
     SkellPresetAudioProcessorEditor& outer;
     SkellPresetAudioProcessor& processor;
-    ChainPanel chain;SlotEditor slot;PresetBrowser browser;
+    ChainPanel chain;SlotEditor slot;PresetBrowser browser;SkellMicModelPanel micPanel;
     SkullThemeButton themeButton;
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
-    SkellActionButton preset,match,help,record;
+    SkellActionButton preset,match,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
