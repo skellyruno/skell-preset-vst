@@ -28,6 +28,10 @@ struct Document {
     int mode = 1;
     int activeSlotCount = legacySlotCount;
     float inputDb = 0, mix = 1, outputDb = 0;
+    // Optional schema-v2 fields. Older ZIPs remain neutral/off on import.
+    bool micPreOn = false;
+    int micPreInput = 0, micPreTarget = 0;
+    float micPreAmount = 1.f, micPreTrim = .5f;
     std::array<float, 8> macros {};
     std::array<Slot, slotCount> slots {};
 };
