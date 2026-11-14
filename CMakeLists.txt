@@ -185,6 +185,8 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
     target_compile_features(SkellPresetAlchemistRender PRIVATE cxx_std_17)
     add_test(NAME SkellPresetAlchemistNativeRenderSmoke
         COMMAND SkellPresetAlchemistRender --smoke)
+    add_test(NAME SkellPresetAlchemistMonoWavRenderSmoke
+        COMMAND SkellPresetAlchemistRender --smoke-mono)
     # Serial 5/10/20-instance workload of the real native processor with
     # finite/peak checks and host-PDC assertions (not DAW CPU certification).
     add_test(NAME SkellPresetRealRackStress
