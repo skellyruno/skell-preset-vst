@@ -1,5 +1,11 @@
 name: Skell-Preset | Windows VST3
 
+# On this PR, a newer commit supersedes earlier heavy builds for this workflow.
+# Never cancel main or manual release builds, and never cancel other workflows.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   push:
     branches: [main]
