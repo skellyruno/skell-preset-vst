@@ -7,6 +7,19 @@
 int main() {
     using namespace skellpreset;
     using namespace skellpreset::realtime;
+    // Full, shortened and reordered racks must only configure active IDs.
+    std::uint64_t identity=0;
+    for(int id=0;id<16;++id)identity|=(std::uint64_t)id<<(4*id);
+    assert(activeSlotMask(identity,0,16)==0);
+    assert(activeSlotMask(identity,7,16)==0x7fU);
+    assert(activeSlotMask(identity,16,16)==0xffffU);
+    assert(activeSlotMask(identity,20,16)==0xffffU); // clamp corrupt count
+    const std::uint64_t reorder=std::uint64_t{9} |
+            (std::uint64_t{2}<<4) | (std::uint64_t{7}<<8);
+    assert(activeSlotMask(reorder,3,16)==((1u<<9)|(1u<<2)|(1u<<7)));
+    // Slots become eligible for lazy coefficient configuration on expansion.
+    assert((activeSlotMask(identity,8,16)&(1u<<8))==0);
+    assert((activeSlotMask(identity,9,16)&(1u<<8))!=0);
     constexpr int limiter=3, external=12, pitch=30;
     constexpr int limiterSamples=144, pitchSamples=768;
     int alchemistLatency=0;
