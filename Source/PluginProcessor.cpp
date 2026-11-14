@@ -39,6 +39,11 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         for(int k=0;k<8;++k)r.q[(size_t)k]=state.getRawParameterValue(prefix+"eqQ"+juce::String(k+1));
     }
     packedOrder.store(initialOrder);
+    rawMic.on=state.getRawParameterValue("micPreOn");
+    rawMic.input=state.getRawParameterValue("micPreInput");
+    rawMic.target=state.getRawParameterValue("micPreTarget");
+    rawMic.amount=state.getRawParameterValue("micPreAmount");
+    rawMic.trim=state.getRawParameterValue("micPreTrim");
     rawGlobal.mode=state.getRawParameterValue("mode");
     rawGlobal.input=state.getRawParameterValue("input");
     rawGlobal.mix=state.getRawParameterValue("mix");
@@ -138,6 +143,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(slot)+"_fxExt5",1},
             "Slot "+juce::String(slot)+" Mic Modeling effect",
             juce::StringArray{"None","Mic Modeling"},0));
+    // All five front-end parameters are APPENDED after fxExt5. Old slot,
+    // Alchemist and FL Studio automation IDs keep their original positions.
+    bl("micPreOn","Mic Modeling front-end active",false);
+    p.add(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"micPreInput",1},"Recorded microphone type",
+        juce::StringArray{"Neutral","Condenser","Dynamic","Ribbon"},0));
+    p.add(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"micPreTarget",1},"Simulated microphone character",
+        juce::StringArray{"Flat","Warm","Focus","Air"},0));
+    fl("micPreAmount","Mic Modeling front-end amount",0,1,1);
+    fl("micPreTrim","Mic Modeling front-end trim",-0.f,1.f,.5f);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -227,6 +243,9 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     dryWork.setSize(2,hostChunkCapacity,false,true);
     bypassWork.setSize(2,hostChunkCapacity,false,true);
     for(auto& e:engines)e.prepare(rate);
+    micFrontEnd.prepare(rate);
+    micFrontWet.reset(rate,.020);
+    micFrontWet.setCurrentAndTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     hosted.prepare(rate,hostChunkCapacity);
     const auto lookahead=engines[0].limiter.latencySamples();
     limiterLookahead.store(lookahead,std::memory_order_release);
@@ -407,6 +426,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     outputSmooth.setTargetValue(dbToGain(rawGlobal.output->load()));
     mixSmooth.setTargetValue(juce::jlimit(0.f,1.f,rawGlobal.mix->load()));
     bypassSmooth.setTargetValue(mode==3?0.f:1.f);
+    // The dedicated MIC panel runs before rack slot 1, not as another
+    // inserted effect. Read all automation once per host callback.
+    micFrontEnd.set(juce::jlimit(0.f,3.f,rawMic.input->load())/3.f,
+                    juce::jlimit(0.f,3.f,rawMic.target->load())/3.f,
+                    juce::jlimit(0.f,1.f,rawMic.amount->load()),
+                    juce::jlimit(0.f,1.f,rawMic.trim->load()));
+    micFrontWet.setTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     const bool delta=rawGlobal.delta->load()>.5f;
     const float macroTone=rawGlobal.macros[0]->load();
     const float macroPunch=rawGlobal.macros[1]->load();
@@ -575,9 +601,15 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
+            const auto colored=micFrontEnd.process(preL,preR);
+            const float micWet=micFrontWet.getNextValue();
+            const float frontL=preL+(colored[0]-preL)*micWet;
+            const float frontR=preR+(colored[1]-preR)*micWet;
             const auto original=bypassPdc.process(l,r,blockLatency);
-            const auto dry=dryPdc.process(preL,preR,blockLatency);
-            rackWork.setSample(0,n,preL);rackWork.setSample(1,n,preR);
+            // Front-end tone is upstream of the rack AND its wet/dry blend.
+            // Full bypass still returns the original DAW signal unchanged.
+            const auto dry=dryPdc.process(frontL,frontR,blockLatency);
+            rackWork.setSample(0,n,frontL);rackWork.setSample(1,n,frontR);
             dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
             bypassWork.setSample(0,n,original[0]);
             bypassWork.setSample(1,n,original[1]);
