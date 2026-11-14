@@ -180,7 +180,8 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     for(int i=0;i<4;++i){
         auto& k=knobs[(size_t)i];
         k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,76,21);
+        k.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
+        k.setTooltip("Hover or adjust for 0-100 numeric value. Double-click resets.");
         // Human-readable display only; hosts still automate the exact stable
         // normalized parameter range. Never make display conversions in DSP.
         k.setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
@@ -448,8 +449,9 @@ void SlotEditor::applyTheme() {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(auto* s:{&eqQSlider,&eqCutSliders[0],&eqCutSliders[1],
-                  &knobs[0],&knobs[1],&knobs[2],&knobs[3]}) {
+    for(juce::Slider* s:std::array<juce::Slider*,7>{{
+        &eqQSlider,&eqCutSliders[0],&eqCutSliders[1],
+        &knobs[0],&knobs[1],&knobs[2],&knobs[3]}}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         s->setColour(juce::Slider::thumbColourId,Theme::white);
