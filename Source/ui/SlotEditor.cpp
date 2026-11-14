@@ -497,6 +497,27 @@ void SlotEditor::showMatchPage(int page) {
     graphSnapshotValid=false;
     repaint();
 }
+bool SlotEditor::testMatchFinishPages() {
+    processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
+    processor.setSlotOn(0,true);
+    processor.setSlotParam(0,0,.20f);
+    processor.setSlotParam(0,4,.67f);
+    processor.setSlotParam(0,5,.335f);
+    select(0);
+    const bool shape=matchPage==0 && matchPageButtons[0].isVisible() &&
+        matchPageButtons[1].isVisible() &&
+        std::abs(knobs[0].getValue()-.20)<.002;
+    showMatchPage(1);
+    const bool calibrated=matchPage==1 &&
+        std::abs(knobs[0].getValue()-.67)<.002 &&
+        std::abs(knobs[1].getValue()-.335)<.002 &&
+        knobs[0].getTextFromValue(.67).contains("dBFS") &&
+        knobs[3].getTextFromValue(.271).contains("ms");
+    showMatchPage(0);
+    return shape && calibrated &&
+        std::abs(knobs[0].getValue()-.20)<.002 &&
+        std::abs(processor.getSlotParam(0,4)-.67f)<.002f;
+}
 void SlotEditor::openModulePicker() {
     installedBrowser.hide();
     if(modulePicker.isVisible())modulePicker.hide();
