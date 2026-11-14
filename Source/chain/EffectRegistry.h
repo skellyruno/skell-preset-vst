@@ -15,7 +15,7 @@ struct Effect {
     const char* terms;
     const char* reference322; // provenance/equivalent only, no Web Audio import
 };
-inline constexpr std::array<Effect,32> effects{{
+inline constexpr std::array<Effect,33> effects{{
     {0,"Empty","Utility","none clear empty bypass",""},
     {1,"EQ (Classic)","Tone","frequency bands low high shelf bell filter","322.EQ"},
     {2,"Compressor","Dynamics","compression level loud voice threshold knee","322.COMP"},
@@ -47,9 +47,10 @@ inline constexpr std::array<Effect,32> effects{{
     {28,"Harshness Tamer","Dynamics","dynamic resonances sibilance soothe harshness",""},
     {29,"Adaptive Noise Control","Dynamics","noise control gate suppress background floor",""},
     {30,"Studio Pitch + Formant","Pitch","studio pitch shift formant spectral phase vocoder",""},
-    {31,"Alchemist Match Finish","Dynamics","alchemist match harmonic cubic envelope learned vocal reference finishing",""}
+    {31,"Alchemist Match Finish","Dynamics","alchemist match harmonic cubic envelope learned vocal reference finishing",""},
+    {32,"Mic Modeling","Tone","microphone input simulation neutral condenser dynamic ribbon warm focus airy tone",""}
 }};
-static_assert(effects.size()==32,"Keep registry in sync with ModuleType");
+static_assert(effects.size()==33,"Keep registry in sync with ModuleType");
 constexpr const Effect& at(int id) noexcept {
     return effects[static_cast<std::size_t>(id<0||id>=(int)effects.size()?0:id)];
 }
