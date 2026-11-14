@@ -840,6 +840,52 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"LOW",{442,325,65,17},10,Theme::muted);
         Theme::text(g,"MID",{615,325,65,17},10,Theme::muted);
         Theme::text(g,"AIR",{793,325,50,17},10,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::EightBandToneFX && eqOrbView) {
+        // Optional lightweight visualisation; the existing exact frequency
+        // response graph remains the default. No fake live FFT is presented.
+        g.setColour(Theme::plot);
+        g.fillRoundedRectangle(plot,5.f);
+        const float cx=451.f,cy=250.f,radius=86.f;
+        g.setColour(Theme::green.withAlpha(.045f));
+        g.fillEllipse(cx-radius,cy-radius,radius*2.f,radius*2.f);
+        for(int latitude=-4;latitude<=4;++latitude) {
+            const float v=(float)latitude/5.f;
+            const float yy=cy+v*radius,width=std::sqrt(1.f-v*v)*radius;
+            g.setColour(Theme::muted.withAlpha(.16f));
+            g.drawEllipse(cx-width,yy-8.f,width*2.f,16.f,.85f);
+        }
+        for(int longitude=-4;longitude<=4;++longitude) {
+            const float phi=longitude*juce::MathConstants<float>::pi/10.f;
+            juce::Path meridian;
+            for(int i=0;i<=48;++i) {
+                const float theta=-juce::MathConstants<float>::halfPi+
+                                   i*juce::MathConstants<float>::pi/48.f;
+                const float xx=cx+radius*std::cos(theta)*std::sin(phi);
+                const float yy=cy+radius*std::sin(theta);
+                if(i==0)meridian.startNewSubPath(xx,yy);
+                else meridian.lineTo(xx,yy);
+            }
+            g.setColour(Theme::muted.withAlpha(.13f));
+            g.strokePath(meridian,juce::PathStrokeType(.75f));
+        }
+        for(int band=0;band<8;++band) {
+            const float gain=(processor.getSlotParam(slot,band*2+1)-.5f)*30.f;
+            const float radians=(float)band*juce::MathConstants<float>::twoPi/8.f;
+            const float orbit=radius*.77f+juce::jlimit(-12.f,12.f,gain)*.65f;
+            const float xx=cx+orbit*std::cos(radians),yy=cy+orbit*std::sin(radians);
+            const bool selected=band==activeEqBand;
+            g.setColour(Theme::green.withAlpha(selected?.95f:.32f));
+            const float size=selected?9.f:5.f;
+            g.fillEllipse(xx-size*.5f,yy-size*.5f,size,size);
+        }
+        Theme::text(g,"EQ ORB  /  8 PARAMETER NODES",{584,184,268,21},12,Theme::green,true);
+        Theme::text(g,"Illustrative tone map",{588,222,260,19},12,Theme::white);
+        Theme::text(g,"Not a live FFT analyser",{588,247,267,19},10,Theme::muted);
+        const float peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+        g.setColour(Theme::green.withAlpha(.15f+.65f*peak));
+        g.drawEllipse(cx-radius-5.f,cy-radius-5.f,2.f*(radius+5.f),
+                      2.f*(radius+5.f),1.1f+peak*2.f);
+        Theme::text(g,"GRAPH restores the editable EQ",{588,302,269,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::EQ) {
         const float normalizedF=processor.getSlotParam(slot,0);
         const auto* tone=processor.state.getRawParameterValue("macro1");
