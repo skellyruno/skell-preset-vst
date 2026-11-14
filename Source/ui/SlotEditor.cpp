@@ -632,7 +632,7 @@ void SlotEditor::refreshIfChanged() {
     if(!changed && lastPeakLevel!=level) {
         lastPeakLevel=level;
         repaint(juce::Rectangle<int>(178,75,195,22)); // small bone-rib meter
-        // The delay's echo-contour brightness and optional EQ orb halo
+        // The delay's echo-contour brightness and modulation orb halo
         // depend on actual measured slot peak. Repaint just the graph,
         // not the full plugin; the integer peak step bounds idle CPU.
         if(type==SkellPresetAudioProcessor::Delay ||
@@ -725,7 +725,7 @@ void SlotEditor::resized() {
     modulePicker.setBounds(405,66,470,400);
     eqQSlider.setBounds(672,114,186,26);
     eqCutSliders[0].setBounds(68,125,270,23);
-    eqCutSliders[1].setBounds(370,125,270,23);
+    eqCutSliders[1].setBounds(425,125,215,23);
     for(int k=0;k<8;++k)eqBandButtons[(size_t)k].setBounds(219+k*49,96,40,26);
     matchPageButtons[0].setBounds(512,72,105,23);
     matchPageButtons[1].setBounds(623,72,125,23);
@@ -1134,8 +1134,9 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.setColour(Theme::muted.withAlpha(.13f));
                 g.drawEllipse(cx-rx,cy-radius,rx*2.f,radius*2.f,.9f);
                 const float dy=(float)k/5.f*radius;
-                const float w=std::sqrt(1.f-(float)(k*k)/25.f)*radius;
-                g.drawEllipse(cx-w,cy+dy-7.f,w*2.f,14.f,.6f);
+                const float latitudeHalfWidth=std::sqrt(1.f-(float)(k*k)/25.f)*radius;
+                g.drawEllipse(cx-latitudeHalfWidth,cy+dy-7.f,
+                              latitudeHalfWidth*2.f,14.f,.6f);
             }
             for(int k=0;k<12;++k) {
                 const float phase=(float)k/12.f*juce::MathConstants<float>::twoPi;
@@ -1843,10 +1844,11 @@ void SlotEditor::paint(juce::Graphics&g) {
                      " dB  /  "+juce::String(1.f+11.f*processor.getSlotParam(slot,1),1)+
                      ":1  /  "+juce::String(18.f*processor.getSlotParam(slot,2),1)+" dB KNEE";
     }
-    if(effectTitle.isNotEmpty()){
-        const bool narrow=type==SkellPresetAudioProcessor::EightBandToneFX;
-        Theme::text(g,effectTitle,{47,103,narrow?595:730,22},14,Theme::green,true);
-        Theme::text(g,effectDetail,{47,128,narrow?595:755,18},12,Theme::muted);
+    // 8-band EQ owns the 96..148px header for its band selectors and
+    // filter controls. Don't draw duplicate effect headings over them.
+    if(effectTitle.isNotEmpty() && type!=SkellPresetAudioProcessor::EightBandToneFX){
+        Theme::text(g,effectTitle,{47,103,730,22},14,Theme::green,true);
+        Theme::text(g,effectDetail,{47,128,755,18},12,Theme::muted);
     }
     if(type==SkellPresetAudioProcessor::Compressor ||
        type==SkellPresetAudioProcessor::Gate ||
@@ -1867,8 +1869,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         // Q control has its own legible caption and never overlaps the title.
         Theme::text(g,"BAND "+juce::String(activeEqBand+1)+" Q",
                     {680,96,172,17},11,Theme::green,true);
-        Theme::text(g,"LOW CUT",{67,109,112,15},10,Theme::amber,true);
-        Theme::text(g,"HIGH CUT",{369,109,112,15},10,Theme::amber,true);
+        Theme::text(g,"LOW CUT",{20,127,48,16},9,Theme::amber,true);
+        Theme::text(g,"HIGH CUT",{342,127,80,16},9,Theme::amber,true);
     }
     if(type==SkellPresetAudioProcessor::EQ){
         g.setColour(Theme::green.withAlpha(.13f));g.fillRoundedRectangle(juce::Rectangle<float>(34.f,96.f,145.f,30.f),6.f);
@@ -1927,6 +1929,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
+                  isModulationOrbEffect(type) && modOrbView ? "MODULATION ORB IS VISUAL ONLY / EDIT WITH KNOBS BELOW" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::EightBandToneFX ? "CLICK ANY OF EIGHT NODES  /  DRAG TO CHANGE ITS FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::AdaptiveNoiseFX ? "ADAPTIVE GATE  /  NOT AN RNNOISE NEURAL MODEL" :
