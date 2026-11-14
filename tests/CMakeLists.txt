@@ -72,6 +72,12 @@ add_executable(SkellPresetAdvancedVocalDSPTest test_advanced_vocal_dsp.cpp)
 target_compile_features(SkellPresetAdvancedVocalDSPTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetAdvancedVocalDSPTest COMMAND SkellPresetAdvancedVocalDSPTest)
 
+# Alchemist factory study is an editable native rack preset, not an offline
+# WAV replacement. Exercise its exact stage values and audio path portably.
+add_executable(SkellPresetAlchemistNativeTest test_alchemist_native.cpp)
+target_compile_features(SkellPresetAlchemistNativeTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAlchemistNativeTest COMMAND SkellPresetAlchemistNativeTest)
+
 add_executable(SkellPresetSpectralPitchFormantTest test_spectral_pitch_formant.cpp)
 target_compile_features(SkellPresetSpectralPitchFormantTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetSpectralPitchFormantTest COMMAND SkellPresetSpectralPitchFormantTest)
