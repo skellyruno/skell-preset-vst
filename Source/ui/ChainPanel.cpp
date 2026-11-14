@@ -102,6 +102,12 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
                 p.lineTo((float)x+i,(float)y+6.f+6.f*row+
                          3.f*std::sin(i*(row?.76f:.43f)));
         }
+    } else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+        p.startNewSubPath((float)x,(float)y+9.f);
+        for(int i=1;i<=23;++i)
+            p.lineTo((float)x+i,(float)y+9.f
+                     -4.f*std::sin((float)i*.45f)
+                     -2.f*std::sin((float)i*1.34f));
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
@@ -238,6 +244,7 @@ void ChainPanel::paint(juce::Graphics& g) {
         else if(type==SkellPresetAudioProcessor::DynamicHarshnessFX)compact="Harsh";
         else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX)compact="Noise";
         else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX)compact="Pitch";
+        else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)compact="Match Finish";
         const float nameSize=compact.length()>10?9.1f:compact.length()>8?9.9f:10.8f;
         Theme::text(g,compact,{78,top+8,69,19},nameSize,
                     type==0?Theme::muted:(enabled?Theme::white:Theme::muted),selected==slot);
