@@ -44,7 +44,7 @@ juce::Result validate(const Document& d) {
     std::array<bool, slotCount> used {};
     for (const auto& slot : d.slots) {
         if (slot.slotId < 0 || slot.slotId >= slotCount || used[(size_t)slot.slotId]
-            || slot.type < 0 || slot.type > 31 || ! finiteRange(slot.wet, 0, 1))
+            || slot.type < 0 || slot.type > 32 || ! finiteRange(slot.wet, 0, 1))
             return juce::Result::fail("Invalid chain slot");
         used[(size_t)slot.slotId] = true;
         for (const auto v : slot.params)
