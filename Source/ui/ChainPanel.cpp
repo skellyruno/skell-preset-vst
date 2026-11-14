@@ -250,6 +250,9 @@ void ChainPanel::paint(juce::Graphics& g) {
                     type==0?Theme::muted:(enabled?Theme::white:Theme::muted),selected==slot);
         const float cx=165.f, cy=(float)top+19.f;
         const float wet=slotWet(slot);
+        // Empty physical slots have no audible wet blend. Don't show a
+        // meaningless 100% or a functional-looking dial on an empty row.
+        if(type!=SkellPresetAudioProcessor::Empty) {
         // Recessed FL-inspired wet dial, with bone-white marker and true arc.
         g.setColour(Theme::bg.withAlpha(.94f));
         g.fillEllipse(cx-12.f,cy-12.f,24.f,24.f);
@@ -275,6 +278,7 @@ void ChainPanel::paint(juce::Graphics& g) {
         Theme::text(g,juce::String(juce::roundToInt(wet*100.f))+"%",
             {149,top+32,33,12},9.2f,enabled?Theme::green:Theme::muted,
             true,juce::Justification::centred);
+        }
         // Hit target is wider than the dot, for usable control at 70% scale.
         const float px=193.f,py=cy;
         if(enabled) {
@@ -388,6 +392,7 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
         toggleSlotPower(slot);return;
     }
     if(e.x>=wetControlLeft && e.x<=wetControlRight) {
+        if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty)return;
         selected=slot;
         if(onSelection)onSelection(slot);
         wetDragSlot=slot;wetDragStart=slotWet(slot);pressPoint=e.getPosition();
@@ -448,6 +453,7 @@ void ChainPanel::mouseDoubleClick(const juce::MouseEvent& e) {
     const int slot=processor.slotIdAt(row);
     if(e.x>=powerControlLeft)return; // power is a single-click switch
     if(e.x>=wetControlLeft) {
+        if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty)return;
         if(wetDragSlot==slot) {
             if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+"_wet"))
                 p->endChangeGesture();
@@ -465,6 +471,11 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     else if(next>=0 && e.x>=wetControlLeft && e.x<wetControlRight) {
         const int physical=processor.slotIdAt(next);
+        if(processor.slotType(physical)==SkellPresetAudioProcessor::Empty) {
+            setTooltip("Empty rack slot: double-click its name to add an effect");
+            setMouseCursor(juce::MouseCursor::NormalCursor);
+            return;
+        }
         setTooltip("WET "+juce::String(juce::roundToInt(slotWet(physical)*100.f))+
                    "%  /  drag to blend  /  double-click to reset");
         setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
