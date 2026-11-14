@@ -71,13 +71,14 @@ constexpr auto makeStages() noexcept {
     slow.p[2]=.333333f; // soft knee
     slow.p[3]=.292683f; // 160ms release
 
-    // Soundgoodizer Mode A is visible in the reference screenshot. Native
-    // multiband + subtle harmonic coloration is a *substitute*, not Maximus.
-    auto multiband=neutral(17,.26f); // ThreeBandDynamics
-    multiband.p[0]=.27f;
-    multiband.p[1]=.38f;
-    multiband.p[2]=.30f;
-    multiband.p[3]=.50f;
+    // Original FL reference uses Soundgoodizer Mode A. Skelldizer is our
+    // native ORIGINAL replacement, not Image-Line code or an exact match.
+    // Preserve the preceding/following Alchemist stages and factory ID.
+    auto skelldizer=neutral(33,.26f);
+    skelldizer.p[0]=.43f; // amount: conservative while A/B is unverified
+    skelldizer.p[1]=0.f;  // Punch character (Soundgoodizer A hypothesis)
+    skelldizer.p[2]=.50f; // unity output trim
+    skelldizer.p[3]=1.f;  // enable native envelope level-match
 
     auto colour=neutral(5,.17f); // native Saturator
     colour.p[0]=.08f;
@@ -105,7 +106,7 @@ constexpr auto makeStages() noexcept {
     finish.p[10]=1.f; // high-frequency shelf intensity (p11)
     finish.p[11]=.58f; // gain-matched to owner's FL Studio reference (-14.22 LUFS, 19-35s)
     return std::array<NativeStage,7>{{
-        highpass,tone,fast,slow,multiband,colour,finish
+        highpass,tone,fast,slow,skelldizer,colour,finish
     }};
 }
 
@@ -117,7 +118,7 @@ inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==7, "Alchemist chain must have seven native effects");
 static_assert(stages[0].module==1 && stages[1].module==26
     && stages[2].module==2 && stages[3].module==19
-    && stages[4].module==17 && stages[5].module==5
+    && stages[4].module==33 && stages[5].module==5
     && stages[6].module==31,
     "Alchemist stage IDs are ABI stable");
 } // namespace skellpreset::alchemist
