@@ -478,7 +478,7 @@ int main(int argc, char** argv) {
             {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"},
             {"obsidian-effect-alchemist-match-finish-70",
              "obsidian-effect-alchemist-calibration-70"},
-            {"obsidian-effect-mic-modeling-70","obsidian-effect-eq-70"},
+            {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
             {"obsidian-effect-eight-band-eq-70","obsidian-effect-eight-band-orb-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
