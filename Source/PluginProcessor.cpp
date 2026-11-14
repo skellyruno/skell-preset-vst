@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "chain/EffectRegistry.h"
+#include "chain/AlchemistNativePreset.h"
 #include <cmath>
 
 using namespace skellpreset;
@@ -973,6 +974,33 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         for(int position=0;position<slotCount;++position)
             compactOrder|=(std::uint64_t)ids[position] << (4*position);
         packedOrder.store(compactOrder,std::memory_order_release);
+    }
+    if(index==skellpreset::alchemist::factoryIndex) {
+        // Append-only sound study. The original source chain's plugin types
+        // are documented, but proprietary Waves/FL plugin state is NOT ported.
+        // Do not insert a default final limiter: measured reference difference
+        // was negligible for the supplied sample, and it would add PDC.
+        for(int physical=0;physical<slotCount;++physical) {
+            setSlotOn(physical,false);
+            setSlotType(physical,Empty);
+            setReal(slotPrefix(physical)+"wet",1.f);
+        }
+        for(int position=0;
+            position<(int)skellpreset::alchemist::stages.size();++position) {
+            const auto& stage=skellpreset::alchemist::stages[(size_t)position];
+            setSlotType(position,stage.module);
+            setSlotOn(position,true);
+            setReal(slotPrefix(position)+"wet",stage.wet);
+            for(int k=0;k<16;++k)setSlotParam(position,k,stage.p[(size_t)k]);
+            for(int k=0;k<8;++k)
+                setReal(slotPrefix(position)+"eqQ"+juce::String(k+1),stage.q[(size_t)k]);
+        }
+        // Explicit identity ordering prevents inherited legacy factory
+        // reorders from silently changing Alchemist's serial stage order.
+        std::uint64_t identityOrder=0;
+        for(int position=0;position<slotCount;++position)
+            identityOrder|=(std::uint64_t)position << (4*position);
+        packedOrder.store(identityOrder,std::memory_order_release);
     }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
