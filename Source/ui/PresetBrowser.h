@@ -19,6 +19,8 @@ public:
     void applyTheme();
     // Cached on the message thread; no image file I/O from paint/audio.
     juce::Image selectedCover() const;
+    int visibleFactoryPresetsForTest() const;
+    bool canSetCoverForTest() const {return canEditCover();}
     std::function<void()> onClose;
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
