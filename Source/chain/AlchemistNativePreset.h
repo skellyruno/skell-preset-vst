@@ -73,8 +73,21 @@ constexpr auto makeStages() noexcept {
     colour.p[0]=.08f;
     colour.p[1]=.45f;
 
-    return std::array<NativeStage,6>{{
-        highpass,tone,fast,slow,multiband,colour
+    // v0.7 learned harmonic and two-timescale envelope finish from its
+    // auditable report. This works live without future samples, replacing the
+    // offline symmetric 15ms smoother with causal one-pole gain smoothing.
+    // The exact .979 held-out score does NOT transfer to this native chain.
+    auto finish=neutral(31,1.f);
+    finish.p[0]=.2001f;    // cubic coefficient -0.017994
+    finish.p[1]=1.f;       // +/-0.6dB max dynamic contour
+    finish.p[2]=.323236f; // slow coefficient -0.123735
+    finish.p[3]=0.f;      // fast-minus-slow coefficient -0.35
+    finish.p[4]=.670724f; // -19.878dBFS training slow-envelope median
+    finish.p[5]=.335037f; // 0.3012775 training signal 99th percentile
+    finish.p[6]=.53875f;  // +0.0775dB normalized harmonic makeup
+    finish.p[7]=.270833f; // causal ~15ms smoothing
+    return std::array<NativeStage,7>{{
+        highpass,tone,fast,slow,multiband,colour,finish
     }};
 }
 
@@ -83,9 +96,10 @@ inline constexpr int originalFactoryCount=43;
 inline constexpr int factoryIndex=43;
 inline constexpr const char* name="Alchemist (Native Preview)";
 inline constexpr const char* bank="Main Vocals";
-static_assert(stages.size()==6, "Alchemist chain must have six native effects");
+static_assert(stages.size()==7, "Alchemist chain must have seven native effects");
 static_assert(stages[0].module==1 && stages[1].module==26
     && stages[2].module==2 && stages[3].module==19
-    && stages[4].module==17 && stages[5].module==5,
+    && stages[4].module==17 && stages[5].module==5
+    && stages[6].module==31,
     "Alchemist stage IDs are ABI stable");
 } // namespace skellpreset::alchemist
