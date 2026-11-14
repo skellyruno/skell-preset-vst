@@ -16,11 +16,21 @@ struct EightBandTone {
     static constexpr int bands=8;
     std::array<SmoothedBiquad,bands> bell{};
     SmoothedBiquad lowCut, highCut;
+    // Native parameters are stable for the vast majority of 64/128-sample
+    // callbacks. Avoid recomputing 8x trig/pow-heavy biquad designs unless
+    // the host actually changes a control or sample rate. SmoothedBiquad
+    // still advances its existing 12ms transition per audio sample.
+    std::array<float,16> lastParameters{};
+    std::array<float,8> lastQ{};
+    double lastBandsRate=0.,lastCutsRate=0.;
+    float lastLowCut=0.f,lastHighCut=0.f;
+    bool bandsConfigured=false,cutsConfigured=false;
     static constexpr std::array<float,bands+1> edges{
         35.f,90.f,185.f,380.f,820.f,1700.f,3600.f,7500.f,17500.f};
     void prepare(double sr) noexcept {
         for(auto& b:bell)b.prepare(sr);
         lowCut.prepare(sr);highCut.prepare(sr);
+        bandsConfigured=false;cutsConfigured=false;
     }
     static float lowCutFrequency(float value) noexcept {
         return 20.f*std::pow(20.f,std::clamp(value,0.f,1.f)); // 20–400 Hz
@@ -32,6 +42,9 @@ struct EightBandTone {
     void setCuts(double sr,float low,float high) noexcept {
         const float lo=std::isfinite(low)?std::clamp(low,0.f,1.f):0.f;
         const float hi=std::isfinite(high)?std::clamp(high,0.f,1.f):0.f;
+        if(cutsConfigured && lastCutsRate==sr &&
+           lastLowCut==lo && lastHighCut==hi)return;
+        lastCutsRate=sr;lastLowCut=lo;lastHighCut=hi;cutsConfigured=true;
         if(lo<=.0001f)lowCut.aim(Biquad{});
         else lowCut.setHighPass(sr,lowCutFrequency(lo));
         if(hi<=.0001f)highCut.aim(Biquad{});
@@ -48,6 +61,9 @@ struct EightBandTone {
     void set(double sr,const std::array<float,16>& p,
              const std::array<float,8>& q) noexcept {
         if(!std::isfinite(sr)||sr<8000.)sr=48000.;
+        if(bandsConfigured && lastBandsRate==sr &&
+           lastParameters==p && lastQ==q)return;
+        lastBandsRate=sr;lastParameters=p;lastQ=q;bandsConfigured=true;
         for(int i=0;i<bands;++i){
             const auto freqVal=p[(size_t)i*2];
             const auto gainVal=p[(size_t)i*2+1];
