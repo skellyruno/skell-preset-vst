@@ -156,7 +156,7 @@ int main() {
             std::string(actual.name) != expectedProgramOrder[i].second) {
             std::cerr << "Factory program index " << i << " changed: expected "
                       << expectedProgramOrder[i].first << "/" << expectedProgramOrder[i].second
-                      << ", got " << actual.bank << "/" << actual.name << "\\n";
+                      << ", got " << actual.bank << "/" << actual.name << "\n";
             ++failures;
         }
     }
