@@ -46,7 +46,9 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawGlobal.delta=state.getRawParameterValue("delta");
     for(int k=0;k<4;k++)rawGlobal.macros[(size_t)k]=state.getRawParameterValue("macro"+juce::String(k+1));
     // Factory initialization is separate from state restoration; no DSP is allocated here.
-    loadFactoryPreset(0);
+    // New instances show the sole visible factory sound. Restored DAW
+    // projects retain all previous program IDs and their saved state.
+    loadFactoryPreset(skellpreset::alchemist::factoryIndex);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::createParameterLayout() {
