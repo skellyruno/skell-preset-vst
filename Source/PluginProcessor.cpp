@@ -286,6 +286,7 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(slot<0 || slot>=slotCount)return;
     const auto id=slotPrefix(slot);
     const int chosen=juce::jlimit(0,NumberOfModules-1,type);
+    const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     if(chosen>AlchemistMatchFinishFX) {
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
@@ -320,6 +321,14 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
         setReal(id+"fxExt3",0.f);setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt4",0.f);
         setReal(id+"type",(float)chosen);
+    }
+    if(newMic) {
+        // First selection starts with a neutral input/target profile and
+        // zero output trim; package loading subsequently restores saved p1–p4.
+        setSlotParam(slot,0,0.f);
+        setSlotParam(slot,1,0.f);
+        setSlotParam(slot,2,1.f);
+        setSlotParam(slot,3,.5f);
     }
     updateHostLatency();
 }
