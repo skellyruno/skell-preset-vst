@@ -21,6 +21,10 @@ public:
         scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),offset);
         visualSnapshotValid=false;repaint();
     }
+    bool canScrollForTest() const noexcept {
+        return processor.activeSlotCount()>visibleRows;
+    }
+    int scrollPositionForTest() const noexcept {return scrollOffset;}
     std::function<void(int)> onSelection;
     // Double-clicking an effect opens the searchable replacement overlay.
     std::function<void(int)> onReplaceRequest;
