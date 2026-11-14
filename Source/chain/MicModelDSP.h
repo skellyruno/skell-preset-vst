@@ -37,10 +37,10 @@ public:
     void prepare(double rate) noexcept {
         if(!std::isfinite(rate))rate=48000.;
         const float sr=(float)std::clamp(rate,8000.,192000.);
-        constexpr float pi=3.14159265358979323846f;
+        constexpr float micModelPi=3.14159265358979323846f;
         // Recombined bands have exact unity transfer when all gains = 1.
-        lowCoeff=1.f-std::exp(-2.f*pi*260.f/sr);
-        midCoeff=1.f-std::exp(-2.f*pi*3400.f/sr);
+        lowCoeff=1.f-std::exp(-2.f*micModelPi*260.f/sr);
+        midCoeff=1.f-std::exp(-2.f*micModelPi*3400.f/sr);
         smoothing=1.f-std::exp(-1.f/(sr*.025f));
         reset();
     }
