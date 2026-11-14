@@ -463,9 +463,24 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const float macroPunch=rawGlobal.macros[1]->load();
     const float macroSpace=rawGlobal.macros[2]->load();
     const float macroGrit=rawGlobal.macros[3]->load();
-    // Read all host automation once per callback. Native algorithms share
-    // one preallocated engine per physical slot; no allocation or lock here.
+    // One consistent rack topology snapshot for the entire callback. Only
+    // ACTIVE rack slots need coefficient updates, which can involve pow/exp.
+    // Inactive expanded slots are configured on their first active callback;
+    // no preset parameters, automation IDs or engine states are discarded.
+    const int chainCount=activeSlotCount();
+    const auto packed=packedOrder.load(std::memory_order_acquire);
+    std::uint32_t activeMask=0;
+    for(int position=0;position<chainCount;++position) {
+        const int id=(int)((packed>>(4*position))&0x0fU);
+        if(id>=0 && id<slotCount)activeMask|=(std::uint32_t{1}<<id);
+    }
+    // Native algorithms share one preallocated engine per physical slot;
+    // no allocation, file access or locks in this path.
     for(int s=0;s<slotCount;++s) {
+        if((activeMask&(std::uint32_t{1}<<s))==0) {
+            controlCache[(size_t)s].type=Empty;
+            continue;
+        }
         auto& c=controlCache[(size_t)s];
         const auto& raw=rawSlots[(size_t)s];
         c.type=slotType(s);
@@ -593,9 +608,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         slotWetSmooth[(size_t)s].setTargetValue(juce::jlimit(0.f,1.f,c.wet*fx)
             *(c.on?1.f:0.f));
     }
-    const int chainCount=activeSlotCount();
     std::array<int,slotCount> sequence{};
-    const auto packed=packedOrder.load(std::memory_order_acquire);
     for(int i=0;i<slotCount;++i)
         sequence[(size_t)i]=(int)((packed>>(4*i)) & 0x0fU);
     const int lookahead=limiterLookahead.load(std::memory_order_acquire);
