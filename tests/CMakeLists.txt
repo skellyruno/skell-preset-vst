@@ -80,3 +80,8 @@ add_test(NAME SkellPresetSpectralPitchFormantTest COMMAND SkellPresetSpectralPit
 add_executable(SkellPreset322RegistryScopeTest test_322_registry_scope.cpp)
 target_compile_features(SkellPreset322RegistryScopeTest PRIVATE cxx_std_17)
 add_test(NAME SkellPreset322RegistryScopeTest COMMAND SkellPreset322RegistryScopeTest)
+
+# Preset-bank integrity: names, duplicates, cover indices and normalized values.
+add_executable(SkellPresetFactoryBankTest test_factory_presets.cpp)
+target_compile_features(SkellPresetFactoryBankTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetFactoryBankTest COMMAND SkellPresetFactoryBankTest)

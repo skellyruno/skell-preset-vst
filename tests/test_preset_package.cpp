@@ -1,5 +1,6 @@
 #include "../Source/chain/PresetPackage.h"
 #include <iostream>
+#include <limits>
 #include <string>
 
 namespace {
@@ -165,6 +166,94 @@ int main(){
                 check(restored.activeSlotCount==10&&restored.slots[10].slotId==10
                       &&restored.slots[15].slotId==15,
                       "Legacy rack defaults and slot identity preserved");
+            }
+        }
+    }
+    // EQ Q is a serialized preset parameter: reject invalid values on both
+    // export and import, without changing the last successfully loaded preset.
+    {
+        auto invalidQ=first;
+        invalidQ.slots[0].eqQ[0]=1.01f;
+        check(skellpreset::package::write(testFile(dir,"invalid-eq-q"),invalidQ).failed(),
+              "Reject out-of-range EQ Q on export");
+        invalidQ.slots[0].eqQ[0]=-0.01f;
+        check(skellpreset::package::write(testFile(dir,"negative-eq-q"),invalidQ).failed(),
+              "Reject negative EQ Q on export");
+        invalidQ.slots[0].eqQ[0]=std::numeric_limits<float>::infinity();
+        check(skellpreset::package::write(testFile(dir,"infinite-eq-q"),invalidQ).failed(),
+              "Reject infinite EQ Q on export");
+        invalidQ.slots[0].eqQ[0]=std::numeric_limits<float>::quiet_NaN();
+        check(skellpreset::package::write(testFile(dir,"nan-eq-q"),invalidQ).failed(),
+              "Reject NaN EQ Q on export");
+
+        juce::ZipFile source(path);
+        std::unique_ptr<juce::InputStream> input(source.createStreamForEntry(0));
+        check(input!=nullptr,"EQ Q import fixture opens");
+        if(input){
+            auto json=juce::JSON::parse(input->readEntireStreamAsString());
+            if(auto* chain=json.getProperty("chain",{}).getArray()){
+                if(auto* item=(*chain)[0].getDynamicObject()){
+                    juce::Array<juce::var> badQ;
+                    for(int k=0;k<8;++k)badQ.add(k==3?1.5:0.5);
+                    item->setProperty("eqQ",juce::var(badQ));
+                    const auto badFile=testFile(dir,"bad-import-eq-q");
+                    createArchive(badFile,"preset.json",juce::JSON::toString(json).toStdString());
+                    skellpreset::package::Document retained=second;
+                    check(skellpreset::package::read(badFile,second).failed(),
+                          "Reject out-of-range EQ Q on import");
+                    check(second.name==retained.name && second.bank==retained.bank
+                          && second.slots[0].eqQ==retained.slots[0].eqQ,
+                          "Failed EQ Q import preserves previous preset state");
+                    // Invalid shape and type must not silently fall back to neutral Q.
+                    // Each rejection must leave the complete prior document intact.
+                    const auto verifyRejectedQ = [&](const juce::var& invalid,
+                                                     const juce::String& filename,
+                                                     const char* label) {
+                        item->setProperty("eqQ", invalid);
+                        const auto file=testFile(dir,filename);
+                        createArchive(file,"preset.json",juce::JSON::toString(json).toStdString());
+                        const auto before=second;
+                        const auto rejected=skellpreset::package::read(file,second).failed();
+                        check(rejected && second.name==before.name
+                              && second.bank==before.bank
+                              && second.activeSlotCount==before.activeSlotCount
+                              && second.slots[0].eqQ==before.slots[0].eqQ
+                              && second.slots[0].params==before.slots[0].params,
+                              label);
+                    };
+                    juce::Array<juce::var> shortQ;
+                    for(int k=0;k<7;++k)shortQ.add(.5);
+                    verifyRejectedQ(juce::var(shortQ),"short-eq-q",
+                                    "Reject seven-band EQ Q and retain previous preset");
+                    verifyRejectedQ(juce::var("invalid"),"string-eq-q",
+                                    "Reject string EQ Q and retain previous preset");
+                    juce::Array<juce::var> textQ;
+                    for(int k=0;k<8;++k)textQ.add(k==3?juce::var("0.5"):juce::var(.5));
+                    verifyRejectedQ(juce::var(textQ),"text-element-eq-q",
+                                    "Reject text EQ Q element and retain previous preset");
+                    // Duplicate slot IDs in an otherwise well-formed archive
+                    // must not replace the currently loaded preset.
+                    item->setProperty("eqQ", juce::var(juce::Array<juce::var> {
+                        .5, .5, .5, .5, .5, .5, .5, .5
+                    }));
+                    if (auto* secondSlot=(*chain)[1].getDynamicObject()) {
+                        const auto originalId=secondSlot->getProperty("slotId");
+                        secondSlot->setProperty("slotId",item->getProperty("slotId"));
+                        const auto duplicateFile=testFile(dir,"duplicate-import-slot-id");
+                        createArchive(duplicateFile,"preset.json",juce::JSON::toString(json).toStdString());
+                        const auto before=second;
+                        const auto rejected=skellpreset::package::read(duplicateFile,second).failed();
+                        check(rejected && second.name==before.name
+                              && second.bank==before.bank
+                              && second.activeSlotCount==before.activeSlotCount
+                              && second.slots[0].slotId==before.slots[0].slotId
+                              && second.slots[1].slotId==before.slots[1].slotId
+                              && second.slots[0].params==before.slots[0].params,
+                              "Reject duplicate imported slot ID and preserve previous preset");
+                        secondSlot->setProperty("slotId",originalId);
+                    }
+
+                }
             }
         }
     }
