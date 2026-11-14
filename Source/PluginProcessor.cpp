@@ -527,7 +527,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 break;
             case AlchemistMatchFinishFX:
                 e.matchFinish.set(c.p[0],c.p[1],c.p[2],c.p[3],
-                                  c.p[4],c.p[5],c.p[6],c.p[7]);
+                                  c.p[4],c.p[5],c.p[6],c.p[7],
+                                  c.p[8],c.p[9],c.p[10],c.p[11]);
                 break;
             case MicModelFX:
                 e.micModel.set(c.p[0],c.p[1],c.p[2],c.p[3]);
