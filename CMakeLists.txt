@@ -187,6 +187,9 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
         COMMAND SkellPresetAlchemistRender --smoke)
     add_test(NAME SkellPresetBlankStartupStateRestore
         COMMAND SkellPresetAlchemistRender --smoke-blank)
+    # Real JUCE editor interaction/layout probe, no images or screenshot workflow.
+    add_test(NAME SkellPresetWindowsUIInteractionSmoke
+        COMMAND SkellPresetAlchemistRender --ui-smoke)
     add_test(NAME SkellPresetAlchemistMonoWavRenderSmoke
         COMMAND SkellPresetAlchemistRender --smoke-mono)
     # Serial 5/10/20-instance workload of the real native processor with

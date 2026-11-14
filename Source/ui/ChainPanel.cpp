@@ -404,7 +404,9 @@ void ChainPanel::addModule() {
     scrollOffset=juce::jmax(0,processor.activeSlotCount()-visibleRows);
     selected=slot;
     if(onSelection)onSelection(slot);
-    popupFor(slot);
+    // The plus button must open the searchable, movable library directly,
+    // not the new right-click action menu for an empty slot.
+    if(onReplaceRequest)onReplaceRequest(slot);
     repaint();
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {

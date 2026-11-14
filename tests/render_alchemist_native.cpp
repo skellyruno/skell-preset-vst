@@ -4,6 +4,7 @@
 // Does not package, inspect or transmit the owner's WAV files.
 #include <JuceHeader.h>
 #include "../Source/PluginProcessor.h"
+#include "../Source/PluginEditor.h"
 #include "../Source/chain/AlchemistNativePreset.h"
 #include "../Source/chain/ABMetrics.h"
 #include <algorithm>
@@ -83,6 +84,33 @@ int blankSmoke() {
     restored->releaseResources();
     plugin->releaseResources();
     std::puts("PASS: blank rack 0-PDC identity and legacy FL Studio preset-state restore");
+    return 0;
+}
+
+// Windows desktop UI interaction/layout smoke; does NOT capture screenshots,
+// trigger the screenshot workflow, or open FL Studio. Uses the real editor.
+int uiSmoke() {
+    auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+    plugin->prepareToPlay(48000.,256);
+    std::unique_ptr<SkellPresetAudioProcessorEditor> editor(
+        static_cast<SkellPresetAudioProcessorEditor*>(plugin->createEditor()));
+    if(!editor)return 51;
+    auto report=[](const juce::StringArray& issues,const char* stage) {
+        for(const auto& issue:issues)
+            std::fprintf(stderr,"UI %s: %s\n",stage,issue.toRawUTF8());
+    };
+    const auto before=editor->getScreenshotLayoutIssues();
+    report(before,"initial-layout");
+    if(!before.isEmpty())return 52;
+    const auto actions=editor->runScreenshotInteractionTests();
+    report(actions,"interactions");
+    if(!actions.isEmpty())return 53;
+    const auto after=editor->getScreenshotLayoutIssues();
+    report(after,"final-layout");
+    if(!after.isEmpty())return 54;
+    editor.reset();
+    plugin->releaseResources();
+    std::puts("PASS: real JUCE editor geometry, rack wheel, MIC, and picker controls; no screenshot captures");
     return 0;
 }
 
@@ -439,6 +467,7 @@ int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
     if(argc==2 && juce::String(argv[1])=="--smoke")return smoke();
     if(argc==2 && juce::String(argv[1])=="--smoke-blank")return blankSmoke();
+    if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
     if(argc==4 && juce::String(argv[1])=="--compare")
