@@ -62,6 +62,10 @@ public:
             micPanel.setVisible(!micPanel.isVisible());
             if(micPanel.isVisible())micPanel.toFront(true);
         };
+        // Keep the original test-only button adapter, but put the actual
+        // microphone trigger at the top right of the effect rack.
+        micButton.setVisible(false);
+        chain.onMicRequest=[this] {if(micButton.onClick)micButton.onClick();};
         match.setButtonText("MATCH");style(match);addAndMakeVisible(match);
         match.onClick=[this]{
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"MATCH | DEVELOPMENT STAGE",
@@ -125,9 +129,12 @@ public:
             s.updateText();
         }
         for(auto* s:{&input,&mix,&output}) {
-            s->setSliderStyle(juce::Slider::LinearHorizontal);
-            s->setTextBoxStyle(juce::Slider::TextBoxRight,false,66,20);
-            s->setColour(juce::Slider::trackColourId,Theme::blue);
+            // Three compact master knobs in the footer; original APVTS
+            // parameter IDs and physical gain/mix value functions unchanged.
+            s->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            s->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
+            s->setDoubleClickReturnValue(true, s==&mix?1.:0.);
+            s->setColour(juce::Slider::trackColourId,Theme::green);
             s->setColour(juce::Slider::thumbColourId,Theme::white);
             s->setColour(juce::Slider::textBoxTextColourId,Theme::white);
             s->setColour(juce::Slider::textBoxOutlineColourId,juce::Colours::transparentBlack);
@@ -157,6 +164,9 @@ public:
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
         input.updateText();output.updateText();mix.updateText();
+        input.setTooltip("Input gain · double-click for 0 dB");
+        mix.setTooltip("Global dry / wet mix · double-click for 100%");
+        output.setTooltip("Output gain · double-click for 0 dB");
         sizeSelect.addItemList({"70%","85%","100%","125%"},1);
         const float restored=(float)processor.state.state.getProperty("uiScale",.70f);
         const float available[]{.70f,.85f,1.f,1.25f};
@@ -183,23 +193,22 @@ public:
             const juce::StringArray labels{"70%","85%","100%","125%"};
             for(int i=0;i<labels.size();++i)
                 menu.addItem(i+1,labels[i],true,sizeSelect.getSelectedId()==i+1);
-            menu.addSeparator();
-            menu.addSectionHeader("RECORDINGS");
-            menu.addItem(100,"Reveal last WAV in folder",lastCaptureFile.existsAsFile());
+            // Recording UI intentionally removed; recording infrastructure
+            // remains for backward compatibility with saved project state.
             menu.showMenuAsync(
                 juce::PopupMenu::Options().withTargetComponent(&settings),
                 [safe=juce::Component::SafePointer<Canvas>(this)](int choice) {
                     if(safe==nullptr)return;
                     if(choice>=1 && choice<=4)
                         safe->sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
-                    else if(choice==100 && safe->lastCaptureFile.existsAsFile())
-                        safe->lastCaptureFile.revealToUser();
+                    // No recording action or extra footer controls.
                 });
         };
         record.setButtonText("REC WAV");
         record.setTooltip("Capture processed stereo track audio to a 24-bit WAV. FL Studio owns the microphone and transport.");
         style(record);
         addAndMakeVisible(record);
+        record.setVisible(false); // no REC WAV on the main interface
         record.onClick=[this] {
             if(processor.isCapturing()) {
                 processor.stopCapture();
@@ -258,17 +267,17 @@ public:
         steps.emplace_back(&preset,"PRESET BROWSER",
             "Choose a starting sound from the preset browser. You can always make your own changes.");
         steps.emplace_back(&viewSwitch,"SIMPLE / ADVANCED",
-            "Use the single view button to switch between four macros and the full effect rack.");
+            "Switch between the uncluttered sound overview and the full effect rack.");
         if(chain.isVisible() && slot.isVisible()) {
             steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
-                "Double-click a row to replace its effect. Drag its small ring for wet blend; click the rightmost green dot to bypass.");
+                "Wheel over an effect to change its processing order. Double-click to open the movable effect library, or right-click for actions. The microphone icon opens its movable widget.");
             steps.emplace_back(&slot,"EDIT A SLOT",
                 "Adjust the selected effect here. Rack slots keep their own independent controls, order and automation.");
         }
         steps.emplace_back(&powerButton,"POWER / BYPASS",
             "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
         steps.emplace_back(&mix,"BLEND YOUR SOUND",
-            "Use Mix to balance the processed chain against your original audio.");
+            "The three bottom-right knobs control Input, dry/wet Mix, and Output.");
         steps.emplace_back(&settings,"INTERFACE SIZE",
             "Resize the interface here. Click the skull to cycle themes or ? to replay this tour.");
         return steps;
@@ -304,7 +313,7 @@ public:
             s.setColour(juce::Slider::thumbColourId,Theme::white);
         }
         for(auto* s:{&input,&mix,&output}){
-            s->setColour(juce::Slider::trackColourId,Theme::blue);
+            s->setColour(juce::Slider::trackColourId,Theme::green);
             s->setColour(juce::Slider::thumbColourId,Theme::white);
             s->setColour(juce::Slider::textBoxTextColourId,Theme::white);
             s->setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
@@ -369,16 +378,17 @@ public:
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
-        const std::array<const juce::Component*,14> all{{&themeButton,&preset,&match,
-            &viewSwitch,&powerButton,&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings,&record}};
+        const std::array<const juce::Component*,13> all{{&themeButton,&preset,&match,
+            &viewSwitch,&powerButton,&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
         }
-        if(record.getBounds().intersects(output.getBounds()) ||
-           record.getBounds().intersects(mix.getBounds()) ||
-           record.getBounds().getRight()>=773)
-            issues.add("Recorder button overlaps the bottom output label or master slider");
+        if(record.isVisible() || micButton.isVisible())
+            issues.add("Removed REC WAV and legacy MIC header buttons still visible");
+        if(input.getBounds().intersects(mix.getBounds()) ||
+           mix.getBounds().intersects(output.getBounds()))
+            issues.add("Footer master knobs overlap");
         if(!input.textFromValueFunction || input.textFromValueFunction(0.)!="0 dB"
            || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
            || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
@@ -396,10 +406,9 @@ public:
         if(rackOnRight!=(chain.getX()>slot.getX()))
             issues.add("Rack dock state disagrees with displayed position");
         const int currentMode=(int)processor.state.getRawParameterValue("mode")->load();
-        if(currentMode==1 || (currentMode==3 && previousMode==1))
-            for(const auto& control:macro)
-                if(control.getBounds().intersects(chain.getBounds()))
-                    issues.add("Rack hides an Advanced-mode macro");
+        for(const auto& control:macro)
+            if(control.isVisible())
+                issues.add("Legacy macro is visible despite clean UI");
         const int current=(int)processor.state.getRawParameterValue("mode")->load();
         const bool advanced=current==1 || (current==3 && previousMode==1);
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
@@ -407,16 +416,9 @@ public:
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
         if(powerButton.isBypassed()!=(current==3))
             issues.add("Power indicator disagrees with host bypass state");
-        if(!advanced){
-            for(int i=0;i<4;++i) {
-                const auto face=juce::Rectangle<int>(78+i*254,339,220,214);
-                if(!face.contains(macro[(size_t)i].getBounds()))
-                    issues.add("Simple macro dial escapes its card");
-                for(int j=i+1;j<4;++j)
-                    if(macro[(size_t)i].getBounds().intersects(macro[(size_t)j].getBounds()))
-                        issues.add("Simple macro dials overlap");
-            }
-        }
+        if(!advanced && (input.getWidth()<48 || mix.getWidth()<48 ||
+                         output.getWidth()<48))
+            issues.add("Master knobs must remain usable in Simple mode");
         if(!slot.moduleSelectorMatchesAudio())
             issues.add("Module dropdown differs from the actual selected DSP type");
         return issues;
@@ -456,16 +458,14 @@ public:
         powerButton.onClick();
         if(bypassShade.isVisible() || powerButton.isBypassed())
             issues.add("Power button did not restore the processing ON state");
-        // The Simple macro dials must be real automatable controls, not
-        // decorative painted knobs. Verify 0-100 labels and both view modes.
+        // The four legacy macro APVTS IDs must remain reachable by
+        // existing hosts, but no macro widget should appear in either view.
         configureForScreenshot(0,0,false);
         for(int i=0;i<4;++i) {
-            if(macro[(size_t)i].getSliderStyle()!=
-               juce::Slider::RotaryHorizontalVerticalDrag)
-                issues.add("Simple macro is not a functional rotary");
-            if(!macro[(size_t)i].textFromValueFunction ||
-               macro[(size_t)i].getTextFromValue(.371)!="37%")
-                issues.add("Simple macro does not show whole-number 0-100");
+            if(macro[(size_t)i].isVisible())
+                issues.add("Legacy macro is still visible in Simple");
+            if(!processor.state.getParameter("macro"+juce::String(i+1)))
+                issues.add("Legacy macro automation ID was removed");
         }
         powerButton.onClick();
         if(!powerButton.isBypassed() || chain.isVisible())
@@ -478,8 +478,8 @@ public:
         powerButton.onClick();
         configureForScreenshot(0,1,false);
         for(const auto& control:macro)
-            if(control.getSliderStyle()!=juce::Slider::LinearHorizontal)
-                issues.add("Advanced macro strip was unexpectedly replaced");
+            if(control.isVisible())
+                issues.add("Legacy macro appears in advanced mode");
         const int beforeTheme=selectedTheme;
         themeButton.onClick();
         if(selectedTheme!=(beforeTheme+1)%3)
@@ -495,8 +495,8 @@ public:
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         chain.setScreenshotScrollOffset(2);
         if(!chain.canScrollForTest() || chain.scrollPositionForTest()!=2 ||
-           !chain.testMouseWheelScroll())
-            issues.add("Default rack wheel-down/wheel-up scrolling failed");
+           !chain.testMouseWheelReorder())
+            issues.add("Rack wheel must reorder effects up/down and restore order");
         chain.setScreenshotScrollOffset(0);
         if(!chain.testRackControlsAndWet())
             issues.add("Rack wet trim and green bypass dot did not update or restore host parameters");
@@ -643,8 +643,8 @@ public:
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);
         refresh();
-        if(chain.isVisible() || macro[0].getWidth()<=0)
-            issues.add("322 integration broke the original Simple macro mixer");
+        if(chain.isVisible() || macro[0].isVisible())
+            issues.add("Simple overview must hide rack and legacy macro controls");
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         slot.select(0);
         chain.setSelectedSlot(0);
@@ -688,7 +688,7 @@ public:
         wordmark.draw(g,juce::Rectangle<float>(75.f,18.f,271.f,38.f));
         // The new tagline lives directly under SKELLPRESET, rather than
         // fighting the old waveform strip for the same 14 px.
-        Theme::text(g,"ONE RACK. EVERY PRESET.",{76,54,222,15},
+        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{76,54,226,15},
                     10.3f,Theme::muted,true);
         const float inputLevel=juce::jlimit(0.f,1.f,processor.getInputPeak());
         const bool recording=processor.isCapturing();
@@ -703,106 +703,49 @@ public:
         Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
                     {695,12,91,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
-        g.setColour(Theme::panel);g.fillRect(0,640,Theme::width,48);
-        Theme::text(g,"INPUT",{22,652,68,23},12,Theme::muted);
-        Theme::text(g,"MIX",{398,652,68,23},12,Theme::muted);
-        Theme::text(g,"OUTPUT",{773,652,75,23},12,Theme::muted);
+        g.setColour(Theme::panel);g.fillRect(0,635,Theme::width,53);
+        Theme::text(g,"IN",{26,646,42,18},11,Theme::muted,true);
+        Theme::text(g,"OUT",{214,646,48,18},11,Theme::muted,true);
         for(int ix=0;ix<12;ix++){
             g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getInputPeak())?Theme::green:Theme::stroke);
-            g.fillRect(310+ix*6,657,4,10);
+            g.fillRect(68+ix*10,651,7,11);
             g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getOutputPeak())?Theme::green:Theme::stroke);
-            g.fillRect(1023+ix*6,657,4,10);
+            g.fillRect(263+ix*10,651,7,11);
         }
+        Theme::text(g,"INPUT",{840,635,69,13},9.5f,Theme::muted,true,
+                    juce::Justification::centred);
+        Theme::text(g,"MIX",{945,635,69,13},9.5f,Theme::muted,true,
+                    juce::Justification::centred);
+        Theme::text(g,"OUTPUT",{1050,635,69,13},9.5f,Theme::muted,true,
+                    juce::Justification::centred);
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
             Theme::panelBox(g,{14.f,90.f,1140.f,507.f},11.f);
-            Theme::text(g,"SIMPLE  /  MACRO MIXER",{52,115,520,25},14,Theme::green,true);
-            Theme::text(g,processor.presetName(),{74,164,988,69},47,Theme::white,true);
-            Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,248,900,24},14,Theme::muted,true);
-            Theme::text(g,"Four macros, one full effect rack. Open Advanced to edit every module.",{79,278,960,24},13,Theme::muted);
-            // Expanded live scope in the Simple view: this is actual
-            // post-effects output, not a random waveform drawn for decoration.
-            Theme::text(g,"LIVE AUDIO",{79,306,110,20},11,
-                processor.isCapturing()?Theme::red:Theme::green,true);
-            g.setColour(Theme::stroke.withAlpha(.48f));
-            g.drawHorizontalLine(317,202.f,1077.f);
+            Theme::text(g,"SOUND OVERVIEW",{52,113,520,25},14,Theme::green,true);
+            Theme::text(g,processor.presetName(),{75,160,980,70},46,
+                        Theme::white,true);
+            const bool empty=processor.presetName().equalsIgnoreCase("Empty Rack");
+            Theme::text(g,empty
+                ? "CLEAN SIGNAL · NO EFFECTS INSERTED · ZERO ADDED PROCESSING LATENCY"
+                : "YOUR CHAIN IS READY · SWITCH TO ADVANCED TO EDIT ITS ORDER",
+                {78,260,994,27},13,Theme::muted,true);
+            Theme::text(g,"LIVE SIGNAL",{77,327,160,20},11,Theme::green,true);
+            g.setColour(Theme::stroke.withAlpha(.60f));
+            g.drawHorizontalLine(416,85.f,1080.f);
             std::array<float,128> waveform{};
             processor.getLiveWaveform(waveform);
-            juce::Path simpleScope;
-            for(std::size_t n=0;n<waveform.size();++n) {
-                const float x=205.f+(float)n*867.f/(waveform.size()-1);
-                const float y=317.f-juce::jlimit(-1.f,1.f,waveform[n])*10.f;
-                if(n==0)simpleScope.startNewSubPath(x,y);
-                else simpleScope.lineTo(x,y);
+            juce::Path scope;
+            for(std::size_t i=0;i<waveform.size();++i) {
+                const float x=85.f+(float)i*995.f/(float)(waveform.size()-1);
+                const float y=416.f-juce::jlimit(-1.f,1.f,waveform[i])*42.f;
+                if(i==0)scope.startNewSubPath(x,y);
+                else scope.lineTo(x,y);
             }
-            g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.9f));
-            g.strokePath(simpleScope,juce::PathStrokeType(1.7f));
-            const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
-            const juce::StringArray hints{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
-            for(int k=0;k<4;k++){
-                const float x=78.f+254.f*k;
-                const auto raw=processor.state.getRawParameterValue(
-                    "macro"+juce::String(k+1));
-                const float amount=juce::jlimit(0.f,1.f,raw?raw->load():.5f);
-                const auto face=juce::Rectangle<float>(x,339.f,220.f,214.f);
-                g.setGradientFill(juce::ColourGradient(
-                    Theme::panelAlt.brighter(.055f),face.getTopLeft(),
-                    Theme::panelAlt.darker(.12f),face.getBottomRight(),false));
-                g.fillRoundedRectangle(face,9.f);
-                g.setColour(Theme::stroke.withAlpha(.91f));
-                g.drawRoundedRectangle(face.reduced(.5f),9.f,1.f);
-                // One status tick and a hardware dial; all motion below is
-                // derived from the actual host-automated macro, not a mock meter.
-                g.setColour(Theme::green.withAlpha(.22f+.60f*amount));
-                g.fillRoundedRectangle(x+17.f,354.f,3.f,20.f,1.5f);
-                Theme::text(g,labels[k],{(int)x+28,349,177,27},
-                            16,Theme::white,true);
-                Theme::text(g,hints[k],{(int)x+20,377,180,18},
-                            10.5f,Theme::muted,true,
-                            juce::Justification::centred);
-                // Mini hardware scale stays subtle and never competes with
-                // the real rotary control drawn by SkellCore LookAndFeel.
-                constexpr float pi=juce::MathConstants<float>::pi;
-                const float centreX=x+109.f,centreY=454.f,rad=62.f;
-                for(int tick=0;tick<=10;++tick){
-                    const float a=(1.25f+1.5f*(float)tick/10.f)*pi;
-                    const float dx=std::sin(a),dy=-std::cos(a);
-                    const float tickInner=rad-1.5f,tickOuter=rad+2.5f;
-                    g.setColour(tick<=juce::roundToInt(amount*10.f)
-                        ?Theme::green.withAlpha(.20f+.37f*amount)
-                        :Theme::muted.withAlpha(.21f));
-                    g.drawLine(centreX+dx*tickInner,centreY+dy*tickInner,
-                               centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
-                }
-                if(macro[(size_t)k].showsValueForTest()) {
-                    Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
-                        {(int)x+55,510,110,29},21,Theme::green,true,
-                        juce::Justification::centred);
-                }
-                const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
-                g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
-                if(amount>.0001f){
-                    g.setColour(Theme::green.withAlpha(.53f));
-                    g.fillRoundedRectangle(meter.withWidth(182.f*amount),1.f);
-                }
-            }
-        } else {
-            const auto macroDeck=juce::Rectangle<float>(rackOnRight?14.f:247.f,588.f,906.f,46.f);
-            g.setColour(Theme::panel);g.fillRoundedRectangle(macroDeck,7.f);
-            g.setColour(Theme::stroke.withAlpha(.75f));g.drawRoundedRectangle(macroDeck,7.f,1.f);
-            const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
-            for(int k=0;k<4;k++){
-                const int x=(rackOnRight?30:265)+222*k;
-                Theme::text(g,labels[k],{x,590,105,17},12,Theme::muted,true);
-                const auto* value=processor.state.getRawParameterValue(
-                    "macro"+juce::String(k+1));
-                if(macro[(size_t)k].showsValueForTest())
-                    Theme::text(g,juce::String(juce::roundToInt(100.f*
-                        juce::jlimit(0.f,1.f,value?value->load():.5f))),
-                        {x+108,590,76,17},12,Theme::green,true,
-                        juce::Justification::centredRight);
-            }
+            g.setColour(Theme::green.withAlpha(.88f));
+            g.strokePath(scope,juce::PathStrokeType(1.7f));
+            Theme::text(g,"SELECT A PRESET ABOVE OR OPEN THE EFFECT RACK",
+                        {78,519,975,19},11,Theme::muted);
         }
     }
     void paintOverChildren(juce::Graphics& g) override {
@@ -821,34 +764,39 @@ public:
         themeButton.setBounds(15,12,53,56);
         chain.setBounds(rackOnRight?939:13,90,216,535);
         slot.setBounds(rackOnRight?14:247,90,906,496);
-        micPanel.setBounds(702,97,438,406); // compact 16% smaller, right anchored
+        // Smaller floating MIC widget; do not snap it back after a drag.
+        constexpr int micWidth=375,micHeight=326;
+        if(!micPanel.hasBeenMoved())
+            micPanel.setBounds(754,105,micWidth,micHeight);
+        else
+            micPanel.setBounds(
+                juce::jlimit(0,Theme::width-micWidth,micPanel.getX()),
+                juce::jlimit(0,Theme::height-micHeight,micPanel.getY()),
+                micWidth,micHeight);
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
-        viewSwitch.setBounds(796,27,218,37);
-        micButton.setBounds(1020,28,44,36);
+        viewSwitch.setBounds(796,27,264,37);
+        micButton.setBounds(0,0,44,36);
+        micButton.setVisible(false);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
         // Compact 36px controls on one baseline, visually grouped.
         powerButton.setBounds(1069,28,36,36);
         help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
-        for(int i=0;i<4;i++) {
-            auto& knob=macro[(size_t)i];
-            const auto desired=display==0?juce::Slider::RotaryHorizontalVerticalDrag:
-                                           juce::Slider::LinearHorizontal;
-            if(knob.getSliderStyle()!=desired)knob.setSliderStyle(desired);
-            if(display==0)
-                knob.setBounds(127+i*254,398,120,113);
-            else
-                knob.setBounds(rackOnRight?97+i*222:333+i*222,
-                               607,120,24);
+        for(auto& knob:macro) {
+            // Keep all four legacy automation attachments and DSP mapping,
+            // but remove Tone/Punch/Space/Grit from both visible views.
+            knob.setVisible(false);
+            knob.setBounds(0,0,1,1);
         }
-        input.setBounds(80,648,228,34);
-        mix.setBounds(433,648,185,34);
-        output.setBounds(845,648,172,34);
+        input.setBounds(842,646,65,37);
+        mix.setBounds(947,646,65,37);
+        output.setBounds(1052,646,65,37);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1110,28,36,36);
-        record.setBounds(634,648,115,30);
+        record.setBounds(0,0,1,1);
+        record.setVisible(false);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.setBounds(rackOnRight?76:445,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
@@ -912,8 +860,8 @@ public:
         if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
         const int inLevel=juce::jlimit(0,12,(int)(processor.getInputPeak()*12.f));
         const int outLevel=juce::jlimit(0,12,(int)(processor.getOutputPeak()*12.f));
-        if(inLevel!=lastInputMeter){lastInputMeter=inLevel;repaint(juce::Rectangle<int>(307,651,88,26));}
-        if(outLevel!=lastOutputMeter){lastOutputMeter=outLevel;repaint(juce::Rectangle<int>(1021,651,75,26));}
+        if(inLevel!=lastInputMeter){lastInputMeter=inLevel;repaint(juce::Rectangle<int>(68,649,125,20));}
+        if(outLevel!=lastOutputMeter){lastOutputMeter=outLevel;repaint(juce::Rectangle<int>(263,649,125,20));}
         const bool armed=processor.isCapturing();
         // Avoid invalidating the capture button 30 times per second when its
         // state has not changed; scope and meters still repaint as needed.
@@ -937,8 +885,9 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
+        const auto micTrigger=juce::Rectangle<int>(chain.getX()+158,chain.getY()+5,42,38);
         if(micPanel.isVisible() && !micPanel.getBounds().contains(point)
-           && !micButton.getBounds().contains(point))
+           && !micTrigger.contains(point))
             micPanel.setVisible(false);
         if(browser.isVisible() && !browser.getBounds().contains(point) && !preset.getBounds().contains(point)) {
             browser.setVisible(false);preset.repaint();

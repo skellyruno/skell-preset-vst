@@ -3,9 +3,10 @@
 #include "Theme.h"
 #include <cmath>
 
-// Skell Preset skull v3: original minimalist split-jaw bone mark.
-// No borrowed Skell Key silhouette, no hood, no rack rails, and no
-// painted face patch. Geometry stays crisp at the existing 56px button size.
+// Skell Preset skull v4: stronger cheekbones, defined nose and one
+// continuous jaw, inspired by the shared Skell bone silhouette. No key,
+// forehead fracture, decorative patch or second mouth. Vector is crisp
+// at the existing 56px button size without touching other plugin UIs.
 // Changing the symbol must never affect the theme-click accessibility.
 class SkullThemeButton final : public juce::Button {
 public:
@@ -30,14 +31,14 @@ public:
         // A heavier, slightly asymmetrical cranial outline — unmistakably
         // a skull even at small size, but not cartoon-like or hooded.
         juce::Path cranium;
-        cranium.startNewSubPath(28.f,7.7f);
-        cranium.cubicTo(12.f,7.7f,9.2f,15.f,10.3f,25.f);
-        cranium.cubicTo(10.6f,30.8f,13.7f,34.f,17.7f,37.5f);
-        cranium.lineTo(18.7f,41.5f);
-        cranium.lineTo(37.3f,41.5f);
-        cranium.lineTo(38.3f,37.5f);
-        cranium.cubicTo(43.1f,34.3f,45.3f,29.3f,45.f,24.f);
-        cranium.cubicTo(44.4f,13.1f,39.4f,7.7f,28.f,7.7f);
+        cranium.startNewSubPath(28.f,8.2f);
+        cranium.cubicTo(17.f,7.6f,10.7f,15.7f,11.f,25.2f);
+        cranium.cubicTo(11.3f,31.8f,13.1f,34.2f,18.2f,37.9f);
+        cranium.lineTo(19.4f,42.4f);
+        cranium.lineTo(36.6f,42.4f);
+        cranium.lineTo(37.9f,37.9f);
+        cranium.cubicTo(42.9f,34.2f,44.9f,30.8f,44.9f,24.9f);
+        cranium.cubicTo(45.f,14.5f,39.3f,8.1f,28.f,8.2f);
         cranium.closeSubPath();
         g.setGradientFill(juce::ColourGradient(
             bone.darker(.05f),16.f,10.f,shade.darker(.56f),40.f,42.f,false));
@@ -61,29 +62,49 @@ public:
         g.setColour(ink);
         g.fillPath(leftEye);g.fillPath(rightEye);
 
-        // A slender fracture through the crown is Skell Preset's distinct
-        // mark. Accent stays subtle except when the button is hovered.
-        g.setColour(accent.withAlpha(hovered?.95f:.57f));
-        g.drawLine(30.5f,9.5f,27.f,16.f,1.65f);
-        g.drawLine(27.f,16.f,30.3f,20.f,1.65f);
-        g.drawLine(30.3f,20.f,27.8f,24.1f,1.25f);
+        // Pronounced cheekbones form the organic bridge from the cranial
+        // sockets to a single jaw instead of a second stylised mouth.
+        g.setColour(shade.darker(.34f).withAlpha(.83f));
+        juce::Path leftCheek;
+        leftCheek.startNewSubPath(12.9f,32.f);
+        leftCheek.quadraticTo(17.3f,35.8f,24.f,36.5f);
+        leftCheek.lineTo(20.4f,40.3f);
+        leftCheek.quadraticTo(13.9f,38.9f,12.9f,32.f);
+        leftCheek.closeSubPath();
+        juce::Path rightCheek;
+        rightCheek.startNewSubPath(43.1f,32.f);
+        rightCheek.quadraticTo(38.7f,35.8f,32.f,36.5f);
+        rightCheek.lineTo(35.6f,40.3f);
+        rightCheek.quadraticTo(42.1f,38.9f,43.1f,32.f);
+        rightCheek.closeSubPath();
+        g.fillPath(leftCheek);g.fillPath(rightCheek);
         juce::Path nasal;
-        nasal.addTriangle(28.f,30.7f,24.8f,37.1f,31.1f,37.1f);
+        nasal.startNewSubPath(28.f,31.f);
+        nasal.lineTo(24.9f,36.6f);
+        nasal.quadraticTo(26.2f,38.1f,28.f,37.2f);
+        nasal.quadraticTo(29.8f,38.1f,31.1f,36.6f);
+        nasal.closeSubPath();
         g.setColour(ink);g.fillPath(nasal);
 
-        // Separately carved jaw with five clear teeth. An actual gap
-        // above the jaw prevents the old blocky/rounded mascot appearance.
-        g.setColour(ink);
-        g.fillRect(18,40,20,2);
-        g.setColour(bone.darker(.13f));
-        g.fillRoundedRectangle(19.f,42.5f,18.f,6.7f,1.35f);
-        g.setColour(ink.withAlpha(.96f));
-        for(int i=1;i<6;++i) {
-            const float x=19.f+3.f*i;
-            g.drawLine(x,43.1f,x,48.8f,.95f);
+        // One continuous lower jaw and six carved teeth; not a separate
+        // duplicate mouth. Theme tint sits on the cheek contours only.
+        g.setColour(bone.darker(.14f));
+        juce::Path jaw;
+        jaw.startNewSubPath(19.5f,40.5f);
+        jaw.lineTo(36.5f,40.5f);
+        jaw.lineTo(36.f,47.4f);
+        jaw.quadraticTo(28.f,52.5f,20.f,47.4f);
+        jaw.closeSubPath();
+        g.fillPath(jaw);
+        g.setColour(ink.withAlpha(.95f));
+        g.drawLine(20.f,42.2f,36.f,42.2f,1.f);
+        for(int i=1;i<=5;++i) {
+            const float x=20.f+16.f*(float)i/6.f;
+            g.drawLine(x,42.4f,x,49.f-1.4f*std::abs(x-28.f)/8.f,.9f);
         }
-        g.setColour(bone.withAlpha(.7f));
-        g.drawLine(19.2f,43.f,36.8f,43.f,.8f);
+        g.setColour(accent.withAlpha(hovered?.65f:.16f));
+        g.drawLine(13.f,33.f,18.f,37.4f,1.f);
+        g.drawLine(43.f,33.f,38.f,37.4f,1.f);
 
         if(pressed) {
             g.setColour(ink.withAlpha(.22f));

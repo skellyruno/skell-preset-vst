@@ -54,10 +54,13 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawGlobal.threshold=state.getRawParameterValue("gateThreshold");
     rawGlobal.delta=state.getRawParameterValue("delta");
     for(int k=0;k<4;k++)rawGlobal.macros[(size_t)k]=state.getRawParameterValue("macro"+juce::String(k+1));
-    // Factory initialization is separate from state restoration; no DSP is allocated here.
-    // New instances show the sole visible factory sound. Restored DAW
-    // projects retain all previous program IDs and their saved state.
-    loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    // New instances start with a clean, latency-free rack. APVTS slot type
+    // and bypass defaults are already Empty/OFF (all 16 slots); do not
+    // call a factory preset here or modify its legacy program index.
+    // setStateInformation() restores existing FL Studio projects unchanged.
+    selectedProgram=-1;
+    name="Empty Rack";
+    state.state.setProperty("presetName",name,nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::createParameterLayout() {

@@ -56,6 +56,17 @@ public:
 
     std::function<void(int)> onSelect;
     std::function<void()> onDismiss;
+    // The double-click effect library floats within the editor. Reopening
+    // preserves its last dragged position; editor resize clamps it onscreen.
+    bool wasMoved() const noexcept {return movedByUser;}
+    void positionWithin(juce::Rectangle<int> initial) {
+        if(!movedByUser) {setBounds(initial);return;}
+        if(auto* parent=getParentComponent()) {
+            const int x=juce::jlimit(0,juce::jmax(0,parent->getWidth()-initial.getWidth()),getX());
+            const int y=juce::jlimit(0,juce::jmax(0,parent->getHeight()-initial.getHeight()),getY());
+            setBounds(x,y,initial.getWidth(),initial.getHeight());
+        }
+    }
 
     void applyTheme() {
         Theme::selectFor(processor.state);
@@ -108,6 +119,8 @@ public:
         g.setColour(Theme::green);
         g.fillRoundedRectangle(juce::Rectangle<float>(18.f,14.f,3.f,22.f),1.f);
         Theme::text(g,"EFFECT LIBRARY",{31,9,255,30},17,Theme::white,true);
+        Theme::text(g,"DRAG TO MOVE",{278,15,getWidth()-325,16},9,Theme::muted,
+                    false,juce::Justification::centredRight);
         Theme::text(g,"X",{getWidth()-34,9,23,26},15,Theme::muted,true,
                     juce::Justification::centred);
         Theme::text(g,"SEARCH / CLICK TO LOAD / SCROLL FOR MORE",
@@ -160,6 +173,13 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e) override {
         if(e.y<42 && e.x>=getWidth()-43){hide();return;}
+        if(e.y>=0 && e.y<42 && e.x>=0 && e.x<getWidth()-45) {
+            dragHeader=true;
+            dragOrigin=getPosition();
+            toFront(true);
+            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+            return;
+        }
         constexpr int rowY=108,rowHeight=37,visible=7;
         if(e.y<rowY||e.y>=rowY+visible*rowHeight)return;
         const int i=topItem+(e.y-rowY)/rowHeight;
@@ -168,7 +188,29 @@ public:
             choose(results[(size_t)i]);
         }
     }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if(!dragHeader)return;
+        if(auto* parent=getParentComponent()) {
+            const int x=juce::jlimit(0,juce::jmax(0,parent->getWidth()-getWidth()),
+                                    dragOrigin.x+e.getDistanceFromDragStartX());
+            const int y=juce::jlimit(0,juce::jmax(0,parent->getHeight()-getHeight()),
+                                    dragOrigin.y+e.getDistanceFromDragStartY());
+            if(x!=getX() || y!=getY()) {
+                movedByUser=true;
+                setTopLeftPosition(x,y);
+            }
+        }
+    }
+    void mouseUp(const juce::MouseEvent&) override {
+        if(dragHeader) {
+            dragHeader=false;
+            setMouseCursor(juce::MouseCursor::NormalCursor);
+        }
+    }
     void mouseMove(const juce::MouseEvent& e) override {
+        if(e.y>=0 && e.y<42 && e.x<getWidth()-45)
+            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+        else setMouseCursor(juce::MouseCursor::NormalCursor);
         constexpr int rowY=108,rowHeight=37,visible=7;
         if(e.y>=rowY&&e.y<rowY+visible*rowHeight){
             const int i=topItem+(e.y-rowY)/rowHeight;
@@ -262,4 +304,6 @@ private:
     SearchBox search;
     std::vector<int> results;
     int currentType=0,selectedRow=0,topItem=0;
+    bool movedByUser=false,dragHeader=false;
+    juce::Point<int> dragOrigin{};
 };

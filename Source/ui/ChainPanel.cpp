@@ -202,17 +202,23 @@ void ChainPanel::paint(juce::Graphics& g) {
     }
     clampScroll();
     const int active=processor.activeSlotCount();
-    int used=0;
-    for(int row=0;row<active;row++) {
-        const int physical=processor.slotIdAt(row);
-        if(processor.slotType(physical)!=SkellPresetAudioProcessor::Empty)++used;
-    }
-    Theme::text(g,"EFFECT RACK",{15,8,148,22},15,Theme::white,true);
+    Theme::text(g,"EFFECT RACK",{15,8,142,22},15,Theme::white,true);
     Theme::text(g,dockingDrag?"RELEASE TO DOCK":
         (dockedRight?"DRAG LEFT TO DOCK":"DRAG RIGHT TO DOCK"),
         {15,28,130,14},9,dockingDrag?Theme::green:Theme::muted);
-    Theme::text(g,juce::String(used)+" FX",{142,13,50,19},10,Theme::muted,true,juce::Justification::centredRight);
-    Theme::text(g,juce::String(active)+"/16",{145,29,49,14},9,Theme::green,true,juce::Justification::centredRight);
+    // Dedicated MIC widget trigger replaces redundant FX and 10/16 badges.
+    // Entire 36x35 area is clickable, not just the 1px microphone path.
+    const auto micRegion=juce::Rectangle<float>(158.f,6.f,42.f,35.f);
+    g.setColour(Theme::panelAlt);g.fillRoundedRectangle(micRegion,6.f);
+    g.setColour(Theme::stroke);g.drawRoundedRectangle(micRegion,6.f,1.f);
+    g.setColour(Theme::green);
+    g.drawRoundedRectangle(175.f,12.f,9.f,14.f,4.5f,1.8f);
+    juce::Path microphone;
+    microphone.startNewSubPath(171.f,21.f);
+    microphone.cubicTo(171.f,32.f,188.f,32.f,188.f,21.f);
+    g.strokePath(microphone,juce::PathStrokeType(1.7f));
+    g.drawLine(179.5f,29.f,179.5f,33.f,1.6f);
+    g.drawLine(175.f,33.f,184.f,33.f,1.6f);
     for(int visual=0;visual<visibleRows && scrollOffset+visual<active;++visual) {
         const int row=scrollOffset+visual;
         const int slot=processor.slotIdAt(row),top=rowStart+rowStep*visual;
@@ -323,7 +329,7 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,active>visibleRows?"WHEEL TO SCROLL / DRAG WET / DBL-CLICK TO SWAP":"DBL-CLICK FX / WET RING / POWER DOT",
+    Theme::text(g,"WHEEL ON FX TO MOVE / DRAG TO REORDER",
         {13,511,193,18},8.5f,Theme::muted,false,juce::Justification::centred);
 }
 void ChainPanel::refreshIfChanged() {
@@ -348,19 +354,47 @@ void ChainPanel::refreshIfChanged() {
     if(changed)repaint();
 }
 void ChainPanel::popupFor(int physicalSlot) {
+    // The old 34-item popup was unsearchable, included an obsolete MicModel
+    // rack insert, and could send users to the wrong UI. Right-click is now
+    // a compact, deterministic action menu. The searchable library is the
+    // same movable overlay opened by a double-click.
+    if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount)return;
+    int position=-1;
+    for(int i=0;i<processor.activeSlotCount();++i)
+        if(processor.slotIdAt(i)==physicalSlot){position=i;break;}
+    if(position<0)return;
+    const auto prefix="s"+juce::String(physicalSlot+1)+"_";
+    const auto* on=processor.state.getRawParameterValue(prefix+"on");
+    const bool powered=on && on->load()>.5f;
     juce::PopupMenu menu;
-    menu.addSectionHeader("REPLACE MODULE");
-    for(int i=0;i<SkellPresetAudioProcessor::NumberOfModules;i++)menu.addItem(i+1,processor.moduleName(i));
-    menu.addSeparator();menu.addItem(101,"Clear slot");menu.addItem(102,"Toggle bypass");
+    menu.addSectionHeader(processor.moduleName(processor.slotType(physicalSlot)));
+    menu.addItem(201,"Edit effect",true);
+    menu.addItem(202,"Choose / replace effect...",true);
+    menu.addSeparator();
+    menu.addItem(203,"Move effect up",position>0);
+    menu.addItem(204,"Move effect down",position+1<processor.activeSlotCount());
+    menu.addSeparator();
+    menu.addItem(205,powered?"Bypass effect":"Enable effect",
+                 processor.slotType(physicalSlot)!=SkellPresetAudioProcessor::Empty);
+    menu.addItem(206,"Clear effect",processor.slotType(physicalSlot)!=SkellPresetAudioProcessor::Empty);
     juce::Component::SafePointer<ChainPanel> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe,physicalSlot](int id){
-        if(!safe)return;
-        if(id>=1&&id<=SkellPresetAudioProcessor::NumberOfModules){safe->processor.setSlotType(physicalSlot,id-1);safe->processor.setSlotOn(physicalSlot,id!=1);}
-        if(id==101){safe->processor.setSlotType(physicalSlot,0);safe->processor.setSlotOn(physicalSlot,false);}
-        if(id==102){auto v=safe->processor.state.getRawParameterValue("s"+juce::String(physicalSlot+1)+"_on");safe->processor.setSlotOn(physicalSlot,!(v&&v->load()>.5f));}
-        if(safe->onSelection && id!=0)safe->onSelection(physicalSlot);
-        safe->repaint();
-    });
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+        [safe,physicalSlot,position](int id) {
+            if(safe==nullptr || id==0)return;
+            if(id==203 && position>0)safe->processor.reorderSlot(position,position-1);
+            if(id==204 && position+1<safe->processor.activeSlotCount())
+                safe->processor.reorderSlot(position,position+1);
+            if(id==205)safe->toggleSlotPower(physicalSlot);
+            if(id==206) {
+                safe->processor.setSlotType(physicalSlot,SkellPresetAudioProcessor::Empty);
+                safe->processor.setSlotOn(physicalSlot,false);
+            }
+            safe->selected=physicalSlot;
+            if(safe->onSelection)safe->onSelection(physicalSlot);
+            if(id==202 && safe->onReplaceRequest)safe->onReplaceRequest(physicalSlot);
+            safe->visualSnapshotValid=false;
+            safe->repaint();
+        });
 }
 void ChainPanel::addModule() {
     // A new slot is real: a preallocated DSP engine plus stable s11..s16
@@ -374,6 +408,10 @@ void ChainPanel::addModule() {
     repaint();
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
+    if(e.x>=158 && e.x<=200 && e.y>=5 && e.y<43) {
+        if(!e.mods.isPopupMenu() && onMicRequest)onMicRequest();
+        return;
+    }
     if(!e.mods.isPopupMenu() && e.x>=8 && e.x<=142 && e.y>=5 && e.y<43) {
         dockingDrag=true;
         dockCandidateRight=dockedRight;
@@ -479,7 +517,10 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         hoveredRow=next;hoveredWetSlot=nextWet;repaint();
     }
     const bool add=(e.y>=addTop && e.y<addTop+addHeight && e.x>=10 && e.x<=206);
-    if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=142)
+    if(e.y>=5 && e.y<43 && e.x>=158 && e.x<=200) {
+        setTooltip("Open movable microphone modeling widget");
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    } else if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=142)
         setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     else if(next>=0 && e.x>=wetControlLeft && e.x<wetControlRight) {
         const int physical=processor.slotIdAt(next);
@@ -514,18 +555,41 @@ void ChainPanel::applyWheelDelta(float deltaY) {
     if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
         visualSnapshotValid=false;repaint();}
 }
-void ChainPanel::mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails& wheel) {
+bool ChainPanel::moveSlotByWheel(int row,float deltaY) {
+    if(deltaY==0.f || row<0 || row>=processor.activeSlotCount())return false;
+    const int next=row+(deltaY<0.f?1:-1);
+    if(next<0 || next>=processor.activeSlotCount())return false;
+    const int slot=processor.slotIdAt(row);
+    processor.reorderSlot(row,next); // preserve the physical slot and automation
+    selected=slot;
+    if(onSelection)onSelection(slot);
+    if(next<scrollOffset)scrollOffset=next;
+    else if(next>=scrollOffset+visibleRows)scrollOffset=next-visibleRows+1;
+    visualSnapshotValid=false;
+    repaint();
+    return true;
+}
+void ChainPanel::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel) {
+    // Wheel over a *module face* changes processing order. Rail/background
+    // scrolling continues to navigate all 16 slots without changing the chain.
+    const int row=(e.x>=10 && e.x<=powerControlRight)?rowAt(e.y):-1;
+    if(row>=0) {
+        moveSlotByWheel(row,wheel.deltaY);
+        return;
+    }
     applyWheelDelta(wheel.deltaY);
 }
-bool ChainPanel::testMouseWheelScroll() {
-    const int prior=scrollOffset;
-    if(processor.activeSlotCount()<=visibleRows)return false;
+bool ChainPanel::testMouseWheelReorder() {
+    if(processor.activeSlotCount()<2)return false;
+    const int oldOffset=scrollOffset;
+    const int first=processor.slotIdAt(0),second=processor.slotIdAt(1);
     scrollOffset=0;
-    applyWheelDelta(-1.f);
-    const bool down=scrollOffset==1;
-    applyWheelDelta(1.f);
-    const bool up=scrollOffset==0;
-    scrollOffset=prior;
+    const bool down=moveSlotByWheel(0,-1.f);
+    const bool moved=processor.slotIdAt(1)==first && processor.slotIdAt(0)==second;
+    const bool up=moveSlotByWheel(1,1.f);
+    const bool restored=processor.slotIdAt(0)==first && processor.slotIdAt(1)==second;
+    scrollOffset=oldOffset;
+    visualSnapshotValid=false;
     repaint();
-    return down&&up;
+    return down && up && moved && restored;
 }

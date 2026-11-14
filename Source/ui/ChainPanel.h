@@ -21,7 +21,7 @@ public:
         scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),offset);
         visualSnapshotValid=false;repaint();
     }
-    bool testMouseWheelScroll();
+    bool testMouseWheelReorder();
     bool canScrollForTest() const noexcept {
         return processor.activeSlotCount()>visibleRows;
     }
@@ -29,6 +29,8 @@ public:
     std::function<void(int)> onSelection;
     // Double-clicking an effect opens the searchable replacement overlay.
     std::function<void(int)> onReplaceRequest;
+    std::function<void()> onMicRequest;
+    bool triggerMicForTest() {if(!onMicRequest)return false;onMicRequest();return true;}
     // Shared hit-test geometry for UI and regression tests.
     static constexpr int wetControlLeft=149,wetControlRight=181;
     static constexpr int powerControlLeft=182,powerControlRight=206;
@@ -54,6 +56,7 @@ private:
     int rowAt(int y) const;
     void clampScroll();
     void applyWheelDelta(float deltaY);
+    bool moveSlotByWheel(int row,float deltaY);
     void addModule();
     void popupFor(int physicalSlot);
     float slotWet(int physicalSlot) const noexcept;

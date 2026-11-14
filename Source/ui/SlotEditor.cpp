@@ -723,7 +723,7 @@ void SlotEditor::refreshIfChanged() {
 void SlotEditor::resized() {
     // The rack row now owns wet, bypass and module replacement.
     moduleBox.setBounds(489,25,211,29);
-    modulePicker.setBounds(405,66,470,400);
+    modulePicker.positionWithin({405,66,470,400});
     eqQSlider.setBounds(672,114,186,26);
     eqCutSliders[0].setBounds(68,125,270,23);
     eqCutSliders[1].setBounds(425,125,215,23);

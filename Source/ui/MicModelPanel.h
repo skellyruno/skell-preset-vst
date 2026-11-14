@@ -68,6 +68,36 @@ public:
         setVisible(false);
     }
     std::function<void()> onClose;
+    bool hasBeenMoved() const noexcept {return movedByUser;}
+    void mouseDown(const juce::MouseEvent& e) override {
+        if(e.y>=0 && e.y<45 && e.x<getWidth()-112) {
+            dragHeader=true;
+            dragOrigin=getPosition();
+            toFront(true);
+            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+        }
+    }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if(!dragHeader)return;
+        if(auto* parent=getParentComponent()) {
+            const int x=juce::jlimit(0,juce::jmax(0,parent->getWidth()-getWidth()),
+                                    dragOrigin.x+e.getDistanceFromDragStartX());
+            const int y=juce::jlimit(0,juce::jmax(0,parent->getHeight()-getHeight()),
+                                    dragOrigin.y+e.getDistanceFromDragStartY());
+            if(x!=getX() || y!=getY()) {
+                movedByUser=true;
+                setTopLeftPosition(x,y);
+            }
+        }
+    }
+    void mouseUp(const juce::MouseEvent&) override {
+        dragHeader=false;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
+    }
+    void mouseMove(const juce::MouseEvent& e) override {
+        setMouseCursor(e.y<45 && e.x<getWidth()-112?
+            juce::MouseCursor::DraggingHandCursor:juce::MouseCursor::NormalCursor);
+    }
     bool on() const {
         const auto* p=processor.state.getRawParameterValue("micPreOn");
         return p!=nullptr && p->load()>.5f;
@@ -119,35 +149,37 @@ public:
     }
     void resized() override {
         const int w=getWidth();
-        close.setBounds(w-37,10,26,26);
-        enabled.setBounds(w-103,12,55,25);
-        input.setBounds(20,82,w-40,34);
-        const int cardWidth=(w-58)/2;
+        close.setBounds(w-35,9,25,25);
+        enabled.setBounds(w-102,9,57,25);
+        input.setBounds(16,68,w-32,29);
+        const int cardWidth=(w-46)/2;
         for(int i=0;i<4;++i)
-            simulations[(size_t)i].setBounds(20+(i%2)*(w/2-12),
-                                              156+(i/2)*55,cardWidth,49);
-        amount.setBounds(94,288,w-116,28);
-        trim.setBounds(94,327,w-116,28);
+            simulations[(size_t)i].setBounds(16+(i%2)*(cardWidth+14),
+                                              128+(i/2)*45,cardWidth,38);
+        amount.setBounds(85,239,w-101,25);
+        trim.setBounds(85,279,w-101,25);
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
         Theme::panelBox(g,getLocalBounds().toFloat(),10.f);
         g.setColour(Theme::green.withAlpha(.62f));
-        g.fillRoundedRectangle({18.f,16.f,3.f,18.f},1.f);
-        Theme::text(g,"MIC MODELING",{30,11,getWidth()-155,29},18,Theme::white,true);
-        Theme::text(g,"INPUT MIC",{20,59,200,18},11,Theme::muted,true);
-        Theme::text(g,"SIMULATE",{20,127,200,18},11,Theme::muted,true);
-        Theme::text(g,"AMOUNT",{20,288,74,24},11,Theme::white,true);
-        Theme::text(g,"TRIM",{20,327,74,24},11,Theme::white,true);
+        g.fillRoundedRectangle({13.f,13.f,3.f,17.f},1.f);
+        Theme::text(g,"MIC MODEL",{25,9,getWidth()-143,27},16,Theme::white,true);
+        Theme::text(g,"DRAG HEADER TO MOVE",{17,37,getWidth()-34,15},9,Theme::muted);
+        Theme::text(g,"INPUT MIC",{16,51,170,17},10,Theme::muted,true);
+        Theme::text(g,"SIMULATE",{16,109,170,17},10,Theme::muted,true);
+        Theme::text(g,"AMOUNT",{16,239,62,23},10,Theme::white,true);
+        Theme::text(g,"TRIM",{16,279,62,23},10,Theme::white,true);
         g.setColour(Theme::stroke.withAlpha(.8f));
-        g.drawLine(20.f,276.f,(float)getWidth()-20.f,276.f,1.f);
-        Theme::text(g,"GENERIC TONAL PROFILES · NOT MEASURED BRAND MICROPHONES",
-            {20,376,getWidth()-40,16},9,Theme::muted,false,
+        g.drawLine(16.f,229.f,(float)getWidth()-16.f,229.f,1.f);
+        Theme::text(g,"GENERIC TONAL COLOR · NO BRAND IMPULSES",
+            {16,307,getWidth()-32,13},8.5f,Theme::muted,false,
              juce::Justification::centred);
-        // Capsule-microphone silhouettes on four compact cards, vector only.
+        // Compact vector capsules remain subordinate to the real controls.
         for(int i=0;i<4;++i) {
-            const float x=35.f+(float)(i%2)*(getWidth()/2.f-12.f);
-            const float y=174.f+(float)(i/2)*55.f;
+            const int cardWidth=(getWidth()-46)/2;
+            const float x=26.f+(float)(i%2)*(cardWidth+14);
+            const float y=145.f+(float)(i/2)*45.f;
             const auto* p=processor.state.getRawParameterValue("micPreTarget");
             const bool selected=p && (int)p->load()==i;
             g.setColour(selected?Theme::green.withAlpha(.78f):Theme::muted);
@@ -190,4 +222,6 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountLink,trimLink;
     int lastInput=-1,lastTarget=-1;
     bool lastEnabled=false;
+    bool movedByUser=false,dragHeader=false;
+    juce::Point<int> dragOrigin{};
 };
