@@ -401,6 +401,8 @@ public:
         if(browser.visibleFactoryPresetsForTest()!=1 ||
            !browser.canSetCoverForTest())
             issues.add("Browser must show only Alchemist and allow changing its cover");
+        if(!browser.testFavoritesFilterForTest())
+            issues.add("Favorites category must filter stars without rewriting preset data");
         preset.onClick();
         if(browser.isVisible())issues.add("Preset selector did not close browser");
         viewSwitch.onClick();
