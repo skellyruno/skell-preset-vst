@@ -1100,6 +1100,8 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         packedOrder.store(identityOrder,std::memory_order_release);
     }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
+    setReal("micPreOn",0);setReal("micPreInput",0);
+    setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",preset.bank,nullptr);
@@ -1112,6 +1114,11 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
     doc.bank=state.state.getProperty("presetBank","My Presets").toString();
     doc.mode=juce::jlimit(0,3,(int)value("mode"));
     doc.inputDb=value("input");doc.mix=value("mix");doc.outputDb=value("output");
+    doc.micPreOn=value("micPreOn")>.5f;
+    doc.micPreInput=juce::jlimit(0,3,(int)value("micPreInput"));
+    doc.micPreTarget=juce::jlimit(0,3,(int)value("micPreTarget"));
+    doc.micPreAmount=juce::jlimit(0.f,1.f,value("micPreAmount"));
+    doc.micPreTrim=juce::jlimit(0.f,1.f,value("micPreTrim"));
     for(int i=0;i<8;++i)doc.macros[(size_t)i]=value("macro"+juce::String(i+1));
     for(int position=0;position<slotCount;++position){
         auto& dst=doc.slots[(size_t)position];
@@ -1154,6 +1161,11 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     state.state.setProperty("rackSlots",doc.activeSlotCount,nullptr);
     setReal("input",doc.inputDb);setReal("mix",doc.mix);setReal("output",doc.outputDb);
     setReal("mode",(float)doc.mode);
+    setReal("micPreOn",doc.micPreOn?1.f:0.f);
+    setReal("micPreInput",(float)doc.micPreInput);
+    setReal("micPreTarget",(float)doc.micPreTarget);
+    setReal("micPreAmount",doc.micPreAmount);
+    setReal("micPreTrim",doc.micPreTrim);
     for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
     name=doc.name;
     selectedProgram=-1; // Imported sound is not a factory preset.
