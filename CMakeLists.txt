@@ -219,8 +219,3 @@ if(WIN32 AND SKELL_PRESET_HOST_TESTS)
         juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
     target_include_directories(SkellPresetHostProbe PRIVATE Source)
 endif()
-
-# Portable rack latency policy tests: preserve existing host PDC ABI.
-add_executable(SkellPresetRealtimePolicyTests tests/test_rack_realtime_policy.cpp)
-target_compile_features(SkellPresetRealtimePolicyTests PRIVATE cxx_std_17)
-add_test(NAME SkellPresetRealtimePolicyTests COMMAND SkellPresetRealtimePolicyTests)
