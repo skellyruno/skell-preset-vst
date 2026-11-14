@@ -249,6 +249,11 @@ void SlotEditor::applyKnobReadouts() {
                 }
                 return juce::String((v-.5)*30.,1)+"dB";
             }
+            if(module==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+                if(i==0)return juce::String((v-.5)*6.,2)+"% cubic";
+                if(i==1)return juce::String(juce::roundToInt(v*100.))+"%";
+                return juce::String((v-.5)*.7,3)+" x";
+            }
             if(module==SkellPresetAudioProcessor::StudioPitchFormantFX) {
                 if(i==0)return juce::String((v-.5)*2.*
                     (3.+9.*processor.getSlotParam(slot,2)),1)+" st";
@@ -304,6 +309,11 @@ void SlotEditor::applyKnobReadouts() {
                 const double hi=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
                 const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
                 return juce::jlimit(0.,1.,std::log(hz/lo)/std::log(hi/lo));
+            }
+            if(module==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+                if(i==0)return juce::jlimit(0.,1.,.5+value/6.);
+                if(i==1)return juce::jlimit(0.,1.,value/100.);
+                return juce::jlimit(0.,1.,.5+value/.7);
             }
             if(module==SkellPresetAudioProcessor::StudioPitchFormantFX) {
                 if(i==0)return juce::jlimit(0.,1.,.5+value/
@@ -1418,6 +1428,10 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String(15.f*std::pow(70.f,processor.getSlotParam(slot,0)),0)+
                      " Hz  /  DEPTH "+
                      juce::String(processor.getSlotParam(slot,1)*100.f,0)+"%";
+    } else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+        effectTitle="ALCHEMIST MATCH FINISH  /  LIVE ENVELOPE + HARMONICS";
+        effectDetail="v0.7 SOURCE MODEL  /  CAUSAL DETECTORS 20 / 120 / 280 ms"
+                     "  /  ZERO ADDED LATENCY";
     } else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX) {
         effectTitle="STUDIO PITCH + FORMANT  /  SPECTRAL COLOUR";
         effectDetail="768 SAMPLES REPORTED HOST PDC  /  NOT LOW-LATENCY AUTOTUNE";
