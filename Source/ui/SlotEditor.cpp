@@ -596,7 +596,13 @@ void SlotEditor::refreshIfChanged() {
     const int level=juce::jlimit(0,14,juce::roundToInt(measured*14.f));
     if(!changed && lastPeakLevel!=level) {
         lastPeakLevel=level;
-        repaint(juce::Rectangle<int>(178,75,195,22)); // tiny live bone-rib overlay only
+        repaint(juce::Rectangle<int>(178,75,195,22)); // small bone-rib meter
+        // The delay's echo-contour brightness and optional EQ orb halo
+        // depend on actual measured slot peak. Repaint just the graph,
+        // not the full plugin; the integer peak step bounds idle CPU.
+        if(type==SkellPresetAudioProcessor::Delay ||
+           (type==SkellPresetAudioProcessor::EightBandToneFX && eqOrbView))
+            repaint(juce::Rectangle<int>(33,151,835,206));
         return;
     }
     lastPeakLevel=level;
