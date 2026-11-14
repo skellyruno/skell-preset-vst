@@ -356,7 +356,11 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
-            } else if(scene.id=="obsidian-effect-alchemist-calibration-70") {
+            } else if(scene.id=="obsidian-effect-alchemist-calibration-70"
+                      || scene.id=="obsidian-effect-alchemist-match-finish-70") {
+                // Both page captures must use the real Alchemist factory
+                // rack and saved match coefficients, not Clean Lead with
+                // generic fixture knob values.
                 processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
                 processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
                 processor.setSlotOn(0,true);
