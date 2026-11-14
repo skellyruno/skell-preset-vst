@@ -93,6 +93,10 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
     addAndMakeVisible(upgradeEq);
     upgradeEq.setVisible(false);
+    eqOrbButton.setTooltip("Switch between editable 8-band graph and EQ orb");
+    addAndMakeVisible(eqOrbButton);
+    eqOrbButton.setVisible(false);
+    eqOrbButton.onClick=[this]{setEqOrbForScreenshot(!eqOrbView);};
     upgradeEq.onClick=[this] {
         if(processor.slotType(slot)!=SkellPresetAudioProcessor::EQ)return;
         const float oldFreq=processor.getSlotParam(slot,0);
@@ -455,6 +459,10 @@ void SlotEditor::applyTheme() {
     }
     upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
+    eqOrbButton.setColour(juce::TextButton::buttonColourId,
+        eqOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
+    eqOrbButton.setColour(juce::TextButton::textColourOffId,
+        eqOrbView?Theme::green:Theme::white);
     for(int page=0;page<2;++page) {
         auto& button=matchPageButtons[(size_t)page];
         button.setColour(juce::TextButton::buttonColourId,
@@ -660,6 +668,7 @@ void SlotEditor::refreshIfChanged() {
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
     upgradeEq.setVisible(type==SkellPresetAudioProcessor::EQ);
+    eqOrbButton.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& button:eqBandButtons)button.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
@@ -681,6 +690,7 @@ void SlotEditor::resized() {
     installedBrowser.setBounds(85,62,735,385);
     editExternal.setBounds(246,420,188,62);
     upgradeEq.setBounds(650,97,212,31);
+    eqOrbButton.setBounds(771,87,89,23);
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,416,97,78);
 }
 void SlotEditor::paint(juce::Graphics&g) {
@@ -1854,8 +1864,33 @@ bool SlotEditor::testMicModelCards() {
     select(slot);
     return passed;
 }
+void SlotEditor::setEqOrbForScreenshot(bool enabled) {
+    eqOrbView=enabled;
+    eqOrbButton.setButtonText(eqOrbView?"GRAPH":"ORB");
+    eqOrbButton.setColour(juce::TextButton::buttonColourId,
+        eqOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
+    eqOrbButton.setColour(juce::TextButton::textColourOffId,
+        eqOrbView?Theme::green:Theme::white);
+    graphSnapshotValid=false;
+    repaint();
+}
+bool SlotEditor::testEqOrbToggle() {
+    const auto previousType=processor.slotType(slot);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::EightBandToneFX);
+    select(slot);
+    setEqOrbForScreenshot(false);
+    eqOrbButton.onClick();
+    const bool on=eqOrbView && eqOrbButton.getButtonText()=="GRAPH";
+    eqOrbButton.onClick();
+    const bool off=!eqOrbView && eqOrbButton.getButtonText()=="ORB";
+    processor.setSlotType(slot,previousType);
+    select(slot);
+    return on && off;
+}
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
+    if(type==SkellPresetAudioProcessor::EightBandToneFX && eqOrbView)
+        return; // visual-only orb must not accidentally modify EQ nodes
     if(type==SkellPresetAudioProcessor::MicModelFX) {
         // Card clicks are distinct from the generic XY graph gesture.
         updateMicCard(e.position);
