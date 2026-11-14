@@ -27,6 +27,7 @@ public:
     bool testEightBandGraphAndQ();
     bool testKnobReadouts();
     bool testMatchFinishPages();
+    bool testMicModelCards();
     void setMatchPageForScreenshot(int page) {showMatchPage(page);}
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -64,6 +65,7 @@ private:
     bool lastHostedLoaded=false;
     std::array<float,6> lastControls{};
     std::array<float,26> lastEqControls{};
+    bool updateMicCard(juce::Point<float> point);
     void updateGraphNode(juce::Point<float>);
     void chooseVST3File();
     void loadVST3FromFile(const juce::File& file);
