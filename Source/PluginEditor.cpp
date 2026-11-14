@@ -915,9 +915,14 @@ public:
         if(inLevel!=lastInputMeter){lastInputMeter=inLevel;repaint(juce::Rectangle<int>(307,651,88,26));}
         if(outLevel!=lastOutputMeter){lastOutputMeter=outLevel;repaint(juce::Rectangle<int>(1021,651,75,26));}
         const bool armed=processor.isCapturing();
-        record.setButtonText(armed?"STOP REC":"REC WAV");
-        record.setColour(juce::TextButton::buttonColourId,
-            armed?Theme::red.withAlpha(.27f):Theme::panelAlt);
+        // Avoid invalidating the capture button 30 times per second when its
+        // state has not changed; scope and meters still repaint as needed.
+        if(lastRecordingState!=(armed?1:0)) {
+            lastRecordingState=armed?1:0;
+            record.setButtonText(armed?"STOP REC":"REC WAV");
+            record.setColour(juce::TextButton::buttonColourId,
+                armed?Theme::red.withAlpha(.27f):Theme::panelAlt);
+        }
         // Only the small scope strip needs refresh at 30 Hz.
         repaint(juce::Rectangle<int>(73,51,271,25));
         const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
@@ -950,6 +955,7 @@ private:
     bool rackOnRight=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
     bool lastMicOn=false;
+    int lastRecordingState=-1;
     SkellActionButton preset,match,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
