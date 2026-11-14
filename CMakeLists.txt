@@ -164,6 +164,26 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
     target_compile_features(SkellPresetUIRenderer PRIVATE cxx_std_17)
 endif()
 
+# Optional Windows diagnostic: run the exact compiled Skell-Preset factory
+# processBlock against a local owner-provided dry WAV, never embed that audio.
+# This exercises the plugin DSP directly; VST3 wrapper/FL Studio checks remain
+# separate and must not be treated as passing by this tool alone.
+option(SKELL_PRESET_ALCHEMIST_RENDERER "Build same-take Alchemist native WAV renderer" OFF)
+if(WIN32 AND SKELL_PRESET_ALCHEMIST_RENDERER)
+    add_executable(SkellPresetAlchemistRender tests/render_alchemist_native.cpp)
+    target_include_directories(SkellPresetAlchemistRender PRIVATE
+        "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include"
+        "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
+    target_compile_definitions(SkellPresetAlchemistRender PRIVATE
+        JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(SkellPresetAlchemistRender PRIVATE SkellPreset
+        SkellPresetAssets SkellCore::DSP SkellCore::UI
+        juce::juce_audio_formats juce::juce_audio_utils juce::juce_gui_extra)
+    target_compile_features(SkellPresetAlchemistRender PRIVATE cxx_std_17)
+    add_test(NAME SkellPresetAlchemistNativeRenderSmoke
+        COMMAND SkellPresetAlchemistRender --smoke)
+endif()
+
 # Windows-only in-process hosting integration fixture. It proves that an
 # actual VST3 bundle can be scanned, instantiated and processed. This fixture
 # is not included in the shipping Skell-Preset VST3 bundle.
