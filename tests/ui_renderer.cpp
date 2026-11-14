@@ -354,6 +354,8 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-effect-chorus-orb-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
                                   818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-alchemist-reference-70",
+                                  818,482,0,1,false});
         options.configure = [&](const auto& scene) {
             if(scene.id=="obsidian-mic-panel-70") {
                 processor.loadFactoryPreset(0);
@@ -428,7 +430,8 @@ int main(int argc, char** argv) {
                 processor.setSlotParam(0,0,.48f);
                 processor.setSlotParam(0,1,.87f);
             } else if(scene.id=="obsidian-effect-alchemist-calibration-70"
-                      || scene.id=="obsidian-effect-alchemist-match-finish-70") {
+                      || scene.id=="obsidian-effect-alchemist-match-finish-70"
+                      || scene.id=="obsidian-effect-alchemist-reference-70") {
                 // Both page captures must use the real Alchemist factory
                 // rack and saved match coefficients, not Clean Lead with
                 // generic fixture knob values.
@@ -466,7 +469,8 @@ int main(int argc, char** argv) {
             else if(scene.id=="cream-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
             else if(scene.id=="obsidian-effect-alchemist-match-finish-70"
-                    || scene.id=="obsidian-effect-alchemist-calibration-70")
+                    || scene.id=="obsidian-effect-alchemist-calibration-70"
+                    || scene.id=="obsidian-effect-alchemist-reference-70")
                 editor.selectRackSlotForScreenshot(6,0);
             else if(scene.id.startsWith("obsidian-effect-")
                     || scene.id=="obsidian-external-70"
@@ -502,6 +506,8 @@ int main(int argc, char** argv) {
                 editor.openInstalledVST3BrowserForScreenshot();
             if(scene.id=="obsidian-effect-alchemist-calibration-70")
                 editor.setMatchPageForScreenshot(1);
+            if(scene.id=="obsidian-effect-alchemist-reference-70")
+                editor.setMatchPageForScreenshot(2);
             editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-orb-70");
             editor.setMicPanelForScreenshot(scene.id=="obsidian-mic-panel-70");
         };
@@ -544,6 +550,8 @@ int main(int argc, char** argv) {
             {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"},
             {"obsidian-effect-alchemist-match-finish-70",
              "obsidian-effect-alchemist-calibration-70"},
+            {"obsidian-effect-alchemist-calibration-70",
+             "obsidian-effect-alchemist-reference-70"},
             {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
             {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-orb-70"},
             {"obsidian-advanced-70","obsidian-mic-panel-70"}
@@ -553,8 +561,8 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 108) {
-            std::fprintf(stderr, "Expected 108 PNGs, captured %d\n", report.captured);
+        if (report.captured != 109) {
+            std::fprintf(stderr, "Expected 109 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
