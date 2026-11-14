@@ -35,7 +35,7 @@ jobs:
       - name: Run portable regression suite
         run: ctest --test-dir build-test --output-on-failure
       - name: Report 20-instance CPU stress timing (hosted runner, informational)
-        run: ctest --test-dir build-test -R '^SkellPresetSkelldizerStress      - name: Test offline reference WAV diagnostics
+        run: ctest --test-dir build-test -R SkellPresetSkelldizerStress --verbose
         run: python3 -m unittest discover -s tests -p test_reference_wav_inspect.py -v
 
   windows-vst3:
