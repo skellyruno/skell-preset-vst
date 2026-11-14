@@ -234,6 +234,7 @@ int main(int argc, char** argv) {
                     options.scenes.push_back(scene);
                 }
         options.scenes.push_back({"obsidian-guided-tour-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-mic-panel-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
@@ -297,10 +298,19 @@ int main(int argc, char** argv) {
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
                                       818,482,0,1,false});
-        options.scenes.push_back({"obsidian-effect-eight-band-orb-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-chorus-orb-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
                                   818,482,0,1,false});
         options.configure = [&](const auto& scene) {
+            if(scene.id=="obsidian-mic-panel-70") {
+                processor.loadFactoryPreset(0);
+                if(auto* p=processor.state.getParameter("micPreOn"))
+                    p->setValueNotifyingHost(p->convertTo0to1(1.f));
+                if(auto* p=processor.state.getParameter("micPreInput"))
+                    p->setValueNotifyingHost(p->convertTo0to1(1.f));
+                if(auto* p=processor.state.getParameter("micPreTarget"))
+                    p->setValueNotifyingHost(p->convertTo0to1(3.f));
+            }
             if(scene.id=="obsidian-expanded-70") {
                 processor.loadFactoryPreset(0);
                 while(processor.activeSlotCount()<16)processor.appendRackSlot();
@@ -358,10 +368,12 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
-            } else if(scene.id=="obsidian-effect-eight-band-orb-70") {
+            } else if(scene.id=="obsidian-effect-chorus-orb-70") {
                 processor.loadFactoryPreset(0);
-                processor.setSlotType(0,SkellPresetAudioProcessor::EightBandToneFX);
+                processor.setSlotType(0,SkellPresetAudioProcessor::VocalChorusFX);
                 processor.setSlotOn(0,true);
+                processor.setSlotParam(0,0,.48f);
+                processor.setSlotParam(0,1,.87f);
             } else if(scene.id=="obsidian-effect-alchemist-calibration-70"
                       || scene.id=="obsidian-effect-alchemist-match-finish-70") {
                 // Both page captures must use the real Alchemist factory
@@ -437,7 +449,8 @@ int main(int argc, char** argv) {
                 editor.openInstalledVST3BrowserForScreenshot();
             if(scene.id=="obsidian-effect-alchemist-calibration-70")
                 editor.setMatchPageForScreenshot(1);
-            editor.setEqOrbForScreenshot(scene.id=="obsidian-effect-eight-band-orb-70");
+            editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-orb-70");
+            editor.setMicPanelForScreenshot(scene.id=="obsidian-mic-panel-70");
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -479,15 +492,16 @@ int main(int argc, char** argv) {
             {"obsidian-effect-alchemist-match-finish-70",
              "obsidian-effect-alchemist-calibration-70"},
             {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
-            {"obsidian-effect-eight-band-eq-70","obsidian-effect-eight-band-orb-70"}
+            {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-orb-70"},
+            {"obsidian-advanced-70","obsidian-mic-panel-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 107) {
-            std::fprintf(stderr, "Expected 107 PNGs, captured %d\n", report.captured);
+        if (report.captured != 108) {
+            std::fprintf(stderr, "Expected 108 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
