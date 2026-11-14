@@ -602,10 +602,16 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
-            const auto colored=micFrontEnd.process(preL,preR);
             const float micWet=micFrontWet.getNextValue();
-            const float frontL=preL+(colored[0]-preL)*micWet;
-            const float frontR=preR+(colored[1]-preR)*micWet;
+            float frontL=preL,frontR=preR;
+            // Default OFF should be CPU-neutral for legacy FL Studio racks.
+            // Process the input model only while active or during its 20ms
+            // bypass crossfade; no allocations or latency are introduced.
+            if(micWet>1.e-6f) {
+                const auto colored=micFrontEnd.process(preL,preR);
+                frontL=preL+(colored[0]-preL)*micWet;
+                frontR=preR+(colored[1]-preR)*micWet;
+            }
             const auto original=bypassPdc.process(l,r,blockLatency);
             // Front-end tone is upstream of the rack AND its wet/dry blend.
             // Full bypass still returns the original DAW signal unchanged.
