@@ -155,6 +155,22 @@ int main(){
                   "Load old native v2 file with flat EQ cuts and neutral Q");
         }
     }
+    // The package writer and importer must agree on the highest appended
+    // module ID. A saved module 33 must not become unloadable on recall.
+    {
+        auto newest=first;
+        newest.slots[0].type=33;
+        const auto latestFile=testFile(dir,"module-33-roundtrip");
+        check(skellpreset::package::write(latestFile,newest).wasOk(),
+              "Export newest module ID 33");
+        skellpreset::package::Document restored;
+        check(skellpreset::package::read(latestFile,restored).wasOk()
+              &&restored.slots[0].type==33,
+              "Recall newest module ID 33 without remapping");
+        newest.slots[0].type=34;
+        check(skellpreset::package::write(testFile(dir,"module-34-invalid"),newest).failed(),
+              "Reject unknown module ID 34");
+    }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
     {
