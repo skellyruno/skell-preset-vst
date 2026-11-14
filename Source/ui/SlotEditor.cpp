@@ -150,6 +150,17 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(button);
         button.setVisible(false);
     }
+    for(int page=0;page<2;++page) {
+        auto& button=matchPageButtons[(size_t)page];
+        button.setButtonText(page==0?"SHAPE":"CALIBRATION");
+        button.setTooltip(page==0
+            ?"Edit learned harmonic and envelope weight controls"
+            :"Edit source-level calibration, reference amplitude, trim and smoothing");
+        button.onClick=[this,page]{showMatchPage(page);};
+        button.setWantsKeyboardFocus(true);
+        addAndMakeVisible(button);
+        button.setVisible(false);
+    }
     for(int index=0;index<2;++index) {
         auto& control=eqCutSliders[(size_t)index];
         control.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -410,6 +421,13 @@ void SlotEditor::applyTheme() {
     }
     upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
+    for(int page=0;page<2;++page) {
+        auto& button=matchPageButtons[(size_t)page];
+        button.setColour(juce::TextButton::buttonColourId,
+            page==matchPage?Theme::green.withAlpha(.32f):Theme::panelAlt);
+        button.setColour(juce::TextButton::textColourOffId,
+            page==matchPage?Theme::green:Theme::white);
+    }
     for(int i=0;i<8;++i) {
         eqBandButtons[(size_t)i].setColour(juce::TextButton::buttonColourId,
             i==activeEqBand?Theme::green.withAlpha(.36f):Theme::panelAlt);
@@ -444,6 +462,29 @@ void SlotEditor::showEqBank(int firstBand) {
     graphSnapshotValid=false;
     repaint();
 }
+void SlotEditor::showMatchPage(int page) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX)
+        return;
+    matchPage=juce::jlimit(0,1,page);
+    const auto prefix="s"+juce::String(slot+1)+"_";
+    for(auto& attachment:knobAttachment)attachment.reset();
+    for(int k=0;k<4;++k)
+        knobAttachment[(size_t)k]=
+            std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"p"+juce::String(matchPage*4+k+1),
+                knobs[(size_t)k]);
+    for(int i=0;i<2;++i) {
+        auto& b=matchPageButtons[(size_t)i];
+        b.setColour(juce::TextButton::buttonColourId,
+            i==matchPage?Theme::green.withAlpha(.32f):Theme::panelAlt);
+        b.setColour(juce::TextButton::textColourOffId,
+            i==matchPage?Theme::green:Theme::white);
+        b.repaint();
+    }
+    applyKnobReadouts();
+    graphSnapshotValid=false;
+    repaint();
+}
 void SlotEditor::openModulePicker() {
     installedBrowser.hide();
     if(modulePicker.isVisible())modulePicker.hide();
@@ -451,7 +492,7 @@ void SlotEditor::openModulePicker() {
 }
 void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
-    eqBank=0;activeEqBand=0;
+    eqBank=0;activeEqBand=0;matchPage=0;
     lastPeakLevel=-1;
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
@@ -475,6 +516,8 @@ void SlotEditor::select(int newSlot) {
     applyKnobReadouts();
     if(processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX)
         showEqBank(0);
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::AlchemistMatchFinishFX)
+        showMatchPage(0);
     repaint();
 }
 void SlotEditor::refreshIfChanged() {
@@ -522,11 +565,18 @@ void SlotEditor::refreshIfChanged() {
             lastEqControls[(size_t)(24+k)]=v;
         }
     }
+    if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+        for(int k=0;k<8;++k) {
+            const float v=processor.getSlotParam(slot,k);
+            changed=changed || std::abs(v-lastEqControls[(size_t)k])>1.e-5f;
+            lastEqControls[(size_t)k]=v;
+        }
+    }
     if(!changed)return;
     if(type!=lastType){
         // A new effect resets the EQ bank, preserving all saved parameter
         // values while reattaching only the controls visible on this page.
-        eqBank=0;activeEqBand=0;
+        eqBank=0;activeEqBand=0;matchPage=0;
         eqQAttachment.reset();
         for(auto& attachment:eqCutAttachments)attachment.reset();
         if(type==SkellPresetAudioProcessor::EightBandToneFX) {
@@ -545,6 +595,8 @@ void SlotEditor::refreshIfChanged() {
         moduleBox.setSelectedId(type+1,juce::dontSendNotification);
         if(type==SkellPresetAudioProcessor::EightBandToneFX)
             showEqBank(activeEqBand);
+        else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)
+            showMatchPage(0);
     }
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
@@ -556,6 +608,7 @@ void SlotEditor::refreshIfChanged() {
     eqQSlider.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(auto& button:eqBandButtons)button.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
+    for(auto& button:matchPageButtons)button.setVisible(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX);
     for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
 }
@@ -567,6 +620,8 @@ void SlotEditor::resized() {
     eqCutSliders[0].setBounds(68,125,270,23);
     eqCutSliders[1].setBounds(370,125,270,23);
     for(int k=0;k<8;++k)eqBandButtons[(size_t)k].setBounds(219+k*49,96,40,26);
+    matchPageButtons[0].setBounds(571,72,135,23);
+    matchPageButtons[1].setBounds(713,72,151,23);
     loadExternal.setBounds(52,420,177,62);
     installedBrowser.setBounds(85,62,735,385);
     editExternal.setBounds(246,420,188,62);
