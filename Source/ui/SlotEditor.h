@@ -5,6 +5,50 @@
 #include "InstalledVST3Browser.h"
 #include <array>
 #include <memory>
+#include "Theme.h"
+
+// Stable 0-100 effect control indicator: numeric readouts are hidden while
+// idle and appear only during hover, drag or mouse-wheel interaction.
+// Host parameter precision, Hz/dB/Q conversion and automation IDs are
+// unchanged. Labels remain visible in the parent effect panel.
+class SkellHoverPercentKnob final:public juce::Slider {
+public:
+    void mouseEnter(const juce::MouseEvent& e) override {
+        hovered=true;juce::Slider::mouseEnter(e);repaint();
+    }
+    void mouseExit(const juce::MouseEvent& e) override {
+        hovered=false;juce::Slider::mouseExit(e);repaint();
+    }
+    void mouseDown(const juce::MouseEvent& e) override {
+        editing=true;juce::Slider::mouseDown(e);repaint();
+    }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        juce::Slider::mouseDrag(e);repaint();
+    }
+    void mouseUp(const juce::MouseEvent& e) override {
+        juce::Slider::mouseUp(e);editing=false;repaint();
+    }
+    bool showsValueForTest() const noexcept {return hovered||editing;}
+protected:
+    void paintOverChildren(juce::Graphics& g) override {
+        juce::Slider::paintOverChildren(g);
+        if(!hovered && !editing)return;
+        Theme::select(Theme::variant); // neutral UI path, uses existing theme
+        const float w=(float)getWidth();
+        const auto rect=juce::Rectangle<float>(w*.5f-23.f,(float)getHeight()-19.f,46.f,18.f);
+        g.setColour(Theme::panelAlt);
+        g.fillRoundedRectangle(rect,4.f);
+        g.setColour(Theme::green.withAlpha(.7f));
+        g.drawRoundedRectangle(rect,4.f,.85f);
+        g.setColour(Theme::white);
+        g.setFont(juce::FontOptions(13.f,juce::Font::bold));
+        g.drawFittedText(juce::String(juce::roundToInt(
+            juce::jlimit(0.,1.,getValue())*100.)),rect.toNearestInt(),
+            juce::Justification::centred,1);
+    }
+private:
+    bool hovered=false,editing=false;
+};
 class SlotEditor final:public juce::Component {
 public:
     explicit SlotEditor(SkellPresetAudioProcessor& p);
@@ -57,7 +101,7 @@ private:
     std::array<juce::Slider,2> eqCutSliders;
     std::array<juce::TextButton,8> eqBandButtons;
     std::array<juce::TextButton,2> matchPageButtons;
-    std::array<juce::Slider,4> knobs;
+    std::array<SkellHoverPercentKnob,4> knobs;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> eqQAttachment;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,2> eqCutAttachments;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> knobAttachment;
