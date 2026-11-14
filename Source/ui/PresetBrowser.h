@@ -37,6 +37,7 @@ private:
     std::vector<juce::File> userPresets;
     std::vector<juce::Image> userArtwork; // UI-thread thumbnail cache, no filesystem in paint()
     juce::Image alchemistArtwork; // editable factory cover, stored separately
+    juce::Image selectedUserBackdrop; // single full-res cached artwork
     juce::File activeUserPreset;
     std::vector<int> filtered() const; // >=0 factory ID; <0 user library index (-i-1)
     juce::File libraryDirectory() const;
