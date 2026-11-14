@@ -30,6 +30,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension2=state.getRawParameterValue(prefix+"fxExt2");
         r.extension3=state.getRawParameterValue(prefix+"fxExt3");
         r.extension4=state.getRawParameterValue(prefix+"fxExt4");
+        r.extension5=state.getRawParameterValue(prefix+"fxExt5");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
@@ -130,6 +131,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(slot)+"_fxExt4",1},
             "Slot "+juce::String(slot)+" Alchemist matching effect",
             juce::StringArray{"None","Alchemist Match Finish"},0));
+    // New generation is essential: extending fxExt4 would renormalize the
+    // published Alchemist choice and change existing FL Studio sessions.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt5",1},
+            "Slot "+juce::String(slot)+" Mic Modeling effect",
+            juce::StringArray{"None","Mic Modeling"},0));
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -141,6 +149,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
     rider.prepare(sampleRate);duckingDelay.prepare(sampleRate);vibrato.prepare(sampleRate);
     eightBand.prepare(sampleRate);serialDynamics.prepare(sampleRate);matchFinish.prepare(sampleRate);
+    micModel.prepare(sampleRate);
     harshness.prepare(sampleRate);noiseControl.prepare(sampleRate);
     studioPitch.prepare(sampleRate);
     pitchDry.prepare(skellpreset::dsp::SpectralPitchFormant::latencySamples);
@@ -265,7 +274,9 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int advanced=raw.extension2?juce::jlimit(0,4,(int)raw.extension2->load()):0;
     const int studio=raw.extension3?juce::jlimit(0,1,(int)raw.extension3->load()):0;
     const int match=raw.extension4?juce::jlimit(0,1,(int)raw.extension4->load()):0;
+    const int mic=raw.extension5?juce::jlimit(0,1,(int)raw.extension5->load()):0;
     if(oldType!=Empty)return oldType;
+    if(mic>0)return (int)AlchemistMatchFinishFX+mic;
     if(match>0)return (int)StudioPitchFormantFX+match;
     if(studio>0)return (int)AdaptiveNoiseFX+studio;
     if(advanced>0)return (int)VocalVibratoFX+advanced;
@@ -275,27 +286,37 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(slot<0 || slot>=slotCount)return;
     const auto id=slotPrefix(slot);
     const int chosen=juce::jlimit(0,NumberOfModules-1,type);
-    if(chosen>StudioPitchFormantFX) {
+    if(chosen>AlchemistMatchFinishFX) {
+        setReal(id+"type",(float)Empty);
+        setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
+        setReal(id+"fxExt3",0.f);setReal(id+"fxExt4",0.f);
+        setReal(id+"fxExt5",(float)(chosen-AlchemistMatchFinishFX));
+    } else if(chosen>StudioPitchFormantFX) {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt3",0.f);
         setReal(id+"fxExt4",(float)(chosen-StudioPitchFormantFX));
     } else if(chosen>AdaptiveNoiseFX) {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt3",(float)(chosen-AdaptiveNoiseFX));
         setReal(id+"fxExt4",0.f);
     } else if(chosen>VocalVibratoFX) {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt3",0.f);
         setReal(id+"fxExt2",(float)(chosen-VocalVibratoFX));
         setReal(id+"fxExt4",0.f);
     } else if(chosen>RingModFX) {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt2",0.f);setReal(id+"fxExt3",0.f);
         setReal(id+"fxExt",(float)(chosen-RingModFX));
         setReal(id+"fxExt4",0.f);
     } else {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"fxExt3",0.f);setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt4",0.f);
         setReal(id+"type",(float)chosen);
@@ -472,6 +493,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case AlchemistMatchFinishFX:
                 e.matchFinish.set(c.p[0],c.p[1],c.p[2],c.p[3],
                                   c.p[4],c.p[5],c.p[6],c.p[7]);
+                break;
+            case MicModelFX:
+                e.micModel.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case DynamicHarshnessFX:
                 e.harshness.set(c.p[0],c.p[1],c.p[2],c.p[3]);
@@ -684,6 +708,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case AlchemistMatchFinishFX: {
                         const auto y=e.matchFinish.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case MicModelFX: {
+                        const auto y=e.micModel.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case DynamicHarshnessFX: {
