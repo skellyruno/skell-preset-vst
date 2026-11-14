@@ -195,9 +195,10 @@ int render(const juce::File& source, const juce::File& destination) {
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(source));
-    if (!reader || reader->numChannels != 2 || reader->lengthInSamples < 1
+    if (!reader || (reader->numChannels != 1 && reader->numChannels != 2)
+        || reader->lengthInSamples < 1
         || reader->sampleRate < 8000. || reader->sampleRate > 192000.) {
-        std::fprintf(stderr,"ERROR: source must be stereo WAV (8k-192kHz)\n");
+        std::fprintf(stderr,"ERROR: source must be mono or stereo WAV (8k-192kHz)\n");
         return 3;
     }
     if(destination.existsAsFile()) {
@@ -243,7 +244,11 @@ int render(const juce::File& source, const juce::File& destination) {
                      reader->lengthInSamples-pos));
         audio.setSize(2,count,false,false,true);
         audio.clear();
-        if(!reader->read(&audio,0,count,pos,true,true)) {ok=false;break;}
+        const bool stereoInput=reader->numChannels==2;
+        if(!reader->read(&audio,0,count,pos,true,stereoInput)) {ok=false;break;}
+        // A mono vocal is represented by identical L/R signals throughout
+        // the stereo native chain. Never leave the second channel stale.
+        if(!stereoInput)audio.copyFrom(1,0,audio,0,0,count);
         if(process(audio,*plugin,peak,energy,total)!=0) {ok=false;break;}
         if(!writer->writeFromAudioSampleBuffer(audio,0,count)) {ok=false;break;}
     }
@@ -261,14 +266,60 @@ int render(const juce::File& source, const juce::File& destination) {
     std::puts("NOTE: this uses the plugin's compiled processBlock, not a hosted VST3. A/B and FL Studio checks are separate.");
     return 0;
 }
+// Exercise real mono WAV decoding, native Alchemist processing and stereo WAV
+// encoding. File cleanup is automatic even if a regression assertion fails.
+int monoSmoke() {
+    const auto temp=juce::File::getSpecialLocation(juce::File::tempDirectory);
+    const auto input=temp.getNonexistentChildFile("SkellPresetMonoSmoke",".wav",false);
+    const auto output=temp.getNonexistentChildFile("SkellPresetMonoSmokeProcessed",".wav",false);
+    struct Cleanup {
+        juce::File in,out;
+        ~Cleanup() {in.deleteFile();out.deleteFile();}
+    } cleanup{input,output};
+
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::OutputStream> stream(input.createOutputStream());
+    if(!stream)return 14;
+    auto writer=wav.createWriterFor(stream,juce::AudioFormatWriter::Options{}
+        .withSampleRate(48000.).withNumChannels(1).withBitsPerSample(24));
+    if(!writer)return 15;
+    constexpr int samples=4096;
+    juce::AudioBuffer<float> signal(1,samples);
+    for(int n=0;n<samples;++n)
+        signal.setSample(0,n,.12f*std::sin((float)(
+            2.*juce::MathConstants<double>::pi*230.*n/48000.)));
+    if(!writer->writeFromAudioSampleBuffer(signal,0,samples))return 16;
+    writer.reset(); // Finalize WAV header before reopening input.
+    if(render(input,output)!=0)return 17;
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(output));
+    if(!reader || reader->numChannels!=2 || reader->lengthInSamples!=samples)
+        return 18;
+    juce::AudioBuffer<float> rendered(2,samples);
+    if(!reader->read(&rendered,0,samples,0,true,true))return 19;
+    double energy=0.,stereoDifference=0.;
+    for(int n=0;n<samples;++n) {
+        const float l=rendered.getSample(0,n),r=rendered.getSample(1,n);
+        if(!std::isfinite(l)||!std::isfinite(r))return 20;
+        energy+=(double)l*l;
+        stereoDifference+=std::abs((double)l-r);
+    }
+    if(energy<1.e-5 || stereoDifference>1.e-3)return 21;
+    std::puts("PASS: mono WAV processed through full Alchemist rack to finite stereo output");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
     if(argc==2 && juce::String(argv[1])=="--smoke")return smoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
+    if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
     if(argc!=3) {
-        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender INPUT_STEREO.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender INPUT_MONO_OR_STEREO.wav NEW_OUTPUT.wav\n");
         return 1;
     }
     return render(juce::File(juce::String::fromUTF8(argv[1])),
