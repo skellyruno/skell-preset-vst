@@ -21,6 +21,7 @@ public:
     juce::Image selectedCover() const;
     int visibleFactoryPresetsForTest() const;
     bool canSetCoverForTest() const {return canEditCover();}
+    bool testFavoritesFilterForTest(); // in-memory, no user metadata written
     std::function<void()> onClose;
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
@@ -36,12 +37,19 @@ private:
     void chooseArtwork();
     void refreshArtwork();
     int bank=0,scroll=0,hoveredCard=-1;
+    juce::StringArray favoriteKeys; // sidecar only; not in VST3 state or preset ZIP
     std::vector<juce::File> userPresets;
     std::vector<juce::Image> userArtwork; // UI-thread thumbnail cache, no filesystem in paint()
     juce::Image alchemistArtwork; // editable factory cover, stored separately
     juce::Image selectedUserBackdrop; // single full-res cached artwork
     juce::File activeUserPreset;
     std::vector<int> filtered() const; // >=0 factory ID; <0 user library index (-i-1)
+    juce::String favoriteKey(int entry) const;
+    bool isFavorite(int entry) const;
+    void toggleFavorite(int entry);
+    void loadFavorites();
+    bool saveFavorites() const;
+    juce::File favoritesFile() const;
     juce::File libraryDirectory() const;
     juce::File activeArtworkDestination() const;
     bool canEditCover() const;
