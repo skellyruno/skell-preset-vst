@@ -9,20 +9,24 @@ struct Skelldizer {
     double sampleRate=48000.0, envelope=0.0, lowL=0.0, lowR=0.0;
     float amount=.45f, character=.5f, tone=.5f, output=.5f;
     float smoothAmount=.45f, smoothCharacter=.5f, smoothTone=.5f, smoothOutput=.5f;
+    float makeup=1.f, makeupTarget=1.f, lowPole=.9f;
     double controlPole=.9996, detectorAttack=.99, detectorRelease=.999;
     void prepare(double sr) noexcept {
         sampleRate=std::clamp(sr,8000.0,192000.0);
         controlPole=std::exp(-1.0/(sampleRate*.012));
         detectorAttack=std::exp(-1.0/(sampleRate*.004));
         detectorRelease=std::exp(-1.0/(sampleRate*.110));
+        lowPole=(float)std::exp(-2.0*3.141592653589793*850.0/sampleRate);
         envelope=lowL=lowR=0.0;
         smoothAmount=amount;smoothCharacter=character;smoothTone=tone;smoothOutput=output;
+        makeupTarget=makeup=std::pow(10.f,(output-.5f)*18.f/20.f);
     }
     void set(float a,float c,float t,float o) noexcept {
         amount=std::clamp(std::isfinite(a)?a:0.f,0.f,1.f);
         character=std::clamp(std::isfinite(c)?c:.5f,0.f,1.f);
         tone=std::clamp(std::isfinite(t)?t:.5f,0.f,1.f);
         output=std::clamp(std::isfinite(o)?o:.5f,0.f,1.f);
+        makeupTarget=std::pow(10.f,(output-.5f)*18.f/20.f);
     }
     std::array<float,2> process(float left,float right) noexcept {
         auto smooth=[this](float& current,float target) noexcept {
@@ -30,6 +34,7 @@ struct Skelldizer {
         };
         smooth(smoothAmount,amount);smooth(smoothCharacter,character);
         smooth(smoothTone,tone);smooth(smoothOutput,output);
+        smooth(makeup,makeupTarget);
         const float inL=std::isfinite(left)?std::clamp(left,-8.f,8.f):0.f;
         const float inR=std::isfinite(right)?std::clamp(right,-8.f,8.f):0.f;
         const double peak=std::max(std::abs(inL),std::abs(inR));
@@ -40,14 +45,13 @@ struct Skelldizer {
         const float threshold=.20f-.15f*smoothAmount;
         const float ratio=1.f+3.5f*smoothAmount;
         const float level=(float)std::max(envelope,1.e-7);
+        // Smooth static gain curve approximation, avoids per-frame pow.
         const float compression=level>threshold
-            ?std::pow(threshold/level,1.f-1.f/ratio):1.f;
+            ?threshold/(threshold+(level-threshold)*(1.f-1.f/ratio)):1.f;
         const float drive=1.f+5.0f*smoothAmount*(.65f+.7f*smoothCharacter);
         const float saturation=1.f+2.5f*smoothAmount*smoothCharacter;
         const float tilt=2.f*smoothTone-1.f;
-        const float lowPole=(float)std::exp(-2.0*3.141592653589793*850.0/sampleRate);
         const float input[2]{inL,inR};
-        const float makeup=std::pow(10.f,(smoothOutput-.5f)*18.f/20.f);
         std::array<float,2> out{};
         for(int ch=0;ch<2;++ch) {
             double& low=ch==0?lowL:lowR;
