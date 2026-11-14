@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-formant-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,28> effectScenes {{
+        const std::array<std::pair<const char*,int>,29> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -289,11 +289,14 @@ int main(int argc, char** argv) {
             {"fet-opto",SkellPresetAudioProcessor::SerialDynamicsFX},
             {"harshness-tamer",SkellPresetAudioProcessor::DynamicHarshnessFX},
             {"adaptive-noise",SkellPresetAudioProcessor::AdaptiveNoiseFX},
-            {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX}
+            {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX},
+            {"alchemist-match-finish",SkellPresetAudioProcessor::AlchemistMatchFinishFX}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
                                       818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
+                                  818,482,0,1,false});
         options.configure = [&](const auto& scene) {
             if(scene.id=="obsidian-expanded-70") {
                 processor.loadFactoryPreset(0);
@@ -352,6 +355,10 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
+            } else if(scene.id=="obsidian-effect-alchemist-calibration-70") {
+                processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+                processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
+                processor.setSlotOn(0,true);
             } else if(scene.id.startsWith("obsidian-effect-")) {
                 processor.loadFactoryPreset(0);
                 for(const auto& effect:effectScenes)
@@ -408,6 +415,8 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(8,0);
             if(scene.id=="obsidian-installed-vst3-browser-70")
                 editor.openInstalledVST3BrowserForScreenshot();
+            if(scene.id=="obsidian-effect-alchemist-calibration-70")
+                editor.setMatchPageForScreenshot(1);
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -445,15 +454,17 @@ int main(int argc, char** argv) {
             {"obsidian-effect-eight-band-eq-70", "obsidian-effect-fet-opto-70"},
             {"obsidian-effect-harshness-tamer-70", "obsidian-effect-adaptive-noise-70"},
             {"obsidian-factory-eightband-70", "obsidian-factory-opto-70"},
-            {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"}
+            {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"},
+            {"obsidian-effect-alchemist-match-finish-70",
+             "obsidian-effect-alchemist-calibration-70"}
         };
         const auto report = skellcore::ui::headless::render(editor, folder, options);
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != 103) {
-            std::fprintf(stderr, "Expected 103 PNGs, captured %d\n", report.captured);
+        if (report.captured != 105) {
+            std::fprintf(stderr, "Expected 105 PNGs, captured %d\n", report.captured);
             ++failures;
         }
 
