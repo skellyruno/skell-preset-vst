@@ -98,3 +98,9 @@ add_test(NAME SkellPresetAlchemistMatchDSPTest COMMAND SkellPresetAlchemistMatch
 add_executable(SkellPresetAlchemistReferenceToneTest test_alchemist_reference_tone.cpp)
 target_compile_features(SkellPresetAlchemistReferenceToneTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetAlchemistReferenceToneTest COMMAND SkellPresetAlchemistReferenceToneTest)
+
+# Native Mic Modeling profile (append-only ID 32): frequency coloration,
+# stereo-linked zero-latency processing and safe host automation.
+add_executable(SkellPresetMicModelTest test_mic_model_dsp.cpp)
+target_compile_features(SkellPresetMicModelTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMicModelTest COMMAND SkellPresetMicModelTest)
