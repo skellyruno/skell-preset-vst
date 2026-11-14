@@ -692,6 +692,14 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 c.type==StudioPitchFormantFX;
             if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
+            // These controls are constant for the callback. In particular,
+            // dbToGain() involves pow(): never call it on every audio sample.
+            const float limiterDrive=c.type==Limiter?dbToGain(c.p[1]*18.f):1.f;
+            const float saturatorDrive=c.type==Saturator
+                ?dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f)):1.f;
+            const float saturatorBlend=.5f+c.p[1];
+            const float saturatorNorm=1.f/std::max(.5f,saturatorDrive*.6f);
+            const float exciterDrive=1.f+10.f*c.p[0];
             for(int n=0;n<frames;++n) {
                 float l=rackWork.getSample(0,n);
                 float r=rackWork.getSample(1,n);
@@ -713,8 +721,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         if(!skellpreset::realtime::needsLimiterWetRender(
                                wetSmoother.getCurrentValue(),wetSmoother.getTargetValue()))
                             break;
-                        const float drive=dbToGain(c.p[1]*18.f);
-                        const float input[2]{l*drive,r*drive};
+                        const float input[2]{l*limiterDrive,r*limiterDrive};
                         float output[2]{};
                         e.limiter.processFrame(input,output,2);
                         wetL=output[0];wetR=output[1];break;
@@ -814,16 +821,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
-                        const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));
-                        const float blend=.5f+c.p[1];
-                        wetL=std::tanh(l*drive*blend)/std::max(.5f,drive*.6f);
-                        wetR=std::tanh(r*drive*blend)/std::max(.5f,drive*.6f);
+                        wetL=std::tanh(l*saturatorDrive*saturatorBlend)*saturatorNorm;
+                        wetR=std::tanh(r*saturatorDrive*saturatorBlend)*saturatorNorm;
                         break;
                     }
                     case Exciter: {
-                        const float drive=1.f+10.f*c.p[0];
-                        wetL=(std::tanh(l*drive)-std::tanh(l*drive*.55f))*.4f+l;
-                        wetR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*.4f+r;
+                        wetL=(std::tanh(l*exciterDrive)-std::tanh(l*exciterDrive*.55f))*.4f+l;
+                        wetR=(std::tanh(r*exciterDrive)-std::tanh(r*exciterDrive*.55f))*.4f+r;
                         break;
                     }
                     case Delay: {
