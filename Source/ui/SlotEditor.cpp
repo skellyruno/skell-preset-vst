@@ -1484,7 +1484,10 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.setColour(channel==0?Theme::green:Theme::blue);
                 g.strokePath(curve,juce::PathStrokeType(channel==0?2.7f:1.9f));
             }
-        } else {
+        } else if(type!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+            // Match Finish already draws its measured harmonic-transfer curve,
+            // a muted clean reference and its own labels above. The generic
+            // fallback title used to cover that curve and the XY edit marker.
             Theme::text(g,processor.moduleName(type).toUpperCase(),
                 {65,198,740,40},25,Theme::green,true,juce::Justification::centred);
             Theme::text(g,"DRAG THE GRAPH TO EDIT THE FIRST TWO CONTROLS",
