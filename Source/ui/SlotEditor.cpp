@@ -42,6 +42,7 @@ std::array<juce::String,4> titles(int type) {
         case 29:return {"Threshold","Strength","Hold","Release"};
         case 30:return {"Pitch","Formant","Pitch Range","Formant Range"};
         case 31:return {"Harmonic","Envelope","Slow Contour","Fast Attack"};
+        case 32:return {"Input Mic","Simulate","Amount","Trim"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -260,6 +261,14 @@ void SlotEditor::applyKnobReadouts() {
                 }
                 return juce::String((v-.5)*30.,1)+"dB";
             }
+            if(module==SkellPresetAudioProcessor::MicModelFX) {
+                if(i==0)return skellpreset::dsp::MicModelTone::inputName(
+                    skellpreset::dsp::MicModelTone::index((float)v));
+                if(i==1)return skellpreset::dsp::MicModelTone::targetName(
+                    skellpreset::dsp::MicModelTone::index((float)v));
+                if(i==2)return juce::String(juce::roundToInt(v*100.))+"%";
+                return juce::String(-6.+12.*v,1)+" dB";
+            }
             if(module==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
                 if(matchPage==0) {
                     if(i==0)return juce::String((v-.5)*6.,2)+"% cubic";
@@ -326,6 +335,19 @@ void SlotEditor::applyKnobReadouts() {
                 const double hi=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
                 const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
                 return juce::jlimit(0.,1.,std::log(hz/lo)/std::log(hi/lo));
+            }
+            if(module==SkellPresetAudioProcessor::MicModelFX) {
+                if(i==0 || i==1) {
+                    for(int n=0;n<4;++n) {
+                        const juce::String name=i==0
+                            ?skellpreset::dsp::MicModelTone::inputName(n)
+                            :skellpreset::dsp::MicModelTone::targetName(n);
+                        if(name.toLowerCase()==text)return n/3.;
+                    }
+                    return juce::jlimit(0.,1.,value);
+                }
+                if(i==2)return juce::jlimit(0.,1.,value/100.);
+                return juce::jlimit(0.,1.,(value+6.)/12.);
             }
             if(module==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
                 if(matchPage==0) {
@@ -750,7 +772,65 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"20 / 120 / 280ms detector  ·  ±0.6dB bounded contour  ·  0ms lookahead",
             {56,325,700,20},10,Theme::muted);
     }
-    if(type==SkellPresetAudioProcessor::EQ) {
+    if(type==SkellPresetAudioProcessor::MicModelFX) {
+        // Compact Mic Modeling controls INSIDE the existing effect page.
+        // Models are generic response profiles, not proprietary brand IRs.
+        const int input=skellpreset::dsp::MicModelTone::index(processor.getSlotParam(slot,0));
+        const int output=skellpreset::dsp::MicModelTone::index(processor.getSlotParam(slot,1));
+        const float strength=processor.getSlotParam(slot,2);
+        Theme::text(g,"INPUT MIC",{54,162,210,20},11,Theme::muted,true);
+        for(int i=0;i<4;++i) {
+            const juce::Rectangle<float> card(52.f+i*91.f,188.f,85.f,33.f);
+            const bool chosen=i==input;
+            g.setColour(chosen?Theme::green.withAlpha(.17f):Theme::panelAlt);
+            g.fillRoundedRectangle(card,5.f);
+            g.setColour(chosen?Theme::green:Theme::stroke);
+            g.drawRoundedRectangle(card,5.f,chosen?1.55f:.8f);
+            Theme::text(g,skellpreset::dsp::MicModelTone::inputName(i),
+                {(int)card.getX()+2,195,81,19},10.5f,
+                chosen?Theme::green:Theme::white,true,juce::Justification::centred);
+        }
+        Theme::text(g,"SIMULATE",{54,229,210,20},11,Theme::muted,true);
+        for(int i=0;i<4;++i) {
+            const int column=i%2,row=i/2;
+            const juce::Rectangle<float> card(52.f+column*183.f,
+                                              255.f+row*43.f,174.f,37.f);
+            const bool chosen=i==output;
+            g.setColour(chosen?Theme::green.withAlpha(.16f):Theme::panelAlt);
+            g.fillRoundedRectangle(card,5.f);
+            g.setColour(chosen?Theme::green:Theme::stroke);
+            g.drawRoundedRectangle(card,5.f,chosen?1.55f:.8f);
+            g.setColour(chosen?Theme::green:Theme::muted);
+            g.fillEllipse(card.getX()+9.f,card.getY()+15.f,6.f,6.f);
+            Theme::text(g,skellpreset::dsp::MicModelTone::targetName(i),
+                {(int)card.getX()+23,(int)card.getY()+9,139,21},13,
+                chosen?Theme::green:Theme::white,true);
+        }
+        const auto response=skellpreset::dsp::MicModelTone::bandDeltaDb(input,output,strength);
+        const float x1=452.f,x2=629.f,x3=840.f,base=262.f,scale=7.5f;
+        const float a=base-juce::jlimit(-8.f,8.f,response[0])*scale;
+        const float b=base-juce::jlimit(-8.f,8.f,response[1])*scale;
+        const float c=base-juce::jlimit(-8.f,8.f,response[2])*scale;
+        Theme::text(g,"TONAL PROFILE",{449,167,328,20},12,Theme::green,true);
+        g.setColour(Theme::muted.withAlpha(.40f));
+        g.drawLine(x1,base,x3,base,1.3f);
+        juce::Path curve;
+        curve.startNewSubPath(x1,a);
+        curve.cubicTo(x1+84.f,a,x2-88.f,b,x2,b);
+        curve.cubicTo(x2+99.f,b,x3-91.f,c,x3,c);
+        g.setColour(Theme::green.withAlpha(.92f));
+        g.strokePath(curve,juce::PathStrokeType(2.7f));
+        const float xs[]{x1,x2,x3},ys[]{a,b,c};
+        for(int i=0;i<3;++i) {
+            g.setColour(Theme::bg);
+            g.fillEllipse(xs[i]-4.f,ys[i]-4.f,8.f,8.f);
+            g.setColour(Theme::green);
+            g.drawEllipse(xs[i]-4.f,ys[i]-4.f,8.f,8.f,1.5f);
+        }
+        Theme::text(g,"LOW",{442,325,65,17},10,Theme::muted);
+        Theme::text(g,"MID",{615,325,65,17},10,Theme::muted);
+        Theme::text(g,"AIR",{793,325,50,17},10,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::EQ) {
         const float normalizedF=processor.getSlotParam(slot,0);
         const auto* tone=processor.state.getRawParameterValue("macro1");
         const float macroTone=tone?tone->load():.5f;
@@ -1587,6 +1667,9 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail=juce::String("SYNC ")+(division<.25f?"1/16":division<.5f?"1/8":division<.75f?"1/8D":"1/4")+
             "  /  DUCK "+juce::String(processor.getSlotParam(slot,2)*100.f,0)+
             "%  /  HOST BPM FALLBACK 120";
+    } else if(type==SkellPresetAudioProcessor::MicModelFX) {
+        effectTitle="MIC MODELING  /  NATIVE TONAL PROFILE";
+        effectDetail="GENERIC COLOR TRANSFER  /  NO PROPRIETARY MIC CAPTURES  /  0ms LATENCY";
     } else if(type==SkellPresetAudioProcessor::VocalVibratoFX) {
         effectTitle="VOCAL VIBRATO  /  STEREO DELAY MODULATION";
         effectDetail=juce::String(.3f+11.7f*processor.getSlotParam(slot,0),1)+
@@ -1690,6 +1773,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::AdaptiveNoiseFX ? "ADAPTIVE GATE  /  NOT AN RNNOISE NEURAL MODEL" :
                   type==SkellPresetAudioProcessor::StudioPitchFormantFX ? "SPECTRAL PITCH / FORMANT  ·  ALIGNED HOST LATENCY 768 SAMPLES" :
                   type==SkellPresetAudioProcessor::AlchemistMatchFinishFX ? "CAUSAL REFERENCE-LEARNED CONTOUR  /  CALIBRATE FOR EACH DIFFERENT VOICE" :
+                  type==SkellPresetAudioProcessor::MicModelFX ? "TONAL RESPONSE SKETCH  /  NOT A MEASURED HARDWARE MICROPHONE IMPULSE" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   type==SkellPresetAudioProcessor::ExternalVST3
                     ? juce::String("EXTERNAL VST3  /  THIRD-PARTY EDITOR OPENS SEPARATELY")
