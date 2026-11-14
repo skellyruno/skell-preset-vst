@@ -149,13 +149,13 @@ void PresetBrowser::reloadAlchemistArtwork() {
     if(!path.existsAsFile()||path.getSize()<=0||path.getSize()>2*1024*1024)return;
     auto img=juce::ImageFileFormat::loadFrom(path);
     if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096)
-        alchemistArtwork=img.rescaled(480,360,juce::Graphics::highResamplingQuality);
+        alchemistArtwork=img.rescaled(1200,900,juce::Graphics::highResamplingQuality);
 }
 juce::Image PresetBrowser::selectedCover() const {
     if(activeUserPreset.existsAsFile()) {
         for(size_t i=0;i<userPresets.size();++i)
             if(userPresets[i]==activeUserPreset && i<userArtwork.size())
-                return userArtwork[i];
+                return selectedUserBackdrop.isValid()?selectedUserBackdrop:userArtwork[i];
     }
     if(processor.loadedFactoryPresetIndex()==alchemistIndex)
         return alchemistArtwork;
@@ -270,6 +270,24 @@ std::vector<int> PresetBrowser::filtered() const {
 }
 void PresetBrowser::refreshArtwork() {
     artworkButton.setEnabled(!chooserActive && canEditCover());
+    // 128x96 thumbnails are only for cards; never scale them to wallpaper.
+    selectedUserBackdrop={};
+    if(activeUserPreset.existsAsFile()) {
+        auto candidate=activeUserPreset.withFileExtension(".png");
+        if(!candidate.existsAsFile())candidate=activeUserPreset.withFileExtension(".jpg");
+        if(candidate.existsAsFile() && candidate.getSize()>0 &&
+            candidate.getSize()<=2*1024*1024) {
+            auto img=juce::ImageFileFormat::loadFrom(candidate);
+            if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096) {
+                const float scale=std::min({1.f,1600.f/(float)img.getWidth(),
+                                                1000.f/(float)img.getHeight()});
+                selectedUserBackdrop=img.rescaled(
+                    juce::jmax(1,juce::roundToInt(img.getWidth()*scale)),
+                    juce::jmax(1,juce::roundToInt(img.getHeight()*scale)),
+                    juce::Graphics::highResamplingQuality);
+            }
+        }
+    }
     repaint();
 }
 void PresetBrowser::chooseArtwork() {
@@ -357,6 +375,16 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         g.setColour(Theme::panelAlt);g.fillRoundedRectangle(rect,7.f);
+        const juce::Image& tileArt=custom
+            ?userArtwork[(size_t)(-entry-1)]:alchemistArtwork;
+        if(tileArt.isValid()) {
+            juce::Graphics::ScopedSaveState cardArtwork(g);
+            g.reduceClipRegion(rect.toNearestInt());
+            g.setOpacity(.13f);
+            g.drawImageWithin(tileArt,(int)rect.getX(),(int)rect.getY(),
+                (int)rect.getWidth(),(int)rect.getHeight(),
+                juce::RectanglePlacement::fillDestination);
+        }
         const std::array<juce::Colour,5> accents{{Theme::green,Theme::blue,Theme::amber,Theme::pink,Theme::white}};
         const int seed=custom?-entry:entry+1;
         const auto accent=accents[(size_t)(seed%5)];
