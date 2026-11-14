@@ -149,8 +149,17 @@ bool ChainPanel::testRackControlsAndWet() {
         "s"+juce::String(id+1)+"_on");
     if(!enabled)return false;
     const bool wasOn=enabled->load()>.5f;
+    // The visible integer 0–100% is only a formatter; prove its endpoints
+    // and fine values still map to the continuous 0.0–1.0 DSP wet parameter.
+    setSlotWet(id,0.f);
+    const bool zero=std::abs(slotWet(id))<.001f;
+    setSlotWet(id,.01f);
+    const bool onePercent=std::abs(slotWet(id)-.01f)<.001f;
+    setSlotWet(id,1.f);
+    const bool hundred=std::abs(slotWet(id)-1.f)<.001f;
     setSlotWet(id,.375f);
-    const bool correctWet=std::abs(slotWet(id)-.375f)<.001f;
+    const bool correctWet=zero && onePercent && hundred &&
+        std::abs(slotWet(id)-.375f)<.001f;
     toggleSlotPower(id);
     const bool correctToggle=(enabled->load()>.5f)!=wasOn;
     setSlotWet(id,previous);
