@@ -261,9 +261,15 @@ void SlotEditor::applyKnobReadouts() {
                 return juce::String((v-.5)*30.,1)+"dB";
             }
             if(module==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
-                if(i==0)return juce::String((v-.5)*6.,2)+"% cubic";
-                if(i==1)return juce::String(juce::roundToInt(v*100.))+"%";
-                return juce::String((v-.5)*.7,3)+" x";
+                if(matchPage==0) {
+                    if(i==0)return juce::String((v-.5)*6.,2)+"% cubic";
+                    if(i==1)return juce::String(juce::roundToInt(v*100.))+"%";
+                    return juce::String((v-.5)*.7,3)+" x";
+                }
+                if(i==0)return juce::String(-40.+30.*v,1)+" dBFS";
+                if(i==1)return juce::String(.05+.75*v,3)+" amp";
+                if(i==2)return juce::String(-1.+2.*v,2)+" dB";
+                return juce::String(2.+48.*v,1)+" ms";
             }
             if(module==SkellPresetAudioProcessor::StudioPitchFormantFX) {
                 if(i==0)return juce::String((v-.5)*2.*
@@ -322,9 +328,15 @@ void SlotEditor::applyKnobReadouts() {
                 return juce::jlimit(0.,1.,std::log(hz/lo)/std::log(hi/lo));
             }
             if(module==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
-                if(i==0)return juce::jlimit(0.,1.,.5+value/6.);
-                if(i==1)return juce::jlimit(0.,1.,value/100.);
-                return juce::jlimit(0.,1.,.5+value/.7);
+                if(matchPage==0) {
+                    if(i==0)return juce::jlimit(0.,1.,.5+value/6.);
+                    if(i==1)return juce::jlimit(0.,1.,value/100.);
+                    return juce::jlimit(0.,1.,.5+value/.7);
+                }
+                if(i==0)return juce::jlimit(0.,1.,(value+40.)/30.);
+                if(i==1)return juce::jlimit(0.,1.,(value-.05)/.75);
+                if(i==2)return juce::jlimit(0.,1.,(value+1.)/2.);
+                return juce::jlimit(0.,1.,(value-2.)/48.);
             }
             if(module==SkellPresetAudioProcessor::StudioPitchFormantFX) {
                 if(i==0)return juce::jlimit(0.,1.,.5+value/
@@ -1625,6 +1637,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"ECHO NUMBER  1 - 5",{38,364,360,17},10,Theme::muted);
     }
     auto labels=titles(type);
+    if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage==1)
+        labels={"Envelope Centre","Reference Level","Output Trim","Gain Smoothing"};
     if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         labels={ "B"+juce::String(eqBank+1)+" FREQ", "B"+juce::String(eqBank+1)+" GAIN",
                  "B"+juce::String(eqBank+2)+" FREQ", "B"+juce::String(eqBank+2)+" GAIN" };
@@ -1651,6 +1665,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::EightBandToneFX ? "CLICK ANY OF EIGHT NODES  /  DRAG TO CHANGE ITS FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::AdaptiveNoiseFX ? "ADAPTIVE GATE  /  NOT AN RNNOISE NEURAL MODEL" :
                   type==SkellPresetAudioProcessor::StudioPitchFormantFX ? "SPECTRAL PITCH / FORMANT  ·  ALIGNED HOST LATENCY 768 SAMPLES" :
+                  type==SkellPresetAudioProcessor::AlchemistMatchFinishFX ? "CAUSAL REFERENCE-LEARNED CONTOUR  /  CALIBRATE FOR EACH DIFFERENT VOICE" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   type==SkellPresetAudioProcessor::ExternalVST3
                     ? juce::String("EXTERNAL VST3  /  THIRD-PARTY EDITOR OPENS SEPARATELY")
