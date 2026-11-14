@@ -33,6 +33,9 @@ public:
     static constexpr int wetControlLeft=149,wetControlRight=181;
     static constexpr int powerControlLeft=182,powerControlRight=206;
     bool testRackControlsAndWet();
+    bool wetReadoutVisibleForTest(int physicalSlot) const noexcept {
+        return hoveredWetSlot==physicalSlot || wetDragSlot==physicalSlot;
+    }
     bool triggerReplaceForTest(int visualRow) {return selectAndReplace(visualRow);}
     std::function<void(bool)> onDockRequest;
     void setDockedRight(bool value) {dockedRight=value;repaint();}
@@ -40,6 +43,7 @@ private:
     SkellPresetAudioProcessor& processor;
     int selected=0,dragFrom=-1,dragTo=-1,pendingFrom=-1;
     int wetDragSlot=-1;
+    int hoveredWetSlot=-1; // physical ID under a wet dial; readout hidden elsewhere
     float wetDragStart=0.f;
     juce::Point<int> pressPoint;
     bool dragging=false;

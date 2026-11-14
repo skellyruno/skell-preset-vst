@@ -96,6 +96,11 @@ public:
         };
         for(int k=0;k<4;k++){
             auto& s=macro[(size_t)k];
+            s.onReadoutVisibilityChange=[this] {
+                // Values live on the Canvas behind the hosted slider.
+                // Repaint the footer only on interaction transitions.
+                repaint(juce::Rectangle<int>(14,480,1144,160));
+            };
             s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
             constexpr float pi=juce::MathConstants<float>::pi;
             s.setRotaryParameters(1.25f*pi,2.75f*pi,true);
@@ -770,11 +775,11 @@ public:
                     g.drawLine(centreX+dx*tickInner,centreY+dy*tickInner,
                                centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
                 }
-                Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
-                    {(int)x+55,510,110,29},21,Theme::green,true,
-                    juce::Justification::centred);
-                Theme::text(g,"/ 100",{(int)x+149,516,58,17},
-                    10,Theme::muted,false);
+                if(macro[(size_t)k].showsValueForTest()) {
+                    Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
+                        {(int)x+55,510,110,29},21,Theme::green,true,
+                        juce::Justification::centred);
+                }
                 const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
                 g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
                 if(amount>.0001f){
@@ -792,10 +797,11 @@ public:
                 Theme::text(g,labels[k],{x,590,105,17},12,Theme::muted,true);
                 const auto* value=processor.state.getRawParameterValue(
                     "macro"+juce::String(k+1));
-                Theme::text(g,juce::String(juce::roundToInt(100.f*
-                    juce::jlimit(0.f,1.f,value?value->load():.5f))),
-                    {x+108,590,76,17},12,Theme::green,true,
-                    juce::Justification::centredRight);
+                if(macro[(size_t)k].showsValueForTest())
+                    Theme::text(g,juce::String(juce::roundToInt(100.f*
+                        juce::jlimit(0.f,1.f,value?value->load():.5f))),
+                        {x+108,590,76,17},12,Theme::green,true,
+                        juce::Justification::centredRight);
             }
         }
     }
@@ -815,7 +821,7 @@ public:
         themeButton.setBounds(15,12,53,56);
         chain.setBounds(rackOnRight?939:13,90,216,535);
         slot.setBounds(rackOnRight?14:247,90,906,496);
-        micPanel.setBounds(622,87,520,477);
+        micPanel.setBounds(702,97,438,406); // compact 16% smaller, right anchored
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
         viewSwitch.setBounds(796,27,218,37);

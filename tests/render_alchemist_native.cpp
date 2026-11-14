@@ -32,20 +32,22 @@ int process(juce::AudioBuffer<float>& block, SkellPresetAudioProcessor& plugin,
 }
 
 int smoke() {
-    SkellPresetAudioProcessor plugin;
-    plugin.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
-    if (plugin.loadedFactoryPresetIndex() != skellpreset::alchemist::factoryIndex
-        || plugin.slotType(6) != SkellPresetAudioProcessor::AlchemistMatchFinishFX
-        || plugin.activeSlotCount() < 7) {
+    // Large rack engines must be allocated on the heap: Windows main thread
+    // defaults to a substantially smaller stack than the Linux renderer.
+    auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+    plugin->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    if (plugin->loadedFactoryPresetIndex() != skellpreset::alchemist::factoryIndex
+        || plugin->slotType(6) != SkellPresetAudioProcessor::AlchemistMatchFinishFX
+        || plugin->activeSlotCount() < 7) {
         std::fprintf(stderr,"ERROR: native Alchemist factory chain did not load\n");
         return 2;
     }
-    plugin.prepareToPlay(44100.,blockSize);
+    plugin->prepareToPlay(44100.,blockSize);
     // This seven-stage factory has no limiter, spectral pitch, or hosted
     // processor; Match Finish itself must not introduce host PDC.
-    if(plugin.getLatencySamples()!=0) {
+    if(plugin->getLatencySamples()!=0) {
         std::fprintf(stderr,"ERROR: Alchemist unexpectedly reports %d latency samples\\n",
-                     plugin.getLatencySamples());
+                     plugin->getLatencySamples());
         return 6;
     }
     double peak=0.,energy=0.,difference=0.;
@@ -60,11 +62,11 @@ int smoke() {
                     +.012*std::sin(2.*juce::MathConstants<double>::pi*4900.*t)));
             }
         const float initial=audio.getSample(0,blockSize/2);
-        if(process(audio,plugin,peak,energy,count)!=0) return 3;
+        if(process(audio,*plugin,peak,energy,count)!=0) return 3;
         if(blockIndex>5)
             difference+=std::abs(audio.getSample(0,blockSize/2)-initial);
     }
-    plugin.releaseResources();
+    plugin->releaseResources();
     if (!std::isfinite(peak) || peak > 8. || energy < 1.e-5 ||
         difference < 1.e-4 || count != 100*blockSize*2) {
         std::fprintf(stderr,"ERROR: native output out of bounds or unchanged\n");
@@ -111,14 +113,16 @@ int render(const juce::File& source, const juce::File& destination) {
         std::fprintf(stderr,"ERROR: cannot prepare output WAV writer\n");
         return 6;
     }
-    SkellPresetAudioProcessor plugin;
-    plugin.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
-    if(plugin.loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex
-       || plugin.slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+    // Large rack engines must be allocated on the heap: Windows main thread
+    // defaults to a substantially smaller stack than the Linux renderer.
+    auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+    plugin->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    if(plugin->loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex
+       || plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
         std::fprintf(stderr,"ERROR: Alchemist stage order or factory selection wrong\n");
         return 7;
     }
-    plugin.prepareToPlay(reader->sampleRate,blockSize);
+    plugin->prepareToPlay(reader->sampleRate,blockSize);
     juce::AudioBuffer<float> audio(2,blockSize);
     double peak=0.,energy=0.;
     std::int64_t total=0;
@@ -130,10 +134,10 @@ int render(const juce::File& source, const juce::File& destination) {
         audio.setSize(2,count,false,false,true);
         audio.clear();
         if(!reader->read(&audio,0,count,pos,true,true)) {ok=false;break;}
-        if(process(audio,plugin,peak,energy,total)!=0) {ok=false;break;}
+        if(process(audio,*plugin,peak,energy,total)!=0) {ok=false;break;}
         if(!writer->writeFromAudioSampleBuffer(audio,0,count)) {ok=false;break;}
     }
-    plugin.releaseResources();
+    plugin->releaseResources();
     writer.reset(); // finalize RIFF size and flush outside the audio thread
     if(!ok || total<=0) {
         destination.deleteFile();

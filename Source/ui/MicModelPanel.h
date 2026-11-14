@@ -119,34 +119,35 @@ public:
     }
     void resized() override {
         const int w=getWidth();
-        close.setBounds(w-42,13,27,27);
-        enabled.setBounds(w-111,16,58,26);
-        input.setBounds(24,109,w-48,38);
+        close.setBounds(w-37,10,26,26);
+        enabled.setBounds(w-103,12,55,25);
+        input.setBounds(20,82,w-40,34);
+        const int cardWidth=(w-58)/2;
         for(int i=0;i<4;++i)
-            simulations[(size_t)i].setBounds(24+(i%2)*(w/2-17),
-                                              199+(i/2)*63,w/2-31,54);
-        amount.setBounds(110,354,w-145,29);
-        trim.setBounds(110,393,w-145,29);
+            simulations[(size_t)i].setBounds(20+(i%2)*(w/2-12),
+                                              156+(i/2)*55,cardWidth,49);
+        amount.setBounds(94,288,w-116,28);
+        trim.setBounds(94,327,w-116,28);
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
         Theme::panelBox(g,getLocalBounds().toFloat(),10.f);
         g.setColour(Theme::green.withAlpha(.62f));
-        g.fillRoundedRectangle({21.f,19.f,3.f,20.f},1.f);
-        Theme::text(g,"MIC MODELING",{33,14,getWidth()-176,31},19,Theme::white,true);
-        Theme::text(g,"INPUT MIC",{24,81,220,20},11,Theme::muted,true);
-        Theme::text(g,"SIMULATE",{24,172,250,19},11,Theme::muted,true);
-        Theme::text(g,"AMOUNT",{24,353,90,25},12,Theme::white,true);
-        Theme::text(g,"TRIM",{24,392,90,25},12,Theme::white,true);
+        g.fillRoundedRectangle({18.f,16.f,3.f,18.f},1.f);
+        Theme::text(g,"MIC MODELING",{30,11,getWidth()-155,29},18,Theme::white,true);
+        Theme::text(g,"INPUT MIC",{20,59,200,18},11,Theme::muted,true);
+        Theme::text(g,"SIMULATE",{20,127,200,18},11,Theme::muted,true);
+        Theme::text(g,"AMOUNT",{20,288,74,24},11,Theme::white,true);
+        Theme::text(g,"TRIM",{20,327,74,24},11,Theme::white,true);
         g.setColour(Theme::stroke.withAlpha(.8f));
-        g.drawLine(24.f,338.f,(float)getWidth()-24.f,338.f,1.f);
+        g.drawLine(20.f,276.f,(float)getWidth()-20.f,276.f,1.f);
         Theme::text(g,"GENERIC TONAL PROFILES · NOT MEASURED BRAND MICROPHONES",
-            {24,437,getWidth()-48,18},10,Theme::muted,false,
+            {20,376,getWidth()-40,16},9,Theme::muted,false,
              juce::Justification::centred);
-        // Capsule-microphone silhouettes on four cards, vector only.
+        // Capsule-microphone silhouettes on four compact cards, vector only.
         for(int i=0;i<4;++i) {
-            const float x=39.f+(float)(i%2)*(getWidth()/2.f-17.f);
-            const float y=218.f+(float)(i/2)*63.f;
+            const float x=35.f+(float)(i%2)*(getWidth()/2.f-12.f);
+            const float y=174.f+(float)(i/2)*55.f;
             const auto* p=processor.state.getRawParameterValue("micPreTarget");
             const bool selected=p && (int)p->load()==i;
             g.setColour(selected?Theme::green.withAlpha(.78f):Theme::muted);

@@ -151,6 +151,7 @@ bool ChainPanel::testRackControlsAndWet() {
     const int id=processor.slotIdAt(0);
     if(processor.slotType(id)==SkellPresetAudioProcessor::Empty)return false;
     const float previous=slotWet(id);
+    const bool hiddenAtIdle=!wetReadoutVisibleForTest(id);
     const auto* enabled=processor.state.getRawParameterValue(
         "s"+juce::String(id+1)+"_on");
     if(!enabled)return false;
@@ -172,7 +173,7 @@ bool ChainPanel::testRackControlsAndWet() {
     processor.setSlotOn(id,wasOn);
     const bool correctRestore=std::abs(slotWet(id)-previous)<.001f &&
         (enabled->load()>.5f)==wasOn;
-    return correctWet && correctToggle && correctRestore;
+    return hiddenAtIdle && correctWet && correctToggle && correctRestore;
 }
 namespace {
 constexpr int rowStart=47, rowStep=51, rowHeight=45;
@@ -273,11 +274,12 @@ void ChainPanel::paint(juce::Graphics& g) {
         g.setColour(enabled?Theme::white:Theme::muted);
         g.drawLine(cx+std::sin(angle)*3.5f,cy-std::cos(angle)*3.5f,
                    cx+std::sin(angle)*6.8f,cy-std::cos(angle)*6.8f,1.35f);
-        // Percentage is a human-readable view of the SAME normalized
-        // 0..1 wet automation used in the live DSP path, not a second gain.
-        Theme::text(g,juce::String(juce::roundToInt(wet*100.f))+"%",
-            {149,top+32,33,12},9.2f,enabled?Theme::green:Theme::muted,
-            true,juce::Justification::centred);
+        // The 0-100 readout appears ONLY while hovering/dragging this
+        // particular wet dial; it is the same host-automated normalized wet.
+        if(wetReadoutVisibleForTest(slot))
+            Theme::text(g,juce::String(juce::roundToInt(wet*100.f)),
+                {149,top+32,33,12},9.2f,enabled?Theme::green:Theme::muted,
+                true,juce::Justification::centred);
         }
         // Hit target is wider than the dot, for usable control at 70% scale.
         const float px=193.f,py=cy;
@@ -395,7 +397,8 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
         if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty)return;
         selected=slot;
         if(onSelection)onSelection(slot);
-        wetDragSlot=slot;wetDragStart=slotWet(slot);pressPoint=e.getPosition();
+        wetDragSlot=slot;hoveredWetSlot=slot;
+        wetDragStart=slotWet(slot);pressPoint=e.getPosition();repaint();
         if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+"_wet"))
             p->beginChangeGesture();
         return;
@@ -427,11 +430,14 @@ void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
         repaint();
     }
 }
-void ChainPanel::mouseUp(const juce::MouseEvent&) {
+void ChainPanel::mouseUp(const juce::MouseEvent& e) {
     if(wetDragSlot>=0) {
         if(auto* p=processor.state.getParameter("s"+juce::String(wetDragSlot+1)+"_wet"))
             p->endChangeGesture();
         wetDragSlot=-1;
+        const int hoverRow=(e.x>=wetControlLeft && e.x<=wetControlRight)?
+            rowAt(e.y):-1;
+        hoveredWetSlot=hoverRow>=0?processor.slotIdAt(hoverRow):-1;
         repaint();return;
     }
     if(dockingDrag) {
@@ -465,7 +471,13 @@ void ChainPanel::mouseDoubleClick(const juce::MouseEvent& e) {
 }
 void ChainPanel::mouseMove(const juce::MouseEvent& e) {
     const int next=(e.x>=10 && e.x<=206)?rowAt(e.y):-1;
-    if(next!=hoveredRow){hoveredRow=next;repaint();}
+    const int physical=next>=0?processor.slotIdAt(next):-1;
+    const int nextWet=(physical>=0 &&
+                       processor.slotType(physical)!=SkellPresetAudioProcessor::Empty &&
+                       e.x>=wetControlLeft && e.x<=wetControlRight)?physical:-1;
+    if(next!=hoveredRow || nextWet!=hoveredWetSlot) {
+        hoveredRow=next;hoveredWetSlot=nextWet;repaint();
+    }
     const bool add=(e.y>=addTop && e.y<addTop+addHeight && e.x>=10 && e.x<=206);
     if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=142)
         setMouseCursor(juce::MouseCursor::DraggingHandCursor);
@@ -489,7 +501,7 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
     else setMouseCursor(juce::MouseCursor::NormalCursor);
 }
 void ChainPanel::mouseExit(const juce::MouseEvent&) {
-    hoveredRow=-1;
+    hoveredRow=-1;hoveredWetSlot=-1;
     setMouseCursor(juce::MouseCursor::NormalCursor);
     repaint();
 }
@@ -499,7 +511,8 @@ void ChainPanel::applyWheelDelta(float deltaY) {
     const int change=deltaY<0.f?1:-1;
     const int next=juce::jlimit(0,
         juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset+change);
-    if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;visualSnapshotValid=false;repaint();}
+    if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
+        visualSnapshotValid=false;repaint();}
 }
 void ChainPanel::mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails& wheel) {
     applyWheelDelta(wheel.deltaY);
