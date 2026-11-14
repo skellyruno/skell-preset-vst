@@ -109,6 +109,7 @@ second VST3 or a substitute for FL Studio. Build with
 .\SkellPresetAlchemistRender.exe --smoke-mono
 .\SkellPresetAlchemistRender.exe --stress
 .\SkellPresetAlchemistRender.exe ".\dry-vocal.wav" ".\alchemist-preview.wav"
+.\SkellPresetAlchemistRender.exe --compare ".\alchemist-preview.wav" ".\original-FL-wet.wav"
 ```
 
 Input is **mono or stereo WAV, 8–192 kHz**. Mono is intentionally duplicated
@@ -118,6 +119,14 @@ refuses to overwrite an existing output. Keep the source and your original
 FL Studio processed reference untouched. The `--smoke-mono` test generates
 temporary mono audio, renders it through Alchemist and checks that the
 resulting stereo WAV is readable, finite and non-silent.
+
+The new `--compare CANDIDATE.wav REFERENCE.wav` reports **the first 15 seconds**
+of synchronized candidate-vs-original audio: signed RMS difference in dB,
+peak dBFS on each file, signed sample correlation, and normalized RMS error
+after RMS-only gain matching (without changing either file). Inputs must use
+the **same original take, same sample rate and matching sample start**;
+otherwise a low correlation does not mean the tonal match is bad. This is a
+diagnostic tool, **not true-peak, LUFS, blind listening or perceptual scoring**.
 
 The `--stress` mode measures 5/10/20 serialized full-processor instances at
 44.1/48/96 kHz and 64/128/256-sample buffer sizes. It checks output finiteness,
