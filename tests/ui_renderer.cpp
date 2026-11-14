@@ -362,8 +362,13 @@ int main(int argc, char** argv) {
                 // rack and saved match coefficients, not Clean Lead with
                 // generic fixture knob values.
                 processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
-                processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
-                processor.setSlotOn(0,true);
+                // Preserve all seven stage types and calibrated controls.
+                // Match Finish is already slot 7 (physical index 6).
+                if(processor.slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX
+                    || processor.loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex) {
+                    std::fprintf(stderr,"Alchemist factory stage 7 missing in screenshot fixture\\n");
+                    ++failures;
+                }
             } else if(scene.id.startsWith("obsidian-effect-")) {
                 processor.loadFactoryPreset(0);
                 for(const auto& effect:effectScenes)
@@ -388,6 +393,9 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(15,6);
             else if(scene.id=="cream-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
+            else if(scene.id=="obsidian-effect-alchemist-match-finish-70"
+                    || scene.id=="obsidian-effect-alchemist-calibration-70")
+                editor.selectRackSlotForScreenshot(6,0);
             else if(scene.id.startsWith("obsidian-effect-")
                     || scene.id=="obsidian-external-70"
                     || scene.id=="obsidian-installed-vst3-browser-70")
