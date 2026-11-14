@@ -67,5 +67,22 @@ int main() {
         const auto two=clone.process(.2f,.2f);
         assert(std::abs(one[0]-two[0])<1.e-7f);
     }
+    // Sweeping trim and learned reference level during playback must not
+    // introduce the old block-boundary jumps. Parameter changes are smooth
+    // even when the DAW automates the controls instantly.
+    {
+        AlchemistMatchFinish smooth;
+        smooth.prepare(48000.);
+        smooth.set(.2f,0.f,.5f,.5f,.67f,.335f,.5f,.27f);
+        for(int i=0;i<20000;++i)smooth.process(.13f,.13f);
+        const float before=smooth.process(.13f,.13f)[0];
+        smooth.set(.2f,0.f,.5f,.5f,.67f,.8f,1.f,.27f);
+        const float first=smooth.process(.13f,.13f)[0];
+        assert(std::abs(first-before)<.001f);
+        for(int i=0;i<5000;++i)smooth.process(.13f,.13f);
+        const float after=smooth.process(.13f,.13f)[0];
+        assert(std::isfinite(after));
+        assert(std::abs(after-first)>.0001f);
+    }
     return 0;
 }
