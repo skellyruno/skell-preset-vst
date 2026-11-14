@@ -211,6 +211,37 @@ int main(){
     createArchive(malformed,"preset.json","not json");
     check(skellpreset::package::read(malformed,second).failed(),"Reject malformed JSON");
     check(unchanged(), "Rejected import leaves all preset fields unchanged");
+    // Invalid EQ bandwidths in an otherwise valid archive must be rejected
+    // transactionally, leaving the previously loaded document untouched.
+    {
+        juce::ZipFile archive(path);
+        std::unique_ptr<juce::InputStream> input(archive.createStreamForEntry(0));
+        check(input!=nullptr, "EQ rejection fixture has valid source JSON");
+        if(input){
+            const auto original=juce::JSON::parse(input->readEntireStreamAsString());
+            for(int variant=0;variant<3;++variant){
+                auto json=original.clone();
+                auto* chain=json.getProperty("chain",{}).getArray();
+                if(!chain || chain->isEmpty()){
+                    check(false, "EQ rejection fixture contains chain entries");
+                    break;
+                }
+                auto* slot=(*chain)[0].getDynamicObject();
+                if(!slot){check(false, "EQ rejection fixture has a slot object");break;}
+                juce::Array<juce::var> q;
+                for(int i=0;i<8;++i)q.add(0.5);
+                if(variant==0)q.set(0,-0.01);
+                if(variant==1)q.set(7,1.01);
+                if(variant==2)q.removeLast();
+                slot->setProperty("eqQ",juce::var(q));
+                const auto bad=testFile(dir,"invalid-eq-q-"+juce::String(variant));
+                createArchive(bad,"preset.json",juce::JSON::toString(json).toStdString());
+                check(skellpreset::package::read(bad,second).failed(),
+                      "Reject out-of-range or truncated EQ bandwidth array");
+                check(unchanged(), "Invalid EQ import preserves entire previous document");
+            }
+        }
+    }
     check(unchanged(), "Rejected imports preserve the complete previous document");
     dir.deleteRecursively();
     if(failures)std::cerr<<failures<<" package tests failed\n";
