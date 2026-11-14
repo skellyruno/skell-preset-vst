@@ -104,3 +104,9 @@ add_test(NAME SkellPresetAlchemistReferenceToneTest COMMAND SkellPresetAlchemist
 add_executable(SkellPresetMicModelTest test_mic_model_dsp.cpp)
 target_compile_features(SkellPresetMicModelTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetMicModelTest COMMAND SkellPresetMicModelTest)
+
+# The fitted contour is opted into only by Alchemist factory p9=1;
+# all historic p9=0.5 finish slots must retain their original signal path.
+add_executable(SkellPresetAlchemistContourTest test_alchemist_reference_contour.cpp)
+target_compile_features(SkellPresetAlchemistContourTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAlchemistContourTest COMMAND SkellPresetAlchemistContourTest)
