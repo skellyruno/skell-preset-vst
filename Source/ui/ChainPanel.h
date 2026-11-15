@@ -22,6 +22,8 @@ public:
         visualSnapshotValid=false;repaint();
     }
     bool testWheelScrollDoesNotReorder();
+    bool testWheelWetAndRack();
+    bool testRemoveExtraSlot();
     bool canScrollForTest() const noexcept {
         return processor.activeSlotCount()>visibleRows;
     }
@@ -60,6 +62,10 @@ private:
     void applyWheelDelta(float deltaY);
     void addModule();
     void popupFor(int physicalSlot,juce::Point<int> screenPoint);
+    void selectContextAction(int index);
+    int contextPosition() const noexcept;
+    bool contextOpen=false;
+    int contextSlot=-1,contextTop=50,contextHover=-1;
     float slotWet(int physicalSlot) const noexcept;
     void setSlotWet(int physicalSlot,float wet);
     void toggleSlotPower(int physicalSlot);
