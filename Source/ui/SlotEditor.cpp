@@ -50,6 +50,10 @@ std::array<juce::String,4> titles(int type) {
         case 31:return {"Harmonic","Envelope","Slow Contour","Fast Attack"};
         case 32:return {"Input Mic","Simulate","Amount","Trim"};
         case 33:return {"Amount","Character","Output","Level Match"};
+        case 34:return {"Band 1 Freq","Band 1 Gain","Band 2 Freq","Band 2 Gain"};
+        case 35:return {"Ceiling","Drive","Comp Thresh","Comp Ratio"};
+        case 36:return {"Threshold","Ratio","Attack","Release"};
+        case 37:return {"Pre Gain","Threshold","Type A/B","Effect Mix"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }

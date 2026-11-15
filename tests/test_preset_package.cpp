@@ -175,8 +175,7 @@ int main(){
                   "Load old native v2 file with flat EQ cuts and neutral Q");
         }
     }
-    // A module 33 is legal on write and MUST survive import. Module 34
-    // remains deliberately unknown; never renumber the previous module IDs.
+    // Modules 33..37 are append-only. ID 38 is deliberately unknown.
     {
         auto newest=first;
         newest.slots[0].type=33;
@@ -187,10 +186,20 @@ int main(){
         check(skellpreset::package::read(file,recalled).wasOk()
               &&recalled.slots[0].type==33,
               "Recall Skelldizer module 33 without remapping");
-        newest.slots[0].type=34;
+        for(int studio=34;studio<=37;++studio) {
+            newest.slots[0].type=studio;
+            const auto target=testFile(dir,"studio-module-"+juce::String(studio));
+            check(skellpreset::package::write(target,newest).wasOk(),
+                  "Write appended Studio module without changing schema");
+            skellpreset::package::Document loaded;
+            check(skellpreset::package::read(target,loaded).wasOk()
+                  && loaded.slots[0].type==studio,
+                  "Recall appended Studio module without renumbering");
+        }
+        newest.slots[0].type=38;
         check(skellpreset::package::write(
-                  testFile(dir,"unknown-id34"),newest).failed(),
-              "Reject unknown module 34");
+                 testFile(dir,"unknown-id38"),newest).failed(),
+              "Reject unknown module 38");
     }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
