@@ -208,7 +208,17 @@ int main(){
     auto malformed=testFile(dir,"malformed");
     createArchive(malformed,"preset.json","not json");
     check(skellpreset::package::read(malformed,second).failed(),"Reject malformed JSON");
-    check(second.name==first.name || second.name=="Wide Ghost Vocal", "Bad input keeps previous successful document");
+    // Rejecting invalid archives must preserve the entire previously loaded state.
+    check(second.name=="Wide Ghost Vocal"
+          && second.bank=="Adlibs"
+          && second.activeSlotCount==14
+          && second.macros[0]==.86f
+          && second.slots[0].slotId==3
+          && second.slots[0].enabled
+          && second.slots[0].params[0]==.5f
+          && second.slots[0].eqQ[0]==.5f
+          && second.slots[15].slotId==2,
+          "Invalid archives preserve the previously loaded preset state");
     dir.deleteRecursively();
     if(failures)std::cerr<<failures<<" package tests failed\n";
     return failures?1:0;
