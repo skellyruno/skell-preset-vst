@@ -571,6 +571,10 @@ public:
            !chain.testWheelScrollDoesNotReorder())
             issues.add("Rack wheel must navigate without changing effect order");
         chain.setScreenshotScrollOffset(0);
+        if(!chain.testWheelWetAndRack())
+            issues.add("Rack wheel and wet controls are not independent");
+        if(!chain.testRemoveExtraSlot())
+            issues.add("Removing an extra rack row changes stable physical IDs");
         if(!chain.testRackControlsAndWet())
             issues.add("Rack wet trim and green bypass dot did not update or restore host parameters");
         if(!chain.triggerReplaceForTest(0) || !slot.modulePickerVisibleForTest())
