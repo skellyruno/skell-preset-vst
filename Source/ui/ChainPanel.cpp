@@ -334,13 +334,12 @@ void ChainPanel::paint(juce::Graphics& g) {
                           {17,contextTop+4,182,24},12,Theme::green,true);
         const juce::StringArray choices{
             "EDIT EFFECT","REPLACE EFFECT","MOVE UP","MOVE DOWN",
-            "BYPASS / ENABLE","CLEAR EFFECT","REMOVE RACK SLOT"};
+            "BYPASS / ENABLE","CLEAR EFFECT","REMOVE FROM RACK"};
         const int pos=contextPosition();
         for(int i=0;i<choices.size();++i) {
             const int y=contextTop+30+i*26;
             const bool enabled=(i!=2||pos>0) &&
-                (i!=3||pos+1<processor.activeSlotCount()) &&
-                (i!=6||processor.activeSlotCount()>SkellPresetAudioProcessor::defaultSlotCount);
+                (i!=3||pos+1<processor.activeSlotCount());
             g.setColour(i==contextHover?Theme::green.withAlpha(.19f):
                         (i%2?Theme::plot.withAlpha(.55f):Theme::panelAlt.withAlpha(.65f)));
             g.fillRoundedRectangle(13.f,(float)y,190.f,24.f,4.f);
@@ -405,11 +404,19 @@ void ChainPanel::selectContextAction(int index) {
         processor.setSlotType(physical,SkellPresetAudioProcessor::Empty);
     }
     if(index==6) {
-        if(processor.removeRackSlot(position)) {
-            selected=-1;
-            if(onClearSelection)onClearSelection();
-            visualSnapshotValid=false;repaint();return;
+        // Old projects require a minimum ten physical rows. At that bound,
+        // REMOVE clears and moves this effect out of the active-looking
+        // chain without renumbering APVTS IDs. Extra rows really disappear.
+        if(processor.activeSlotCount()<=SkellPresetAudioProcessor::defaultSlotCount) {
+            processor.setSlotOn(physical,false);
+            processor.setSlotType(physical,SkellPresetAudioProcessor::Empty);
+            processor.reorderSlot(position,processor.activeSlotCount()-1);
+        } else {
+            processor.removeRackSlot(position);
         }
+        selected=-1;
+        if(onClearSelection)onClearSelection();
+        visualSnapshotValid=false;repaint();return;
     }
     selected=physical;
     if(onSelection)onSelection(physical);
