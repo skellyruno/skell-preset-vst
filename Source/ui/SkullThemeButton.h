@@ -75,24 +75,24 @@ public:
         g.drawLine(16.f,34.f,19.8f,38.5f,.8f);
         g.drawLine(37.5f,34.f,33.6f,38.5f,.8f);
 
-        // Skell mic is a small accessory, not a second skull feature.
-        // The microphone shape stays fully inside the 56px symbol.
+        // Compact microphone accessory, ~32% smaller. The SKELL skull
+        // itself is unchanged; only this local decoration is adjusted.
         g.setColour(ink);
-        g.fillRoundedRectangle(42.4f,27.5f,8.7f,14.3f,4.1f);
+        g.fillRoundedRectangle(43.9f,30.2f,6.2f,10.2f,3.f);
         g.setColour(signal);
-        g.drawRoundedRectangle(43.0f,28.1f,7.4f,13.f,3.65f,1.25f);
+        g.drawRoundedRectangle(44.4f,30.7f,5.2f,9.2f,2.6f,.95f);
         for(int k=0;k<3;++k){
-            g.setColour(signal.withAlpha(.6f));
-            g.drawLine(44.7f,31.5f+2.5f*k,48.9f,31.5f+2.5f*k,.75f);
+            g.setColour(signal.withAlpha(.65f));
+            g.drawLine(45.5f,33.f+1.65f*k,48.5f,33.f+1.65f*k,.65f);
         }
         g.setColour(signal);
         juce::Path mount;
-        mount.startNewSubPath(41.5f,37.f);
-        mount.quadraticTo(41.5f,44.6f,46.8f,44.6f);
-        mount.quadraticTo(52.f,44.6f,52.f,37.f);
-        g.strokePath(mount,juce::PathStrokeType(1.f));
-        g.drawLine(46.8f,44.7f,46.8f,49.1f,1.f);
-        g.drawLine(43.f,49.5f,50.4f,49.5f,1.1f);
+        mount.startNewSubPath(42.8f,37.6f);
+        mount.quadraticTo(42.8f,43.2f,47.f,43.2f);
+        mount.quadraticTo(51.2f,43.2f,51.2f,37.6f);
+        g.strokePath(mount,juce::PathStrokeType(.8f));
+        g.drawLine(47.f,43.3f,47.f,47.2f,.9f);
+        g.drawLine(44.2f,47.3f,49.8f,47.3f,.9f);
 
         if(pressed){
             g.setColour(ink.withAlpha(.2f));
