@@ -1937,9 +1937,9 @@ void SlotEditor::paint(juce::Graphics&g) {
             g.setColour(Theme::green.withAlpha(.22f+.65f*rackPeak));
             g.fillRoundedRectangle(rail.getX()+17.f,rail.getBottom()-8.f-height,
                                    18.f,height,3.f);
-            Theme::text(g,"OUTPUT PEAK",
-                        {(int)rail.getX()+39,(int)rail.getY()+16,60,34},
-                        9.8f,Theme::muted,true);
+            Theme::fittedText(g,"OUT PEAK",
+                        {(int)rail.getX()+39,(int)rail.getY()+19,57,19},
+                        10.8f,Theme::muted,true);
             Theme::text(g,juce::String(rackPeak*100.f,0)+"%",
                         {(int)rail.getX()+39,(int)rail.getY()+69,60,24},
                         15,Theme::white,true);
