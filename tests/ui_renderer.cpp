@@ -628,7 +628,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr,"Radio graph title is hidden by the plot clip at 70%%\n");
             ++failures;
         }
-        processor.loadFactoryPreset(0); // Restore ten-slot baseline for contact sheet.
+        if(!quick4)processor.loadFactoryPreset(0); // Full-matrix legacy baseline only.
         // Quick4 captures exactly the 4 current-source real editor scenes.
         // Full audits keep the old six-view overview.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
@@ -636,17 +636,20 @@ int main(int argc, char** argv) {
                              (quick4?2:3)*thumbnailHeight,true);
         juce::Graphics g(overview);
         if(quick4) {
+            // Use the exact four previously saved PNGs. Re-rendering the
+            // editor for contact-sheet thumbnails used to reset Alchemist
+            // to Clean Lead and made the sheet disagree with each scene.
             for(int i=0;i<4;++i) {
                 const auto& scene=options.scenes[(size_t)i];
-                options.configure(scene);
-                const auto capture=skellcore::ui::headless::capture(
-                    editor,thumbnailWidth,thumbnailHeight);
-                if(!capture.image.isValid() || capture.distinctColours<12) {
-                    std::fprintf(stderr,"Quick4 contact sheet scene failed\n");
+                const auto saved=juce::ImageFileFormat::loadFrom(
+                    folder.getChildFile(scene.id+".png"));
+                if(!saved.isValid() || saved.getWidth()<100 || saved.getHeight()<100) {
+                    std::fprintf(stderr,"Quick4 saved PNG missing or invalid\n");
                     ++failures;
                 } else {
-                    g.drawImageAt(capture.image,(i%2)*thumbnailWidth,
-                                 (i/2)*thumbnailHeight);
+                    g.drawImageWithin(saved,(i%2)*thumbnailWidth,
+                        (i/2)*thumbnailHeight,thumbnailWidth,thumbnailHeight,
+                        juce::RectanglePlacement::stretchToFit);
                 }
             }
         } else {
