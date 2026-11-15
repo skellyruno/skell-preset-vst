@@ -65,6 +65,12 @@ public:
     // Rack double-click opens this search overlay; no duplicate selector.
     void openModulePicker();
     void openModulePickerForScreenshot() {openModulePicker();}
+    // UI-only: prevent overlapping modal effect selectors when opening the MIC panel.
+    void dismissTransientOverlays() {
+        modulePicker.setVisible(false);
+        installedBrowser.setVisible(false);
+        eqNodeMenu.setVisible(false);
+    }
     bool modulePickerVisibleForTest() const noexcept {return modulePicker.isVisible();}
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
