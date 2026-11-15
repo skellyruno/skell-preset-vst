@@ -1,6 +1,13 @@
 #include "../Source/chain/StudioNativeDSP.h"
 #include <array>
-#include <cassert>
+#include <cstdio>
+// CTest must evaluate its real assertions even in MSVC Release /DNDEBUG.
+#define SKELL_REQUIRE(expression) do { \
+    if (!(expression)) { \
+        std::fprintf(stderr, "FAIL: %s (%s:%d)\\n", #expression, __FILE__, __LINE__); \
+        return 1; \
+    } \
+} while (false)
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -18,8 +25,8 @@ int main(){
     };
     for(const auto& v:values){
         dist.setRaw(v.p[0],v.p[1],v.p[2],v.p[3],v.p[4]);
-        assert(std::abs(dist.sample(v.x)-v.expected)<.00001f);
-        assert(std::isfinite(dist.sample(std::numeric_limits<float>::infinity())));
+        SKELL_REQUIRE(std::abs(dist.sample(v.x)-v.expected)<.00001f);
+        SKELL_REQUIRE(std::isfinite(dist.sample(std::numeric_limits<float>::infinity())));
     }
     for(double sr:{44100.,48000.,96000.}){
         ParametricEQ eq;eq.prepare(sr);
@@ -31,9 +38,9 @@ int main(){
             const float x=.35f*std::sin((float)n*.013f);
             const auto y=eq.process(x,-x);
             deviation=std::max(deviation,(double)std::abs(y[0]-x));
-            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            SKELL_REQUIRE(std::isfinite(y[0])&&std::isfinite(y[1]));
         }
-        assert(deviation<.00001);
+        SKELL_REQUIRE(deviation<.00001);
         // Studio EQ's high-shelf should change tone at high frequencies.
         p[13]=.83f; p[12]=.8f;eq.set(p,q);
         double loud=0.,dry=0.;
@@ -42,24 +49,24 @@ int main(){
             const auto y=eq.process(x,x);
             if(n>sr*.04){loud+=(double)y[0]*y[0];dry+=(double)x*x;}
         }
-        assert(loud>dry*1.1);
+        SKELL_REQUIRE(loud>dry*1.1);
         Compressor comp;comp.prepare(sr);
         comp.set(.2f,.9f,.5f,.5f,.5f);
         double inEnergy=0.,outEnergy=0.;
         for(int n=0;n<(int)sr;++n){
             const float x=.8f*std::sin((float)n*.08f);
             const auto y=comp.process(x,x);
-            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            SKELL_REQUIRE(std::isfinite(y[0])&&std::isfinite(y[1]));
             if(n>sr*.5){inEnergy+=(double)x*x;outEnergy+=(double)y[0]*y[0];}
         }
-        assert(outEnergy<inEnergy*.85);
+        SKELL_REQUIRE(outEnergy<inEnergy*.85);
         Gate gate;gate.prepare(sr);gate.set(.5f,0.f,.5f);
         float low=0.f;
         for(int n=0;n<(int)sr;++n)low=gate.processGain(.002f,.002f);
-        assert(low<.01f);
+        SKELL_REQUIRE(low<.01f);
         gate.set(0.f,0.f,.5f);
         for(int n=0;n<(int)sr/2;++n)low=gate.processGain(.2f,.2f);
-        assert(low>.99f);
+        SKELL_REQUIRE(low>.99f);
     }
     std::cout<<"Studio native EQ/comp/gate/dist reference and safety tests passed\n";
 }
