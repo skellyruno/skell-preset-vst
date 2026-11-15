@@ -39,7 +39,11 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
         r.eqHighCut=state.getRawParameterValue(prefix+"eqHighCut");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
-        for(int k=0;k<8;++k)r.q[(size_t)k]=state.getRawParameterValue(prefix+"eqQ"+juce::String(k+1));
+        for(int k=0;k<8;++k){
+            r.q[(size_t)k]=state.getRawParameterValue(prefix+"eqQ"+juce::String(k+1));
+            r.studioEqKind[(size_t)k]=state.getRawParameterValue(prefix+"studioEqKind"+juce::String(k+1));
+            r.studioEqOn[(size_t)k]=state.getRawParameterValue(prefix+"studioEqOn"+juce::String(k+1));
+        }
     }
     packedOrder.store(initialOrder);
     rawMic.on=state.getRawParameterValue("micPreOn");
@@ -190,6 +194,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             "Slot "+juce::String(slot)+" Studio native DSP effect",
             juce::StringArray{"None","Studio Parametric EQ (Plain)","Studio Limiter Hybrid",
                               "Studio Compressor","Studio Fast Dist"},0));
+    // Appended after all established host parameters: no old choice
+    // normalization or automation ID changes.
+    for(int slot=1;slot<=slotCount;++slot){
+        const auto pre="s"+juce::String(slot)+"_";
+        const int initialKinds[]{3,0,0,0,0,0,4,0};
+        for(int band=1;band<=8;++band){
+            const auto suffix=juce::String(band);
+            p.add(std::make_unique<juce::AudioParameterChoice>(
+                juce::ParameterID{pre+"studioEqKind"+suffix,1},
+                "Slot "+juce::String(slot)+" Studio EQ B"+suffix+" type",
+                juce::StringArray{"Peak","High Pass","Low Pass","Low Shelf","High Shelf"},
+                initialKinds[band-1]));
+            bl(pre+"studioEqOn"+suffix,
+               "Slot "+juce::String(slot)+" Studio EQ B"+suffix+" enabled",
+               band<=7);
+        }
+    }
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -417,6 +438,17 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(newStudio) {
         // First selection only; imported preset parameters restore afterward.
         for(int k=0;k<16;++k)setSlotParam(slot,k,.5f);
+        if(chosen==StudioEQFX) {
+            // Separate nodes on the x-axis instead of stacking 7 identical
+            // green dots at 632 Hz when selecting a fresh EQ.
+            const float frequencies[]{.12f,.27f,.39f,.50f,.61f,.72f,.86f,.94f};
+            for(int k=0;k<8;++k){
+                setSlotParam(slot,k*2,frequencies[k]);
+                setReal(id+"studioEqOn"+juce::String(k+1),k<7?1.f:0.f);
+                setReal(id+"studioEqKind"+juce::String(k+1),
+                        (float)(k==0?3:(k==6?4:0)));
+            }
+        }
         if(chosen==StudioLimiterFX) {
             setSlotParam(slot,0,.89f); // approximately -1 dBFS final ceiling
             setSlotParam(slot,1,0.f);  // no added drive
@@ -541,6 +573,11 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         c.eqHighCut=raw.eqHighCut->load();
         for(int k=0;k<16;++k)c.p[(size_t)k]=raw.p[(size_t)k]->load();
         for(int k=0;k<8;++k)c.q[(size_t)k]=raw.q[(size_t)k]->load();
+        if(c.type==StudioEQFX)for(int k=0;k<8;++k){
+            c.studioEqKinds[(size_t)k]=juce::jlimit(0,4,
+                (int)raw.studioEqKind[(size_t)k]->load());
+            c.studioEqEnabled[(size_t)k]=raw.studioEqOn[(size_t)k]->load()>.5f;
+        }
         auto& e=engines[(size_t)s];
         switch(c.type) {
             case EQ:
@@ -610,7 +647,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 e.vibrato.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case StudioEQFX:
-                e.studioEq.set(c.p,c.q);
+                e.studioEq.set(c.p,c.q,c.studioEqKinds,c.studioEqEnabled);
                 break;
             case StudioCompressorFX:
                 e.studioComp.set(c.p[0],c.p[1],c.p[2],c.p[3],c.p[4]);
@@ -1019,7 +1056,12 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     for(int s=0;s<slotCount;s++){
         setSlotType(s,Empty);setSlotOn(s,false);setReal(slotPrefix(s)+"wet",1);
         for(int k=0;k<16;k++)setSlotParam(s,k,.5f);
-        for(int band=1;band<=8;++band)setReal(slotPrefix(s)+"eqQ"+juce::String(band),.5f);
+        for(int band=1;band<=8;++band){
+            setReal(slotPrefix(s)+"eqQ"+juce::String(band),.5f);
+            setReal(slotPrefix(s)+"studioEqKind"+juce::String(band),
+                    (float)(band==1?3:(band==7?4:0)));
+            setReal(slotPrefix(s)+"studioEqOn"+juce::String(band),band<=7?1.f:0.f);
+        }
         setReal(slotPrefix(s)+"eqLowCut",0.f);
         setReal(slotPrefix(s)+"eqHighCut",0.f);
         
@@ -1284,7 +1326,12 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         dst.enabled=value(prefix+"on")>.5f;
         dst.wet=value(prefix+"wet");
         for(int k=0;k<16;++k)dst.params[(size_t)k]=getSlotParam(dst.slotId,k);
-        for(int band=0;band<8;++band)dst.eqQ[(size_t)band]=value(prefix+"eqQ"+juce::String(band+1));
+        for(int band=0;band<8;++band){
+            const auto n=juce::String(band+1);
+            dst.eqQ[(size_t)band]=value(prefix+"eqQ"+n);
+            dst.studioEqKind[(size_t)band]=juce::jlimit(0,4,(int)value(prefix+"studioEqKind"+n));
+            dst.studioEqOn[(size_t)band]=value(prefix+"studioEqOn"+n)>.5f;
+        }
         dst.eqLowCut=value(prefix+"eqLowCut");
         dst.eqHighCut=value(prefix+"eqHighCut");
     }
@@ -1300,7 +1347,12 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
         setSlotType(slot.slotId,slot.type);
         setReal(prefix+"wet",slot.wet);
         for(int k=0;k<16;++k)setSlotParam(slot.slotId,k,slot.params[(size_t)k]);
-        for(int band=0;band<8;++band)setReal(prefix+"eqQ"+juce::String(band+1),slot.eqQ[(size_t)band]);
+        for(int band=0;band<8;++band){
+            const auto n=juce::String(band+1);
+            setReal(prefix+"eqQ"+n,slot.eqQ[(size_t)band]);
+            setReal(prefix+"studioEqKind"+n,(float)slot.studioEqKind[(size_t)band]);
+            setReal(prefix+"studioEqOn"+n,slot.studioEqOn[(size_t)band]?1.f:0.f);
+        }
         setReal(prefix+"eqLowCut",slot.eqLowCut);
         setReal(prefix+"eqHighCut",slot.eqHighCut);
     }

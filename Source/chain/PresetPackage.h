@@ -17,6 +17,10 @@ struct Slot {
     // Optional v2 extension, ignored by older readers. Preserves all eight
     // parametric-EQ bandwidths when saving and reloading native rack presets.
     std::array<float,8> eqQ {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
+    // Optional Studio EQ shape/active state. Readers of older archives
+    // retain original 7-band defaults; eighth band starts switched off.
+    std::array<int,8> studioEqKind {{3,0,0,0,0,0,4,0}};
+    std::array<bool,8> studioEqOn {{true,true,true,true,true,true,true,false}};
     // Optional v2 fields; absent in old presets, so both filters are flat.
     float eqLowCut=0.f,eqHighCut=0.f;
 };

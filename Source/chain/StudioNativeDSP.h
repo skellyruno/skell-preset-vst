@@ -37,9 +37,9 @@ inline float towardZero(double x) noexcept {
 }
 }
 
-// Seven-band, ordinary (zero-PDC) coefficient design from Studio Parametric EQ.
-// Stereo frame smoothing and coefficient caching are Skell Preset improvements.
-// The existing 8-band EQ remains available and is not replaced.
+// Studio ordinary-mode filter design, with optional eighth band and HP/LP.
+// All new band shapes/enables are appended host controls. Prior UI and
+// automatic p/Q automation identifiers are not replaced.
 class ParametricEQ final {
 public:
     void prepare(double sampleRate) noexcept {
@@ -48,19 +48,37 @@ public:
         initialized=false;
     }
     void reset() noexcept {for(auto& f:filters)f.reset();}
+    static constexpr std::array<int,8> defaultKinds{{3,0,0,0,0,0,4,0}};
+    static constexpr std::array<bool,8> defaultEnabled{{true,true,true,true,true,true,true,false}};
     void set(const std::array<float,16>& p,const std::array<float,8>& widths) noexcept {
-        if(initialized && p==lastP && widths==lastWidths)return;
+        set(p,widths,defaultKinds,defaultEnabled);
+    }
+    void set(const std::array<float,16>& p,const std::array<float,8>& widths,
+             const std::array<int,8>& kinds,
+             const std::array<bool,8>& enabled) noexcept {
+        if(initialized && p==lastP && widths==lastWidths &&
+           kinds==lastKinds && enabled==lastEnabled)return;
         initialized=true;lastP=p;lastWidths=widths;
-        for(int k=0;k<7;++k){
+        lastKinds=kinds;lastEnabled=enabled;
+        for(int k=0;k<8;++k){
             const double freq=std::clamp(20.*std::pow(1000.,(double)detail::unit(p[(size_t)k*2])),20.,sr*.46);
             const double gain=36.*((double)detail::unit(p[(size_t)k*2+1])-.5);
             const double width=(double)detail::unit(widths[(size_t)k]);
-            const int kind=k==0?5:(k==6?7:6); // Studio: low shelf, five peaks, high shelf.
+            const int style=std::clamp(kinds[(size_t)k],0,4); // peak,HP,LP,low shelf,high shelf
+            const int kind=style==0?6:(style==3?5:7);
             const double angle=2.*skellpreset::dsp::pi/sr;
             const double w=std::min(freq*angle,kind==6?2.1991147994995117:3.138451099395752);
             const double sn=std::sin(w),cs=std::cos(w);
             skellpreset::dsp::Biquad c;
-            if(std::abs(gain)>1.e-7){
+            if(!enabled[(size_t)k]){
+                filters[(size_t)k].aim(c);
+                continue;
+            }
+            if(style==1 || style==2) {
+                const double q=.35*std::pow(12.,width);
+                if(style==1)c.setHighPass(sr,freq,q);
+                else c.setLowPass(sr,freq,q);
+            }else if(std::abs(gain)>1.e-7){
                 constexpr double dbUnit=.1151292546497022842; // ln(10)/20
                 if(kind==6){
                     const double bw=width*4.9+.1;
@@ -74,7 +92,7 @@ public:
                     const double slope=(1.-width)*1.7192982456140353+1./3.;
                     const double bigS=std::sqrt(A)*std::sqrt(std::max(0.,(A+1./A)*(1./slope-1.)+2.));
                     const double d=(A-1.)*cs,beta=bigS*sn;
-                    if(kind==5){
+                    if(style==3){
                         const double n=1./(A+1.+d+beta);
                         c.a1=n*((A-1.)+(A+1.)*cs)*-2.;
                         c.a2=n*(A+1.+d-beta);
@@ -110,7 +128,9 @@ private:
     double sr=48000.;bool initialized=false;
     std::array<float,16> lastP{};
     std::array<float,8> lastWidths{};
-    std::array<skellpreset::dsp::SmoothedBiquad,7> filters{};
+    std::array<int,8> lastKinds=defaultKinds;
+    std::array<bool,8> lastEnabled=defaultEnabled;
+    std::array<skellpreset::dsp::SmoothedBiquad,8> filters{};
 };
 
 // Studio Dynamics transfers the original threshold/ratio/knee laws, a stereo

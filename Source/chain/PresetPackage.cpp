@@ -55,6 +55,9 @@ juce::Result validate(const Document& d) {
             if (! finiteRange(v, 0, 1)) return juce::Result::fail("Invalid slot parameter");
         for (const auto q : slot.eqQ)
             if (! finiteRange(q,0,1))return juce::Result::fail("Invalid EQ bandwidth");
+        for(int k=0;k<8;++k)
+            if(slot.studioEqKind[(size_t)k]<0 || slot.studioEqKind[(size_t)k]>4)
+                return juce::Result::fail("Invalid Studio EQ filter type");
         if(!finiteRange(slot.eqLowCut,0,1)||!finiteRange(slot.eqHighCut,0,1))
             return juce::Result::fail("Invalid EQ cut control");
     }
@@ -95,6 +98,13 @@ juce::var toJson(const Document& d) {
         juce::Array<juce::var> eqQ;
         for(float value:slot.eqQ)eqQ.add(value);
         item->setProperty("eqQ",juce::var(eqQ));
+        juce::Array<juce::var> kinds,enabled;
+        for(int k=0;k<8;++k){
+            kinds.add(slot.studioEqKind[(size_t)k]);
+            enabled.add(slot.studioEqOn[(size_t)k]);
+        }
+        item->setProperty("studioEqKind",juce::var(kinds));
+        item->setProperty("studioEqOn",juce::var(enabled));
         item->setProperty("eqLowCut",slot.eqLowCut);
         item->setProperty("eqHighCut",slot.eqHighCut);
         chain.add(juce::var(item));
@@ -191,6 +201,27 @@ juce::Result fromJson(const juce::var& root, Document& out) {
             for(int k=0;k<8;++k)
                 if(!decodeFloat((*eqQ.getArray())[k],0,1,slot.eqQ[(size_t)k]))
                     return juce::Result::fail("Invalid EQ Q value");
+        }
+        // Optional Studio band types and enable flags. A bad array
+        // rejects the whole ZIP before any destination state is modified.
+        const auto kinds=item.getProperty("studioEqKind",{});
+        const auto active=item.getProperty("studioEqOn",{});
+        if(!kinds.isVoid()){
+            if(!kinds.isArray() || kinds.getArray()->size()!=8)
+                return juce::Result::fail("Invalid Studio EQ type array");
+            for(int k=0;k<8;++k)
+                if(!decodeInteger((*kinds.getArray())[k],0,4,
+                        slot.studioEqKind[(size_t)k]))
+                    return juce::Result::fail("Invalid Studio EQ type value");
+        }
+        if(!active.isVoid()){
+            if(!active.isArray() || active.getArray()->size()!=8)
+                return juce::Result::fail("Invalid Studio EQ enable array");
+            for(int k=0;k<8;++k){
+                if(!(*active.getArray())[k].isBool())
+                    return juce::Result::fail("Invalid Studio EQ enable value");
+                slot.studioEqOn[(size_t)k]=(bool)(*active.getArray())[k];
+            }
         }
         // Optional extensions keep legacy .skellpreset v1 and v2 readable.
         const auto lo=item.getProperty("eqLowCut",{});
