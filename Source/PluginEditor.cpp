@@ -73,6 +73,7 @@ public:
         style(micButton);addAndMakeVisible(micButton);
         micButton.onClick=[this] {
             if(browser.isVisible())browser.setVisible(false);
+            if(!micPanel.isVisible())slot.dismissTransientOverlays();
             micPanel.refresh();
             micPanel.setVisible(!micPanel.isVisible());
             if(micPanel.isVisible())micPanel.toFront(true);
@@ -372,7 +373,10 @@ public:
         // A capture of the closed mic panel must not close a completely
         // independent open preset browser scene. Only opening MIC owns
         // the overlay-dismiss action.
-        if(visible)browser.setVisible(false);
+        if(visible){
+            browser.setVisible(false);
+            slot.dismissTransientOverlays();
+        }
         micPanel.refresh();
         micPanel.setVisible(visible);
         if(visible)micPanel.toFront(true);
@@ -482,6 +486,15 @@ public:
         chain.triggerMicForTest();
         if(micPanel.isVisible())
             issues.add("Dedicated MIC panel failed to close");
+        // Opening MIC after the effect library must dismiss the old overlay,
+        // without changing the selected effect or any DSP parameter.
+        slot.openModulePickerForScreenshot();
+        if(!slot.modulePickerVisibleForTest())
+            issues.add("Effect library could not open for MIC dismissal test");
+        chain.triggerMicForTest();
+        if(slot.modulePickerVisibleForTest() || !micPanel.isVisible())
+            issues.add("MIC panel did not dismiss overlapping effect library");
+        chain.triggerMicForTest();
         preset.onClick();
         if(!browser.isVisible())issues.add("Preset selector did not open browser");
         if(browser.visibleFactoryPresetsForTest()!=1 ||
