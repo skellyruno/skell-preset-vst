@@ -94,7 +94,7 @@ int strictSlotOrderSmoke(){
     auto owner=std::make_unique<SkellPresetAudioProcessor>();
     juce::MemoryBlock baseline;
     owner->getStateInformation(baseline);
-    auto xml=juce::getXmlFromBinary(baseline.getData(),(int)baseline.getSize());
+    auto xml=juce::AudioProcessor::getXmlFromBinary(baseline.getData(),(int)baseline.getSize());
     if(!xml)return 81;
     const auto parsed=juce::ValueTree::fromXml(*xml);
     if(!parsed.isValid())return 82;
@@ -104,7 +104,7 @@ int strictSlotOrderSmoke(){
         auto treeXml=document.createXml();
         if(!treeXml)return false;
         juce::MemoryBlock stateBytes;
-        juce::copyXmlToBinary(*treeXml,stateBytes);
+        juce::AudioProcessor::copyXmlToBinary(*treeXml,stateBytes);
         auto processor=std::make_unique<SkellPresetAudioProcessor>();
         processor->reorderSlot(0,3); // [1,2,3,0,4,...], not the identity.
         if(processor->slotIdAt(0)!=1||processor->slotIdAt(3)!=0)return false;
@@ -127,7 +127,6 @@ int strictSlotOrderSmoke(){
     if(!verify(malformed.joinIntoString(","),false))return 83;
     malformed.set(0,"-0");
     if(!verify(malformed.joinIntoString(","),false))return 84;
-    malformed.set(0,"00"); // numeric decimal with 2 digits remains permitted
     if(!verify(natural.joinIntoString(",")+",",false))return 85;
     if(!verify(","+natural.joinIntoString(","),false))return 86;
     if(!verify(natural.joinIntoString(",,"),false))return 87;
