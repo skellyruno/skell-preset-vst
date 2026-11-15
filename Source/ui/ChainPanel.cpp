@@ -243,7 +243,10 @@ void ChainPanel::paint(juce::Graphics& g) {
         if(type==SkellPresetAudioProcessor::VoxRackSmoothComp)compact="Vox Smooth";
         else if(type==SkellPresetAudioProcessor::VoxRackRoom)compact="Vox Room";
         else if(type==SkellPresetAudioProcessor::ThreeBandDynamics)compact="3-Band";
-        else if(type==SkellPresetAudioProcessor::ExternalVST3)compact="VST3 Insert";
+        else if(type==SkellPresetAudioProcessor::ExternalVST3) {
+            compact=processor.hostedVST3Name(slot);
+            if(compact.isEmpty())compact="VST3 INSERT";
+        }
         else if(type==SkellPresetAudioProcessor::DuckingPingPongFX)compact="Duck Echo";
         else if(type==SkellPresetAudioProcessor::VocalVibratoFX)compact="Vibrato";
         else if(type==SkellPresetAudioProcessor::EightBandToneFX)compact="8-Band EQ";
@@ -253,7 +256,7 @@ void ChainPanel::paint(juce::Graphics& g) {
         else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX)compact="Pitch";
         else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)compact="Match Finish";
         const float nameSize=compact.length()>10?9.1f:compact.length()>8?9.9f:10.8f;
-        Theme::text(g,compact,{78,top+8,69,19},nameSize,
+        Theme::fittedText(g,compact,{78,top+8,69,19},nameSize,
                     type==0?Theme::muted:(enabled?Theme::white:Theme::muted),selected==slot);
         const float cx=165.f, cy=(float)top+19.f;
         const float wet=slotWet(slot);
@@ -317,8 +320,37 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,"WHEEL TO SCROLL / DRAG TO REORDER",
+    Theme::text(g,"WHEEL: RACK OR WET / DRAG: ORDER",
         {13,511,193,18},8.5f,Theme::muted,false,juce::Justification::centred);
+    if(contextOpen) {
+        const auto bounds=juce::Rectangle<float>(7.f,(float)contextTop,202.f,218.f);
+        g.setColour(Theme::bg.withAlpha(.98f));g.fillRoundedRectangle(bounds,8.f);
+        Theme::panelBox(g,bounds,8.f,true);
+        const auto effectName=processor.slotType(contextSlot)==
+            SkellPresetAudioProcessor::ExternalVST3
+            ?processor.hostedVST3Name(contextSlot)
+            :processor.moduleName(processor.slotType(contextSlot));
+        Theme::fittedText(g,effectName.isEmpty()?"RACK ACTIONS":effectName,
+                          {17,contextTop+4,182,24},12,Theme::green,true);
+        const juce::StringArray choices{
+            "EDIT EFFECT","REPLACE EFFECT","MOVE UP","MOVE DOWN",
+            "BYPASS / ENABLE","CLEAR EFFECT","REMOVE RACK SLOT"};
+        const int pos=contextPosition();
+        for(int i=0;i<choices.size();++i) {
+            const int y=contextTop+30+i*26;
+            const bool enabled=(i!=2||pos>0) &&
+                (i!=3||pos+1<processor.activeSlotCount()) &&
+                (i!=6||processor.activeSlotCount()>SkellPresetAudioProcessor::defaultSlotCount);
+            g.setColour(i==contextHover?Theme::green.withAlpha(.19f):
+                        (i%2?Theme::plot.withAlpha(.55f):Theme::panelAlt.withAlpha(.65f)));
+            g.fillRoundedRectangle(13.f,(float)y,190.f,24.f,4.f);
+            g.setColour((i==contextHover&&enabled)?Theme::green:
+                        (enabled?Theme::white:Theme::muted.withAlpha(.35f)));
+            g.setFont(Theme::font(11.f,true));
+            g.drawFittedText(choices[i],{22,y+2,171,20},
+                             juce::Justification::centredLeft,1,.82f);
+        }
+    }
 }
 void ChainPanel::refreshIfChanged() {
     const int currentSlots=processor.activeSlotCount();
@@ -339,50 +371,51 @@ void ChainPanel::refreshIfChanged() {
     visualSnapshotValid=true;
     if(changed)repaint();
 }
+int ChainPanel::contextPosition() const noexcept {
+    if(contextSlot<0)return -1;
+    for(int row=0;row<processor.activeSlotCount();++row)
+        if(processor.slotIdAt(row)==contextSlot)return row;
+    return -1;
+}
 void ChainPanel::popupFor(int physicalSlot,juce::Point<int> screenPoint) {
-    // The old 34-item popup was unsearchable, included an obsolete MicModel
-    // rack insert, and could send users to the wrong UI. Right-click is now
-    // a compact, deterministic action menu. The searchable library is the
-    // same movable overlay opened by a double-click.
+    (void)screenPoint;
     if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount)return;
-    int position=-1;
-    for(int i=0;i<processor.activeSlotCount();++i)
-        if(processor.slotIdAt(i)==physicalSlot){position=i;break;}
+    contextSlot=physicalSlot;
+    const int position=contextPosition();
     if(position<0)return;
-    const auto prefix="s"+juce::String(physicalSlot+1)+"_";
-    const auto* on=processor.state.getRawParameterValue(prefix+"on");
-    const bool powered=on && on->load()>.5f;
-    juce::PopupMenu menu;
-    menu.addSectionHeader(processor.moduleName(processor.slotType(physicalSlot)));
-    menu.addItem(201,"Edit effect",true);
-    menu.addItem(202,"Choose / replace effect...",true);
-    menu.addSeparator();
-    menu.addItem(203,"Move effect up",position>0);
-    menu.addItem(204,"Move effect down",position+1<processor.activeSlotCount());
-    menu.addSeparator();
-    menu.addItem(205,powered?"Bypass effect":"Enable effect",
-                 processor.slotType(physicalSlot)!=SkellPresetAudioProcessor::Empty);
-    menu.addItem(206,"Clear effect",processor.slotType(physicalSlot)!=SkellPresetAudioProcessor::Empty);
-    juce::Component::SafePointer<ChainPanel> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options()
-        .withTargetComponent(this)
-        .withTargetScreenArea({screenPoint.x,screenPoint.y,1,1}),
-        [safe,physicalSlot,position](int id) {
-            if(safe==nullptr || id==0)return;
-            if(id==203 && position>0)safe->processor.reorderSlot(position,position-1);
-            if(id==204 && position+1<safe->processor.activeSlotCount())
-                safe->processor.reorderSlot(position,position+1);
-            if(id==205)safe->toggleSlotPower(physicalSlot);
-            if(id==206) {
-                safe->processor.setSlotType(physicalSlot,SkellPresetAudioProcessor::Empty);
-                safe->processor.setSlotOn(physicalSlot,false);
-            }
-            safe->selected=physicalSlot;
-            if(safe->onSelection)safe->onSelection(physicalSlot);
-            if(id==202 && safe->onReplaceRequest)safe->onReplaceRequest(physicalSlot);
-            safe->visualSnapshotValid=false;
-            safe->repaint();
-        });
+    // Theme-native right click overlay: no stock OS / DAW popup and no
+    // focus-loss surprises while automating another control.
+    contextTop=juce::jlimit(44,juce::jmax(44,getHeight()-222),
+                           rowStart+(position-scrollOffset)*rowStep);
+    contextHover=-1;
+    contextOpen=true;
+    repaint();
+}
+void ChainPanel::selectContextAction(int index) {
+    if(!contextOpen || index<0 || index>6)return;
+    const int physical=contextSlot,position=contextPosition();
+    contextOpen=false;contextHover=-1;
+    if(position<0)return;
+    if(index==2 && position>0)processor.reorderSlot(position,position-1);
+    if(index==3 && position+1<processor.activeSlotCount())
+        processor.reorderSlot(position,position+1);
+    if(index==4)toggleSlotPower(physical);
+    if(index==5) {
+        processor.setSlotOn(physical,false);
+        processor.setSlotType(physical,SkellPresetAudioProcessor::Empty);
+    }
+    if(index==6) {
+        if(processor.removeRackSlot(position)) {
+            selected=-1;
+            if(onClearSelection)onClearSelection();
+            visualSnapshotValid=false;repaint();return;
+        }
+    }
+    selected=physical;
+    if(onSelection)onSelection(physical);
+    if(index==1 && onReplaceRequest)onReplaceRequest(physical);
+    visualSnapshotValid=false;
+    repaint();
 }
 void ChainPanel::addModule() {
     // A new slot is real: a preallocated DSP engine plus stable s11..s16
@@ -398,6 +431,14 @@ void ChainPanel::addModule() {
     repaint();
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
+    if(contextOpen) {
+        const int line=(e.y-contextTop-30)/26;
+        const bool inside=e.x>=13&&e.x<204&&e.y>=contextTop+30&&
+            e.y<contextTop+30+7*26;
+        if(inside)selectContextAction(line);
+        else {contextOpen=false;contextHover=-1;repaint();}
+        return;
+    }
     if(e.x>=158 && e.x<=200 && e.y>=5 && e.y<43) {
         if(!e.mods.isPopupMenu() && onMicRequest)onMicRequest();
         return;
@@ -501,6 +542,14 @@ void ChainPanel::mouseDoubleClick(const juce::MouseEvent& e) {
     selectAndReplace(row);
 }
 void ChainPanel::mouseMove(const juce::MouseEvent& e) {
+    if(contextOpen) {
+        const int hovered=(e.x>=13&&e.x<204&&e.y>=contextTop+30&&
+            e.y<contextTop+30+7*26)?(e.y-contextTop-30)/26:-1;
+        if(hovered!=contextHover){contextHover=hovered;repaint();}
+        setMouseCursor(hovered>=0?juce::MouseCursor::PointingHandCursor:
+                                juce::MouseCursor::NormalCursor);
+        return;
+    }
     const int next=(e.x>=10 && e.x<=206)?rowAt(e.y):-1;
     const int hoveredPhysical=next>=0?processor.slotIdAt(next):-1;
     const int nextWet=(hoveredPhysical>=0 &&
@@ -529,7 +578,11 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         setTooltip("Click green dot to enable / bypass this effect");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(next>=0) {
-        setTooltip("Click to select / double-click to change effect / drag to reorder");
+        const int physical=processor.slotIdAt(next);
+        const auto hosted=processor.slotType(physical)==SkellPresetAudioProcessor::ExternalVST3
+            ?processor.hostedVST3Name(physical):juce::String{};
+        setTooltip((hosted.isNotEmpty()?hosted+" / ":"")+
+            "Click to edit / right-click for menu / drag to reorder");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(add)setMouseCursor(juce::MouseCursor::PointingHandCursor);
     else setMouseCursor(juce::MouseCursor::NormalCursor);
@@ -545,7 +598,7 @@ void ChainPanel::applyWheelDelta(float deltaY) {
     if(railWheelCarry*deltaY<0.f)railWheelCarry=0.f;
     railWheelCarry=juce::jlimit(-1.f,1.f,railWheelCarry+deltaY);
     // Trackpad micro-deltas are not separate commands; one row per detent.
-    if(std::abs(railWheelCarry)<.40f)return;
+    if(std::abs(railWheelCarry)<.12f)return;
     const int direction=railWheelCarry<0.f?1:-1;
     railWheelCarry=0.f;
     const int next=juce::jlimit(0,
@@ -553,9 +606,27 @@ void ChainPanel::applyWheelDelta(float deltaY) {
     if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
         visualSnapshotValid=false;repaint();}
 }
-void ChainPanel::mouseWheelMove(const juce::MouseEvent&,
+void ChainPanel::mouseWheelMove(const juce::MouseEvent& event,
                                 const juce::MouseWheelDetails& wheel) {
-    // Wheel navigates the rack; ONLY dragging changes effect order.
+    if(contextOpen){contextOpen=false;contextHover=-1;repaint();}
+    // Wheel on a wet dial edits THAT physical slot's blend. Everywhere
+    // else inside the rack it scrolls the effect list; never the DAW/editor.
+    const int row=rowAt(event.y);
+    if(row>=0 && event.x>=wetControlLeft && event.x<=wetControlRight) {
+        const int physical=processor.slotIdAt(row);
+        if(processor.slotType(physical)!=SkellPresetAudioProcessor::Empty) {
+            if(auto* p=processor.state.getParameter("s"+
+                   juce::String(physical+1)+"_wet")) {
+                p->beginChangeGesture();
+                const float step=wheel.deltaY>=0.f?.025f:-.025f;
+                setSlotWet(physical,slotWet(physical)+step);
+                p->endChangeGesture();
+            }
+            hoveredWetSlot=physical;
+            repaint();
+            return;
+        }
+    }
     applyWheelDelta(wheel.deltaY);
 }
 bool ChainPanel::testWheelScrollDoesNotReorder() {
@@ -575,4 +646,33 @@ bool ChainPanel::testWheelScrollDoesNotReorder() {
     visualSnapshotValid=false;
     repaint();
     return valid;
+}
+bool ChainPanel::testWheelWetAndRack() {
+    if(processor.activeSlotCount()<=visibleRows)return false;
+    const int physical=processor.slotIdAt(0);
+    const float prior=slotWet(physical);
+    const int previousScroll=scrollOffset;
+    setSlotWet(physical,prior-.025f);
+    const bool changed=std::abs(slotWet(physical)-prior)>.001f ||
+                       prior<=.025f;
+    setSlotWet(physical,prior);
+    scrollOffset=0;
+    railWheelCarry=0.f;
+    applyWheelDelta(-.2f);
+    const bool scrolled=scrollOffset==1;
+    scrollOffset=previousScroll;
+    railWheelCarry=0.f;
+    visualSnapshotValid=false;repaint();
+    return changed && scrolled;
+}
+bool ChainPanel::testRemoveExtraSlot() {
+    const int before=processor.activeSlotCount();
+    if(before>=SkellPresetAudioProcessor::slotCount)return false;
+    const int added=processor.appendRackSlot();
+    if(added<0)return false;
+    const bool removed=processor.removeRackSlot(before);
+    const bool stable=processor.activeSlotCount()==before &&
+        processor.slotIdAt(before)==added;
+    visualSnapshotValid=false;repaint();
+    return removed&&stable;
 }
