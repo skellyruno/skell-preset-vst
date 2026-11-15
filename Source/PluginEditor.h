@@ -16,6 +16,7 @@ public:
     void setMicPanelForScreenshot(bool visible);
     void setModOrbForScreenshot(bool enabled);
     void dockRackForScreenshot(bool right);
+    void showHomeForScreenshot();
     void openModulePickerForScreenshot();
     void openInstalledVST3BrowserForScreenshot();
     juce::StringArray getScreenshotLayoutIssues() const;
