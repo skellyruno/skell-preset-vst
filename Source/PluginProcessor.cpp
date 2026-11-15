@@ -69,17 +69,33 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     auto fl=[&](juce::String id,juce::String label,float low,float high,float initial,float step=0.001f){
         p.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{id,1},label,juce::NormalisableRange<float>(low,high,step),initial));
     };
+    auto percent=[&](juce::String id,juce::String label,float low,float high,float initial,float step=0.001f){
+        // Host-side string formatting only: preserve numerical range, value,
+        // ID and automation normalization. Native host displays 0..100%.
+        const auto factory=juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction([low,high](float value,int){
+                return juce::String(juce::roundToInt(100.f*
+                    (value-low)/(high-low)))+"%";
+            })
+            .withValueFromStringFunction([low,high](const juce::String& text){
+                return low+(high-low)*juce::jlimit(0.f,100.f,
+                    text.getFloatValue())*.01f;
+            })
+            .withLabel("%");
+        p.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{id,1},label,juce::NormalisableRange<float>(low,high,step),initial,factory));
+    };
     auto bl=[&](juce::String id,juce::String label,bool initial){
         p.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID{id,1},label,initial));
     };
     p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"mode",1},"Mode",juce::StringArray{"Simple","Advanced","Vocoding","Bypass"},1));
-    fl("input","Input",-24,24,0);fl("mix","Mix",0,1,1);
-    fl("output","Output",-24,24,0);
+    percent("input","Input",-24,24,0);percent("mix","Mix",0,1,1);
+    percent("output","Output",-24,24,0);
     bl("autoGain","Auto gain (reserved)",false);bl("delta","Delta",false);
     bl("adapt","Adapt (reserved)",false);fl("adaptAmount","Adapt amount (reserved)",0,1,0);
     bl("globalGate","Legacy global gate (inactive; use rack Gate)",false);fl("gateThreshold","Gate threshold",-80,0,-50);
     p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"laneMode",1},"Lane mode (reserved)",juce::StringArray{"Series","Parallel"},0));
-    for(int k=1;k<=8;k++) fl("macro"+juce::String(k),"Macro "+juce::String(k),0,1,.5f);
+    for(int k=1;k<=8;k++) percent("macro"+juce::String(k),"Macro "+juce::String(k),0,1,.5f);
     // Preserve the original 0..22 choice count (and host normalization).
     auto legacyTypes=types;
     while(legacyTypes.size()>RingModFX+1)
@@ -88,7 +104,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         const auto id="s"+juce::String(s)+"_";
         p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{id+"type",1},"Slot "+juce::String(s)+" type",legacyTypes,0));
         bl(id+"on","Slot "+juce::String(s)+" active",false);
-        fl(id+"wet","Slot "+juce::String(s)+" wet",0,1,1);
+        percent(id+"wet","Slot "+juce::String(s)+" wet",0,1,1);
         p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{id+"lane",1},"Slot "+juce::String(s)+" lane (reserved)",juce::StringArray{"A","B","C"},0));
         for(int k=1;k<=16;k++)fl(id+"p"+juce::String(k),"Slot "+juce::String(s)+" Parameter "+juce::String(k),0,1,.5f);
     }

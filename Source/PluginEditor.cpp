@@ -9,6 +9,8 @@
 #include "ui/SkellSettingsButton.h"
 #include "ui/SkellActionButton.h"
 #include "ui/SkellMacroKnob.h"
+#include "ui/SkellSettingsPanel.h"
+#include "ui/SkellIdleDeck.h"
 #include "chain/AlchemistNativePreset.h"
 #include <SkellCore/UI.h>
 #include <array>
@@ -23,12 +25,14 @@ void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical
 class SkellPresetAudioProcessorEditor::Canvas final:public juce::Component,private juce::Timer {
 public:
     Canvas(SkellPresetAudioProcessorEditor& owner,SkellPresetAudioProcessor& p)
-    : outer(owner),processor(p),chain(p),slot(p),browser(p),micPanel(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
+    : outer(owner),processor(p),chain(p),slot(p),idle(p),browser(p),micPanel(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
         Theme::selectFor(processor.state);
         setLookAndFeel(skin.get());
         setSize(Theme::width,Theme::height);
         setWantsKeyboardFocus(true);
         addAndMakeVisible(chain);addAndMakeVisible(slot);
+        addAndMakeVisible(idle);
+        chain.setSelectedSlot(-1);
         themeButton.onClick=[this] {setTheme((selectedTheme+1)%3);};
         help.setButtonText("?");
         help.setTooltip("Replay the Skell-Preset guided tour");
@@ -40,8 +44,19 @@ public:
         chain.setDockedRight(rackOnRight);
         chain.onDockRequest=[this](bool right){dockRack(right);};
 
-        chain.onSelection=[this](int s){slot.select(s);chain.setSelectedSlot(s);};
+        chain.onSelection=[this](int s){
+            editingIdle=false;
+            idle.setVisible(false);
+            slot.select(s);chain.setSelectedSlot(s);
+        };
+        chain.onClearSelection=[this]{
+            editingIdle=true;
+            chain.setSelectedSlot(-1);
+            idle.setVisible(slot.isVisible());
+            idle.toFront(false);
+        };
         chain.onReplaceRequest=[this](int s){
+            editingIdle=false;idle.setVisible(false);
             slot.select(s);
             chain.setSelectedSlot(s);
             slot.openModulePicker();
@@ -146,16 +161,19 @@ public:
         // Host attachments otherwise show opaque raw decimals such as 0.000
         // and 1.000. Display physical units without changing DSP precision
         // or the existing automated parameter normalization.
-        auto decibels=[](double value) {
-            return juce::String(juce::roundToInt(value))+" dB";
+        // Value presentation only: -24..+24 dB is mapped onto 0..100%.
+        // 50% remains 0 dB (unity). The actual audio gain ranges, default
+        // value and host automation IDs are unchanged.
+        auto gainPercent=[](double db) {
+            return juce::String(juce::roundToInt(50.+db*100./48.))+"%";
         };
-        auto readDb=[](const juce::String& text) {
-            return juce::jlimit(-24.,24.,text.getDoubleValue());
+        auto parseGainPercent=[](const juce::String& text) {
+            return juce::jlimit(-24.,24.,(text.getDoubleValue()-50.)*48./100.);
         };
-        input.textFromValueFunction=decibels;
-        output.textFromValueFunction=decibels;
-        input.valueFromTextFunction=readDb;
-        output.valueFromTextFunction=readDb;
+        input.textFromValueFunction=gainPercent;
+        output.textFromValueFunction=gainPercent;
+        input.valueFromTextFunction=parseGainPercent;
+        output.valueFromTextFunction=parseGainPercent;
         mix.textFromValueFunction=[](double value) {
             return juce::String(juce::roundToInt(juce::jlimit(0.,1.,value)*100.))+"%";
         };
@@ -164,9 +182,9 @@ public:
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
         input.updateText();output.updateText();mix.updateText();
-        input.setTooltip("Input gain · double-click for 0 dB");
+        input.setTooltip("Input gain 0-100% (50%=0 dB unity) · double-click for 50%");
         mix.setTooltip("Global dry / wet mix · double-click for 100%");
-        output.setTooltip("Output gain · double-click for 0 dB");
+        output.setTooltip("Output gain 0-100% (50%=0 dB unity) · double-click for 50%");
         sizeSelect.addItemList({"70%","85%","100%","125%"},1);
         const float restored=(float)processor.state.state.getProperty("uiScale",.70f);
         const float available[]{.70f,.85f,1.f,1.25f};
@@ -186,24 +204,17 @@ public:
         style(settings);
         addAndMakeVisible(settings);
         settings.onClick=[this] {
-            // An actual native rounded-rectangle settings menu, using the
-            // SkellCore LookAndFeel; do not add another cramped dropdown.
-            juce::PopupMenu menu;
-            menu.addSectionHeader("INTERFACE SIZE");
-            const juce::StringArray labels{"70%","85%","100%","125%"};
-            for(int i=0;i<labels.size();++i)
-                menu.addItem(i+1,labels[i],true,sizeSelect.getSelectedId()==i+1);
-            // Recording UI intentionally removed; recording infrastructure
-            // remains for backward compatibility with saved project state.
-            menu.showMenuAsync(
-                juce::PopupMenu::Options().withTargetComponent(&settings),
-                [safe=juce::Component::SafePointer<Canvas>(this)](int choice) {
-                    if(safe==nullptr)return;
-                    if(choice>=1 && choice<=4)
-                        safe->sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
-                    // No recording action or extra footer controls.
-                });
+            browser.setVisible(false);
+            micPanel.setVisible(false);
+            if(settingsPanel.isVisible())settingsPanel.close();
+            else settingsPanel.open(sizeSelect.getSelectedId()-1);
         };
+        settingsPanel.onSizeChange=[this](int choice){
+            if(choice>=1 && choice<=4)
+                sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
+        };
+        addAndMakeVisible(settingsPanel);
+        settingsPanel.setVisible(false);
         record.setButtonText("REC WAV");
         record.setTooltip("Capture processed stereo track audio to a 24-bit WAV. FL Studio owns the microphone and transport.");
         style(record);
@@ -243,11 +254,15 @@ public:
                     }
                 });
         };
-        browser.onLoaded=[this]{slot.select(0);chain.setSelectedSlot(0);refresh();};
+        browser.onLoaded=[this]{
+            editingIdle=false;idle.setVisible(false);
+            slot.select(0);chain.setSelectedSlot(0);refresh();
+        };
         browser.onCoverChanged=[this]{repaint();};
         browser.onClose=[this]{preset.repaint();};
         addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
         addAndMakeVisible(browser);browser.setVisible(false);
+        settingsPanel.toFront(false);
         addAndMakeVisible(micPanel);micPanel.setVisible(false);
         micPanel.onClose=[this]{micButton.repaint();};
         setTheme((int)processor.state.state.getProperty("uiTheme",0),false);
@@ -323,6 +338,7 @@ public:
         sizeSelect.setColour(juce::ComboBox::textColourId,Theme::white);
         sizeSelect.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
         chain.repaint();slot.applyTheme();browser.applyTheme();
+        idle.repaint();settingsPanel.repaint();
         refresh();
     }
     void dockRack(bool right) {
@@ -389,8 +405,8 @@ public:
         if(input.getBounds().intersects(mix.getBounds()) ||
            mix.getBounds().intersects(output.getBounds()))
             issues.add("Footer master knobs overlap");
-        if(!input.textFromValueFunction || input.textFromValueFunction(0.)!="0 dB"
-           || !output.textFromValueFunction || output.textFromValueFunction(0.)!="0 dB"
+        if(!input.textFromValueFunction || input.textFromValueFunction(0.)!="50%"
+           || !output.textFromValueFunction || output.textFromValueFunction(0.)!="50%"
            || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
             issues.add("Master strip displays raw values rather than physical dB/% labels");
         const std::array<const juce::Component*,5> top{{&preset,&match,&viewSwitch,&settings,&powerButton}};
@@ -401,6 +417,9 @@ public:
                                + " / " + juce::String((int)j));
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
         if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
+        if(!juce::Rectangle<int>(0,0,Theme::width,Theme::height)
+            .contains(settingsPanel.getBounds()))
+            issues.add("Themed Settings overlay clipped by canvas");
         if(chain.getBounds().intersects(slot.getBounds()))
             issues.add("Rack overlaps the module editor");
         if(slot.getHeight()!=chain.getHeight())
@@ -829,7 +848,7 @@ public:
                                centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
                 }
                 if(macro[(size_t)k].showsValueForTest()) {
-                    Theme::text(g,juce::String(juce::roundToInt(amount*100.f)),
+                    Theme::text(g,juce::String(juce::roundToInt(amount*100.f))+"%",
                         {(int)x+55,510,110,29},21,Theme::green,true,
                         juce::Justification::centred);
                 }
@@ -860,6 +879,7 @@ public:
         // The Advanced footer macro strip is gone: let the module editor
         // fill the space down to the shared master-control footer.
         slot.setBounds(rackOnRight?14:247,90,906,535);
+        idle.setBounds(slot.getBounds());
         // Smaller floating MIC widget; do not snap it back after a drag.
         constexpr int micWidth=375,micHeight=326;
         if(!micPanel.hasBeenMoved())
@@ -893,6 +913,7 @@ public:
         output.setBounds(1052,646,65,37);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1110,28,36,36);
+        settingsPanel.setBounds(743,78,388,258);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
         // Keep the rack unobstructed when the user docks it on the right.
@@ -911,8 +932,10 @@ public:
         const bool bypass=m==3;
         const int display=bypass?previousMode:(m==0?0:1);
         chain.setVisible(display==1);slot.setVisible(display==1);
+        idle.setVisible(display==1 && editingIdle);
         chain.setAlpha(bypass?.30f:1.f);slot.setAlpha(bypass?.30f:1.f);
         chain.setEnabled(!bypass);slot.setEnabled(!bypass);
+        idle.setEnabled(!bypass);idle.setAlpha(bypass?.30f:1.f);
         for(auto& s:macro){
             s.setVisible(display==0);
             s.setEnabled(!bypass);
@@ -922,6 +945,7 @@ public:
         bypassShade.setVisible(bypass);
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
+        if(settingsPanel.isVisible())settingsPanel.toFront(true);
         if(micPanel.isVisible())micPanel.toFront(true);
         micButton.setColour(juce::TextButton::buttonColourId,
             micPanel.on()?Theme::green.withAlpha(.21f):Theme::panelAlt);
@@ -979,6 +1003,7 @@ public:
         const unsigned count=processor.liveScopeSampleCount();
         if(count!=lastScopeSampleCount) {
             lastScopeSampleCount=count;
+            if(idle.isVisible())idle.repaint();
             repaint(juce::Rectangle<int>(73,51,271,25));
             const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
             if(activeView==0 || (activeView==3 && previousMode==0))
@@ -996,22 +1021,35 @@ public:
         if(browser.isVisible() && !browser.getBounds().contains(point) && !preset.getBounds().contains(point)) {
             browser.setVisible(false);preset.repaint();
         }
+        if(settingsPanel.isVisible() && !settingsPanel.getBounds().contains(point)
+           && !settings.getBounds().contains(point))
+            settingsPanel.close();
     }
     bool keyPressed(const juce::KeyPress& key)override{
         if(key==juce::KeyPress::escapeKey && micPanel.isVisible()) {
             micPanel.setVisible(false);return true;
         }
-        if(key==juce::KeyPress::escapeKey&&browser.isVisible()){browser.setVisible(false);return true;}return false;
+        if(key==juce::KeyPress::escapeKey && settingsPanel.isVisible()){
+            settingsPanel.close();return true;
+        }
+        if(key==juce::KeyPress::escapeKey&&browser.isVisible()){browser.setVisible(false);return true;}
+        if(key==juce::KeyPress::escapeKey && slot.isVisible()){
+            editingIdle=true;idle.setVisible(true);chain.setSelectedSlot(-1);
+            idle.toFront(false);return true;
+        }
+        return false;
     }
 private:
     SkellPresetAudioProcessorEditor& outer;
     SkellPresetAudioProcessor& processor;
-    ChainPanel chain;SlotEditor slot;PresetBrowser browser;SkellMicModelPanel micPanel;
+    ChainPanel chain;SlotEditor slot;SkellIdleDeck idle;
+    PresetBrowser browser;SkellMicModelPanel micPanel;
+    SkellSettingsPanel settingsPanel;
     SkullThemeButton themeButton;
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
     int selectedTheme=Theme::Obsidian,previousMode=1;
-    bool rackOnRight=false;
+    bool rackOnRight=false,editingIdle=true;
     int lastInputMeter=-1,lastOutputMeter=-1;
     bool lastMicOn=false;
     int lastRecordingState=-1;
