@@ -44,8 +44,7 @@ public:
         write_=0;
         for(auto& phase:phase_) {
             seed_=seed_*0x08088405u+1u;
-            phase_[(size_t)(&phase-&phase_[0])]=
-                (std::uint32_t)(((std::uint64_t)seed_*32767u)>>32u);
+            phase=(std::uint32_t)(((std::uint64_t)seed_*32767u)>>32u);
         }
     }
     void setRaw(Values values) noexcept {

@@ -677,6 +677,12 @@ public:
     void paint(juce::Graphics& g) override {
         Theme::select(selectedTheme);
         g.fillAll(Theme::bg);
+        // Subtle studio-console lighting gives the flat canvas depth while
+        // keeping neon-green labels legible in every approved theme.
+        g.setGradientFill(juce::ColourGradient(
+            Theme::panel.brighter(.12f),0.f,0.f,
+            Theme::bg,0.f,(float)Theme::height,false));
+        g.fillRect(0,0,Theme::width,Theme::height);
         // Selected preset artwork as a full-UI, low-contrast wallpaper.
         // The real modules and labels remain foreground components.
         const auto cover=browser.selectedCover();
@@ -689,14 +695,22 @@ public:
             g.setColour(Theme::bg.withAlpha(.57f));
             g.fillRect(0,0,Theme::width,Theme::height);
         }
-        g.setColour(Theme::panel);g.fillRect(0,0,Theme::width,76);
-        g.setColour(Theme::stroke);g.drawHorizontalLine(75,0.f,(float)Theme::width);
+        g.setGradientFill(juce::ColourGradient(
+            Theme::panelAlt.brighter(.08f),0.f,0.f,
+            Theme::panel.darker(.06f),0.f,76.f,false));
+        g.fillRect(0,0,Theme::width,76);
+        g.setColour(Theme::white.withAlpha(.065f));
+        g.drawHorizontalLine(1,10.f,(float)Theme::width-10.f);
+        g.setColour(Theme::stroke.withAlpha(.95f));
+        g.drawHorizontalLine(75,0.f,(float)Theme::width);
+        g.setColour(Theme::green.withAlpha(.42f));
+        g.fillRect(76,74,110,1);
         // One typographic run avoids the clipped hyphen and inconsistent gaps.
         // PRESET stays neon green in the main Obsidian skin.
         juce::AttributedString brand;
         brand.setJustification(juce::Justification::centredLeft);
         brand.append("SKELL",Theme::white);
-        brand.append("PRESET",juce::Colour(0xff39ff3a));
+        brand.append("PRESET",Theme::green);
         // AttributedString::setFont styles existing text; calling it before
         // append() left the new runs at JUCE's tiny default font.
         brand.setFont(Theme::font(27.f,true));
@@ -720,7 +734,14 @@ public:
         Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
                     {695,12,91,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
-        g.setColour(Theme::panel);g.fillRect(0,635,Theme::width,53);
+        g.setGradientFill(juce::ColourGradient(
+            Theme::panelAlt.withMultipliedBrightness(.88f),0.f,635.f,
+            Theme::panel.darker(.07f),0.f,688.f,false));
+        g.fillRect(0,635,Theme::width,53);
+        g.setColour(Theme::white.withAlpha(.055f));
+        g.drawHorizontalLine(636,12.f,(float)Theme::width-12.f);
+        g.setColour(Theme::stroke.withAlpha(.50f));
+        g.drawVerticalLine(801,644.f,681.f);
         Theme::text(g,"IN",{26,646,42,18},11,Theme::muted,true);
         Theme::text(g,"OUT",{214,646,48,18},11,Theme::muted,true);
         for(int ix=0;ix<12;ix++){
@@ -735,6 +756,14 @@ public:
                     juce::Justification::centred);
         Theme::text(g,"OUTPUT",{1050,635,69,13},9.5f,Theme::muted,true,
                     juce::Justification::centred);
+        // Three machined master bezels visually join the existing rotary
+        // controls without intercepting their mouse or automation input.
+        for(float cx:{874.5f,979.5f,1084.5f}) {
+            g.setColour(Theme::bg.withAlpha(.58f));
+            g.fillEllipse(cx-19.f,648.f,38.f,37.f);
+            g.setColour(Theme::stroke.brighter(.11f));
+            g.drawEllipse(cx-19.f,648.f,38.f,37.f,.9f);
+        }
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){

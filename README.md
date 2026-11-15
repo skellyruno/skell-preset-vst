@@ -168,3 +168,20 @@ without claiming stale UI screenshots are current. Screenshot workflows
 are manual-only. Windows VST3 CI compiles (but never runs) the UI renderer
 as an additional source integrity gate; this does not prove FL Studio
 compatibility, visual perfection or audio sound quality.
+
+## Studio DSP direct integration and GUI finish
+
+Skell Preset's native **Studio Chorus** now contains a C++17 translation of
+Skell Studio's three-LFO, two-band crossover modulation DSP, replacing the
+prior native Vocal Chorus engine inside its existing module slot. The rest
+of the rack, the original 4 chorus automation knobs and global wet remain.
+Reference: Lemon Studio `crates/os-engine/src/effects/chorus.rs`, Copyright
+(C) 2026 ItsAlphaNeon, licensed **GPL-3.0-or-later**. Skell Preset's combined
+build will require compliant GPL-3.0-or-later source distribution if released.
+The existing SkellCore/third-party licenses still apply.
+
+The shared visual treatment has a restrained gradient finish and fine
+machined panel highlights. Simple-mode Tone/Punch/Space/Grit remain in the
+approved positions, Advanced still omits the macro strip, and the footer
+master knobs and MIC widget keep their existing interactions. Renderer/build,
+real Windows FL Studio use, CPU, and side-by-side sound A/B are separate gates.

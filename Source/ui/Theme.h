@@ -53,8 +53,25 @@ inline void selectFor(const juce::AudioProcessorValueTreeState& state) {
     select(clampVariant((int)state.state.getProperty("uiTheme",0)));
 }
 inline void panelBox(juce::Graphics& g,juce::Rectangle<float> box,float radius=10.f,bool active=false) {
-    g.setColour(panel);g.fillRoundedRectangle(box,radius);
-    g.setColour(active?green.withAlpha(.72f):stroke);g.drawRoundedRectangle(box,radius,1.f);
+    // Restrained anodized-metal depth shared across the rack, native editors
+    // and floating menus. No drop-shadow layers, image allocations or
+    // animation timers. This executes only inside UI paint(), never DSP.
+    g.setGradientFill(juce::ColourGradient(
+        panel.brighter(.075f),box.getTopLeft(),
+        panel.darker(.075f),box.getBottomRight(),false));
+    g.fillRoundedRectangle(box,radius);
+    g.setColour(bg.withAlpha(.45f));
+    g.drawRoundedRectangle(box.reduced(.25f),radius,1.f);
+    g.setColour(active?green.withAlpha(.70f):stroke.withAlpha(.93f));
+    g.drawRoundedRectangle(box.reduced(.7f),radius,1.f);
+    if(box.getWidth()>35.f && box.getHeight()>22.f) {
+        const float inset=std::min(16.f,radius+5.f);
+        const float x0=box.getX()+inset,x1=box.getRight()-inset;
+        g.setColour(white.withAlpha(current==Cream?.085f:.048f));
+        g.drawLine(x0,box.getY()+1.4f,x1,box.getY()+1.4f,.7f);
+        g.setColour(bg.withAlpha(.31f));
+        g.drawLine(x0,box.getBottom()-1.1f,x1,box.getBottom()-1.1f,.7f);
+    }
 }
 inline juce::Font font(float size,bool bold=false) {
     return juce::Font(juce::FontOptions(size).withStyle(bold?"Bold":"Regular"));
