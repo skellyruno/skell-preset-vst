@@ -235,6 +235,33 @@ int main(){
             }
         }
     }
+    // New Studio EQ HP/LP/shelf and eighth-node controls are optional
+    // v2 extensions. The old 16 parameter automation and slot IDs stay
+    // identical, but native ZIPs must roundtrip these new choices.
+    {
+        auto studio=first;
+        studio.slots[0].type=34;
+        studio.slots[0].studioEqKind[0]=1;  // high-pass
+        studio.slots[0].studioEqKind[6]=4;  // high shelf
+        studio.slots[0].studioEqKind[7]=2;  // low-pass
+        studio.slots[0].studioEqOn[7]=true; // added eighth node
+        const auto zip=testFile(dir,"studio-eq-eight-band");
+        check(skellpreset::package::write(zip,studio).wasOk(),
+              "Write Studio EQ eight-band filter type and enabled flags");
+        skellpreset::package::Document decoded;
+        check(skellpreset::package::read(zip,decoded).wasOk(),
+              "Read Studio EQ filter types and enabled flags");
+        check(decoded.slots[0].type==34 &&
+              decoded.slots[0].studioEqKind[0]==1 &&
+              decoded.slots[0].studioEqKind[6]==4 &&
+              decoded.slots[0].studioEqKind[7]==2 &&
+              decoded.slots[0].studioEqOn[7],
+              "Studio EQ HP/LP/shelf and enabled B8 survive ZIP roundtrip");
+        studio.slots[0].studioEqKind[7]=5;
+        check(skellpreset::package::write(
+                testFile(dir,"bad-studio-eq-shape"),studio).failed(),
+              "Reject unsupported Studio EQ band type 5");
+    }
     first.activeSlotCount=17;
     check(skellpreset::package::write(testFile(dir,"bad-count"),first).failed(),
           "Reject rack expansion beyond sixteen slots");
@@ -273,6 +300,8 @@ int main(){
             if(a.slotId!=b.slotId || a.type!=b.type ||
                a.enabled!=b.enabled || a.wet!=b.wet ||
                a.params!=b.params || a.eqQ!=b.eqQ ||
+               a.studioEqKind!=b.studioEqKind ||
+               a.studioEqOn!=b.studioEqOn ||
                a.eqLowCut!=b.eqLowCut || a.eqHighCut!=b.eqHighCut)return false;
         }
         return true;
