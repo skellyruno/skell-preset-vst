@@ -65,8 +65,8 @@ public:
         for(int i=0;i<4;++i) {
             auto& b=simulations[(size_t)i];
             b.setButtonText(juce::String(targets[i]).toUpperCase());
-            b.setTooltip("Simulate generic "+juce::String(targets[i])+
-                         " tonal character (not a measured microphone model)");
+            b.setTooltip(juce::String(targets[i])+" · "+juce::String(subtitles[i])+
+                         " · Generic tonal character, not an IR of a real microphone");
             b.onClick=[this,i]{setPhysical("micPreTarget",(float)i);refresh();};
             addAndMakeVisible(b);
         }
