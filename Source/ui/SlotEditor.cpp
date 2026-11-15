@@ -196,6 +196,27 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(button);
         button.setVisible(false);
     }
+    addEqNode.setTooltip("Add another independent Studio EQ band (maximum eight)");
+    addEqNode.onClick=[this]{
+        if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioEQFX)return;
+        for(int i=0;i<8;++i)if(!studioEqBandEnabled(i)){
+            setStudioEqBandEnabled(i,true);
+            activeEqBand=i;showEqBank(i);syncStudioEqNodeButtons();
+            return;
+        }
+    };
+    addAndMakeVisible(addEqNode);addEqNode.setVisible(false);
+    eqNodeMenu.onFilterType=[this](int kind){setStudioEqBandType(contextEqBand,kind);};
+    eqNodeMenu.onRemove=[this]{
+        setStudioEqBandEnabled(contextEqBand,false);
+        if(contextEqBand==activeEqBand){
+            for(int i=0;i<8;++i)if(studioEqBandEnabled(i)){
+                activeEqBand=i;break;
+            }
+        }
+        showEqBank(activeEqBand);syncStudioEqNodeButtons();
+    };
+    addAndMakeVisible(eqNodeMenu);eqNodeMenu.setVisible(false);
     for(int page=0;page<3;++page) {
         auto& button=matchPageButtons[(size_t)page];
         button.setButtonText(page==0?"SHAPE":page==1?"CALIBRATION":"REFERENCE");
@@ -533,6 +554,9 @@ void SlotEditor::applyTheme() {
     }
     upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
+    addEqNode.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.14f));
+    addEqNode.setColour(juce::TextButton::textColourOffId,Theme::green);
+    eqNodeMenu.repaint();
     modOrbButton.setColour(juce::TextButton::buttonColourId,
         modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
     modOrbButton.setColour(juce::TextButton::textColourOffId,
@@ -552,6 +576,47 @@ void SlotEditor::applyTheme() {
     }
     repaint();
 }
+int SlotEditor::studioEqBandType(int band)const{
+    if(band<0||band>=8)return 0;
+    const auto id="s"+juce::String(slot+1)+"_studioEqKind"+juce::String(band+1);
+    if(const auto* p=processor.state.getRawParameterValue(id))
+        return juce::jlimit(0,4,(int)p->load());
+    return band==0?3:(band==6?4:0);
+}
+bool SlotEditor::studioEqBandEnabled(int band)const{
+    if(band<0||band>=8)return false;
+    const auto id="s"+juce::String(slot+1)+"_studioEqOn"+juce::String(band+1);
+    if(const auto* p=processor.state.getRawParameterValue(id))return p->load()>.5f;
+    return band<7;
+}
+void SlotEditor::setStudioEqBandType(int band,int type){
+    if(band<0||band>=8)return;
+    const auto id="s"+juce::String(slot+1)+"_studioEqKind"+juce::String(band+1);
+    if(auto* p=processor.state.getParameter(id))
+        p->setValueNotifyingHost(p->convertTo0to1((float)juce::jlimit(0,4,type)));
+    graphSnapshotValid=false;refreshIfChanged();
+}
+void SlotEditor::setStudioEqBandEnabled(int band,bool enabled){
+    if(band<0||band>=8)return;
+    const auto id="s"+juce::String(slot+1)+"_studioEqOn"+juce::String(band+1);
+    if(auto* p=processor.state.getParameter(id))
+        p->setValueNotifyingHost(p->convertTo0to1(enabled?1.f:0.f));
+    graphSnapshotValid=false;refreshIfChanged();
+}
+void SlotEditor::syncStudioEqNodeButtons(){
+    const bool studio=processor.slotType(slot)==SkellPresetAudioProcessor::StudioEQFX;
+    int count=0;
+    if(studio){
+        for(int band=0;band<8;++band){
+            const bool enabled=studioEqBandEnabled(band);
+            eqBandButtons[(size_t)band].setVisible(enabled);
+            if(enabled)++count;
+        }
+    }
+    addEqNode.setVisible(studio);
+    addEqNode.setButtonText(count==8?"8 / 8 NODES":"+ ADD NODE");
+    addEqNode.setEnabled(studio&&count<8);
+}
 void SlotEditor::showEqBank(int firstBand) {
     const auto module=processor.slotType(slot);
     if(!isPagedEQ(module))return;
@@ -559,7 +624,7 @@ void SlotEditor::showEqBank(int firstBand) {
     // last button silently displayed B5+B6, leaving B7 rotary automation
     // unreachable even though its graph point and WIDTH control existed.
     eqBank=module==SkellPresetAudioProcessor::StudioEQFX
-        ? (firstBand>=6?5:juce::jlimit(0,2,firstBand/2)*2)
+        ? (firstBand>=7?6:(firstBand>=6?5:juce::jlimit(0,2,firstBand/2)*2))
         : juce::jlimit(0,3,firstBand/2)*2;
     const auto prefix="s"+juce::String(slot+1)+"_";
     for(auto& a:knobAttachment)a.reset();
@@ -682,6 +747,8 @@ void SlotEditor::select(int newSlot) {
 void SlotEditor::refreshIfChanged() {
     const auto prefix="s"+juce::String(slot+1)+"_";
     const int type=processor.slotType(slot);
+    if(type!=SkellPresetAudioProcessor::StudioEQFX && eqNodeMenu.isVisible())
+        eqNodeMenu.close();
     std::array<float,6> current{};
     for(int i=0;i<4;++i)current[(size_t)i]=processor.getSlotParam(slot,i);
     if(const auto* macro=processor.state.getRawParameterValue("macro1"))current[4]=macro->load();
@@ -710,12 +777,12 @@ void SlotEditor::refreshIfChanged() {
         lastHostedLoaded=loaded;
     }
     if(isPagedEQ(type)) {
-        for(int k=0;k<(type==SkellPresetAudioProcessor::StudioEQFX?14:16);++k) {
+        for(int k=0;k<16;++k) {
             const float v=processor.getSlotParam(slot,k);
             changed=changed || std::abs(v-lastEqControls[(size_t)k])>1.e-5f;
             lastEqControls[(size_t)k]=v;
         }
-        for(int k=0;k<(type==SkellPresetAudioProcessor::StudioEQFX?7:8);++k){
+        for(int k=0;k<8;++k){
             const auto* value=processor.state.getRawParameterValue(
                 prefix+"eqQ"+juce::String(k+1));
             const float v=value?value->load():.5f;
@@ -728,6 +795,20 @@ void SlotEditor::refreshIfChanged() {
             const float v=value?value->load():0.f;
             changed=changed||std::abs(v-lastEqControls[(size_t)(24+k)])>1.e-5f;
             lastEqControls[(size_t)(24+k)]=v;
+        }
+    }
+    if(type==SkellPresetAudioProcessor::StudioEQFX) {
+        for(int k=0;k<8;++k){
+            const auto* kind=processor.state.getRawParameterValue(
+                prefix+"studioEqKind"+juce::String(k+1));
+            const auto* enabled=processor.state.getRawParameterValue(
+                prefix+"studioEqOn"+juce::String(k+1));
+            const float vKind=kind?kind->load():0.f;
+            const float vOn=enabled?enabled->load():0.f;
+            changed=changed || std::abs(vKind-lastEqControls[(size_t)(26+k)])>1.e-5f ||
+                               std::abs(vOn-lastEqControls[(size_t)(34+k)])>1.e-5f;
+            lastEqControls[(size_t)(26+k)]=vKind;
+            lastEqControls[(size_t)(34+k)]=vOn;
         }
     }
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
@@ -781,7 +862,9 @@ void SlotEditor::refreshIfChanged() {
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(int index=0;index<8;++index)
         eqBandButtons[(size_t)index].setVisible(isPagedEQ(type) &&
-            (type==SkellPresetAudioProcessor::EightBandToneFX || index<7));
+            (type==SkellPresetAudioProcessor::EightBandToneFX ||
+             studioEqBandEnabled(index)));
+    syncStudioEqNodeButtons();
     for(auto& button:matchPageButtons)button.setVisible(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX);
     for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
@@ -799,6 +882,8 @@ void SlotEditor::resized() {
     matchPageButtons[2].setBounds(754,72,112,23);
     loadExternal.setBounds(52,420,177,62);
     installedBrowser.setBounds(85,62,735,385);
+    addEqNode.setBounds(74,96,127,26);
+    eqNodeMenu.setBounds(610,156,205,241);
     editExternal.setBounds(246,420,188,62);
     upgradeEq.setBounds(650,97,212,31);
     modOrbButton.setBounds(764,77,95,23);
@@ -1273,13 +1358,17 @@ void SlotEditor::paint(juce::Graphics&g) {
             eq.prepare(sr);
             std::array<float,16> p{};
             std::array<float,8> q{};
-            for(int i=0;i<14;++i)p[(size_t)i]=processor.getSlotParam(slot,i);
-            for(int i=0;i<7;++i) {
+            std::array<int,8> kinds{};
+            std::array<bool,8> enabled{};
+            for(int i=0;i<16;++i)p[(size_t)i]=processor.getSlotParam(slot,i);
+            for(int i=0;i<8;++i) {
                 const auto* raw=processor.state.getRawParameterValue(
                     "s"+juce::String(slot+1)+"_eqQ"+juce::String(i+1));
                 q[(size_t)i]=raw?raw->load():.5f;
+                kinds[(size_t)i]=studioEqBandType(i);
+                enabled[(size_t)i]=studioEqBandEnabled(i);
             }
-            eq.set(p,q);
+            eq.set(p,q,kinds,enabled);
             juce::Path response;
             for(int px=0;px<=835;px+=5) {
                 const double f=20.*std::pow(1000.,(double)px/835.);
@@ -1295,18 +1384,24 @@ void SlotEditor::paint(juce::Graphics&g) {
             area.lineTo((float)plot.getX(),(float)plot.getBottom());
             area.closeSubPath();g.fillPath(area);
             g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.7f));
-            for(int band=0;band<7;++band){
-                const float freq=eqVisualFrequency(processor,slot,band,type);
-                const float gain=(processor.getSlotParam(slot,band*2+1)-.5f)*36.f;
+            for(int band=0;band<8;++band){
+                if(!enabled[(size_t)band])continue;
+                const float hz=eqVisualFrequency(processor,slot,band,type);
+                const int shape=kinds[(size_t)band];
+                const float db=(shape==1||shape==2)?0.f:
+                    (processor.getSlotParam(slot,band*2+1)-.5f)*36.f;
                 const float xx=(float)plot.getX()+
-                    (float)(plot.getWidth()*std::log(freq/20.f)/std::log(1000.f));
-                const float yy=plot.getCentreY()-gain*(plot.getHeight()/72.f);
-                const bool selected=band==activeEqBand;
-                const float size=selected?14.f:10.f;
-                g.setColour(selected?Theme::green:Theme::blue.withAlpha(.82f));
+                    (float)(plot.getWidth()*std::log(hz/20.f)/std::log(1000.f));
+                const float yy=plot.getCentreY()-db*(plot.getHeight()/72.f);
+                const float size=band==activeEqBand?14.f:10.f;
+                g.setColour(band==activeEqBand?Theme::green:Theme::blue.withAlpha(.82f));
                 g.fillEllipse(xx-size*.5f,yy-size*.5f,size,size);
-                g.setColour(Theme::white.withAlpha(selected?.95f:.58f));
+                g.setColour(Theme::white.withAlpha(band==activeEqBand?.95f:.58f));
                 g.drawEllipse(xx-size*.5f,yy-size*.5f,size,size,1.3f);
+                if(shape==1||shape==2)
+                    Theme::text(g,shape==1?"HP":"LP",
+                        {(int)(xx-15),(int)(yy-21),30,14},9,
+                        Theme::amber,true,juce::Justification::centred);
             }
         } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
             // Exact, summed eight-band DSP response. Every dot edits the
@@ -1948,8 +2043,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectTitle="STUDIO PITCH + FORMANT  /  SPECTRAL COLOUR";
         effectDetail="768 SAMPLES REPORTED HOST PDC  /  NOT LOW-LATENCY AUTOTUNE";
     } else if(type==SkellPresetAudioProcessor::StudioEQFX) {
-        effectTitle="STUDIO PARAMETRIC EQ  /  SEVEN EDITABLE NODES";
-        effectDetail="PLAIN FILTER MODE / PER-BAND WIDTH / ZERO ADDED LATENCY";
+        effectTitle="STUDIO PARAMETRIC EQ  /  EIGHT FILTER SLOTS";
+        effectDetail="RIGHT-CLICK A NODE FOR HP / LP / SHELF / REMOVE";
     } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         effectTitle="8-BAND EQ  /  EIGHT INDEPENDENT FREQUENCY + GAIN NODES";
         effectDetail="SELECT ANY DOT TO EDIT FREQUENCY / GAIN / Q  ·  ZERO ADDED PDC";
@@ -2228,11 +2323,32 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
     if(type==SkellPresetAudioProcessor::Empty
         || type==SkellPresetAudioProcessor::ExternalVST3
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
+    if(type==SkellPresetAudioProcessor::StudioEQFX && e.mods.isPopupMenu()){
+        int best=-1;
+        float distance=std::numeric_limits<float>::max();
+        for(int band=0;band<8;++band){
+            if(!studioEqBandEnabled(band))continue;
+            const float hz=eqVisualFrequency(processor,slot,band,type);
+            const float bx=33.f+835.f*std::log(hz/20.f)/std::log(1000.f);
+            if(std::abs(bx-(float)e.x)<distance){
+                distance=std::abs(bx-(float)e.x);best=band;
+            }
+        }
+        if(best<0)return;
+        contextEqBand=activeEqBand=best;
+        showEqBank(best);
+        eqNodeMenu.setTopLeftPosition(juce::jlimit(12,688,e.x-60),
+                                      juce::jlimit(150,286,e.y-18));
+        eqNodeMenu.open(studioEqBandType(best));
+        return;
+    }
     draggingGraph=true;
     if(isPagedEQ(type)){
         float nearest=std::numeric_limits<float>::max();
-        const int bands=type==SkellPresetAudioProcessor::StudioEQFX?7:8;
+        const int bands=8;
         for(int b=0;b<bands;++b){
+            if(type==SkellPresetAudioProcessor::StudioEQFX &&
+               !studioEqBandEnabled(b))continue;
             const float freq=eqVisualFrequency(processor,slot,b,type);
             const float bx=33.f+835.f*std::log(freq/20.f)/std::log(1000.f);
             const float dist=std::abs(bx-(float)e.x);
@@ -2274,6 +2390,29 @@ bool SlotEditor::testKnobReadouts() {
         && bandwidth.startsWithIgnoreCase("Q ");
 }
 
+bool SlotEditor::testStudioEqAddAndFilterTypes() {
+    const int physical=slot;
+    processor.setSlotType(physical,SkellPresetAudioProcessor::StudioEQFX);
+    processor.setSlotOn(physical,true);
+    select(physical);
+    const bool seven=addEqNode.isVisible() && addEqNode.isEnabled()
+                     && !studioEqBandEnabled(7);
+    addEqNode.onClick();
+    const bool eighth=studioEqBandEnabled(7) && eqBank==6 &&
+        activeEqBand==7 && eqBandButtons[7].isVisible()
+        && !addEqNode.isEnabled();
+    knobs[2].setValue(.78,juce::sendNotificationSync); // B8 frequency p15
+    const bool editable=std::abs(processor.getSlotParam(physical,14)-.78f)<.015f;
+    contextEqBand=7;
+    eqNodeMenu.open(0);eqNodeMenu.chooseTypeForTest(1);
+    const bool hp=studioEqBandType(7)==1;
+    eqNodeMenu.open(1);eqNodeMenu.chooseTypeForTest(2);
+    const bool lp=studioEqBandType(7)==2;
+    eqNodeMenu.open(2);eqNodeMenu.removeForTest();
+    const bool removed=!studioEqBandEnabled(7) && !eqBandButtons[7].isVisible()
+                    && addEqNode.isEnabled();
+    return seven && eighth && editable && hp && lp && removed;
+}
 bool SlotEditor::testStudioEqSeventhBand() {
     const int physical=slot;
     processor.setSlotType(physical,SkellPresetAudioProcessor::StudioEQFX);

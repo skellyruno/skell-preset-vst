@@ -549,6 +549,8 @@ public:
             issues.add("APVTS overwrote physical Hz/dB/Q knob readouts");
         if(!slot.testStudioEqSeventhBand())
             issues.add("Studio seven-band EQ last page does not edit B7 frequency, gain or width");
+        if(!slot.testStudioEqAddAndFilterTypes())
+            issues.add("Studio EQ Add Node, eighth-band controls, HP/LP or Remove not operational");
         if(!slot.testMatchFinishPages())
             issues.add("Alchemist Shape/Calibration tabs do not expose all eight real parameters");
         if(!slot.testMicModelCards())

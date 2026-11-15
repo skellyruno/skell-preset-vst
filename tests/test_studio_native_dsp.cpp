@@ -68,5 +68,43 @@ int main(){
         for(int n=0;n<(int)sr/2;++n)low=gate.processGain(.2f,.2f);
         SKELL_REQUIRE(low>.99f);
     }
+
+    // New opt-in Studio EQ extensions: filter types must be audible, stable,
+    // and safe at different rates; disabled B8 must not alter classic tone.
+    for(double sr:{44100.,48000.,96000.}) {
+        ParametricEQ eq;eq.prepare(sr);
+        std::array<float,16> p{};p.fill(.5f);
+        std::array<float,8> q{};q.fill(.5f);
+        auto kinds=ParametricEQ::defaultKinds;
+        auto active=ParametricEQ::defaultEnabled;
+        // B8 disabled: all neutral, including its nonzero gain data.
+        p[15]=1.f;
+        eq.set(p,q,kinds,active);
+        double maxNeutral=0.;
+        for(int i=0;i<6000;++i) {
+            const float x=.3f*std::sin((float)i*.026f);
+            maxNeutral=std::max(maxNeutral,(double)std::abs(eq.process(x,-x)[0]-x));
+        }
+        SKELL_REQUIRE(maxNeutral<1.e-5);
+        // B8 HP at 1 kHz rejects a 40Hz bass sine while allowing 4kHz.
+        kinds[7]=1;active[7]=true;p[14]=(float)(std::log(1000./20.)/std::log(1000.));
+        eq.set(p,q,kinds,active);
+        auto rms=[&](double frequency){
+            double sum=0.;
+            for(int i=0;i<22000;++i){
+                const float x=.2f*(float)std::sin(2.*skellpreset::dsp::pi*frequency*i/sr);
+                const auto out=eq.process(x,x);
+                if(!std::isfinite(out[0])||!std::isfinite(out[1]))return -1.;
+                if(i>=12000)sum+=(double)out[0]*out[0];
+            }
+            return std::sqrt(sum/10000.);
+        };
+        const double low=rms(40.),high=rms(4000.);
+        SKELL_REQUIRE(low>=0.&&high>=0.&&low<high*.15);
+        // Low-pass gives the opposite relationship.
+        kinds[7]=2;eq.set(p,q,kinds,active);eq.reset();
+        const double lowPassBass=rms(40.),lowPassTreble=rms(4000.);
+        SKELL_REQUIRE(lowPassTreble>=0.&&lowPassBass>=0.&&lowPassTreble<lowPassBass*.15);
+    }
     std::cout<<"Studio native EQ/comp/gate/dist reference and safety tests passed\n";
 }

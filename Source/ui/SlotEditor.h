@@ -3,6 +3,7 @@
 #include "../PluginProcessor.h"
 #include "ModulePicker.h"
 #include "InstalledVST3Browser.h"
+#include "SkellEQNodeMenu.h"
 #include <array>
 #include <memory>
 #include "Theme.h"
@@ -69,6 +70,7 @@ public:
     bool testModulePickerInteraction();
     bool testEightBandGraphAndQ();
     bool testStudioEqSeventhBand();
+    bool testStudioEqAddAndFilterTypes();
     bool testKnobReadouts();
     bool testMatchFinishPages();
     bool testMicModelCards();
@@ -94,6 +96,14 @@ private:
     SkellInstalledVST3Browser installedBrowser;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
     juce::TextButton upgradeEq{"UPGRADE TO PARAMETRIC EQ"};
+    juce::TextButton addEqNode{"+ ADD NODE"};
+    SkellEQNodeMenu eqNodeMenu;
+    int contextEqBand=0;
+    void setStudioEqBandType(int band,int type);
+    void setStudioEqBandEnabled(int band,bool enabled);
+    int studioEqBandType(int band)const;
+    bool studioEqBandEnabled(int band)const;
+    void syncStudioEqNodeButtons();
     juce::TextButton modOrbButton{"ORB"};
     bool modOrbView=false; // UI-only; never serialized or used in DSP
     std::unique_ptr<juce::FileChooser> externalChooser;
@@ -112,7 +122,7 @@ private:
     int lastHostedLatency=-1;
     bool lastHostedLoaded=false;
     std::array<float,6> lastControls{};
-    std::array<float,26> lastEqControls{};
+    std::array<float,42> lastEqControls{}; // includes eight new filter types/enables
     bool updateMicCard(juce::Point<float> point);
     bool updateSkelldizerCard(juce::Point<float> point);
     void updateGraphNode(juce::Point<float>);
