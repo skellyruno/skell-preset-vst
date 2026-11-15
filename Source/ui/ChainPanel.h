@@ -54,9 +54,10 @@ private:
     int hoveredRow=-1,scrollOffset=0,lastSlotCount=0;
     std::array<int,SkellPresetAudioProcessor::slotCount> lastVisual{};
     bool visualSnapshotValid=false;
-    float wheelCarry=0.f;
-    juce::uint32 lastWheelReorderMs=0;
-    int wheelTarget=-1;
+    float wheelCarry=0.f,railWheelCarry=0.f;
+    juce::uint32 lastWheelReorderMs=0,lastWheelInputMs=0;
+    int wheelTarget=-1; // physical slot, not visual row (stable across moves)
+    int wheelTargetRow() const noexcept;
     int rowAt(int y) const;
     void clampScroll();
     void applyWheelDelta(float deltaY);

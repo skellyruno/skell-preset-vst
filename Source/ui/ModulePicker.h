@@ -247,10 +247,18 @@ public:
     }
     void mouseWheelMove(const juce::MouseEvent&,
                         const juce::MouseWheelDetails& wheel) override {
-        const int next=juce::jlimit(0,std::max(0,(int)results.size()-6),
-            topItem+(wheel.deltaY<0?2:-2));
-        if(next!=topItem) {
-            topItem=next;selectedRow=next;repaint();
+        if(wheel.deltaY==0.f)return;
+        if(wheelCarry*wheel.deltaY<0.f)wheelCarry=0.f;
+        wheelCarry=juce::jlimit(-1.f,1.f,wheelCarry+wheel.deltaY);
+        if(std::abs(wheelCarry)<.38f)return;
+        const int step=wheelCarry<0.f?1:-1;
+        wheelCarry=0.f;
+        const int next=juce::jlimit(0,std::max(0,(int)results.size()-6),topItem+step);
+        if(next!=topItem){
+            topItem=next;
+            selectedRow=juce::jlimit(topItem,
+                juce::jmin((int)results.size()-1,topItem+5),selectedRow);
+            repaint();
         }
     }
 
@@ -336,5 +344,6 @@ private:
     std::vector<int> results;
     int currentType=0,selectedRow=0,topItem=0;
     bool movedByUser=false,dragHeader=false;
+    float wheelCarry=0.f;
     juce::Point<int> dragOrigin{};
 };

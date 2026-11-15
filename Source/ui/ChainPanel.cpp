@@ -542,9 +542,14 @@ void ChainPanel::mouseExit(const juce::MouseEvent&) {
 
 void ChainPanel::applyWheelDelta(float deltaY) {
     if(deltaY==0.f)return;
-    const int change=deltaY<0.f?1:-1;
+    if(railWheelCarry*deltaY<0.f)railWheelCarry=0.f;
+    railWheelCarry=juce::jlimit(-1.f,1.f,railWheelCarry+deltaY);
+    // Trackpad micro-deltas are not separate commands; one row per detent.
+    if(std::abs(railWheelCarry)<.40f)return;
+    const int direction=railWheelCarry<0.f?1:-1;
+    railWheelCarry=0.f;
     const int next=juce::jlimit(0,
-        juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset+change);
+        juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset+direction);
     if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
         visualSnapshotValid=false;repaint();}
 }
@@ -562,27 +567,34 @@ bool ChainPanel::moveSlotByWheel(int row,float deltaY) {
     repaint();
     return true;
 }
+int ChainPanel::wheelTargetRow() const noexcept {
+    if(wheelTarget<0)return -1;
+    for(int i=0;i<processor.activeSlotCount();++i)
+        if(processor.slotIdAt(i)==wheelTarget)return i;
+    return -1;
+}
 void ChainPanel::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel) {
-    // Trackpads often emit many tiny events for a single gesture. Accumulate
-    // those deltas and rate-limit physical reorders to ONE adjacent slot,
-    // preventing a single scroll from moving an effect halfway down the chain.
     const int row=(e.x>=10 && e.x<=powerControlRight)?rowAt(e.y):-1;
     if(row>=0) {
-        if(row!=wheelTarget) {
-            wheelTarget=row;
+        if(wheel.deltaY==0.f)return;
+        const auto now=juce::Time::getMillisecondCounter();
+        // The wheel owns the same PHYSICAL module throughout each gesture.
+        // Without this latch, a rearranged row immediately starts scrolling
+        // the next module under the cursor, giving the 'runaway' effect.
+        if(wheelTarget<0 || (juce::uint32)(now-lastWheelInputMs)>425u) {
+            wheelTarget=processor.slotIdAt(row);
             wheelCarry=0.f;
         }
-        if(wheel.deltaY==0.f)return;
-        const float direction=wheel.deltaY<0.f?-1.f:1.f;
-        if(wheelCarry*direction<0.f)wheelCarry=0.f;
-        wheelCarry=juce::jlimit(-2.f,2.f,wheelCarry+wheel.deltaY);
-        constexpr float step=0.45f;
-        if(std::abs(wheelCarry)<step)return;
-        const auto now=juce::Time::getMillisecondCounter();
-        if((juce::uint32)(now-lastWheelReorderMs)<175u)return;
+        lastWheelInputMs=now;
+        if(wheelCarry*wheel.deltaY<0.f)wheelCarry=0.f;
+        wheelCarry=juce::jlimit(-1.5f,1.5f,wheelCarry+wheel.deltaY);
+        if(std::abs(wheelCarry)<.60f)return;
+        if((juce::uint32)(now-lastWheelReorderMs)<225u)return;
+        const int trackedRow=wheelTargetRow();
+        if(trackedRow<0) {wheelTarget=-1;wheelCarry=0.f;return;}
         const float move=wheelCarry;
         wheelCarry=0.f;
-        if(moveSlotByWheel(row,move))lastWheelReorderMs=now;
+        if(moveSlotByWheel(trackedRow,move))lastWheelReorderMs=now;
         return;
     }
     wheelTarget=-1;
@@ -594,9 +606,14 @@ bool ChainPanel::testMouseWheelReorder() {
     const int oldOffset=scrollOffset;
     const int first=processor.slotIdAt(0),second=processor.slotIdAt(1);
     scrollOffset=0;
+    const int oldTarget=wheelTarget;
+    wheelTarget=first;
     const bool down=moveSlotByWheel(0,-1.f);
-    const bool moved=processor.slotIdAt(1)==first && processor.slotIdAt(0)==second;
+    const bool moved=processor.slotIdAt(1)==first &&
+                     processor.slotIdAt(0)==second &&
+                     wheelTargetRow()==1;
     const bool up=moveSlotByWheel(1,1.f);
+    wheelTarget=oldTarget;
     const bool restored=processor.slotIdAt(0)==first && processor.slotIdAt(1)==second;
     scrollOffset=oldOffset;
     visualSnapshotValid=false;
