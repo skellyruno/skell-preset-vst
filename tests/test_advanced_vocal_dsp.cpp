@@ -118,6 +118,35 @@ int main(){
             assert(std::isfinite(y[0]) && std::isfinite(y[1]));
             assert(harsh.reductionDb()>=0.f && harsh.reductionDb()<=10.f);
         }
+        // The actual harshness filter must follow its envelope even when
+        // hosts call set() at very different buffer boundaries (32 vs 2048).
+        // A steady presence tone must be attenuated at all host rates.
+        DynamicHarshness shortBlocks,longBlocks;
+        shortBlocks.prepare(sr);longBlocks.prepare(sr);
+        shortBlocks.set(.26f,.15f,1.f,.45f);
+        longBlocks.set(.26f,.15f,1.f,.45f);
+        double inputEnergy=0.,treatedEnergy=0.,maximumDifference=0.;
+        const float toneHz=2600.f;
+        const int frames=(int)(sr*.36);
+        for(int n=0;n<frames;++n){
+            if((n%32)==0)shortBlocks.set(.26f,.15f,1.f,.45f);
+            if((n%2048)==0)longBlocks.set(.26f,.15f,1.f,.45f);
+            const float left=.13f*std::sin((float)(2.*pi*toneHz*n/sr));
+            const float right=-.77f*left;
+            const auto a=shortBlocks.process(left,right);
+            const auto b=longBlocks.process(left,right);
+            assert(std::isfinite(a[0])&&std::isfinite(a[1]));
+            maximumDifference=std::max(maximumDifference,
+                std::max(std::abs((double)a[0]-b[0]),
+                         std::abs((double)a[1]-b[1])));
+            if(n>(int)(sr*.17)){
+                inputEnergy+=(double)left*left;
+                treatedEnergy+=(double)a[0]*a[0];
+            }
+        }
+        assert(maximumDifference<2.e-5);
+        assert(inputEnergy>1.e-5 && treatedEnergy<inputEnergy*.75);
+        assert(shortBlocks.reductionDb()>0.f);
         AdaptiveNoiseControl noise;
         noise.prepare(sr);
         noise.set(.45f,.9f,.1f,.4f);

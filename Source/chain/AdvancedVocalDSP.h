@@ -152,6 +152,11 @@ public:
         sr=std::isfinite(sampleRate)?std::clamp(sampleRate,8000.,192000.):48000.;
         detector.prepare(sr);attenuation.prepare(sr);
         env=0.f; reduction=0.f;
+        // Update the dynamic EQ on a fixed one-millisecond audio clock,
+        // not at arbitrary host block boundaries.
+        updateEvery=std::max(1,(int)std::lround(sr*.001));
+        updateCountdown=0;
+        reductionPole=std::exp(-1.f/(.0011f*(float)sr));
     }
     void set(float centre,float threshold,float amount,float release) noexcept {
         frequency=1800.f*std::pow(4.2f,unit(centre));
@@ -161,7 +166,8 @@ public:
         relCoeff=std::exp(-1.f/(relMs*.001f*(float)sr));
         attCoeff=std::exp(-1.f/(.003f*(float)sr));
         detector.setPeak(sr,frequency,12.,2.3);
-        attenuation.setPeak(sr,frequency,-(double)reduction,2.3);
+        // The attenuation filter itself is updated from process(), so
+        // different block sizes cannot shift its onset by an entire block.
     }
     std::array<float,2> process(float l,float r) noexcept {
         l=sane(l);r=sane(r);
@@ -174,7 +180,13 @@ public:
         if(env<1e-20f)env=0.f;
         const float over=20.f*std::log10(std::max(env,1.e-9f)/std::max(trigger,1.e-9f));
         const float wanted=std::clamp(over*.55f,0.f,maxCut);
-        reduction=.98f*reduction+.02f*wanted;
+        reduction=reductionPole*reduction+(1.f-reductionPole)*wanted;
+        if (--updateCountdown<=0) {
+            // 1 kHz coefficient updates with the existing 12 ms stable
+            // coefficient interpolation; no heap, locks or audio latency.
+            attenuation.setPeak(sr,frequency,-(double)reduction,2.3);
+            updateCountdown=updateEvery;
+        }
         return attenuation.process(l,r);
     }
     float reductionDb() const noexcept{return reduction;}
@@ -184,7 +196,8 @@ private:
     double sr=48000.;
     SmoothedBiquad detector,attenuation;
     float frequency=3600.f,trigger=.02f,maxCut=0.f,env=0.f,reduction=0.f;
-    float attCoeff=.9f,relCoeff=.999f;
+    float attCoeff=.9f,relCoeff=.999f,reductionPole=.98f;
+    int updateEvery=48,updateCountdown=0;
 };
 
 // Noise floor follower as a safe native fallback, NOT an RNNoise/ML neural
