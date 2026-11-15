@@ -1883,22 +1883,61 @@ void SlotEditor::paint(juce::Graphics&g) {
                         {61,102,740,20},12,Theme::green,true);
             Theme::text(g,"240 Hz / 3.4 kHz  /  COMPLEMENTARY CROSSOVERS",
                         {60,320,730,18},10,Theme::muted);
-        } else if(type==SkellPresetAudioProcessor::Limiter){
-            // Limiter transfer: unprocessed diagonal with adjustable ceiling.
-            const float ceiling=y0+18.f+(1.f-first)*h*.58f;
-            g.setColour(Theme::muted.withAlpha(.37f));
-            g.drawLine(x0,y1,x1,y0,1.3f);
-            juce::Path limited;
-            limited.startNewSubPath(x0,y1);
-            const float knee=juce::jlimit(x0+25.f,x1-15.f,
-                                         x0+w*(.50f+.40f*first-.12f*second));
-            limited.lineTo(knee,ceiling);limited.lineTo(x1,ceiling);
+        } else if(type==SkellPresetAudioProcessor::Limiter ||
+                  type==SkellPresetAudioProcessor::StudioLimiterFX) {
+            // Dedicated native limiter console, parameter-driven like the
+            // actual Studio-hybrid ceiling/drive engine. The curve is an
+            // idealized steady-state ceiling map, NOT a fake GR/TP meter.
+            const bool studio=type==SkellPresetAudioProcessor::StudioLimiterFX;
+            const float ceilingGain=.12f+.87f*first;
+            const float ceilingDb=20.f*std::log10(ceilingGain);
+            const float driveDb=18.f*second;
+            juce::Path diagonal,ceilingCurve;
+            const float insetL=plot.getX()+25.f;
+            const float insetR=plot.getRight()-244.f;
+            const float low=-48.f,high=12.f;
+            for(int i=0;i<=120;++i){
+                const float inputDb=low+(high-low)*(float)i/120.f;
+                const float ideal=std::min(ceilingDb,inputDb+driveDb);
+                const float px=insetL+(insetR-insetL)*(float)i/120.f;
+                const float yin=plot.getBottom()-21.f-
+                    (inputDb-low)/(high-low)*(plot.getHeight()-50.f);
+                const float yout=plot.getBottom()-21.f-
+                    (ideal-low)/(high-low)*(plot.getHeight()-50.f);
+                if(i==0){diagonal.startNewSubPath(px,yin);
+                         ceilingCurve.startNewSubPath(px,yout);}
+                else {diagonal.lineTo(px,yin);ceilingCurve.lineTo(px,yout);}
+            }
+            g.setColour(Theme::muted.withAlpha(.40f));
+            g.strokePath(diagonal,juce::PathStrokeType(1.3f));
             g.setColour(Theme::green);
-            g.strokePath(limited,juce::PathStrokeType(3.2f));
-            g.setColour(Theme::amber.withAlpha(.65f));
-            g.drawHorizontalLine((int)ceiling,x0,x1);
-            Theme::text(g,"LOOKAHEAD LIMITER  /  CEILING + DRIVE",
-                {62,165,700,20},12,Theme::green,true);
+            g.strokePath(ceilingCurve,juce::PathStrokeType(2.7f));
+            Theme::fittedText(g,studio?"STUDIO LIMITER / HYBRID":
+                                    "SKELL LOOKAHEAD LIMITER",
+                              {60,164,550,22},13.5f,Theme::green,true);
+            Theme::text(g,"CEILING "+juce::String(ceilingDb,1)+" dBFS",
+                        {58,195,280,22},15.f,Theme::white,true);
+            Theme::text(g,"DRIVE +"+juce::String(driveDb,1)+" dB",
+                        {58,225,280,19},12.2f,Theme::muted,true);
+            const float rackPeak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+            const auto rail=juce::Rectangle<float>(plot.getRight()-175.f,
+                                                   plot.getY()+49.f,101.f,121.f);
+            g.setColour(Theme::panelAlt);
+            g.fillRoundedRectangle(rail,5.f);
+            g.setColour(Theme::stroke);
+            g.drawRoundedRectangle(rail,5.f,1.1f);
+            const float height=(rail.getHeight()-18.f)*rackPeak;
+            g.setColour(Theme::green.withAlpha(.22f+.65f*rackPeak));
+            g.fillRoundedRectangle(rail.getX()+17.f,rail.getBottom()-8.f-height,
+                                   18.f,height,3.f);
+            Theme::text(g,"OUTPUT PEAK",
+                        {(int)rail.getX()+39,(int)rail.getY()+16,60,34},
+                        9.8f,Theme::muted,true);
+            Theme::text(g,juce::String(rackPeak*100.f,0)+"%",
+                        {(int)rail.getX()+39,(int)rail.getY()+69,60,24},
+                        15,Theme::white,true);
+            Theme::text(g,"STATIC CEILING MAP / REAL LEVEL-DEPENDENT DYNAMICS",
+                {58,327,715,17},10,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::Saturator){
             // Waveshaper response changes as the real Drive and Character do.
             juce::Path shape,unity;
