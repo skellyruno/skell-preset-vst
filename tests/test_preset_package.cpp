@@ -22,6 +22,26 @@ int main(){
     const auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory)
                    .getNonexistentChildFile("skell-preset-tests","",false);
     if(dir.createDirectory().failed()){std::cerr<<"Unable to create test folder\n";return 1;}
+    // Fresh default racks must export/import with stable slot identities and no active effects.
+    {
+        skellpreset::package::Document empty;
+        bool valid = true;
+        for (int s = 0; s < skellpreset::package::slotCount; ++s)
+            valid = valid && empty.slots[(size_t)s].slotId == s
+                          && !empty.slots[(size_t)s].enabled;
+        check(valid, "Default Alchemist-compatible rack has unique inactive slots");
+        const auto emptyPath = testFile(dir, "default-empty-rack");
+        check(skellpreset::package::write(emptyPath, empty).wasOk(),
+              "Default rack exports without duplicate IDs");
+        skellpreset::package::Document loaded;
+        check(skellpreset::package::read(emptyPath, loaded).wasOk()
+              && loaded.slots[0].slotId == 0
+              && loaded.slots[15].slotId == 15
+              && !loaded.slots[0].enabled
+              && !loaded.slots[15].enabled
+              && !loaded.micPreOn,
+              "Default rack imports without activating effects or mic preamp");
+    }
     skellpreset::package::Document first;
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
@@ -154,6 +174,23 @@ int main(){
                   &&restored.slots[0].eqHighCut==0.f,
                   "Load old native v2 file with flat EQ cuts and neutral Q");
         }
+    }
+    // A module 33 is legal on write and MUST survive import. Module 34
+    // remains deliberately unknown; never renumber the previous module IDs.
+    {
+        auto newest=first;
+        newest.slots[0].type=33;
+        const auto file=testFile(dir,"skelldizer-id33-roundtrip");
+        check(skellpreset::package::write(file,newest).wasOk(),
+              "Export Skelldizer module 33");
+        skellpreset::package::Document recalled;
+        check(skellpreset::package::read(file,recalled).wasOk()
+              &&recalled.slots[0].type==33,
+              "Recall Skelldizer module 33 without remapping");
+        newest.slots[0].type=34;
+        check(skellpreset::package::write(
+                  testFile(dir,"unknown-id34"),newest).failed(),
+              "Reject unknown module 34");
     }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.

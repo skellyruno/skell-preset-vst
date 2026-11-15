@@ -33,7 +33,12 @@ struct Document {
     int micPreInput = 0, micPreTarget = 0;
     float micPreAmount = 1.f, micPreTrim = .5f;
     std::array<float, 8> macros {};
-    std::array<Slot, slotCount> slots {};
+    std::array<Slot, slotCount> slots = [] {
+        std::array<Slot, slotCount> result {};
+        for (int i = 0; i < slotCount; ++i)
+            result[static_cast<size_t>(i)].slotId = i;
+        return result;
+    }();
 };
 
 // Runs on the message thread only. ZIP reading has strict size and entry limits,
