@@ -33,6 +33,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension4=state.getRawParameterValue(prefix+"fxExt4");
         r.extension5=state.getRawParameterValue(prefix+"fxExt5");
         r.extension6=state.getRawParameterValue(prefix+"fxExt6");
+        r.extension7=state.getRawParameterValue(prefix+"fxExt7");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
@@ -165,6 +166,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(slot)+"_fxExt6",1},
             "Slot "+juce::String(slot)+" Skelldizer effect",
             juce::StringArray{"None","Skelldizer"},0));
+    // Append this new choice generation only after all existing host parameters.
+    // No legacy choice's normalization, position, or saved ID is modified.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt7",1},
+            "Slot "+juce::String(slot)+" Studio native DSP effect",
+            juce::StringArray{"None","Studio Parametric EQ (Plain)","Studio Limiter Hybrid",
+                              "Studio Compressor","Studio Fast Dist"},0));
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -174,6 +183,9 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
     voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
     chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
+    studioEq.prepare(sampleRate);studioComp.prepare(sampleRate);
+    studioLimiterComp.prepare(sampleRate);studioGate.prepare(sampleRate);
+    studioDist.prepare(sampleRate);
     rider.prepare(sampleRate);duckingDelay.prepare(sampleRate);vibrato.prepare(sampleRate);
     eightBand.prepare(sampleRate);serialDynamics.prepare(sampleRate);matchFinish.prepare(sampleRate);
     micModel.prepare(sampleRate);skelldizer.prepare(sampleRate);
@@ -228,7 +240,7 @@ void SkellPresetAudioProcessor::updateHostLatency() {
         if(id<0 || id>=slotCount || !rawSlots[(size_t)id].type)continue;
         const int type=slotType(id);
         total+=skellpreset::realtime::stageLatency(
-            type,Limiter,ExternalVST3,StudioPitchFormantFX,latency,
+            (type==StudioLimiterFX?Limiter:type),Limiter,ExternalVST3,StudioPitchFormantFX,latency,
             type==ExternalVST3?hosted.getLatency(id):0,
             skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
@@ -307,7 +319,9 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int match=raw.extension4?juce::jlimit(0,1,(int)raw.extension4->load()):0;
     const int mic=raw.extension5?juce::jlimit(0,1,(int)raw.extension5->load()):0;
     const int dizer=raw.extension6?juce::jlimit(0,1,(int)raw.extension6->load()):0;
+    const int studioNative=raw.extension7?juce::jlimit(0,4,(int)raw.extension7->load()):0;
     if(oldType!=Empty)return oldType;
+    if(studioNative>0)return (int)SkelldizerFX+studioNative;
     if(dizer>0)return (int)MicModelFX+dizer;
     if(mic>0)return (int)AlchemistMatchFinishFX+mic;
     if(match>0)return (int)StudioPitchFormantFX+match;
@@ -321,8 +335,15 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     const int chosen=juce::jlimit(0,NumberOfModules-1,type);
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
+    const bool newStudio=chosen>SkelldizerFX && slotType(slot)!=chosen;
+    if(chosen<=SkelldizerFX)setReal(id+"fxExt7",0.f);
     if(chosen<=MicModelFX)setReal(id+"fxExt6",0.f);
-    if(chosen>MicModelFX) {
+    if(chosen>SkelldizerFX) {
+        setReal(id+"type",(float)Empty);
+        for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5","fxExt6"})
+            setReal(id+choice,0.f);
+        setReal(id+"fxExt7",(float)(chosen-SkelldizerFX));
+    } else if(chosen>MicModelFX) {
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt3",0.f);setReal(id+"fxExt4",0.f);
@@ -376,6 +397,21 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
         setSlotParam(slot,1,0.f);
         setSlotParam(slot,2,1.f);
         setSlotParam(slot,3,.5f);
+    }
+    if(newStudio) {
+        // First selection only; imported preset parameters restore afterward.
+        for(int k=0;k<16;++k)setSlotParam(slot,k,.5f);
+        if(chosen==StudioLimiterFX) {
+            setSlotParam(slot,0,.89f); // approximately -1 dBFS final ceiling
+            setSlotParam(slot,1,0.f);  // no added drive
+            setSlotParam(slot,2,1.f);  // optional compressor off
+            setSlotParam(slot,3,0.f);
+            setSlotParam(slot,4,0.f);  // optional gate off
+            setSlotParam(slot,8,0.f);
+        } else if(chosen==StudioFastDistFX) {
+            setSlotParam(slot,1,1.f);setSlotParam(slot,2,0.f);
+            setSlotParam(slot,3,1.f);setSlotParam(slot,4,1.f);
+        }
     }
     updateHostLatency();
 }
@@ -557,6 +593,20 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case VocalVibratoFX:
                 e.vibrato.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
+            case StudioEQFX:
+                e.studioEq.set(c.p,c.q);
+                break;
+            case StudioCompressorFX:
+                e.studioComp.set(c.p[0],c.p[1],c.p[2],c.p[3],c.p[4]);
+                break;
+            case StudioLimiterFX:
+                e.studioLimiterComp.set(c.p[2],c.p[3],c.p[6],c.p[5],c.p[7]);
+                e.studioGate.set(c.p[4],c.p[8],c.p[5]);
+                e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
+                break;
+            case StudioFastDistFX:
+                e.studioDist.set(c.p[0],c.p[1],c.p[2],c.p[3],c.p[4]);
+                break;
             case EightBandToneFX:
                 e.eightBand.set(rate,c.p,c.q);
                 e.eightBand.setCuts(rate,c.eqLowCut,c.eqHighCut);
@@ -617,7 +667,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         if(id<0 || id>=slotCount)continue;
         const auto type=controlCache[(size_t)id].type;
         blockLatency+=skellpreset::realtime::stageLatency(
-            type,Limiter,ExternalVST3,StudioPitchFormantFX,lookahead,
+            (type==StudioLimiterFX?Limiter:type),Limiter,ExternalVST3,StudioPitchFormantFX,lookahead,
             type==ExternalVST3?hosted.getLatency(id):0,
             skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
@@ -696,7 +746,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 }
                 continue;
             }
-            const bool keepTail=c.type==Limiter || c.type==Delay ||
+            const bool keepTail=c.type==Limiter || c.type==StudioLimiterFX || c.type==Delay ||
                 c.type==Reverb || c.type==VoxRackRoom ||
                 c.type==VocalChorusFX || c.type==VocalFlangerFX ||
                 c.type==AdlibThrow || c.type==AdlibDoubler ||
@@ -706,7 +756,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
             // These controls are constant for the callback. In particular,
             // dbToGain() involves pow(): never call it on every audio sample.
-            const float limiterDrive=c.type==Limiter?dbToGain(c.p[1]*18.f):1.f;
+            const float limiterDrive=(c.type==Limiter || c.type==StudioLimiterFX)
+                ?dbToGain(c.p[1]*18.f):1.f;
             const float saturatorDrive=c.type==Saturator
                 ?dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f)):1.f;
             const float saturatorBlend=.5f+c.p[1];
@@ -725,6 +776,31 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     case Compressor: {
                         const float g=e.comp.gain(std::max(std::abs(l),std::abs(r)));
                         wetL=l*g;wetR=r*g;break;
+                    }
+                    case StudioLimiterFX: {
+                        const auto& wetSmoother=slotWetSmooth[(size_t)s];
+                        if(!skellpreset::realtime::needsLimiterWetRender(
+                               wetSmoother.getCurrentValue(),wetSmoother.getTargetValue()))
+                            break;
+                        const auto compressed=e.studioLimiterComp.process(l*limiterDrive,r*limiterDrive);
+                        const float gateGain=e.studioGate.processGain(compressed[0],compressed[1]);
+                        const float input[2]{compressed[0]*gateGain,compressed[1]*gateGain};
+                        float output[2]{};
+                        // Final SkellCore true-peak stage is never bypassed on wet audio.
+                        e.limiter.processFrame(input,output,2);
+                        wetL=output[0];wetR=output[1];break;
+                    }
+                    case StudioCompressorFX: {
+                        const auto y=e.studioComp.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case StudioEQFX: {
+                        const auto y=e.studioEq.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case StudioFastDistFX: {
+                        const auto y=e.studioDist.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
                     }
                     case Limiter: {
                         // Preserve historical limiter PDC, but don't spend
@@ -860,7 +936,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     default:break;
                 }
                 // Sample-align a bypassed limiter as it still contributes PDC.
-                if(c.type==Limiter) {
+                if(c.type==Limiter || c.type==StudioLimiterFX) {
                     const auto delayed=e.limiterDry.process(l,r,lookahead);
                     l=delayed[0];r=delayed[1];
                 } else if(c.type==StudioPitchFormantFX) {

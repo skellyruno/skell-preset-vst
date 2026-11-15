@@ -7,6 +7,7 @@
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
 #include "chain/StudioChorusDSP.h"
+#include "chain/StudioNativeDSP.h"
 #include "chain/ImportedVocalFX.h"
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
@@ -23,7 +24,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     SkellPresetAudioProcessor();
@@ -108,6 +109,10 @@ private:
         skellpreset::dsp::VoxRackRoom voxRoom;
         skellpreset::dsp::VoxRackSmoothCompressor voxComp;
         skellpreset::studio::Chorus chorus;
+        skellpreset::studio::ParametricEQ studioEq;
+        skellpreset::studio::Compressor studioComp,studioLimiterComp;
+        skellpreset::studio::Gate studioGate;
+        skellpreset::studio::FastDist studioDist;
         skellpreset::dsp::VocalFlanger flanger;
         skellpreset::dsp::VocalRingMod ring;
         skellpreset::dsp::VocalRider rider;
@@ -151,6 +156,7 @@ private:
         std::atomic<float>* extension4=nullptr;
         std::atomic<float>* extension5=nullptr;
         std::atomic<float>* extension6=nullptr;
+        std::atomic<float>* extension7=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
