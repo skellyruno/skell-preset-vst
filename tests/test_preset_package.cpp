@@ -175,6 +175,23 @@ int main(){
                   "Load old native v2 file with flat EQ cuts and neutral Q");
         }
     }
+    // A module 33 is legal on write and MUST survive import. Module 34
+    // remains deliberately unknown; never renumber the previous module IDs.
+    {
+        auto newest=first;
+        newest.slots[0].type=33;
+        const auto file=testFile(dir,"skelldizer-id33-roundtrip");
+        check(skellpreset::package::write(file,newest).wasOk(),
+              "Export Skelldizer module 33");
+        skellpreset::package::Document recalled;
+        check(skellpreset::package::read(file,recalled).wasOk()
+              &&recalled.slots[0].type==33,
+              "Recall Skelldizer module 33 without remapping");
+        newest.slots[0].type=34;
+        check(skellpreset::package::write(
+                  testFile(dir,"unknown-id34"),newest).failed(),
+              "Reject unknown module 34");
+    }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
     {

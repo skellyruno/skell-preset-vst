@@ -6,6 +6,7 @@
 #include "../Source/chain/VoxRackFX.h"
 #include "../Source/chain/VocalEffects.h"
 #include "../Source/chain/AlchemistMatchDSP.h"
+#include "../Source/chain/SkelldizerDSP.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -23,7 +24,7 @@ int main() {
     assert(std::strcmp(factoryPresets[43].name,alchemist::name)==0);
     assert(std::strcmp(factoryPresets[43].bank,"Main Vocals")==0);
 
-    const int expectedTypes[7]{1,26,2,19,17,5,31};
+    const int expectedTypes[7]{1,26,2,19,33,5,31};
     for(int i=0;i<7;++i) {
         const auto& stage=alchemist::stages[(size_t)i];
         assert(stage.module==expectedTypes[i]);
@@ -62,10 +63,10 @@ int main() {
         const auto& slow=alchemist::stages[3];
         opto.set(-55.f+53.f*slow.p[0],1.f+11.f*slow.p[1],
                  18.f*slow.p[2],40.f+410.f*slow.p[3]);
-        ThreeBandDynamics multiband;
-        multiband.prepare(sr);
+        Skelldizer skelldizer;
+        skelldizer.prepare(sr);
         const auto& mb=alchemist::stages[4];
-        multiband.set(mb.p[0],mb.p[1],mb.p[2],mb.p[3]);
+        skelldizer.set(mb.p[0],mb.p[1],mb.p[2],mb.p[3]);
         const auto& sat=alchemist::stages[5];
         const float drive=dbToGain(sat.p[0]*24.f);
         const float shape=.5f+sat.p[1];
@@ -93,7 +94,7 @@ int main() {
             l+=(d[0]-l)*slow.wet;
             r+=(d[1]-r)*slow.wet;
 
-            const auto e=multiband.process(l,r);
+            const auto e=skelldizer.process(l,r);
             l+=(e[0]-l)*mb.wet;
             r+=(e[1]-r)*mb.wet;
 
