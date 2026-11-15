@@ -1249,6 +1249,49 @@ void SlotEditor::paint(juce::Graphics&g) {
                 {579,274,250,21},12,Theme::white);
             Theme::text(g,"VISUAL PROFILE / NOT LIVE LFO PHASE",
                 {579,322,275,19},9,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::StudioEQFX) {
+            // Use a separate UI-only instance of the same seven-band plain EQ.
+            // Never read the filter states owned by the audio thread.
+            skellpreset::studio::ParametricEQ eq;
+            const double sr=juce::jmax(8000.,processor.preparedAudioRate());
+            eq.prepare(sr);
+            std::array<float,16> p{};
+            std::array<float,8> q{};
+            for(int i=0;i<14;++i)p[(size_t)i]=processor.getSlotParam(slot,i);
+            for(int i=0;i<7;++i) {
+                const auto* raw=processor.state.getRawParameterValue(
+                    "s"+juce::String(slot+1)+"_eqQ"+juce::String(i+1));
+                q[(size_t)i]=raw?raw->load():.5f;
+            }
+            eq.set(p,q);
+            juce::Path response;
+            for(int px=0;px<=835;px+=5) {
+                const double f=20.*std::pow(1000.,(double)px/835.);
+                const float db=(float)eq.magnitudeDb(f);
+                const float y=juce::jlimit((float)plot.getY(),(float)plot.getBottom(),
+                    (float)plot.getCentreY()-db*(plot.getHeight()/72.f));
+                if(px==0)response.startNewSubPath((float)plot.getX(),y);
+                else response.lineTo((float)plot.getX()+px,y);
+            }
+            g.setColour(Theme::green.withAlpha(.11f));
+            auto area=response;
+            area.lineTo((float)plot.getRight(),(float)plot.getBottom());
+            area.lineTo((float)plot.getX(),(float)plot.getBottom());
+            area.closeSubPath();g.fillPath(area);
+            g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.7f));
+            for(int band=0;band<7;++band){
+                const float freq=eqVisualFrequency(processor,slot,band,type);
+                const float gain=(processor.getSlotParam(slot,band*2+1)-.5f)*36.f;
+                const float xx=(float)plot.getX()+
+                    (float)(plot.getWidth()*std::log(freq/20.f)/std::log(1000.f));
+                const float yy=plot.getCentreY()-gain*(plot.getHeight()/72.f);
+                const bool selected=band==activeEqBand;
+                const float size=selected?14.f:10.f;
+                g.setColour(selected?Theme::green:Theme::blue.withAlpha(.82f));
+                g.fillEllipse(xx-size*.5f,yy-size*.5f,size,size);
+                g.setColour(Theme::white.withAlpha(selected?.95f:.58f));
+                g.drawEllipse(xx-size*.5f,yy-size*.5f,size,size,1.3f);
+            }
         } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
             // Exact, summed eight-band DSP response. Every dot edits the
             // actual frequency+gain parameters of one independent bell.
@@ -1818,7 +1861,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                 {120,249,620,22},12,Theme::muted,false,juce::Justification::centred);
         }
         // Non-EQ modules share the two-axis universal marker.
-        if(type!=SkellPresetAudioProcessor::EightBandToneFX &&
+        if(!isPagedEQ(type) &&
            !(modOrbView && isModulationOrbEffect(type))) {
         const float markerX=x0+w*first,markerY=y1-h*second;
         g.setColour(Theme::green.withAlpha(.24f));
@@ -2047,9 +2090,11 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
         processor.setSlotParam(slot,0,juce::jlimit(0.f,1.f,
             (float)(std::log(freq/40.f)/std::log(300.))));
         processor.setSlotParam(slot,1,juce::jlimit(0.f,1.f,.5f+y*1.5f));
-    } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
-        const float low=skellpreset::dsp::EightBandTone::edges[(size_t)activeEqBand];
-        const float high=skellpreset::dsp::EightBandTone::edges[(size_t)activeEqBand+1];
+    } else if(isPagedEQ(type)) {
+        const float low=type==SkellPresetAudioProcessor::StudioEQFX?20.f:
+            skellpreset::dsp::EightBandTone::edges[(size_t)activeEqBand];
+        const float high=type==SkellPresetAudioProcessor::StudioEQFX?20000.f:
+            skellpreset::dsp::EightBandTone::edges[(size_t)activeEqBand+1];
         const float normalized=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
         const float freq=20.f*std::pow(1000.f,normalized);
         const float x=juce::jlimit(0.f,1.f,
@@ -2168,14 +2213,11 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         || type==SkellPresetAudioProcessor::ExternalVST3
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
     draggingGraph=true;
-    if(type==SkellPresetAudioProcessor::EightBandToneFX){
-        // Choose the nearest of eight actual DSP nodes, then latch this band
-        // for the whole drag and show its two-band knob page.
+    if(isPagedEQ(type)){
         float nearest=std::numeric_limits<float>::max();
-        for(int b=0;b<8;++b){
-            const float low=skellpreset::dsp::EightBandTone::edges[(size_t)b];
-            const float high=skellpreset::dsp::EightBandTone::edges[(size_t)b+1];
-            const float freq=low*std::pow(high/low,processor.getSlotParam(slot,b*2));
+        const int bands=type==SkellPresetAudioProcessor::StudioEQFX?7:8;
+        for(int b=0;b<bands;++b){
+            const float freq=eqVisualFrequency(processor,slot,b,type);
             const float bx=33.f+835.f*std::log(freq/20.f)/std::log(1000.f);
             const float dist=std::abs(bx-(float)e.x);
             if(dist<nearest){nearest=dist;activeEqBand=b;}
@@ -2196,9 +2238,9 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
 void SlotEditor::mouseDrag(const juce::MouseEvent& e){if(draggingGraph)updateGraphNode(e.position);}
 void SlotEditor::mouseUp(const juce::MouseEvent&){
     if(!draggingGraph)return;
-    const bool eightBand=processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX;
+    const bool paged=isPagedEQ(processor.slotType(slot));
     for(int k=0;k<2;++k) {
-        const int param=eightBand?activeEqBand*2+k+1:k+1;
+        const int param=paged?activeEqBand*2+k+1:k+1;
         if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+
                                                "_p"+juce::String(param)))
             p->endChangeGesture();

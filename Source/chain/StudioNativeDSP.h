@@ -99,6 +99,13 @@ public:
         for(auto& filter:filters){const auto y=filter.process(l,r);l=y[0];r=y[1];}
         return {detail::safe(l),detail::safe(r)};
     }
+    // Separate, immutable target coefficients for the UI frequency response.
+    double magnitudeDb(double frequency) const noexcept {
+        double total=0.;
+        for(const auto& filter:filters)
+            total+=filter.target.magnitudeDb(frequency,sr);
+        return std::isfinite(total)?total:0.;
+    }
 private:
     double sr=48000.;bool initialized=false;
     std::array<float,16> lastP{};
