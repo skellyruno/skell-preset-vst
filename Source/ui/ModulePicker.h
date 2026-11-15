@@ -42,7 +42,8 @@ public:
             if(results.empty())return;
             selectedRow=juce::jlimit(0,(int)results.size()-1,selectedRow+step);
             if(selectedRow<topItem)topItem=selectedRow;
-            if(selectedRow>=topItem+visibleRows())topItem=selectedRow-5;
+            if(selectedRow>=topItem+visibleRows())
+                topItem=selectedRow-visibleRows()+1;
             topItem=juce::jlimit(0,std::max(0,(int)results.size()-visibleRows()),topItem);
             repaint();
         };

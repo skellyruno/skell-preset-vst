@@ -912,11 +912,13 @@ public:
         constexpr int micWidth=375,micHeight=326;
         if(!micPanel.hasBeenMoved())
             micPanel.setBounds(754,105,micWidth,micHeight);
-        else
+        else {
+            const int w=juce::jlimit(340,520,micPanel.getWidth());
+            const int h=juce::jlimit(326,440,micPanel.getHeight());
             micPanel.setBounds(
-                juce::jlimit(0,Theme::width-micWidth,micPanel.getX()),
-                juce::jlimit(0,Theme::height-micHeight,micPanel.getY()),
-                micWidth,micHeight);
+                juce::jlimit(0,Theme::width-w,micPanel.getX()),
+                juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
+        }
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
         viewSwitch.setBounds(796,27,264,37);
