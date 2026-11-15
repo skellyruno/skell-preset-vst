@@ -22,6 +22,25 @@ int main(){
     const auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory)
                    .getNonexistentChildFile("skell-preset-tests","",false);
     if(dir.createDirectory().failed()){std::cerr<<"Unable to create test folder\n";return 1;}
+    // A fresh empty rack must be immediately serializable and retain stable
+    // identities even though every effect starts disabled.
+    {
+        skellpreset::package::Document empty;
+        bool unique = true;
+        for (int s = 0; s < skellpreset::package::slotCount; ++s)
+            unique = unique && empty.slots[(size_t)s].slotId == s
+                            && !empty.slots[(size_t)s].enabled;
+        check(unique, "Default empty rack has unique slot IDs and no enabled effects");
+        const auto emptyPath = testFile(dir, "default-empty-rack");
+        check(skellpreset::package::write(emptyPath, empty).wasOk(),
+              "Export default empty rack without duplicate slot IDs");
+        skellpreset::package::Document loaded;
+        check(skellpreset::package::read(emptyPath, loaded).wasOk()
+              && loaded.slots[0].slotId == 0
+              && loaded.slots[15].slotId == 15
+              && !loaded.slots[0].enabled,
+              "Default empty rack roundtrips without enabling effects");
+    }
     skellpreset::package::Document first;
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
