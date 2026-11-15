@@ -60,7 +60,7 @@ public:
         dancer((float)getWidth()-178.f,0.f);
         dancer((float)getWidth()-97.f,1.5f);
         Theme::text(g,"BONE MOTION / LIVE AUDIO",
-                    {getWidth()-295,198,265,17},9.8f,Theme::green.withAlpha(.85f),
+                    {getWidth()-295,109,265,17},9.8f,Theme::green.withAlpha(.85f),
                     true,juce::Justification::centred);
         const auto plot=juce::Rectangle<float>(62.f,217.f,getWidth()-124.f,152.f);
         g.setColour(Theme::plot);
