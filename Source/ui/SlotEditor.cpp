@@ -250,6 +250,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     for(int i=0;i<4;++i){
         auto& k=knobs[(size_t)i];
         k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        k.setScrollWheelEnabled(true); // real host automation, no rack navigation
         k.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
         k.setTooltip("Hover or adjust for 0-100 numeric value. Double-click resets.");
         // Human-readable display only; hosts still automate the exact stable
@@ -959,34 +960,40 @@ void SlotEditor::paint(juce::Graphics&g) {
         ?processor.hostedVST3Name(slot):juce::String{};
     Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleName(type),
                       {21,29,500,38},25,Theme::white,true);
-    // Remove the duplicate module dropdown and ON/WET controls. One action
-    // surface lives in the rack, including for external hosted VST3 effects.
-    Theme::text(g,"SELECT RACK EFFECT  /  DOUBLE-CLICK TO REPLACE",
-                {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
-    const auto category=juce::String(skellpreset::registry::at(type).category).toUpperCase();
-    // Keep this status chip entirely clear of Alchemist page tabs
-    // (starting at x=512) and the Mod Orb button (x=764).
-    const auto chip=juce::Rectangle<float>(395.f,68.f,107.f,25.f);
-    g.setColour(Theme::green.withAlpha(.12f));g.fillRoundedRectangle(chip,5.f);
-    g.setColour(Theme::green.withAlpha(.42f));
-    g.drawRoundedRectangle(chip,5.f,.85f);
-    Theme::fittedText(g,category,{403,71,91,19},11.5f,Theme::green,true);
-    // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
-    // vertebrae respond to the signal while leaving parameter graphs readable.
-    Theme::text(g,"BONE SIGNAL",{22,73,158,18},9.8f,Theme::muted,true);
-    const float level=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
-    for(int rib=0;rib<14;++rib) {
-        const float x=178.f+13.5f*(float)rib;
-        const bool alive=level>((float)rib/14.f);
-        g.setColour(alive?Theme::green.withAlpha(.33f+.55f*level)
-                         :Theme::stroke.withAlpha(.67f));
-        g.fillRoundedRectangle(x+2.f,79.1f,6.7f,7.4f,2.8f);
-        g.fillEllipse(x,80.2f,4.5f,4.5f);
-        g.fillEllipse(x+6.f,80.2f,4.5f,4.5f);
-        if(alive) {
-            g.setColour(Theme::white.withAlpha(.15f));
-            g.drawLine(x+3.f,79.5f,x+8.f,79.5f,.8f);
+    // The hosted editor has its own top action buttons. Do not paint the
+    // native selector prompt, category chip or signal dots underneath those
+    // controls; it clips the third-party view at small UI scales.
+    if(type!=SkellPresetAudioProcessor::ExternalVST3) {
+        // Remove the duplicate module dropdown and ON/WET controls. One action
+        // surface lives in the rack, including for external hosted VST3 effects.
+        Theme::text(g,"SELECT RACK EFFECT  /  DOUBLE-CLICK TO REPLACE",
+                    {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
+        const auto category=juce::String(skellpreset::registry::at(type).category).toUpperCase();
+        // Keep this status chip entirely clear of Alchemist page tabs
+        // (starting at x=512) and the Mod Orb button (x=764).
+        const auto chip=juce::Rectangle<float>(395.f,68.f,107.f,25.f);
+        g.setColour(Theme::green.withAlpha(.12f));g.fillRoundedRectangle(chip,5.f);
+        g.setColour(Theme::green.withAlpha(.42f));
+        g.drawRoundedRectangle(chip,5.f,.85f);
+        Theme::fittedText(g,category,{403,71,91,19},11.5f,Theme::green,true);
+        // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
+        // vertebrae respond to the signal while leaving parameter graphs readable.
+        Theme::text(g,"BONE SIGNAL",{22,73,158,18},9.8f,Theme::muted,true);
+        const float level=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+        for(int rib=0;rib<14;++rib) {
+            const float x=178.f+13.5f*(float)rib;
+            const bool alive=level>((float)rib/14.f);
+            g.setColour(alive?Theme::green.withAlpha(.33f+.55f*level)
+                             :Theme::stroke.withAlpha(.67f));
+            g.fillRoundedRectangle(x+2.f,79.1f,6.7f,7.4f,2.8f);
+            g.fillEllipse(x,80.2f,4.5f,4.5f);
+            g.fillEllipse(x+6.f,80.2f,4.5f,4.5f);
+            if(alive) {
+                g.setColour(Theme::white.withAlpha(.15f));
+                g.drawLine(x+3.f,79.5f,x+8.f,79.5f,.8f);
+            }
         }
+    
     }
     const auto plot=juce::Rectangle<float>(33,151,835,206);
     g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);
