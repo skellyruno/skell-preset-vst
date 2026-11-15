@@ -46,6 +46,24 @@ jobs:
         run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON
       - name: Compile Windows VST3 and regression fixtures
         run: cmake --build build --config Release --parallel 2
+      # JUCE's manifest writer emits permissive JSON with trailing commas.
+      # The VST3 bundle is user-installable only after strict normalization;
+      # verify the exact shipping plugin (not SkellHostFixture.vst3).
+      - name: Normalize and validate shipping VST3 metadata as strict JSON
+        shell: pwsh
+        run: |
+          $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $vst) { throw 'Shipping Skell-Preset VST3 bundle missing' }
+          $moduleinfo = Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json'
+          if (-not (Test-Path -LiteralPath $moduleinfo -PathType Leaf)) { throw 'Shipping VST3 moduleinfo.json missing' }
+          & python tools/normalize_vst3_moduleinfo.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'VST3 metadata normalizer self-test failed' }
+          & python tools/normalize_vst3_moduleinfo.py $moduleinfo
+          if ($LASTEXITCODE -ne 0) { throw 'VST3 metadata normalization failed' }
+          $manifest = Get-Content -LiteralPath $moduleinfo -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($manifest.Name -ne 'Skell-Preset' -or $manifest.Version -ne '0.6.0') {
+            throw 'Unexpected Skell-Preset identity or version in VST3 moduleinfo'
+          }
       - name: Validate native preset ZIP import/export and security
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Prove external VST3 load and audio with owned test fixture
@@ -63,6 +81,10 @@ jobs:
           # plugin now present in the same build tree.
           $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
           if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
+          # Do not ship permissive JSON even when JUCE's host can load it.
+          $metadata = Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json'
+          $validated = Get-Content -LiteralPath $metadata -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($validated.Name -ne 'Skell-Preset') { throw 'Unexpected shipping VST3 metadata identity' }
           Compress-Archive -LiteralPath $vst.FullName -DestinationPath Skell-Preset-Windows-VST3.zip -Force
       - name: Package compiled Alchemist diagnostic renderer
         shell: pwsh
