@@ -520,7 +520,9 @@ void SlotEditor::releaseEmbeddedEditor(){
 }
 void SlotEditor::layoutEmbeddedEditor(){
     if(!embeddedEditor)return;
-    constexpr float x=55.f,y=134.f,w=795.f,h=251.f;
+    // Fill the effect deck instead of shrinking third-party editors into a
+    // 251px-high letterbox. Keep the top bar for detach/window fallback.
+    constexpr float x=18.f,y=85.f,w=870.f,h=437.f;
     const float editorWidth=(float)juce::jmax(1,embeddedEditor->getWidth());
     const float editorHeight=(float)juce::jmax(1,embeddedEditor->getHeight());
     const float scale=juce::jlimit(.1f,1.f,
@@ -930,15 +932,15 @@ void SlotEditor::resized() {
     matchPageButtons[0].setBounds(512,72,105,23);
     matchPageButtons[1].setBounds(623,72,125,23);
     matchPageButtons[2].setBounds(754,72,112,23);
-    loadExternal.setBounds(52,420,177,62);
+    loadExternal.setBounds(542,33,164,32);
     installedBrowser.setBounds(85,62,735,385);
     addEqNode.setBounds(74,96,127,26);
     eqNodeMenu.setBounds(610,156,205,241);
-    editExternal.setBounds(246,420,188,62);
+    editExternal.setBounds(714,33,169,32);
     layoutEmbeddedEditor();
     upgradeEq.setBounds(650,97,212,31);
     modOrbButton.setBounds(764,77,95,23);
-    // Center the four effect controls inside the expanded Advanced deck.
+    // Center each native effect's real automatable control on the deck.
     for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,433,97,78);
 }
 void SlotEditor::paint(juce::Graphics&g) {
@@ -953,7 +955,10 @@ void SlotEditor::paint(juce::Graphics&g) {
     }
     const int type=processor.slotType(slot);
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
-    Theme::fittedText(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
+    const auto hostedName=type==SkellPresetAudioProcessor::ExternalVST3
+        ?processor.hostedVST3Name(slot):juce::String{};
+    Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleName(type),
+                      {21,29,500,38},25,Theme::white,true);
     // Remove the duplicate module dropdown and ON/WET controls. One action
     // surface lives in the rack, including for external hosted VST3 effects.
     Theme::text(g,"SELECT RACK EFFECT  /  DOUBLE-CLICK TO REPLACE",
@@ -2417,6 +2422,12 @@ void SlotEditor::mouseDoubleClick(const juce::MouseEvent& e){
 }
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
+    // Clicking the inactive part of the effect deck returns to the Skell
+    // home panel. Real knobs/graph/editor child components still intercept.
+    if(e.y<68 && e.x<390 && !e.mods.isPopupMenu()) {
+        if(onBackgroundClick)onBackgroundClick();
+        return;
+    }
     if(isModulationOrbEffect(type) && modOrbView)
         return; // display-only modulation orb must not alter DSP automation
     if(type==SkellPresetAudioProcessor::SkelldizerFX) {
