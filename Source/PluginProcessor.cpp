@@ -1394,6 +1394,22 @@ void SkellPresetAudioProcessor::reorderSlot(int from,int to) {
     for(int i=0;i<slotCount;i++)next|=(std::uint64_t)seq[(size_t)i] << (4*i);
     packedOrder.store(next,std::memory_order_release);
 }
+bool SkellPresetAudioProcessor::removeRackSlot(int visualPosition) {
+    // Deleting an extra row must NOT shift the APVTS physical IDs or destroy
+    // hosted processors on the audio thread. Move its stable ID into the
+    // inactive tail, clear its type/power and atomically reduce active count.
+    const int count=activeSlotCount();
+    if(count<=defaultSlotCount || visualPosition<0 || visualPosition>=count)
+        return false;
+    const int physical=slotIdAt(visualPosition);
+    reorderSlot(visualPosition,count-1);
+    setSlotOn(physical,false);
+    setSlotType(physical,Empty);
+    activeSlots.store(count-1,std::memory_order_release);
+    state.state.setProperty("rackSlots",count-1,nullptr);
+    updateHostLatency();
+    return true;
+}
 void SkellPresetAudioProcessor::setCurrentProgram(int index) {loadFactoryPreset(index);}
 const juce::String SkellPresetAudioProcessor::getProgramName(int index) {
     return index>=0&&index<(int)factoryPresets.size()?factoryPresets[(size_t)index].name:juce::String{};
