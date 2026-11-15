@@ -13,26 +13,48 @@ class SkellMicModelPanel final : public juce::Component {
     // Native, theme-painted mic source choices; no OS/DAW ComboBox popup.
     class SourceMenu final : public juce::Component {
     public:
+        SourceMenu(){setWantsKeyboardFocus(true);}
         std::function<void(int)> onChoose;
+        void setSelected(int index) {
+            selected=juce::jlimit(0,3,index);
+            repaint();
+        }
+        void chooseSelectedForTest() {choose(selected);}
         void paint(juce::Graphics& g) override {
             Theme::panelBox(g,getLocalBounds().toFloat(),6.f);
             const juce::StringArray sources{"NEUTRAL","CONDENSER","DYNAMIC","RIBBON"};
             for(int i=0;i<4;++i) {
                 const int y=3+28*i;
-                g.setColour(i%2?Theme::panelAlt:Theme::plot);
-                g.fillRoundedRectangle(juce::Rectangle<float>(4.f,(float)y,
-                    (float)getWidth()-8.f,26.f),4.f);
+                const auto rect=juce::Rectangle<float>(4.f,(float)y,
+                                      (float)getWidth()-8.f,26.f);
+                g.setColour(i==selected?Theme::green.withAlpha(.21f):
+                            (i%2?Theme::panelAlt:Theme::plot));
+                g.fillRoundedRectangle(rect,4.f);
+                if(i==selected) {
+                    g.setColour(Theme::green.withAlpha(.78f));
+                    g.drawRoundedRectangle(rect.reduced(.6f),4.f,1.f);
+                }
                 Theme::text(g,sources[i],{13,y+3,getWidth()-26,20},
-                            12,Theme::white,true);
+                            12,i==selected?Theme::green:Theme::white,true);
             }
         }
         void mouseDown(const juce::MouseEvent& event) override {
             const int row=(event.y-3)/28;
-            if(row>=0&&row<4&&event.y>=3) {
-                setVisible(false);
-                if(onChoose)onChoose(row);
-            }
+            if(row>=0&&row<4&&event.y>=3)choose(row);
         }
+        bool keyPressed(const juce::KeyPress& key) override {
+            if(key==juce::KeyPress::upKey){setSelected(selected-1);return true;}
+            if(key==juce::KeyPress::downKey){setSelected(selected+1);return true;}
+            if(key==juce::KeyPress::returnKey){choose(selected);return true;}
+            if(key==juce::KeyPress::escapeKey){setVisible(false);return true;}
+            return false;
+        }
+    private:
+        void choose(int index){
+            setSelected(index);setVisible(false);
+            if(onChoose)onChoose(selected);
+        }
+        int selected=0;
     };
 public:
     explicit SkellMicModelPanel(SkellPresetAudioProcessor& p) : processor(p) {
@@ -49,8 +71,16 @@ public:
         addAndMakeVisible(enabled);
         input.setButtonText("NEUTRAL  ▼");
         input.onClick=[this] {
-            sourceMenu.setVisible(!sourceMenu.isVisible());
-            if(sourceMenu.isVisible())sourceMenu.toFront(true);
+            const bool opening=!sourceMenu.isVisible();
+            if(opening){
+                const auto* p=processor.state.getRawParameterValue("micPreInput");
+                sourceMenu.setSelected(p?juce::jlimit(0,3,(int)p->load()):0);
+            }
+            sourceMenu.setVisible(opening);
+            if(opening) {
+                sourceMenu.toFront(true);
+                sourceMenu.grabKeyboardFocus();
+            }
         };
         addAndMakeVisible(input);
         sourceMenu.onChoose=[this](int index) {
