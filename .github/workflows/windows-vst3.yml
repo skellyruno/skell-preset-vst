@@ -76,6 +76,13 @@ jobs:
           if (-not $fixture -or -not $runner) { throw 'Nested host fixture or probe executable missing' }
           & $runner.FullName $fixture.FullName
           if ($LASTEXITCODE -ne 0) { throw "Nested VST3 host regression failed: $LASTEXITCODE" }
+      - name: Exercise all four Studio rack effects in actual JUCE plugin, audio, PDC, and FL state
+        shell: pwsh
+        run: |
+          $renderer = Get-ChildItem build -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Compiled rack audio test executable missing' }
+          & $renderer.FullName --studio-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Studio rack audio/PDC/state regression failed: $LASTEXITCODE" }
       - name: Bundle VST3
         shell: pwsh
         run: |

@@ -160,6 +160,89 @@ int smoke() {
     return 0;
 }
 
+// Load all four append-only Studio effects in the actual JUCE processor;
+// measure host-facing PDC and exercise the real Windows rack signal path.
+int studioSmoke() {
+    auto processor=std::make_unique<SkellPresetAudioProcessor>();
+    processor->prepareToPlay(48000.,257);
+    const int types[]{
+        SkellPresetAudioProcessor::StudioEQFX,
+        SkellPresetAudioProcessor::StudioLimiterFX,
+        SkellPresetAudioProcessor::StudioCompressorFX,
+        SkellPresetAudioProcessor::StudioFastDistFX
+    };
+    for(const int type:types){
+        processor->setSlotOn(0,false);
+        processor->setSlotType(0,type);
+        processor->setSlotOn(0,true);
+        // Set audible, deterministic non-default parameters.
+        if(type==SkellPresetAudioProcessor::StudioEQFX) {
+            processor->setSlotParam(0,0,.8f);
+            processor->setSlotParam(0,1,.9f);
+        }else if(type==SkellPresetAudioProcessor::StudioCompressorFX) {
+            processor->setSlotParam(0,0,.35f);
+            processor->setSlotParam(0,1,.85f);
+        }else if(type==SkellPresetAudioProcessor::StudioFastDistFX) {
+            processor->setSlotParam(0,0,.7f);
+            processor->setSlotParam(0,3,.6f);
+        }else{
+            processor->setSlotParam(0,0,.89f);
+            processor->setSlotParam(0,1,.1f);
+            processor->setSlotParam(0,2,.35f);
+            processor->setSlotParam(0,3,.85f);
+        }
+        const int latency=processor->getLatencySamples();
+        if((type==SkellPresetAudioProcessor::StudioLimiterFX &&
+            (latency<48||latency>1024)) ||
+           (type!=SkellPresetAudioProcessor::StudioLimiterFX && latency!=0)) {
+            std::fprintf(stderr,"Studio effect %d PDC invalid: %d\n",type,latency);
+            return 72;
+        }
+        double peak=0.,difference=0.,energy=0.;
+        for(int block=0;block<75;++block){
+            juce::AudioBuffer<float> audio(2,257);
+            for(int n=0;n<257;++n){
+                const double t=(block*257+n)/48000.;
+                const float input=(float)(.34*std::sin(2.*juce::MathConstants<double>::pi*713.*t)
+                                 +.22*std::sin(2.*juce::MathConstants<double>::pi*4300.*t));
+                audio.setSample(0,n,input);
+                audio.setSample(1,n,input*.73f);
+            }
+            juce::MidiBuffer midi;
+            processor->processBlock(audio,midi);
+            for(int n=0;n<257;++n){
+                const float out=audio.getSample(0,n);
+                if(!std::isfinite(out))return 73;
+                peak=std::max(peak,(double)std::abs(out));
+                energy+=(double)out*out;
+                if(block>20){
+                    const double t=(block*257+n)/48000.;
+                    const float input=(float)(.34*std::sin(2.*juce::MathConstants<double>::pi*713.*t)
+                                         +.22*std::sin(2.*juce::MathConstants<double>::pi*4300.*t));
+                    difference+=std::abs((double)out-(double)input);
+                }
+            }
+        }
+        if(peak>8.||energy<.0001||difference<.05){
+            std::fprintf(stderr,"Studio effect %d audio validation failed: %.5f %.5f %.5f\n",
+                         type,peak,energy,difference);
+            return 74;
+        }
+        juce::MemoryBlock state;
+        processor->getStateInformation(state);
+        auto restored=std::make_unique<SkellPresetAudioProcessor>();
+        restored->setStateInformation(state.getData(),(int)state.getSize());
+        if(restored->slotType(0)!=type){
+            std::fprintf(stderr,"Studio effect %d FL project state recall failed\n",type);
+            return 75;
+        }
+        std::printf("PASS: Studio ID %d, PDC %d, peak %.4f, change %.4f, state recall\n",
+                    type,latency,peak,difference);
+    }
+    processor->releaseResources();
+    return 0;
+}
+
 // End-to-end native processor workload: not a simulated individual effect.
 // Measures serialized callbacks for several plugin instances sharing one audio
 // device thread. Hosted CI machine timings are NOT FL Studio CPU results.
@@ -468,6 +551,7 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--smoke")return smoke();
     if(argc==2 && juce::String(argv[1])=="--smoke-blank")return blankSmoke();
     if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
+    if(argc==2 && juce::String(argv[1])=="--studio-smoke")return studioSmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
     if(argc==4 && juce::String(argv[1])=="--compare")
