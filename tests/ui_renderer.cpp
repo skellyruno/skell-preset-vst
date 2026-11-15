@@ -27,9 +27,11 @@ constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
 int main(int argc, char** argv) {
-    bool quick4=false;
-    for(int i=1;i<argc;++i)
+    bool quick4=false,extras=false;
+    for(int i=1;i<argc;++i) {
         if(juce::String(argv[i])=="--quick4")quick4=true;
+        if(juce::String(argv[i])=="--extras")extras=true;
+    }
     const juce::String argument = argc >= 3 && juce::String(argv[1]) == "--output"
         ? juce::String::fromUTF8(argv[2]) : juce::String("ui-screenshots");
     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
@@ -670,6 +672,32 @@ int main(int argc, char** argv) {
         }
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
+        if(quick4 && extras) {
+            // Two EXTRA real-editor scene PNGs. Quick4 remains four primary
+            // screenshots and the contact sheet is unchanged.
+            processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+            editor.configureForScreenshot(0,1,false);
+            editor.showHomeForScreenshot();
+            const auto home=skellcore::ui::headless::capture(editor,1168,688);
+            if(!home.image.isValid() || home.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(
+                   home.image,folder.getChildFile("obsidian-home-100.png"))) {
+                std::fprintf(stderr,"Actual animated home screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(0);
+            processor.setSlotType(0,SkellPresetAudioProcessor::StudioLimiterFX);
+            processor.setSlotOn(0,true);
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(0,0);
+            const auto limiter=skellcore::ui::headless::capture(editor,1168,688);
+            if(!limiter.image.isValid() || limiter.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(
+                   limiter.image,folder.getChildFile("obsidian-studio-limiter-100.png"))) {
+                std::fprintf(stderr,"Actual Studio limiter editor screenshot failed\n");
+                ++failures;
+            }
+        }
         editor.configureForScreenshot(0, 1, false);
         std::printf("Skell-Preset shared SkellCore renderer: %d scenes, %d failures\n",
                     report.captured, failures);
