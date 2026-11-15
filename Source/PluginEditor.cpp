@@ -365,6 +365,7 @@ public:
         repaint();
     }
     void setMatchPageForScreenshot(int page) {
+        editingIdle=false;idle.setVisible(false);
         slot.setMatchPageForScreenshot(page);
     }
     void setMicPanelForScreenshot(bool visible) {
@@ -377,15 +378,21 @@ public:
         if(visible)micPanel.toFront(true);
     }
     void setModOrbForScreenshot(bool enabled) {
+        editingIdle=false;idle.setVisible(false);
         slot.setModOrbForScreenshot(enabled);
     }
     void openModulePickerForScreenshot() {
+        editingIdle=false;idle.setVisible(false);
         slot.openModulePickerForScreenshot();
     }
     void openInstalledVST3BrowserForScreenshot() {
+        editingIdle=false;idle.setVisible(false);
         slot.openInstalledVST3BrowserForScreenshot();
     }
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
+        // The idle screen is correct at startup, but local Quick4 must
+        // capture the REAL requested effect once explicitly selected.
+        editingIdle=false;idle.setVisible(false);
         chain.setScreenshotScrollOffset(scrollOffset);
         chain.setSelectedSlot(physicalSlot);
         slot.select(physicalSlot);
