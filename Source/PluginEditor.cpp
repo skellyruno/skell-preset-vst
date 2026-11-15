@@ -528,6 +528,8 @@ public:
             issues.add("8-Band EQ graph did not edit the eighth band and its Q");
         if(!slot.testKnobReadouts())
             issues.add("APVTS overwrote physical Hz/dB/Q knob readouts");
+        if(!slot.testStudioEqSeventhBand())
+            issues.add("Studio seven-band EQ last page does not edit B7 frequency, gain or width");
         if(!slot.testMatchFinishPages())
             issues.add("Alchemist Shape/Calibration tabs do not expose all eight real parameters");
         if(!slot.testMicModelCards())

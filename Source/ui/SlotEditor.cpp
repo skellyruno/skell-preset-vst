@@ -544,8 +544,11 @@ void SlotEditor::applyTheme() {
 void SlotEditor::showEqBank(int firstBand) {
     const auto module=processor.slotType(slot);
     if(!isPagedEQ(module))return;
+    // Seven bands need an overlapping final page: B6+B7. Previously the
+    // last button silently displayed B5+B6, leaving B7 rotary automation
+    // unreachable even though its graph point and WIDTH control existed.
     eqBank=module==SkellPresetAudioProcessor::StudioEQFX
-        ? juce::jlimit(0,2,firstBand/2)*2
+        ? (firstBand>=6?5:juce::jlimit(0,2,firstBand/2)*2)
         : juce::jlimit(0,3,firstBand/2)*2;
     const auto prefix="s"+juce::String(slot+1)+"_";
     for(auto& a:knobAttachment)a.reset();
@@ -2256,6 +2259,33 @@ bool SlotEditor::testKnobReadouts() {
         && frequency.containsIgnoreCase("Hz")
         && gain.containsIgnoreCase("dB")
         && bandwidth.startsWithIgnoreCase("Q ");
+}
+
+bool SlotEditor::testStudioEqSeventhBand() {
+    const int physical=slot;
+    processor.setSlotType(physical,SkellPresetAudioProcessor::StudioEQFX);
+    processor.setSlotOn(physical,true);
+    select(physical);
+    // The seventh visible node must have real, accessible frequency/gain
+    // rotaries, not a disguised duplicate page 5/6 or unused B8 controls.
+    eqBandButtons[6].onClick();
+    const bool page=eqBank==5 && activeEqBand==6 &&
+        eqBandButtons[6].isVisible() &&
+        !eqBandButtons[7].isVisible() && moduleSelectorMatchesAudio();
+    const float previousSix=processor.getSlotParam(physical,10);
+    const float previousSeven=processor.getSlotParam(physical,12);
+    knobs[2].setValue(.77,juce::sendNotificationSync); // B7 frequency p13
+    knobs[3].setValue(.72,juce::sendNotificationSync); // B7 gain p14
+    eqQSlider.setValue(.63,juce::sendNotificationSync); // B7 width eqQ7
+    const auto* width=processor.state.getRawParameterValue(
+        "s"+juce::String(physical+1)+"_eqQ7");
+    const bool controls=std::abs(processor.getSlotParam(physical,12)-.77f)<.015f
+        && std::abs(processor.getSlotParam(physical,13)-.72f)<.015f
+        && std::abs(processor.getSlotParam(physical,10)-previousSix)<1.e-5f
+        && std::abs(processor.getSlotParam(physical,12)-previousSeven)>.05f
+        && width && std::abs(width->load()-.63f)<.015f
+        && eqQSlider.getTextFromValue(.63).startsWithIgnoreCase("WIDTH");
+    return page && controls;
 }
 
 bool SlotEditor::testEightBandGraphAndQ() {

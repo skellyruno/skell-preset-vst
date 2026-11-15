@@ -68,6 +68,7 @@ public:
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
     bool testEightBandGraphAndQ();
+    bool testStudioEqSeventhBand();
     bool testKnobReadouts();
     bool testMatchFinishPages();
     bool testMicModelCards();
