@@ -64,7 +64,7 @@ public:
                                          "Mid presence","High-frequency air"};
         for(int i=0;i<4;++i) {
             auto& b=simulations[(size_t)i];
-            b.setButtonText(juce::String(targets[i])+"   /   "+subtitles[i]);
+            b.setButtonText(juce::String(targets[i]).toUpperCase());
             b.setTooltip("Simulate generic "+juce::String(targets[i])+
                          " tonal character (not a measured microphone model)");
             b.onClick=[this,i]{setPhysical("micPreTarget",(float)i);refresh();};
@@ -227,6 +227,13 @@ public:
         Theme::text(g,"DRAG HEADER  /  CORNER TO RESIZE",{17,37,getWidth()-34,15},9,Theme::muted);
         Theme::text(g,"INPUT MIC",{16,51,170,17},10,Theme::muted,true);
         Theme::text(g,"SIMULATE",{16,109,170,17},10,Theme::muted,true);
+        const juce::StringArray descriptions{
+            "FLAT  /  UNCOLORED","WARM  /  SOFT LOW-MIDS",
+            "FOCUS  /  MID PRESENCE","AIR  /  UPPER AIR"};
+        const auto* rawTarget=processor.state.getRawParameterValue("micPreTarget");
+        const int target=rawTarget?juce::jlimit(0,3,(int)rawTarget->load()):0;
+        Theme::fittedText(g,descriptions[target],{19,212,getWidth()-38,15},
+                          10.5f,Theme::green,true);
         const int lower=juce::jmax(239,getHeight()-87);
         Theme::text(g,"AMOUNT",{16,lower,62,23},10,Theme::white,true);
         Theme::text(g,"TRIM",{16,lower+40,62,23},10,Theme::white,true);

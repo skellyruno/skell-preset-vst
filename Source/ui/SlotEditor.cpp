@@ -956,8 +956,14 @@ void SlotEditor::paint(juce::Graphics&g) {
     Theme::fittedText(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
     // Remove the duplicate module dropdown and ON/WET controls. One action
     // surface lives in the rack, including for external hosted VST3 effects.
-    Theme::text(g,"DOUBLE-CLICK AN EFFECT IN THE RACK TO REPLACE IT",
+    Theme::text(g,"SELECT RACK EFFECT  /  DOUBLE-CLICK TO REPLACE",
                 {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
+    const auto category=skellpreset::registry::at(type).category.toUpperCase();
+    const auto chip=juce::Rectangle<float>(686.f,68.f,177.f,25.f);
+    g.setColour(Theme::green.withAlpha(.12f));g.fillRoundedRectangle(chip,5.f);
+    g.setColour(Theme::green.withAlpha(.42f));
+    g.drawRoundedRectangle(chip,5.f,.85f);
+    Theme::fittedText(g,category,{700,71,145,19},11.5f,Theme::green,true);
     // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
     // vertebrae respond to the signal while leaving parameter graphs readable.
     Theme::text(g,"BONE SIGNAL",{22,73,158,18},9.8f,Theme::muted,true);
@@ -2630,7 +2636,8 @@ bool SlotEditor::testModulePickerInteraction() {
     if(modulePicker.filterMatchesForTest("compressor",SkellPresetAudioProcessor::VocalChorusFX))
         return false;
     openModulePicker();
-    if(!modulePicker.isVisible() || !modulePicker.testVisibleKeyboardRow())
+    if(!modulePicker.isVisible() || !modulePicker.testVisibleKeyboardRow()
+       || !modulePicker.testResizeKeepsSizeForTest())
         return false;
     openModulePicker();
     if(modulePicker.isVisible())return false;

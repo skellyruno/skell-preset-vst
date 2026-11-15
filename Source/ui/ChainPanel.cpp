@@ -317,7 +317,7 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,"WHEEL ON FX TO MOVE / DRAG TO REORDER",
+    Theme::text(g,"WHEEL TO SCROLL / DRAG TO REORDER",
         {13,511,193,18},8.5f,Theme::muted,false,juce::Justification::centred);
 }
 void ChainPanel::refreshIfChanged() {
