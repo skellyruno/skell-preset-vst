@@ -63,7 +63,13 @@ int main() {
         chorus.prepare(rate);
         chorus.set(.5f,5.f,3.f,.5f);
         auto raw=chorus.raw();
-        assert(raw[11]==1024); // All dry/wet is from host slot.
+        assert(raw[11]==0); // Keep Studio's direct vocal with chorus wet.
+        chorus.reset();
+        const auto onset=chorus.process(.25f,-.25f);
+        // Before delay taps can contain signal, the original Studio chorus
+        // produces 70%-level direct audio rather than replacing it with silence.
+        assert(std::abs(onset[0]-.175f)<.00001f);
+        assert(std::abs(onset[1]+.175f)<.00001f);
         double energy=0.,maxAbs=0.;
         for(int n=0;n<40000;++n) {
             if(n%137==0)chorus.set(.2f+(n%7)*.32f,

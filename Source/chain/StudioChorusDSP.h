@@ -80,7 +80,9 @@ public:
         v[7]=0;
         v[8]=(int)std::lround(rich*340.f); // Arc -> arc cubed.
         v[9]=0; v[10]=2500;
-        v[11]=1024; // Wet-only: existing slot's dry/wet stays authoritative.
+        v[11]=0; // Keep Studio's normal direct + modulated output.
+        // The rack wet knob crossfades the complete Studio Chorus result,
+        // not a delayed-only signal that would erase vocal consonants.
         setRaw(v);
     }
     std::array<float,2> process(float left,float right) noexcept {

@@ -174,7 +174,9 @@ compatibility, visual perfection or audio sound quality.
 Skell Preset's native **Studio Chorus** now contains a C++17 translation of
 Skell Studio's three-LFO, two-band crossover modulation DSP, replacing the
 prior native Vocal Chorus engine inside its existing module slot. The rest
-of the rack, the original 4 chorus automation knobs and global wet remain.
+of the rack, the original 4 chorus automation knobs and global wet remain. Studio's default dry-plus-chorus output is preserved
+within the native slot (not forced wet-only); rack wet crossfades that
+complete effect against the original signal.
 Reference: Lemon Studio `crates/os-engine/src/effects/chorus.rs`, Copyright
 (C) 2026 ItsAlphaNeon, licensed **GPL-3.0-or-later**. Skell Preset's combined
 build will require compliant GPL-3.0-or-later source distribution if released.
