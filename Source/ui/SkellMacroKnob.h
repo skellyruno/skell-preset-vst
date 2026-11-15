@@ -20,6 +20,14 @@ public:
     void mouseDown(const juce::MouseEvent& e) override {
         adjusting=true;juce::Slider::mouseDown(e);updateReadout();
     }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        // Canvas paints the numeric value behind this knob. A held drag must
+        // invalidate that readout on *every changed value*, not only hover
+        // or press transitions; keep JUCE's original automation gesture.
+        const double before=getValue();
+        juce::Slider::mouseDrag(e);
+        if(getValue()!=before)updateReadout();
+    }
     void mouseUp(const juce::MouseEvent& e) override {
         juce::Slider::mouseUp(e);adjusting=false;updateReadout();
     }

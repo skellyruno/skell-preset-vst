@@ -92,6 +92,17 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         refreshIfChanged();
         repaint();
     };
+    modulePicker.onExternal=[this] {
+        if(slot<0)return;
+        processor.setSlotType(slot,SkellPresetAudioProcessor::ExternalVST3);
+        processor.setSlotOn(slot,true);
+        moduleBox.setSelectedId(SkellPresetAudioProcessor::ExternalVST3+1,
+                                juce::dontSendNotification);
+        graphSnapshotValid=false;
+        refreshIfChanged();
+        installedBrowser.open();
+        installedBrowser.toFront(true);
+    };
     addAndMakeVisible(modulePicker);
     modulePicker.setVisible(false);
     for(auto* button:{&loadExternal,&editExternal}){
@@ -762,7 +773,9 @@ void SlotEditor::refreshIfChanged() {
     if(!external && installedBrowser.isVisible())installedBrowser.hide();
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot));
-    upgradeEq.setVisible(type==SkellPresetAudioProcessor::EQ);
+    // No competing "upgrade EQ" button: modern EQ is the single library
+    // choice, while older saved EQ instances remain editable and recallable.
+    upgradeEq.setVisible(false);
     modOrbButton.setVisible(isModulationOrbEffect(type));
     eqQSlider.setVisible(isPagedEQ(type));
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);

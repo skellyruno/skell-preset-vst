@@ -299,20 +299,8 @@ void ChainPanel::paint(juce::Graphics& g) {
         g.drawEllipse(px-6.2f,py-6.2f,12.4f,12.4f,1.25f);
         g.setColour(enabled?Theme::green.brighter(.22f):Theme::muted.withAlpha(.28f));
         g.fillEllipse(px-3.55f,py-3.55f,7.1f,7.1f);
-        const auto peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
-        // Bone-rib activity strip is driven by measured audio, not fabricated
-        // motion. Separate bright vertebrae with dark joints for visual depth.
-        for(int rib=0;rib<9;++rib) {
-            const float x=15.f+14.1f*(float)rib;
-            const bool lit=enabled && peak>(float)rib/9.f;
-            g.setColour(lit?Theme::green.withAlpha(.25f+.55f*peak)
-                           :Theme::stroke.withAlpha(.55f));
-            g.fillRoundedRectangle(x,(float)top+34.3f,9.2f,2.5f,1.1f);
-            if(lit) {
-                g.setColour(Theme::white.withAlpha(.13f));
-                g.fillRoundedRectangle(x+1.f,(float)top+34.25f,6.f,.65f,.3f);
-            }
-        }
+        // Rack face intentionally has no per-effect audio-level dashes.
+        // Audio meters remain available in the dedicated main/scope views.
     }
     if(active>visibleRows) {
         // Fixed, readable scroll indicator across all three themes.
@@ -344,9 +332,7 @@ void ChainPanel::refreshIfChanged() {
         const int wetPercent=juce::jlimit(0,100,juce::roundToInt(slotWet(slot)*100.f));
         const int value=slot*65536+processor.slotType(slot)*4096
             +(enabled && enabled->load()>.5f?2048:0)
-            +wetPercent*16
-            +(std::isfinite(processor.getSlotPeak(slot))
-                ? juce::jlimit(0,15,juce::roundToInt(processor.getSlotPeak(slot)*15.f)) : 0);
+            +wetPercent*16; // no 30-Hz per-row peak-driven repaints
         if(value!=lastVisual[(size_t)row])changed=true;
         lastVisual[(size_t)row]=value;
     }
@@ -429,7 +415,10 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
         return;
     }
     const int index=rowAt(e.y);
-    if(index<0 || e.x<10 || e.x>206)return;
+    if(index<0 || e.x<10 || e.x>206) {
+        if(!e.mods.isPopupMenu() && onClearSelection)onClearSelection();
+        return;
+    }
     const auto slot=processor.slotIdAt(index);
     if(e.mods.isPopupMenu()){popupFor(slot,e.getScreenPosition());return;}
     if(e.x>=powerControlLeft && e.x<=powerControlRight) {
@@ -574,13 +563,30 @@ bool ChainPanel::moveSlotByWheel(int row,float deltaY) {
     return true;
 }
 void ChainPanel::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel) {
-    // Wheel over a *module face* changes processing order. Rail/background
-    // scrolling continues to navigate all 16 slots without changing the chain.
+    // Trackpads often emit many tiny events for a single gesture. Accumulate
+    // those deltas and rate-limit physical reorders to ONE adjacent slot,
+    // preventing a single scroll from moving an effect halfway down the chain.
     const int row=(e.x>=10 && e.x<=powerControlRight)?rowAt(e.y):-1;
     if(row>=0) {
-        moveSlotByWheel(row,wheel.deltaY);
+        if(row!=wheelTarget) {
+            wheelTarget=row;
+            wheelCarry=0.f;
+        }
+        if(wheel.deltaY==0.f)return;
+        const float direction=wheel.deltaY<0.f?-1.f:1.f;
+        if(wheelCarry*direction<0.f)wheelCarry=0.f;
+        wheelCarry=juce::jlimit(-2.f,2.f,wheelCarry+wheel.deltaY);
+        constexpr float step=0.45f;
+        if(std::abs(wheelCarry)<step)return;
+        const auto now=juce::Time::getMillisecondCounter();
+        if((juce::uint32)(now-lastWheelReorderMs)<175u)return;
+        const float move=wheelCarry;
+        wheelCarry=0.f;
+        if(moveSlotByWheel(row,move))lastWheelReorderMs=now;
         return;
     }
+    wheelTarget=-1;
+    wheelCarry=0.f;
     applyWheelDelta(wheel.deltaY);
 }
 bool ChainPanel::testMouseWheelReorder() {

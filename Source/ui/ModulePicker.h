@@ -42,7 +42,7 @@ public:
             if(results.empty())return;
             selectedRow=juce::jlimit(0,(int)results.size()-1,selectedRow+step);
             if(selectedRow<topItem)topItem=selectedRow;
-            if(selectedRow>=topItem+7)topItem=selectedRow-6;
+            if(selectedRow>=topItem+6)topItem=selectedRow-6;
             repaint();
         };
         search.onReturnKey=[this] {
@@ -55,6 +55,8 @@ public:
     }
 
     std::function<void(int)> onSelect;
+    // External VST3 belongs to a dedicated footer action, never the DSP list.
+    std::function<void()> onExternal;
     std::function<void()> onDismiss;
     // The double-click effect library floats within the editor. Reopening
     // preserves its last dragged position; editor resize clamps it onscreen.
@@ -88,7 +90,7 @@ public:
         for(int i=0;i<(int)results.size();++i)
             if(results[(size_t)i]==currentType){
                 selectedRow=i;
-                topItem=juce::jlimit(0,std::max(0,(int)results.size()-7),i-2);
+                topItem=juce::jlimit(0,std::max(0,(int)results.size()-6),i-2);
                 break;
             }
         setVisible(true);
@@ -126,7 +128,7 @@ public:
         Theme::text(g,"SEARCH / CLICK TO LOAD / SCROLL FOR MORE",
                     {18,86,getWidth()-34,17},10,Theme::muted);
 
-        constexpr int visible=7,rowHeight=37,rowY=108;
+        constexpr int visible=6,rowHeight=37,rowY=108;
         const int end=std::min((int)results.size(),topItem+visible);
         for(int i=topItem;i<end;++i){
             const int type=results[(size_t)i];
@@ -155,6 +157,14 @@ public:
                         juce::Justification::centred);
         g.setColour(Theme::stroke);
         g.drawLine(18.f,(float)(foot-7),W-18.f,(float)(foot-7),1.f);
+        // Dedicated external-insert action, separated from native DSP results.
+        const auto externalRow=juce::Rectangle<float>(17.f,H-55.f,W-34.f,26.f);
+        g.setColour(Theme::green.withAlpha(.12f));
+        g.fillRoundedRectangle(externalRow,5.f);
+        g.setColour(Theme::green.withAlpha(.72f));
+        g.drawRoundedRectangle(externalRow.reduced(.6f),5.f,1.f);
+        Theme::text(g,"+ LOAD EXTERNAL VST3 PLUGIN",
+                    {28,getHeight()-52,getWidth()-58,21},12,Theme::green,true);
         Theme::text(g,"NATIVE DSP / HOST-SAFE BROWSING",{18,foot,300,17},
                     9,Theme::muted);
         Theme::text(g,juce::String(results.size())+" EFFECTS",
@@ -180,7 +190,12 @@ public:
             setMouseCursor(juce::MouseCursor::DraggingHandCursor);
             return;
         }
-        constexpr int rowY=108,rowHeight=37,visible=7;
+        if(e.y>=getHeight()-55 && e.y<getHeight()-29) {
+            hide();
+            if(onExternal)onExternal();
+            return;
+        }
+        constexpr int rowY=108,rowHeight=37,visible=6;
         if(e.y<rowY||e.y>=rowY+visible*rowHeight)return;
         const int i=topItem+(e.y-rowY)/rowHeight;
         if(i>=0&&i<(int)results.size()){
@@ -211,7 +226,7 @@ public:
         if(e.y>=0 && e.y<42 && e.x<getWidth()-45)
             setMouseCursor(juce::MouseCursor::DraggingHandCursor);
         else setMouseCursor(juce::MouseCursor::NormalCursor);
-        constexpr int rowY=108,rowHeight=37,visible=7;
+        constexpr int rowY=108,rowHeight=37,visible=6;
         if(e.y>=rowY&&e.y<rowY+visible*rowHeight){
             const int i=topItem+(e.y-rowY)/rowHeight;
             if(i<(int)results.size() && i!=selectedRow){
@@ -221,7 +236,7 @@ public:
     }
     void mouseWheelMove(const juce::MouseEvent&,
                         const juce::MouseWheelDetails& wheel) override {
-        const int next=juce::jlimit(0,std::max(0,(int)results.size()-7),
+        const int next=juce::jlimit(0,std::max(0,(int)results.size()-6),
             topItem+(wheel.deltaY<0?2:-2));
         if(next!=topItem) {
             topItem=next;selectedRow=next;repaint();
@@ -285,6 +300,11 @@ private:
             // The old slot type 32 still loads and processes saved projects,
             // but new racks cannot accidentally insert a second mic model.
             if(type!=SkellPresetAudioProcessor::MicModelFX
+               && type!=SkellPresetAudioProcessor::ExternalVST3
+               // Keep legacy EQ IDs loadable for saved sessions, but offer
+               // just one modern Studio EQ to new users.
+               && type!=SkellPresetAudioProcessor::EQ
+               && type!=SkellPresetAudioProcessor::EightBandToneFX
                && matches(search.getText(),type))results.push_back(type);
         // Stable sort within categories retains each existing module ID
         // and automation mapping, while giving users a predictable catalog.

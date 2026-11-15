@@ -27,6 +27,7 @@ public:
     }
     int scrollPositionForTest() const noexcept {return scrollOffset;}
     std::function<void(int)> onSelection;
+    std::function<void()> onClearSelection; // click empty rack to show idle visual
     // Double-clicking an effect opens the searchable replacement overlay.
     std::function<void(int)> onReplaceRequest;
     std::function<void()> onMicRequest;
@@ -53,6 +54,9 @@ private:
     int hoveredRow=-1,scrollOffset=0,lastSlotCount=0;
     std::array<int,SkellPresetAudioProcessor::slotCount> lastVisual{};
     bool visualSnapshotValid=false;
+    float wheelCarry=0.f;
+    juce::uint32 lastWheelReorderMs=0;
+    int wheelTarget=-1;
     int rowAt(int y) const;
     void clampScroll();
     void applyWheelDelta(float deltaY);
