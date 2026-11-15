@@ -958,7 +958,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     // surface lives in the rack, including for external hosted VST3 effects.
     Theme::text(g,"SELECT RACK EFFECT  /  DOUBLE-CLICK TO REPLACE",
                 {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
-    const auto category=skellpreset::registry::at(type).category.toUpperCase();
+    const auto category=juce::String(skellpreset::registry::at(type).category).toUpperCase();
     const auto chip=juce::Rectangle<float>(686.f,68.f,177.f,25.f);
     g.setColour(Theme::green.withAlpha(.12f));g.fillRoundedRectangle(chip,5.f);
     g.setColour(Theme::green.withAlpha(.42f));
