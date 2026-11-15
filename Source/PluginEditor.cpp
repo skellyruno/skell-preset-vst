@@ -410,6 +410,7 @@ public:
         // The idle screen is correct at startup, but local Quick4 must
         // capture the REAL requested effect once explicitly selected.
         editingIdle=false;idle.setVisible(false);
+        micPanel.setVisible(false); // same dismissal as real rack selection
         chain.setScreenshotScrollOffset(scrollOffset);
         chain.setSelectedSlot(physicalSlot);
         slot.select(physicalSlot);
