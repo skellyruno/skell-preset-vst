@@ -938,7 +938,7 @@ public:
         // remains under the user's control and survives editor refresh.
         constexpr int micWidth=326,micHeight=302;
         if(!micPanel.hasBeenMoved())
-            micPanel.setBounds(18,107,micWidth,micHeight);
+            micPanel.setBounds(rackOnRight?18:238,107,micWidth,micHeight);
         else {
             const int w=juce::jlimit(310,490,micPanel.getWidth());
             const int h=juce::jlimit(295,405,micPanel.getHeight());
