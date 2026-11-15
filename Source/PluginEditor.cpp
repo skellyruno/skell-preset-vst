@@ -46,11 +46,13 @@ public:
 
         chain.onSelection=[this](int s){
             editingIdle=false;
+            micPanel.setVisible(false); // effect editor must never sit behind MIC
             idle.setVisible(false);
             slot.select(s);chain.setSelectedSlot(s);
         };
         chain.onClearSelection=[this]{
             editingIdle=true;
+            micPanel.setVisible(false); // show complete Home deck, not stale MIC
             slot.dismissTransientOverlays();
             chain.setSelectedSlot(-1);
             idle.setVisible(slot.isVisible());
@@ -59,6 +61,7 @@ public:
         slot.onBackgroundClick=[this] { if(chain.onClearSelection)chain.onClearSelection(); };
         chain.onReplaceRequest=[this](int s){
             editingIdle=false;idle.setVisible(false);
+            micPanel.setVisible(false);
             slot.select(s);
             chain.setSelectedSlot(s);
             slot.openModulePicker();
