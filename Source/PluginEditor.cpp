@@ -62,7 +62,7 @@ public:
             slot.openModulePicker();
         };
 
-        preset.setButtonText("PRESET  ▼");
+        preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
         preset.onClick=[this]{
             micPanel.setVisible(false);
             if(browser.isVisible())browser.setVisible(false);else browser.open();
@@ -459,8 +459,8 @@ public:
                output.getSliderStyle()!=juce::Slider::LinearHorizontal)
                 issues.add("Master footer strips too small or clipped");
         }
-        if(preset.getButtonText()!="PRESET  ▼")
-            issues.add("Preset header must read PRESET rather than the bank");
+        if(!preset.getButtonText().contains(processor.presetName().toUpperCase()))
+            issues.add("Preset selector no longer displays the loaded preset name");
         if(!slot.moduleSelectorMatchesAudio())
             issues.add("Module dropdown differs from the actual selected DSP type");
         return issues;
@@ -981,7 +981,7 @@ public:
             micPanel.on()?Theme::green.withAlpha(.21f):Theme::panelAlt);
         micButton.setColour(juce::TextButton::textColourOffId,
             micPanel.on()?Theme::green:Theme::white);
-        preset.setButtonText("PRESET  ▼");
+        preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
         viewSwitch.setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
         viewSwitch.setTooltip(display==0?"Open full effect chain":"Switch to four macros");
         powerButton.setBypassed(bypass);
@@ -1008,7 +1008,7 @@ public:
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
         syncSizeControl((float)outer.getWidth()/Theme::width);
-        const juce::String n="PRESET  ▼";
+        const auto n=processor.presetName().toUpperCase()+"  ▼";
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int display=m==3?previousMode:(m==0?0:1);
