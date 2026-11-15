@@ -9,6 +9,15 @@ static constexpr double pi=3.14159265358979323846;
 
 int main() {
     static_assert(MicModelTone::profileCount==4,"Preset UI/DSP profile count");
+    static_assert(MicModelTone::spectralZones==5,"Five separate response zones");
+    for(int input=0;input<4;++input)for(int target=0;target<4;++target) {
+        const auto five=MicModelTone::spectralDeltaDb(input,target,1.f);
+        const auto graph=MicModelTone::bandDeltaDb(input,target,1.f);
+        assert(graph[0]==five[0] && graph[1]==five[2] && graph[2]==five[4]);
+        for(float gain:five)assert(std::isfinite(gain) && std::abs(gain)<20.f);
+        const auto bypass=MicModelTone::spectralDeltaDb(input,target,0.f);
+        for(float v:bypass)assert(v==0.f);
+    }
     assert(MicModelTone::index(0.f)==0);
     assert(MicModelTone::index(.5f)==1 || MicModelTone::index(.5f)==2);
     assert(MicModelTone::index(1.f)==3);
