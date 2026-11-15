@@ -51,10 +51,12 @@ public:
         };
         chain.onClearSelection=[this]{
             editingIdle=true;
+            slot.dismissTransientOverlays();
             chain.setSelectedSlot(-1);
             idle.setVisible(slot.isVisible());
             idle.toFront(false);
         };
+        slot.onBackgroundClick=[this] { if(chain.onClearSelection)chain.onClearSelection(); };
         chain.onReplaceRequest=[this](int s){
             editingIdle=false;idle.setVisible(false);
             slot.select(s);
@@ -145,10 +147,14 @@ public:
             s.updateText();
         }
         for(auto* s:{&input,&mix,&output}) {
-            // Three compact master knobs in the footer; original APVTS
-            // parameter IDs and physical gain/mix value functions unchanged.
-             s->setSliderStyle(juce::Slider::LinearHorizontal);
-            s->setTextBoxStyle(juce::Slider::TextBoxRight,false,44,22);
+            // Three true rotary controls, with larger percent readouts painted
+            // separately to avoid JUCE text-box clipping at 70% scale.
+            // Preserve the exact physical APVTS parameters/automation IDs.
+            s->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            s->setRotaryParameters(1.25f*juce::MathConstants<float>::pi,
+                                    2.75f*juce::MathConstants<float>::pi,true);
+            s->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
+            s->setScrollWheelEnabled(true);
             s->setDoubleClickReturnValue(true, s==&mix?1.:0.);
             s->setColour(juce::Slider::trackColourId,Theme::green);
             s->setColour(juce::Slider::thumbColourId,Theme::white);
@@ -457,11 +463,11 @@ public:
                     if(macro[(size_t)i].getBounds().intersects(macro[(size_t)j].getBounds()))
                         issues.add("Simple macro dials overlap");
             }
-            if(input.getWidth()<92 || mix.getWidth()<92 || output.getWidth()<92 ||
-               input.getSliderStyle()!=juce::Slider::LinearHorizontal ||
-               mix.getSliderStyle()!=juce::Slider::LinearHorizontal ||
-               output.getSliderStyle()!=juce::Slider::LinearHorizontal)
-                issues.add("Master footer strips too small or clipped");
+            if(input.getWidth()<35 || mix.getWidth()<35 || output.getWidth()<35 ||
+               input.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag ||
+               mix.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag ||
+               output.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag)
+                issues.add("Master hardware rotary controls too small or incorrect");
         }
         if(!preset.getButtonText().contains(processor.presetName().toUpperCase()))
             issues.add("Preset selector no longer displays the loaded preset name");
@@ -811,20 +817,23 @@ public:
             g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getOutputPeak())?Theme::green:Theme::stroke);
             g.fillRect(263+ix*10,651,7,11);
         }
-        // Three clear footer strips replace tiny rotary knobs that were
-        // clipped and difficult to read at the 70% default interface scale.
+        // Hardware dials plus large, legible 0-100 readouts. Readouts are
+        // calculated from physical gain/mix parameters (not rounded audio DSP).
         const juce::StringArray masterNames{"INPUT","MIX","OUTPUT"};
+        const float values[]{(float)input.getValue(),(float)mix.getValue(),
+                             (float)output.getValue()};
         for(int i=0;i<3;++i) {
             const int x=807+i*116;
             const auto card=juce::Rectangle<float>((float)x,639.f,110.f,46.f);
-            g.setColour(Theme::panelAlt);
-            g.fillRoundedRectangle(card,5.f);
-            g.setColour(Theme::stroke.withAlpha(.85f));
-            g.drawRoundedRectangle(card.reduced(.5f),5.f,.85f);
-            g.setColour(Theme::green.withAlpha(.72f));
-            g.fillRoundedRectangle((float)x+8.f,645.f,2.f,9.f,1.f);
-            Theme::text(g,masterNames[i],{x+16,640,85,15},10.5f,
-                        Theme::white,true);
+            Theme::panelBox(g,card,5.f);
+            g.setColour(Theme::green.withAlpha(.78f));
+            g.fillRoundedRectangle((float)x+7.f,645.f,2.f,9.f,1.f);
+            Theme::text(g,masterNames[i],{x+47,641,58,13},10.8f,Theme::muted,true);
+            const int percent=juce::roundToInt(i==1
+                ?juce::jlimit(0.f,1.f,values[i])*100.f
+                :juce::jlimit(0.f,100.f,50.f+values[i]*100.f/48.f));
+            Theme::text(g,juce::String(percent)+"%",
+                        {x+43,655,62,23},17.2f,Theme::white,true);
         }
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
@@ -921,13 +930,14 @@ public:
         // fill the space down to the shared master-control footer.
         slot.setBounds(rackOnRight?14:247,90,906,535);
         idle.setBounds(slot.getBounds());
-        // Smaller floating MIC widget; do not snap it back after a drag.
-        constexpr int micWidth=375,micHeight=326;
+        // Smaller movable mic panel opens on the LEFT; manual drag/resize
+        // remains under the user's control and survives editor refresh.
+        constexpr int micWidth=326,micHeight=302;
         if(!micPanel.hasBeenMoved())
-            micPanel.setBounds(754,105,micWidth,micHeight);
+            micPanel.setBounds(18,107,micWidth,micHeight);
         else {
-            const int w=juce::jlimit(340,520,micPanel.getWidth());
-            const int h=juce::jlimit(326,440,micPanel.getHeight());
+            const int w=juce::jlimit(310,490,micPanel.getWidth());
+            const int h=juce::jlimit(295,405,micPanel.getHeight());
             micPanel.setBounds(
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
@@ -951,9 +961,9 @@ public:
             knob.setBounds(127+i*254,398,120,113);
             knob.setVisible(display==0);
         }
-        input.setBounds(813,654,97,29);
-        mix.setBounds(929,654,97,29);
-        output.setBounds(1045,654,97,29);
+        input.setBounds(818,650,39,33);
+        mix.setBounds(934,650,39,33);
+        output.setBounds(1050,650,39,33);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1110,28,36,36);
         settingsPanel.setBounds(743,78,388,258);
