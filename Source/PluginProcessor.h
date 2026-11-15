@@ -6,6 +6,7 @@
 #include "chain/ClipRecorder.h"
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
+#include "chain/StudioChorusDSP.h"
 #include "chain/ImportedVocalFX.h"
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
@@ -106,7 +107,7 @@ private:
         skellpreset::dsp::ThreeBandDynamics threeBand;
         skellpreset::dsp::VoxRackRoom voxRoom;
         skellpreset::dsp::VoxRackSmoothCompressor voxComp;
-        skellpreset::dsp::VocalChorus chorus;
+        skellpreset::studio::Chorus chorus;
         skellpreset::dsp::VocalFlanger flanger;
         skellpreset::dsp::VocalRingMod ring;
         skellpreset::dsp::VocalRider rider;

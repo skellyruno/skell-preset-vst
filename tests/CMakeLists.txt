@@ -131,3 +131,8 @@ add_test(NAME SkellPresetABMetricsTest COMMAND SkellPresetABMetricsTest)
 add_executable(SkellPresetEightBandCacheParityTest test_eight_band_cache.cpp)
 target_compile_features(SkellPresetEightBandCacheParityTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetEightBandCacheParityTest COMMAND SkellPresetEightBandCacheParityTest)
+
+# Direct GPL C++ port of Skell Studio's three-LFO chorus.
+add_executable(SkellPresetStudioChorusDSPTest test_studio_chorus.cpp)
+target_compile_features(SkellPresetStudioChorusDSPTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetStudioChorusDSPTest COMMAND SkellPresetStudioChorusDSPTest)

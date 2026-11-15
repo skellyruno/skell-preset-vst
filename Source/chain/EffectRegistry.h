@@ -36,7 +36,7 @@ inline constexpr std::array<Effect,34> effects{{
     {17,"Three-Band Dynamics","Dynamics","multiband compression loud voice",""},
     {18,"VoxRack Room","Space","room reverb ambience reflections",""},
     {19,"VoxRack Smooth Comp","Dynamics","compression loud voice opto",""},
-    {20,"Vocal Chorus","Motion","chorus modulated ensemble layers stereo","322.CHORUS"},
+    {20,"Studio Chorus","Motion","chorus modulated ensemble layers stereo","322.CHORUS"},
     {21,"Vocal Flanger","Motion","sweep wobble flange feedback",""},
     {22,"Ring Modulator","Motion","alien metallic voice modulation",""},
     {23,"Vocal Rider","Dynamics","auto gain phrase levelling vocal chain",""},
