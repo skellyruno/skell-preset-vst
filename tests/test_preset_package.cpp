@@ -153,6 +153,39 @@ int main(){
                   "Load old native v2 file with safe neutral EQ bandwidths");
         }
     }
+    // Invalid EQ Q data must not partially overwrite an existing rack.
+    {
+        juce::ZipFile archive(path);
+        std::unique_ptr<juce::InputStream> input(archive.createStreamForEntry(0));
+        check(input != nullptr, "EQ rollback fixture readable");
+        if (input) {
+            const auto baseline = input->readEntireStreamAsString();
+            for (int variant = 0; variant < 3; ++variant) {
+                auto json = juce::JSON::parse(baseline);
+                if (auto* chain = json.getProperty("chain", {}).getArray())
+                    if (auto* slot = (*chain)[0].getDynamicObject())
+                        if (auto* q = slot->getProperty("eqQ").getArray()) {
+                            if (variant == 0) q->removeLast();
+                            if (variant == 1) q->set(0, 1.5);
+                            if (variant == 2) q->set(0, "invalid");
+                        }
+                const auto bad = testFile(dir, "invalid-eq-q-" + juce::String(variant));
+                createArchive(bad, "preset.json", juce::JSON::toString(json).toStdString());
+                skellpreset::package::Document unchanged;
+                unchanged.name = "Sentinel";
+                unchanged.bank = "Keep";
+                unchanged.macros[0] = .73f;
+                unchanged.slots[0].eqQ[0] = .27f;
+                check(skellpreset::package::read(bad, unchanged).failed()
+                      && unchanged.name == "Sentinel"
+                      && unchanged.bank == "Keep"
+                      && unchanged.macros[0] == .73f
+                      && unchanged.slots[0].eqQ[0] == .27f
+                      && !unchanged.slots[0].enabled,
+                      "Malformed EQ Q import preserves prior rack state");
+            }
+        }
+    }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
     {
