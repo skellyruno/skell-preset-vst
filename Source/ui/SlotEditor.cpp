@@ -959,11 +959,13 @@ void SlotEditor::paint(juce::Graphics&g) {
     Theme::text(g,"SELECT RACK EFFECT  /  DOUBLE-CLICK TO REPLACE",
                 {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
     const auto category=juce::String(skellpreset::registry::at(type).category).toUpperCase();
-    const auto chip=juce::Rectangle<float>(686.f,68.f,177.f,25.f);
+    // Keep this status chip entirely clear of Alchemist page tabs
+    // (starting at x=512) and the Mod Orb button (x=764).
+    const auto chip=juce::Rectangle<float>(395.f,68.f,107.f,25.f);
     g.setColour(Theme::green.withAlpha(.12f));g.fillRoundedRectangle(chip,5.f);
     g.setColour(Theme::green.withAlpha(.42f));
     g.drawRoundedRectangle(chip,5.f,.85f);
-    Theme::fittedText(g,category,{700,71,145,19},11.5f,Theme::green,true);
+    Theme::fittedText(g,category,{403,71,91,19},11.5f,Theme::green,true);
     // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
     // vertebrae respond to the signal while leaving parameter graphs readable.
     Theme::text(g,"BONE SIGNAL",{22,73,158,18},9.8f,Theme::muted,true);
