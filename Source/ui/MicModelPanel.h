@@ -150,9 +150,9 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override {
         if(resizing) {
             if(auto* parent=getParentComponent()){
-                const int w=juce::jlimit(340,juce::jmin(520,parent->getWidth()-12),
+                const int w=juce::jlimit(310,juce::jmin(490,parent->getWidth()-12),
                     resizeStart.getWidth()+e.getDistanceFromDragStartX());
-                const int h=juce::jlimit(326,juce::jmin(440,parent->getHeight()-12),
+                const int h=juce::jlimit(295,juce::jmin(405,parent->getHeight()-12),
                     resizeStart.getHeight()+e.getDistanceFromDragStartY());
                 const int x=juce::jlimit(0,parent->getWidth()-w,resizeStart.getX());
                 const int y=juce::jlimit(0,parent->getHeight()-h,resizeStart.getY());
@@ -244,7 +244,7 @@ public:
         for(int i=0;i<4;++i)
             simulations[(size_t)i].setBounds(16+(i%2)*(cardWidth+14),
                                               128+(i/2)*45,cardWidth,38);
-        const int lower=juce::jmax(239,getHeight()-87);
+        const int lower=juce::jmax(215,getHeight()-83);
         amount.setBounds(85,lower,w-101,25);
         trim.setBounds(85,lower+40,w-101,25);
     }
@@ -264,12 +264,12 @@ public:
         const int target=rawTarget?juce::jlimit(0,3,(int)rawTarget->load()):0;
         Theme::fittedText(g,descriptions[target],{19,212,getWidth()-38,15},
                           10.5f,Theme::green,true);
-        const int lower=juce::jmax(239,getHeight()-87);
+        const int lower=juce::jmax(215,getHeight()-83);
         Theme::text(g,"AMOUNT",{16,lower,62,23},10,Theme::white,true);
         Theme::text(g,"TRIM",{16,lower+40,62,23},10,Theme::white,true);
         g.setColour(Theme::stroke.withAlpha(.8f));
         g.drawLine(16.f,(float)lower-10.f,(float)getWidth()-16.f,(float)lower-10.f,1.f);
-        Theme::text(g,"GENERIC TONE  /  NO HARDWARE IMPULSE",
+        Theme::text(g,"FIVE-BAND RESPONSE MODEL / NO HARDWARE IMPULSE",
             {16,getHeight()-19,getWidth()-32,13},8.5f,Theme::muted,false,
              juce::Justification::centred);
         // Resize handle, intentionally inside the panel bounds.
