@@ -87,6 +87,56 @@ int blankSmoke() {
     return 0;
 }
 
+// Saved state with corrupt slotOrder must not overwrite current rack order.
+// Prior getIntValue() accepted "oops" as slot ID 0; preserve valid legacy 10
+// and full 16-position permutations without touching a published parameter.
+int strictSlotOrderSmoke(){
+    auto owner=std::make_unique<SkellPresetAudioProcessor>();
+    juce::MemoryBlock baseline;
+    owner->getStateInformation(baseline);
+    auto xml=juce::getXmlFromBinary(baseline.getData(),(int)baseline.getSize());
+    if(!xml)return 81;
+    const auto parsed=juce::ValueTree::fromXml(*xml);
+    if(!parsed.isValid())return 82;
+    const auto verify=[&](const juce::String& order,bool valid)->bool{
+        auto document=parsed.createCopy();
+        document.setProperty("slotOrder",order,nullptr);
+        auto treeXml=document.createXml();
+        if(!treeXml)return false;
+        juce::MemoryBlock stateBytes;
+        juce::copyXmlToBinary(*treeXml,stateBytes);
+        auto processor=std::make_unique<SkellPresetAudioProcessor>();
+        processor->reorderSlot(0,3); // [1,2,3,0,4,...], not the identity.
+        if(processor->slotIdAt(0)!=1||processor->slotIdAt(3)!=0)return false;
+        processor->setStateInformation(stateBytes.getData(),(int)stateBytes.getSize());
+        if(!valid)return processor->slotIdAt(0)==1 &&
+                         processor->slotIdAt(1)==2 &&
+                         processor->slotIdAt(2)==3 &&
+                         processor->slotIdAt(3)==0;
+        for(int position=0;position<16;++position)
+            if(processor->slotIdAt(position)!=position)return false;
+        return true;
+    };
+    juce::StringArray natural,ten;
+    for(int i=0;i<16;++i){
+        natural.add(juce::String(i));
+        if(i<10)ten.add(juce::String(i));
+    }
+    juce::StringArray malformed=natural;
+    malformed.set(0,"oops"); // used to coerce to valid ID=0
+    if(!verify(malformed.joinIntoString(","),false))return 83;
+    malformed.set(0,"-0");
+    if(!verify(malformed.joinIntoString(","),false))return 84;
+    malformed.set(0,"00"); // numeric decimal with 2 digits remains permitted
+    if(!verify(natural.joinIntoString(",")+",",false))return 85;
+    if(!verify(","+natural.joinIntoString(","),false))return 86;
+    if(!verify(natural.joinIntoString(",,"),false))return 87;
+    if(!verify(natural.joinIntoString(","),true))return 88;
+    if(!verify(ten.joinIntoString(","),true))return 89;
+    std::puts("PASS: strict 10/16 slot-order state recall; malformed order unchanged");
+    return 0;
+}
+
 // Windows desktop UI interaction/layout smoke; does NOT capture screenshots,
 // trigger the screenshot workflow, or open FL Studio. Uses the real editor.
 int uiSmoke() {
@@ -550,6 +600,7 @@ int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
     if(argc==2 && juce::String(argv[1])=="--smoke")return smoke();
     if(argc==2 && juce::String(argv[1])=="--smoke-blank")return blankSmoke();
+    if(argc==2 && juce::String(argv[1])=="--smoke-slot-order")return strictSlotOrderSmoke();
     if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
     if(argc==2 && juce::String(argv[1])=="--studio-smoke")return studioSmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();

@@ -1361,13 +1361,24 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         juce::StringArray items;items.addTokens(sequence,",","");
         // Stage 8 states had ten positions; append six default identities when
         // reading them. A malformed order leaves the current permutation intact.
-        if(items.size()==defaultSlotCount || items.size()==slotCount) {
+        // JUCE addTokens omits empty tokens and getIntValue silently maps
+        // malformed text to zero. Only an exact decimal permutation can
+        // reorder an already-open FL Studio session. Preserve the existing
+        // rack order if commas, signs or nonnumeric tokens are malformed.
+        const bool exactFields=(sequence.length()-
+            sequence.removeCharacters(",").length())==items.size()-1;
+        if(exactFields && (items.size()==defaultSlotCount || items.size()==slotCount)) {
             std::array<bool,slotCount> seen{};
             std::array<int,slotCount> proposed{};
             bool valid=true;
             const int oldCount=items.size();
             for(int i=0;i<oldCount;++i) {
-                const int v=items[i].getIntValue();
+                const auto token=items[i].trim();
+                if(token.isEmpty() || token.length()>2 ||
+                    !token.containsOnly("0123456789")) {
+                    valid=false;break;
+                }
+                const int v=token.getIntValue();
                 if(v<0 || v>=oldCount || seen[(size_t)v]){valid=false;break;}
                 seen[(size_t)v]=true;proposed[(size_t)i]=v;
             }
