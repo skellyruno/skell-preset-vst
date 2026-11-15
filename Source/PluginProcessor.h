@@ -54,6 +54,9 @@ public:
     juce::Result exportPreset(const juce::File& file) const;
     juce::Result importPreset(const juce::File& file);
     void reorderSlot(int from,int to);
+    // Remove an extra rack row without renumbering any APVTS slot identity.
+    // The first ten physical rack positions remain for legacy-state safety.
+    bool removeRackSlot(int visualPosition);
     // Message-thread operation: expands the real processing rack, not just a placeholder.
     // Returns the new physical slot ID, or -1 when all sixteen slots are visible.
     int appendRackSlot();
