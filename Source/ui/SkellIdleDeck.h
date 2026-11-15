@@ -10,7 +10,9 @@
 class SkellIdleDeck final : public juce::Component {
 public:
     explicit SkellIdleDeck(SkellPresetAudioProcessor& p):processor(p){
-        setInterceptsMouseClicks(false,false);
+        // Swallow empty-deck mouse clicks. Passing them through would mutate
+        // the hidden SlotEditor's XY graph even while NO effect is selected.
+        setInterceptsMouseClicks(true,false);
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
