@@ -211,6 +211,32 @@ int smoke() {
 
 // Load all four append-only Studio effects in the actual JUCE processor;
 // measure host-facing PDC and exercise the real Windows rack signal path.
+int percentDisplaySmoke(){
+    auto processor=std::make_unique<SkellPresetAudioProcessor>();
+    const auto check=[&](const juce::String& id,float physical,
+                         const juce::String& expected){
+        auto* parameter=processor->state.getParameter(id);
+        if(!parameter)return false;
+        const auto shown=parameter->getText(parameter->convertTo0to1(physical),64);
+        if(shown!=expected) {
+            std::fprintf(stderr,"Host %s displayed '%s', expected '%s'\n",
+                         id.toRawUTF8(),shown.toRawUTF8(),expected.toRawUTF8());
+            return false;
+        }
+        return parameter->getLabel().isEmpty(); // no extra '%' appended
+    };
+    if(!check("input",-24.f,"0%") ||
+       !check("input",0.f,"50%") ||
+       !check("input",24.f,"100%") ||
+       !check("output",0.f,"50%") ||
+       !check("mix",1.f,"100%") ||
+       !check("macro1",.37f,"37%") ||
+       !check("s1_wet",.82f,"82%"))
+        return 92;
+    std::puts("PASS: host Input/Mix/Output, macros and rack wet map to 0-100% text");
+    return 0;
+}
+
 int studioSmoke() {
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
     processor->prepareToPlay(48000.,257);
@@ -602,6 +628,7 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--smoke-slot-order")return strictSlotOrderSmoke();
     if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
     if(argc==2 && juce::String(argv[1])=="--studio-smoke")return studioSmoke();
+    if(argc==2 && juce::String(argv[1])=="--percent-smoke")return percentDisplaySmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
     if(argc==4 && juce::String(argv[1])=="--compare")

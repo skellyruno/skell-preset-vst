@@ -84,8 +84,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             .withValueFromStringFunction([low,high](const juce::String& text){
                 return low+(high-low)*juce::jlimit(0.f,100.f,
                     text.getFloatValue())*.01f;
-            })
-            .withLabel("%");
+            }); // getText() already includes '%'; avoid duplicate host suffixes
         p.add(std::make_unique<juce::AudioParameterFloat>(
             juce::ParameterID{id,1},label,juce::NormalisableRange<float>(low,high,step),initial,factory));
     };

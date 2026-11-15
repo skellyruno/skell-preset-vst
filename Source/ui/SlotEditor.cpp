@@ -2592,6 +2592,24 @@ bool SlotEditor::testEightBandGraphAndQ() {
     return good;
 }
 
+bool SlotEditor::testExternalBrowseCancel() {
+    const int oldType=processor.slotType(slot);
+    const auto* power=processor.state.getRawParameterValue(
+        "s"+juce::String(slot+1)+"_on");
+    const bool onBefore=power && power->load()>.5f;
+    if(!modulePicker.onExternal)return false;
+    modulePicker.onExternal();
+    const bool opened=installedBrowser.isVisible()
+        && processor.slotType(slot)==oldType
+        && power && (power->load()>.5f)==onBefore;
+    installedBrowser.hide();
+    const bool canceled=!installedBrowser.isVisible()
+        && !externalBrowsePending
+        && processor.slotType(slot)==oldType
+        && power && (power->load()>.5f)==onBefore;
+    return opened && canceled;
+}
+
 bool SlotEditor::testModulePickerInteraction() {
     if(!modulePicker.filterMatchesForTest("alien",SkellPresetAudioProcessor::RingModFX))
         return false;

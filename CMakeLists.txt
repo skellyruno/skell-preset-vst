@@ -189,6 +189,8 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
         COMMAND SkellPresetAlchemistRender --smoke-blank)
     add_test(NAME SkellPresetStrictSlotOrderRestore
         COMMAND SkellPresetAlchemistRender --smoke-slot-order)
+    add_test(NAME SkellPresetHostPercentageReadout
+        COMMAND SkellPresetAlchemistRender --percent-smoke)
     # Real JUCE editor interaction/layout probe, no images or screenshot workflow.
     add_test(NAME SkellPresetWindowsUIInteractionSmoke
         COMMAND SkellPresetAlchemistRender --ui-smoke)

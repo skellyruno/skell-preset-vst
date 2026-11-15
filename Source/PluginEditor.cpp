@@ -519,6 +519,12 @@ public:
            settings.getWidth()>37 || powerButton.getWidth()>37)
             issues.add("Header controls must be compact Power then Settings");
         powerButton.onClick();
+        settings.onClick();
+        if(!settingsPanel.isVisible())
+            issues.add("Settings button did not open its themed overlay");
+        settings.onClick();
+        if(settingsPanel.isVisible())
+            issues.add("Settings button did not close its themed overlay");
         configureForScreenshot(0,1,false);
         for(const auto& control:macro)
             if(control.isVisible())
@@ -550,6 +556,8 @@ public:
             issues.add("Rack double-click effect library could not be closed");
         if(!slot.testModulePickerInteraction())
             issues.add("Module browser did not toggle, filter or load Ring Mod");
+        if(!slot.testExternalBrowseCancel())
+            issues.add("Canceled external-VST3 browser altered the active effect or bypass");
         if(!slot.testEightBandGraphAndQ())
             issues.add("8-Band EQ graph did not edit the eighth band and its Q");
         if(!slot.testKnobReadouts())

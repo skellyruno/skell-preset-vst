@@ -68,6 +68,7 @@ public:
     bool modulePickerVisibleForTest() const noexcept {return modulePicker.isVisible();}
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
+    bool testExternalBrowseCancel();
     bool testEightBandGraphAndQ();
     bool testStudioEqSeventhBand();
     bool testStudioEqAddAndFilterTypes();
