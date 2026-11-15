@@ -207,18 +207,18 @@ void ChainPanel::paint(juce::Graphics& g) {
         (dockedRight?"DRAG LEFT TO DOCK":"DRAG RIGHT TO DOCK"),
         {15,28,130,14},9,dockingDrag?Theme::green:Theme::muted);
     // Dedicated MIC widget trigger replaces redundant FX and 10/16 badges.
-    // Entire 36x35 area is clickable, not just the 1px microphone path.
-    const auto micRegion=juce::Rectangle<float>(158.f,6.f,42.f,35.f);
-    g.setColour(Theme::panelAlt);g.fillRoundedRectangle(micRegion,6.f);
-    g.setColour(Theme::stroke);g.drawRoundedRectangle(micRegion,6.f,1.f);
+    // Compact 31x29 icon area is clickable, not just the 1px microphone path.
+    const auto micRegion=juce::Rectangle<float>(164.f,9.f,31.f,29.f);
+    g.setColour(Theme::panelAlt);g.fillRoundedRectangle(micRegion,5.f);
+    g.setColour(Theme::stroke);g.drawRoundedRectangle(micRegion,5.f,1.f);
     g.setColour(Theme::green);
-    g.drawRoundedRectangle(175.f,12.f,9.f,14.f,4.5f,1.8f);
+    g.drawRoundedRectangle(177.f,14.f,5.6f,9.f,2.8f,1.35f);
     juce::Path microphone;
-    microphone.startNewSubPath(171.f,21.f);
-    microphone.cubicTo(171.f,32.f,188.f,32.f,188.f,21.f);
-    g.strokePath(microphone,juce::PathStrokeType(1.7f));
-    g.drawLine(179.5f,29.f,179.5f,33.f,1.6f);
-    g.drawLine(175.f,33.f,184.f,33.f,1.6f);
+    microphone.startNewSubPath(174.8f,21.f);
+    microphone.cubicTo(174.8f,28.5f,184.8f,28.5f,184.8f,21.f);
+    g.strokePath(microphone,juce::PathStrokeType(1.3f));
+    g.drawLine(179.8f,27.f,179.8f,31.f,1.2f);
+    g.drawLine(176.7f,31.f,182.9f,31.f,1.2f);
     for(int visual=0;visual<visibleRows && scrollOffset+visual<active;++visual) {
         const int row=scrollOffset+visual;
         const int slot=processor.slotIdAt(row),top=rowStart+rowStep*visual;
@@ -398,7 +398,7 @@ void ChainPanel::addModule() {
     repaint();
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
-    if(e.x>=158 && e.x<=200 && e.y>=5 && e.y<43) {
+    if(e.x>=163 && e.x<=196 && e.y>=8 && e.y<39) {
         if(!e.mods.isPopupMenu() && onMicRequest)onMicRequest();
         return;
     }
@@ -510,7 +510,7 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         hoveredRow=next;hoveredWetSlot=nextWet;repaint();
     }
     const bool add=(e.y>=addTop && e.y<addTop+addHeight && e.x>=10 && e.x<=206);
-    if(e.y>=5 && e.y<43 && e.x>=158 && e.x<=200) {
+    if(e.y>=8 && e.y<39 && e.x>=163 && e.x<=196) {
         setTooltip("Open movable microphone modeling widget");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=142)
@@ -553,70 +553,26 @@ void ChainPanel::applyWheelDelta(float deltaY) {
     if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
         visualSnapshotValid=false;repaint();}
 }
-bool ChainPanel::moveSlotByWheel(int row,float deltaY) {
-    if(deltaY==0.f || row<0 || row>=processor.activeSlotCount())return false;
-    const int next=row+(deltaY<0.f?1:-1);
-    if(next<0 || next>=processor.activeSlotCount())return false;
-    const int slot=processor.slotIdAt(row);
-    processor.reorderSlot(row,next); // preserve the physical slot and automation
-    selected=slot;
-    if(onSelection)onSelection(slot);
-    if(next<scrollOffset)scrollOffset=next;
-    else if(next>=scrollOffset+visibleRows)scrollOffset=next-visibleRows+1;
-    visualSnapshotValid=false;
-    repaint();
-    return true;
-}
-int ChainPanel::wheelTargetRow() const noexcept {
-    if(wheelTarget<0)return -1;
-    for(int i=0;i<processor.activeSlotCount();++i)
-        if(processor.slotIdAt(i)==wheelTarget)return i;
-    return -1;
-}
-void ChainPanel::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel) {
-    const int row=(e.x>=10 && e.x<=powerControlRight)?rowAt(e.y):-1;
-    if(row>=0) {
-        if(wheel.deltaY==0.f)return;
-        const auto now=juce::Time::getMillisecondCounter();
-        // The wheel owns the same PHYSICAL module throughout each gesture.
-        // Without this latch, a rearranged row immediately starts scrolling
-        // the next module under the cursor, giving the 'runaway' effect.
-        if(wheelTarget<0 || (juce::uint32)(now-lastWheelInputMs)>425u) {
-            wheelTarget=processor.slotIdAt(row);
-            wheelCarry=0.f;
-        }
-        lastWheelInputMs=now;
-        if(wheelCarry*wheel.deltaY<0.f)wheelCarry=0.f;
-        wheelCarry=juce::jlimit(-1.5f,1.5f,wheelCarry+wheel.deltaY);
-        if(std::abs(wheelCarry)<.60f)return;
-        if((juce::uint32)(now-lastWheelReorderMs)<225u)return;
-        const int trackedRow=wheelTargetRow();
-        if(trackedRow<0) {wheelTarget=-1;wheelCarry=0.f;return;}
-        const float move=wheelCarry;
-        wheelCarry=0.f;
-        if(moveSlotByWheel(trackedRow,move))lastWheelReorderMs=now;
-        return;
-    }
-    wheelTarget=-1;
-    wheelCarry=0.f;
+void ChainPanel::mouseWheelMove(const juce::MouseEvent&,
+                                const juce::MouseWheelDetails& wheel) {
+    // Wheel navigates the rack; ONLY dragging changes effect order.
     applyWheelDelta(wheel.deltaY);
 }
-bool ChainPanel::testMouseWheelReorder() {
-    if(processor.activeSlotCount()<2)return false;
-    const int oldOffset=scrollOffset;
-    const int first=processor.slotIdAt(0),second=processor.slotIdAt(1);
+bool ChainPanel::testWheelScrollDoesNotReorder() {
+    if(processor.activeSlotCount()<=visibleRows)return false;
+    const int oldScroll=scrollOffset;
+    std::array<int,SkellPresetAudioProcessor::slotCount> before{};
+    for(int i=0;i<processor.activeSlotCount();++i)
+        before[(size_t)i]=processor.slotIdAt(i);
     scrollOffset=0;
-    const int oldTarget=wheelTarget;
-    wheelTarget=first;
-    const bool down=moveSlotByWheel(0,-1.f);
-    const bool moved=processor.slotIdAt(1)==first &&
-                     processor.slotIdAt(0)==second &&
-                     wheelTargetRow()==1;
-    const bool up=moveSlotByWheel(1,1.f);
-    wheelTarget=oldTarget;
-    const bool restored=processor.slotIdAt(0)==first && processor.slotIdAt(1)==second;
-    scrollOffset=oldOffset;
+    railWheelCarry=0.f;
+    applyWheelDelta(-.55f);
+    bool valid=scrollOffset==1;
+    for(int i=0;i<processor.activeSlotCount();++i)
+        valid=valid && before[(size_t)i]==processor.slotIdAt(i);
+    scrollOffset=oldScroll;
+    railWheelCarry=0.f;
     visualSnapshotValid=false;
     repaint();
-    return down && up && moved && restored;
+    return valid;
 }

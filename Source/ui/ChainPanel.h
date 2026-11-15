@@ -21,7 +21,7 @@ public:
         scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),offset);
         visualSnapshotValid=false;repaint();
     }
-    bool testMouseWheelReorder();
+    bool testWheelScrollDoesNotReorder();
     bool canScrollForTest() const noexcept {
         return processor.activeSlotCount()>visibleRows;
     }
@@ -54,14 +54,10 @@ private:
     int hoveredRow=-1,scrollOffset=0,lastSlotCount=0;
     std::array<int,SkellPresetAudioProcessor::slotCount> lastVisual{};
     bool visualSnapshotValid=false;
-    float wheelCarry=0.f,railWheelCarry=0.f;
-    juce::uint32 lastWheelReorderMs=0,lastWheelInputMs=0;
-    int wheelTarget=-1; // physical slot, not visual row (stable across moves)
-    int wheelTargetRow() const noexcept;
+    float railWheelCarry=0.f; // navigation only
     int rowAt(int y) const;
     void clampScroll();
     void applyWheelDelta(float deltaY);
-    bool moveSlotByWheel(int row,float deltaY);
     void addModule();
     void popupFor(int physicalSlot,juce::Point<int> screenPoint);
     float slotWet(int physicalSlot) const noexcept;
