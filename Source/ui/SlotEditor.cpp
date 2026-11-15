@@ -2401,8 +2401,11 @@ bool SlotEditor::addStudioEqNodeAt(juce::Point<float> point){
     return false; // Already at eight real filters
 }
 void SlotEditor::mouseDoubleClick(const juce::MouseEvent& e){
-    if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioEQFX)
-        addStudioEqNodeAt(e.position);
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioEQFX)return;
+    // A second mouse-down can precede this callback. Close the pending
+    // old-band host gesture before inserting another filter.
+    if(draggingGraph)mouseUp(e);
+    addStudioEqNodeAt(e.position);
 }
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
@@ -2452,29 +2455,36 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
             if(dist<nearest){nearest=dist;activeEqBand=b;}
         }
         showEqBank(activeEqBand);
+        gestureEqBand=activeEqBand;
         for(int k=0;k<2;++k)
             if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+
-                          "_p"+juce::String(activeEqBand*2+k+1)))
+                          "_p"+juce::String(gestureEqBand*2+k+1)))
                 p->beginChangeGesture();
     } else {
+        gestureEqBand=-1;
         for(int param:{1,2})
             if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+
                                                   "_p"+juce::String(param)))
                 p->beginChangeGesture();
     }
-    updateGraphNode(e.position);
+    // Select on mouse-down, mutate only while dragging. This keeps the
+    // first click of an empty-area double-click from moving a nearby dot
+    // into that position and preventing a new node from being added.
+    if(!isPagedEQ(type))updateGraphNode(e.position);
 }
 void SlotEditor::mouseDrag(const juce::MouseEvent& e){if(draggingGraph)updateGraphNode(e.position);}
 void SlotEditor::mouseUp(const juce::MouseEvent&){
     if(!draggingGraph)return;
     const bool paged=isPagedEQ(processor.slotType(slot));
     for(int k=0;k<2;++k) {
-        const int param=paged?activeEqBand*2+k+1:k+1;
+        const int band=gestureEqBand>=0?gestureEqBand:activeEqBand;
+        const int param=paged?band*2+k+1:k+1;
         if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+
                                                "_p"+juce::String(param)))
             p->endChangeGesture();
     }
     draggingGraph=false;
+    gestureEqBand=-1;
 }
 
 bool SlotEditor::testKnobReadouts() {

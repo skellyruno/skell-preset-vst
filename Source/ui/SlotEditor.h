@@ -129,6 +129,7 @@ private:
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,2> eqCutAttachments;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> knobAttachment;
     bool draggingGraph=false;
+    int gestureEqBand=-1; // same parameter IDs receive begin/end gestures
     bool graphSnapshotValid=false;
     int lastType=-1;
     int lastPeakLevel=-1;
