@@ -42,7 +42,8 @@ public:
             if(results.empty())return;
             selectedRow=juce::jlimit(0,(int)results.size()-1,selectedRow+step);
             if(selectedRow<topItem)topItem=selectedRow;
-            if(selectedRow>=topItem+6)topItem=selectedRow-6;
+            if(selectedRow>=topItem+6)topItem=selectedRow-5;
+            topItem=juce::jlimit(0,std::max(0,(int)results.size()-6),topItem);
             repaint();
         };
         search.onReturnKey=[this] {
@@ -106,6 +107,16 @@ public:
         return matches(query,type);
     }
     int resultCountForTest() const noexcept {return (int)results.size();}
+    bool testVisibleKeyboardRow() {
+        if(results.size()<7)return false;
+        const int oldSelected=selectedRow,oldTop=topItem;
+        topItem=0;selectedRow=0;
+        for(int i=0;i<6;++i)if(search.onArrow)search.onArrow(1);
+        const bool correct=selectedRow==6 && topItem==1 &&
+                           selectedRow>=topItem && selectedRow<topItem+6;
+        selectedRow=oldSelected;topItem=oldTop;repaint();
+        return correct;
+    }
     void chooseForTest(int type) {choose(type);}
 
     void resized() override {

@@ -94,12 +94,10 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     };
     modulePicker.onExternal=[this] {
         if(slot<0)return;
-        processor.setSlotType(slot,SkellPresetAudioProcessor::ExternalVST3);
-        processor.setSlotOn(slot,true);
-        moduleBox.setSelectedId(SkellPresetAudioProcessor::ExternalVST3+1,
-                                juce::dontSendNotification);
-        graphSnapshotValid=false;
-        refreshIfChanged();
+        // Choosing the external *browser* is not a processor replacement.
+        // Keep the current audio effect intact until a third-party bundle
+        // successfully instantiates; cancel/failure must not mute the chain.
+        externalBrowsePending=true;
         installedBrowser.open();
         installedBrowser.toFront(true);
     };
@@ -117,7 +115,11 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     // exclusively after choosing a bundle or using the manual picker.
     addAndMakeVisible(installedBrowser);
     installedBrowser.setVisible(false);
-    installedBrowser.onLoad=[this](const juce::File& path){loadVST3FromFile(path);};
+    installedBrowser.onLoad=[this](const juce::File& path){
+        externalBrowsePending=false;
+        loadVST3FromFile(path);
+    };
+    installedBrowser.onDismiss=[this]{externalBrowsePending=false;};
     installedBrowser.onBrowseFile=[this]{chooseVST3File();};
     loadExternal.onClick=[this] {
         if(installedBrowser.isVisible())installedBrowser.hide();
@@ -896,7 +898,8 @@ void SlotEditor::refreshIfChanged() {
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
-    if(!external && installedBrowser.isVisible())installedBrowser.hide();
+    if(!external && !externalBrowsePending && installedBrowser.isVisible())
+        installedBrowser.hide();
     syncEmbeddedEditor();
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot)
@@ -2532,7 +2535,8 @@ bool SlotEditor::testModulePickerInteraction() {
     if(modulePicker.filterMatchesForTest("compressor",SkellPresetAudioProcessor::VocalChorusFX))
         return false;
     openModulePicker();
-    if(!modulePicker.isVisible())return false;
+    if(!modulePicker.isVisible() || !modulePicker.testVisibleKeyboardRow())
+        return false;
     openModulePicker();
     if(modulePicker.isVisible())return false;
     openModulePicker();
