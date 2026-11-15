@@ -6,6 +6,7 @@
 #include "SkellEQNodeMenu.h"
 #include <array>
 #include <memory>
+#include <functional>
 #include "Theme.h"
 
 // Stable 0-100 effect control indicator: numeric readouts are hidden while
@@ -52,6 +53,7 @@ private:
 class SlotEditor final:public juce::Component {
 public:
     explicit SlotEditor(SkellPresetAudioProcessor& p);
+    std::function<void()> onBackgroundClick; // blank effect-deck click -> home
     void paint(juce::Graphics&) override;
     void resized() override;
     void select(int newSlot);
@@ -72,6 +74,7 @@ public:
         eqNodeMenu.setVisible(false);
     }
     bool modulePickerVisibleForTest() const noexcept {return modulePicker.isVisible();}
+    bool hasEmbeddedEditorForTest() const noexcept {return embeddedEditor!=nullptr;}
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
     bool testExternalBrowseCancel();
