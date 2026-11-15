@@ -17,9 +17,9 @@ public:
     }
     void prepare(double sampleRate) noexcept {
         const float sr=(float)std::clamp(std::isfinite(sampleRate)?sampleRate:48000.,8000.,192000.);
-        constexpr float pi=3.14159265358979323846f;
-        lowPole=std::exp(-2.f*pi*220.f/sr);
-        highPole=std::exp(-2.f*pi*3400.f/sr);
+        constexpr float skelldizerPi=3.14159265358979323846f;
+        lowPole=std::exp(-2.f*skelldizerPi*220.f/sr);
+        highPole=std::exp(-2.f*skelldizerPi*3400.f/sr);
         attack=std::exp(-1.f/(sr*.012f));
         release=std::exp(-1.f/(sr*.150f));
         levelPole=std::exp(-1.f/(sr*.220f));
