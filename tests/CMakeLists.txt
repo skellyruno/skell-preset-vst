@@ -136,3 +136,9 @@ add_test(NAME SkellPresetEightBandCacheParityTest COMMAND SkellPresetEightBandCa
 add_executable(SkellPresetStudioChorusDSPTest test_studio_chorus.cpp)
 target_compile_features(SkellPresetStudioChorusDSPTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetStudioChorusDSPTest COMMAND SkellPresetStudioChorusDSPTest)
+
+# Optional Studio-derived DSP side-by-side tests. No JUCE, no allocations
+# inside process() and no change to any legacy module automation identity.
+add_executable(SkellPresetStudioNativeDSPTest test_studio_native_dsp.cpp)
+target_compile_features(SkellPresetStudioNativeDSPTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetStudioNativeDSPTest COMMAND SkellPresetStudioNativeDSPTest)
