@@ -71,6 +71,7 @@ public:
     bool testEightBandGraphAndQ();
     bool testStudioEqSeventhBand();
     bool testStudioEqAddAndFilterTypes();
+    bool testStudioEqGraphDoubleClick();
     bool testKnobReadouts();
     bool testMatchFinishPages();
     bool testMicModelCards();
@@ -78,6 +79,7 @@ public:
     void setModOrbForScreenshot(bool enabled);
     void setMatchPageForScreenshot(int page) {showMatchPage(page);}
     void mouseDown(const juce::MouseEvent&) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
 private:
@@ -104,6 +106,7 @@ private:
     int studioEqBandType(int band)const;
     bool studioEqBandEnabled(int band)const;
     void syncStudioEqNodeButtons();
+    bool addStudioEqNodeAt(juce::Point<float> point);
     juce::TextButton modOrbButton{"ORB"};
     bool modOrbView=false; // UI-only; never serialized or used in DSP
     std::unique_ptr<juce::FileChooser> externalChooser;

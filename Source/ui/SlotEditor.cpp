@@ -2359,6 +2359,51 @@ bool SlotEditor::testModOrbToggle() {
     select(slot);
     return on && off;
 }
+bool SlotEditor::addStudioEqNodeAt(juce::Point<float> point){
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioEQFX ||
+       !juce::Rectangle<float>(33.f,151.f,835.f,206.f).contains(point))
+        return false;
+    // Double-click an existing dot to select, not create a duplicate. Check
+    // *both* axes, because several filters can share a cutoff frequency.
+    for(int band=0;band<8;++band){
+        if(!studioEqBandEnabled(band))continue;
+        const float hz=eqVisualFrequency(processor,slot,band,
+                                          SkellPresetAudioProcessor::StudioEQFX);
+        const float px=33.f+835.f*std::log(hz/20.f)/std::log(1000.f);
+        const int shape=studioEqBandType(band);
+        const float db=(shape==1||shape==2)?0.f:
+            (processor.getSlotParam(slot,band*2+1)-.5f)*36.f;
+        const float py=254.f-db*(206.f/72.f);
+        if(std::hypot(point.x-px,point.y-py)<19.f) {
+            activeEqBand=band;
+            showEqBank(band);
+            return false;
+        }
+    }
+    for(int band=0;band<8;++band){
+        if(studioEqBandEnabled(band))continue;
+        const float frequency=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
+        const float gain=juce::jlimit(0.f,1.f,
+                                    .5f+(254.f-point.y)*2.f/206.f);
+        // Use existing host parameters. No audio-thread allocations and no
+        // hidden DSP instances: the newly enabled node is a real filter.
+        processor.setSlotParam(slot,band*2,frequency);
+        processor.setSlotParam(slot,band*2+1,gain);
+        setStudioEqBandType(band,0); // Peak/Bell for new nodes
+        setStudioEqBandEnabled(band,true);
+        activeEqBand=band;
+        showEqBank(band);
+        syncStudioEqNodeButtons();
+        graphSnapshotValid=false;
+        refreshIfChanged();
+        return true;
+    }
+    return false; // Already at eight real filters
+}
+void SlotEditor::mouseDoubleClick(const juce::MouseEvent& e){
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioEQFX)
+        addStudioEqNodeAt(e.position);
+}
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
     if(isModulationOrbEffect(type) && modOrbView)
@@ -2440,6 +2485,28 @@ bool SlotEditor::testKnobReadouts() {
         && frequency.containsIgnoreCase("Hz")
         && gain.containsIgnoreCase("dB")
         && bandwidth.startsWithIgnoreCase("Q ");
+}
+
+bool SlotEditor::testStudioEqGraphDoubleClick() {
+    const int physical=slot;
+    processor.setSlotType(physical,SkellPresetAudioProcessor::StudioEQFX);
+    processor.setSlotOn(physical,true);
+    select(physical);
+    setStudioEqBandEnabled(7,false);
+    const auto click=juce::Point<float>(700.f,271.f);
+    const bool inserted=addStudioEqNodeAt(click);
+    const float wantHz=(700.f-33.f)/835.f;
+    const float wantGain=.5f+(254.f-271.f)*2.f/206.f;
+    const bool mapped=inserted && studioEqBandEnabled(7)
+        && activeEqBand==7 && eqBank==6
+        && std::abs(processor.getSlotParam(physical,14)-wantHz)<.015f
+        && std::abs(processor.getSlotParam(physical,15)-wantGain)<.015f
+        && studioEqBandType(7)==0 && !addEqNode.isEnabled();
+    // A double-click directly on B8 must select it, not create a ninth node.
+    const bool noDuplicate=!addStudioEqNodeAt(click)
+        && studioEqBandEnabled(7) && activeEqBand==7;
+    setStudioEqBandEnabled(7,false);
+    return mapped && noDuplicate;
 }
 
 bool SlotEditor::testStudioEqAddAndFilterTypes() {
