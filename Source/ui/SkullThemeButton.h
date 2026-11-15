@@ -25,70 +25,85 @@ public:
         const auto bone=Theme::white,shade=Theme::muted,ink=Theme::bg;
         const auto signal=Theme::green;
 
-        // A shorter, cleaner Skell skull: narrower jaw, pronounced
-        // cheekbones, aligned teeth, and properly recessed eye sockets.
-        // Keep the approved miniature microphone accessory unchanged.
-        juce::Path cranium;
-        cranium.startNewSubPath(26.8f,8.1f);
-        cranium.cubicTo(15.9f,7.5f,11.7f,13.7f,11.7f,23.8f);
-        cranium.cubicTo(11.5f,28.3f,12.9f,31.7f,16.8f,35.3f);
-        cranium.lineTo(19.9f,37.9f);
-        cranium.lineTo(33.8f,37.9f);
-        cranium.lineTo(36.9f,35.3f);
-        cranium.cubicTo(41.1f,31.3f,42.1f,28.1f,41.8f,23.4f);
-        cranium.cubicTo(41.6f,14.2f,37.2f,8.1f,26.8f,8.1f);
-        cranium.closeSubPath();
+        // Sculpted mini-skull, not a perfect oval + striped jaw. One
+        // connected bone silhouette with temple indent, high cheekbones,
+        // faceted jaw, deep anatomical cavities and individual teeth.
+        // All graphics remain vector-based at every plugin UI scale.
+        juce::Path skull;
+        skull.startNewSubPath(26.7f,8.2f);
+        skull.cubicTo(17.2f,7.2f,11.2f,13.8f,11.8f,23.5f);
+        skull.cubicTo(11.2f,28.1f,13.7f,31.4f,17.4f,34.0f);
+        skull.lineTo(18.7f,38.1f);
+        skull.lineTo(19.7f,43.1f);
+        skull.lineTo(22.1f,46.6f);
+        skull.quadraticTo(26.7f,48.5f,31.3f,46.6f);
+        skull.lineTo(33.7f,43.1f);
+        skull.lineTo(34.7f,38.1f);
+        skull.lineTo(36.1f,34.0f);
+        skull.cubicTo(39.5f,31.3f,42.4f,27.5f,41.8f,23.2f);
+        skull.cubicTo(42.1f,13.8f,36.2f,7.2f,26.7f,8.2f);
+        skull.closeSubPath();
         g.setGradientFill(juce::ColourGradient(
-            bone.brighter(.02f),17.f,14.f,shade.darker(.22f),38.f,39.f,false));
-        g.fillPath(cranium);
-        g.setColour(bone.withAlpha(.58f));
-        g.strokePath(cranium,juce::PathStrokeType(.85f));
-        // High cheekbone engraving gives the tiny silhouette depth.
-        g.setColour(shade.withAlpha(.52f));
-        juce::Path cheek;
-        cheek.startNewSubPath(13.5f,30.f);
-        cheek.quadraticTo(18.9f,36.6f,20.3f,37.2f);
-        cheek.startNewSubPath(40.f,30.f);
-        cheek.quadraticTo(34.8f,36.6f,33.2f,37.2f);
-        g.strokePath(cheek,juce::PathStrokeType(1.1f));
-        // Inset sockets taper toward the nose rather than two blank circles.
+            bone.brighter(.06f),15.7f,12.f,
+            shade.darker(.22f),39.2f,43.9f,false));
+        g.fillPath(skull);
+        g.setColour(bone.withAlpha(.59f));
+        g.strokePath(skull,juce::PathStrokeType(.8f));
+        // Brow arches imply brow depth without angry cartoon eyebrows.
+        juce::Path brows;
+        brows.startNewSubPath(15.1f,22.1f);
+        brows.quadraticTo(19.5f,17.9f,24.f,21.3f);
+        brows.startNewSubPath(29.4f,21.3f);
+        brows.quadraticTo(33.8f,17.9f,38.2f,22.1f);
+        g.setColour(shade.darker(.15f).withAlpha(.75f));
+        g.strokePath(brows,juce::PathStrokeType(1.3f));
+        // Teardrop eye sockets follow the angled cheekbones instead of
+        // circular emoji eyes.
         juce::Path sockets;
-        sockets.startNewSubPath(15.7f,24.f);
-        sockets.cubicTo(16.3f,20.f,23.2f,19.9f,24.3f,24.5f);
-        sockets.cubicTo(25.f,28.6f,21.7f,31.8f,18.4f,31.4f);
-        sockets.cubicTo(15.5f,31.f,14.8f,27.9f,15.7f,24.f);
+        sockets.startNewSubPath(16.1f,23.9f);
+        sockets.cubicTo(17.7f,21.1f,22.6f,21.5f,24.1f,25.1f);
+        sockets.cubicTo(24.9f,27.9f,22.f,31.2f,19.3f,31.3f);
+        sockets.cubicTo(16.1f,31.4f,14.7f,27.4f,16.1f,23.9f);
         sockets.closeSubPath();
-        sockets.startNewSubPath(29.2f,24.5f);
-        sockets.cubicTo(30.4f,19.9f,37.1f,20.f,37.8f,24.f);
-        sockets.cubicTo(38.7f,27.9f,38.f,31.f,35.1f,31.4f);
-        sockets.cubicTo(31.8f,31.8f,28.5f,28.6f,29.2f,24.5f);
+        sockets.startNewSubPath(29.3f,25.1f);
+        sockets.cubicTo(30.8f,21.5f,35.7f,21.1f,37.3f,23.9f);
+        sockets.cubicTo(38.7f,27.4f,37.3f,31.4f,34.1f,31.3f);
+        sockets.cubicTo(31.4f,31.2f,28.5f,27.9f,29.3f,25.1f);
         sockets.closeSubPath();
         g.setColour(ink);g.fillPath(sockets);
-        g.setColour(shade.darker(.28f).withAlpha(.55f));
+        g.setColour(shade.withAlpha(.33f));
         g.strokePath(sockets,juce::PathStrokeType(.72f));
-        juce::Path nasal;
-        nasal.startNewSubPath(26.7f,30.f);
-        nasal.lineTo(23.6f,35.4f);
-        nasal.quadraticTo(26.7f,37.8f,29.9f,35.4f);
-        nasal.closeSubPath();
-        g.setColour(ink);g.fillPath(nasal);
-        // A single shallow maxilla and ONE compact jaw, no long neck.
-        juce::Path jaw;
-        jaw.startNewSubPath(19.9f,38.f);
-        jaw.lineTo(33.6f,38.f);
-        jaw.lineTo(33.0f,45.7f);
-        jaw.quadraticTo(26.7f,48.4f,20.5f,45.7f);
-        jaw.closeSubPath();
-        g.setColour(bone.darker(.075f));g.fillPath(jaw);
-        g.setColour(shade.withAlpha(.72f));
-        g.drawLine(20.f,39.9f,33.5f,39.9f,.85f);
-        g.setColour(ink.withAlpha(.9f));
-        for(int i=1;i<=5;++i) {
-            const float tx=20.1f+13.2f*(float)i/6.f;
-            g.drawLine(tx,40.f,tx,46.8f-1.2f*std::abs(tx-26.7f)/7.f,.85f);
+        // Narrow black nose, lower septum and carved cheek ridges.
+        juce::Path nose;
+        nose.startNewSubPath(26.7f,29.9f);
+        nose.lineTo(23.5f,35.4f);
+        nose.quadraticTo(24.2f,37.3f,26.7f,36.8f);
+        nose.quadraticTo(29.2f,37.3f,29.9f,35.4f);
+        nose.closeSubPath();
+        g.setColour(ink);g.fillPath(nose);
+        juce::Path cheeks;
+        cheeks.startNewSubPath(13.8f,30.5f);
+        cheeks.quadraticTo(18.1f,34.5f,20.9f,35.9f);
+        cheeks.startNewSubPath(39.6f,30.5f);
+        cheeks.quadraticTo(35.3f,34.5f,32.5f,35.9f);
+        g.setColour(shade.darker(.12f).withAlpha(.56f));
+        g.strokePath(cheeks,juce::PathStrokeType(.9f));
+        // Teeth are separate short bone incisors inside one dark mouth.
+        // No thin vertical piano-key bars running to the chin.
+        g.setColour(ink.withAlpha(.94f));
+        g.fillRoundedRectangle(20.7f,39.2f,12.0f,6.0f,1.0f);
+        for(int i=0;i<6;++i) {
+            const float x=21.1f+(float)i*1.9f;
+            const float shortness=(i==0||i==5)?1.0f:0.f;
+            g.setColour(bone.darker(.075f+shortness*.07f));
+            g.fillRoundedRectangle(x,39.7f,1.45f,4.5f-shortness, .35f);
         }
-        g.setColour(shade.withAlpha(.47f));
-        g.drawLine(20.f,45.9f,33.2f,45.9f,.75f);
+        // Faceted jaw edge and nasal bridge highlights for tiny-size depth.
+        g.setColour(shade.withAlpha(.53f));
+        g.drawLine(22.2f,45.8f,26.7f,46.6f,.65f);
+        g.drawLine(26.7f,46.6f,31.2f,45.8f,.65f);
+        g.drawLine(25.3f,31.4f,24.6f,33.1f,.65f);
+        g.drawLine(28.1f,31.4f,28.8f,33.1f,.65f);
 
         // Compact microphone accessory, ~32% smaller. The SKELL skull
         // itself is unchanged; only this local decoration is adjusted.
