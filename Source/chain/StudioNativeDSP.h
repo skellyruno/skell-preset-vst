@@ -233,10 +233,15 @@ private:
     using Table=std::array<double,tableLength>;
     using Tables=std::array<Table,20>;
     static const Tables& tables() noexcept {
-        static const Tables bank=[] {
-            Tables t{};
+        // 20 x 8193 doubles = 1.31 MiB. NEVER construct a temporary
+        // Tables object on the stack: Windows test and host threads can
+        // have a 1 MiB default stack, causing a stack-overflow SEH crash
+        // before any audio processing. The table is zero-initialized in
+        // static storage, populated once during prepare(), and reused.
+        static Tables bank{};
+        static const bool populated=[]() noexcept {
             for(int kind=0;kind<2;++kind)for(int threshold=1;threshold<=10;++threshold){
-                auto& tab=t[(size_t)(kind*10+threshold-1)];
+                auto& tab=bank[(size_t)(kind*10+threshold-1)];
                 const double step=(double)(10-threshold);
                 for(size_t i=1;i<8192;++i){
                     const double db=20.*std::log10((double)i/8191.);
@@ -247,8 +252,9 @@ private:
                 }
                 tab[8192]=tab[8191];
             }
-            return t;
+            return true;
         }();
+        (void)populated;
         return bank;
     }
     size_t index=0;double scale=8191.;float wet=1.f,dry=0.f;
