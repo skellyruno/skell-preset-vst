@@ -391,6 +391,10 @@ public:
         editingIdle=false;idle.setVisible(false);
         slot.setModOrbForScreenshot(enabled);
     }
+    void showHomeForScreenshot() {
+        if(chain.onClearSelection)chain.onClearSelection();
+        refresh();
+    }
     void openModulePickerForScreenshot() {
         editingIdle=false;idle.setVisible(false);
         slot.openModulePickerForScreenshot();
@@ -1194,6 +1198,9 @@ void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
     canvas->dockRackForScreenshot(right);
 }
 
+void SkellPresetAudioProcessorEditor::showHomeForScreenshot() {
+    canvas->showHomeForScreenshot();
+}
 void SkellPresetAudioProcessorEditor::openModulePickerForScreenshot() {
     canvas->openModulePickerForScreenshot();
 }
