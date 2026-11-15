@@ -1,9 +1,9 @@
 name: Skell Preset Quick4 renderer build only
 on:
   push:
-    branches: [ci/skell-preset-quick4-20261115]
+    branches: [ci/skell-preset-quick4-20261115, feat/skell-preset-rack-polish-20261115]
   pull_request:
-    branches: [feat/preset-rack-workflow-ui-20261115]
+    branches: [ci/skell-preset-quick4-20261115]
 permissions:
   contents: read
 concurrency:
