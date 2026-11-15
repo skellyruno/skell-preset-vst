@@ -1044,7 +1044,7 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
-        const auto micTrigger=juce::Rectangle<int>(chain.getX()+163,chain.getY()+8,33,31);
+        const auto micTrigger=juce::Rectangle<int>(chain.getX()+158,chain.getY()+5,42,38);
         if(micPanel.isVisible() && !micPanel.getBounds().contains(point)
            && !micTrigger.contains(point))
             micPanel.setVisible(false);

@@ -207,7 +207,7 @@ void ChainPanel::paint(juce::Graphics& g) {
         (dockedRight?"DRAG LEFT TO DOCK":"DRAG RIGHT TO DOCK"),
         {15,28,130,14},9,dockingDrag?Theme::green:Theme::muted);
     // Dedicated MIC widget trigger replaces redundant FX and 10/16 badges.
-    // Compact 31x29 icon area is clickable, not just the 1px microphone path.
+    // Compact mic art retains a generous 42x38 hit target, not just the 1px microphone path.
     const auto micRegion=juce::Rectangle<float>(164.f,9.f,31.f,29.f);
     g.setColour(Theme::panelAlt);g.fillRoundedRectangle(micRegion,5.f);
     g.setColour(Theme::stroke);g.drawRoundedRectangle(micRegion,5.f,1.f);
@@ -398,7 +398,7 @@ void ChainPanel::addModule() {
     repaint();
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
-    if(e.x>=163 && e.x<=196 && e.y>=8 && e.y<39) {
+    if(e.x>=158 && e.x<=200 && e.y>=5 && e.y<43) {
         if(!e.mods.isPopupMenu() && onMicRequest)onMicRequest();
         return;
     }
@@ -510,7 +510,7 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         hoveredRow=next;hoveredWetSlot=nextWet;repaint();
     }
     const bool add=(e.y>=addTop && e.y<addTop+addHeight && e.x>=10 && e.x<=206);
-    if(e.y>=8 && e.y<39 && e.x>=163 && e.x<=196) {
+    if(e.y>=5 && e.y<43 && e.x>=158 && e.x<=200) {
         setTooltip("Open movable microphone modeling widget");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=142)
