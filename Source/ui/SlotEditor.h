@@ -107,6 +107,14 @@ private:
     juce::TextButton modOrbButton{"ORB"};
     bool modOrbView=false; // UI-only; never serialized or used in DSP
     std::unique_ptr<juce::FileChooser> externalChooser;
+    // Owned UI view, never created in the audio callback. Each installed
+    // plugin may expose a JUCE wrapper editor; unsupported editors use
+    // the original separate-window path without affecting DSP processing.
+    std::unique_ptr<juce::AudioProcessorEditor> embeddedEditor;
+    juce::AudioPluginInstance* embeddedHost=nullptr;
+    void releaseEmbeddedEditor();
+    void syncEmbeddedEditor();
+    void layoutEmbeddedEditor();
     juce::Slider eqQSlider;
     std::array<juce::Slider,2> eqCutSliders;
     std::array<juce::TextButton,8> eqBandButtons;

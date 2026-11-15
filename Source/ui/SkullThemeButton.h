@@ -3,112 +3,100 @@
 #include "Theme.h"
 #include <cmath>
 
-// Skell Preset skull v4: stronger cheekbones, defined nose and one
-// continuous jaw, inspired by the shared Skell bone silhouette. No key,
-// forehead fracture, decorative patch or second mouth. Vector is crisp
-// at the existing 56px button size without touching other plugin UIs.
-// Changing the symbol must never affect the theme-click accessibility.
+// Clean Skell skull + miniature broadcast microphone. This local icon does
+// not modify the shared master SkellCore logo or any other plugin assets.
+// Existing mouse/keyboard theme cycling and original 56px hitbox remain.
 class SkullThemeButton final : public juce::Button {
 public:
-    SkullThemeButton() : juce::Button("Cycle Skell colour theme") {
-        setTooltip("Change SKELL theme / Obsidian, Bone, Crimson");
+    SkullThemeButton():juce::Button("Cycle Skell colour theme"){
+        setTooltip("SKELL skull / Change Obsidian, Bone or Crimson theme");
         setWantsKeyboardFocus(true);
     }
-    void setVariant(int id) {variant=Theme::clampVariant(id);repaint();}
-    void paintButton(juce::Graphics& g,bool hovered,bool pressed) override {
+    void setVariant(int id){variant=Theme::clampVariant(id);repaint();}
+    void paintButton(juce::Graphics& g,bool hovered,bool pressed)override {
         Theme::select(variant);
-        const auto frame=getLocalBounds().toFloat().reduced(.75f);
-        g.setColour(Theme::bg.brighter(.13f));
-        g.fillRoundedRectangle(frame,8.f);
-        g.setColour(Theme::green.withAlpha(hovered?.76f:.27f));
-        g.drawRoundedRectangle(frame,8.f,hovered?1.6f:1.0f);
-
-        juce::Graphics::ScopedSaveState save(g);
+        const auto bounds=getLocalBounds().toFloat().reduced(.7f);
+        g.setColour(Theme::bg.brighter(.14f));g.fillRoundedRectangle(bounds,8.f);
+        g.setColour(Theme::green.withAlpha(hovered?.8f:.30f));
+        g.drawRoundedRectangle(bounds,8.f,hovered?1.55f:1.05f);
+        juce::Graphics::ScopedSaveState saved(g);
         g.addTransform(juce::AffineTransform::scale(
             (float)getWidth()/56.f,(float)getHeight()/56.f));
-        const auto bone=Theme::white,shade=Theme::muted,ink=Theme::bg,accent=Theme::green;
+        const auto bone=Theme::white,shade=Theme::muted,ink=Theme::bg;
+        const auto signal=Theme::green;
 
-        // A heavier, slightly asymmetrical cranial outline — unmistakably
-        // a skull even at small size, but not cartoon-like or hooded.
-        juce::Path cranium;
-        cranium.startNewSubPath(28.f,8.2f);
-        cranium.cubicTo(17.f,7.6f,10.7f,15.7f,11.f,25.2f);
-        cranium.cubicTo(11.3f,31.8f,13.1f,34.2f,18.2f,37.9f);
-        cranium.lineTo(19.4f,42.4f);
-        cranium.lineTo(36.6f,42.4f);
-        cranium.lineTo(37.9f,37.9f);
-        cranium.cubicTo(42.9f,34.2f,44.9f,30.8f,44.9f,24.9f);
-        cranium.cubicTo(45.f,14.5f,39.3f,8.1f,28.f,8.2f);
-        cranium.closeSubPath();
+        // Unified, balanced cranial silhouette: symmetric sockets, short
+        // maxilla and ONE connected jaw. No second mouth or elongated neck.
+        juce::Path head;
+        head.startNewSubPath(26.5f,8.f);
+        head.cubicTo(15.f,8.f,10.5f,16.f,11.3f,26.f);
+        head.cubicTo(11.5f,31.6f,14.2f,34.7f,18.6f,37.5f);
+        head.lineTo(20.f,41.6f);head.lineTo(33.8f,41.6f);
+        head.lineTo(35.2f,37.5f);
+        head.cubicTo(39.7f,34.8f,42.f,31.f,42.1f,25.5f);
+        head.cubicTo(42.f,16.f,37.f,8.f,26.5f,8.f);
+        head.closeSubPath();
         g.setGradientFill(juce::ColourGradient(
-            bone.darker(.05f),16.f,10.f,shade.darker(.56f),40.f,42.f,false));
-        g.fillPath(cranium);
+            bone,15.f,12.f,shade.darker(.35f),38.f,43.f,false));
+        g.fillPath(head);
         g.setColour(bone.withAlpha(.5f));
-        g.strokePath(cranium,juce::PathStrokeType(1.f));
+        g.strokePath(head,juce::PathStrokeType(.85f));
 
-        // High-contrast sockets, hollow rather than angry neon slits.
-        juce::Path leftEye;
-        leftEye.startNewSubPath(15.f,23.f);
-        leftEye.quadraticTo(18.f,19.2f,25.f,23.9f);
-        leftEye.quadraticTo(24.f,31.8f,20.2f,32.7f);
-        leftEye.quadraticTo(15.4f,32.1f,15.f,23.f);
-        leftEye.closeSubPath();
-        juce::Path rightEye;
-        rightEye.startNewSubPath(41.f,23.5f);
-        rightEye.quadraticTo(37.2f,19.8f,31.4f,24.f);
-        rightEye.quadraticTo(31.f,31.4f,34.8f,32.6f);
-        rightEye.quadraticTo(40.8f,32.1f,41.f,23.5f);
-        rightEye.closeSubPath();
+        // Real cavities, not angry angular green eyes.
         g.setColour(ink);
-        g.fillPath(leftEye);g.fillPath(rightEye);
+        juce::Path left,right;
+        left.addEllipse(15.8f,22.5f,9.4f,10.8f);
+        right.addEllipse(28.2f,22.5f,9.4f,10.8f);
+        g.fillPath(left);g.fillPath(right);
+        g.setColour(shade.darker(.35f).withAlpha(.55f));
+        g.drawEllipse(16.4f,23.f,8.3f,9.4f,.85f);
+        g.drawEllipse(28.9f,23.f,8.3f,9.4f,.85f);
 
-        // Pronounced cheekbones form the organic bridge from the cranial
-        // sockets to a single jaw instead of a second stylised mouth.
-        g.setColour(shade.darker(.34f).withAlpha(.83f));
-        juce::Path leftCheek;
-        leftCheek.startNewSubPath(12.9f,32.f);
-        leftCheek.quadraticTo(17.3f,35.8f,24.f,36.5f);
-        leftCheek.lineTo(20.4f,40.3f);
-        leftCheek.quadraticTo(13.9f,38.9f,12.9f,32.f);
-        leftCheek.closeSubPath();
-        juce::Path rightCheek;
-        rightCheek.startNewSubPath(43.1f,32.f);
-        rightCheek.quadraticTo(38.7f,35.8f,32.f,36.5f);
-        rightCheek.lineTo(35.6f,40.3f);
-        rightCheek.quadraticTo(42.1f,38.9f,43.1f,32.f);
-        rightCheek.closeSubPath();
-        g.fillPath(leftCheek);g.fillPath(rightCheek);
-        juce::Path nasal;
-        nasal.startNewSubPath(28.f,31.f);
-        nasal.lineTo(24.9f,36.6f);
-        nasal.quadraticTo(26.2f,38.1f,28.f,37.2f);
-        nasal.quadraticTo(29.8f,38.1f,31.1f,36.6f);
-        nasal.closeSubPath();
-        g.setColour(ink);g.fillPath(nasal);
+        juce::Path nose;
+        nose.startNewSubPath(26.7f,31.5f);
+        nose.lineTo(23.7f,37.f);nose.quadraticTo(26.7f,38.6f,29.7f,37.f);
+        nose.closeSubPath();
+        g.setColour(ink);g.fillPath(nose);
 
-        // One continuous lower jaw and six carved teeth; not a separate
-        // duplicate mouth. Theme tint sits on the cheek contours only.
-        g.setColour(bone.darker(.14f));
         juce::Path jaw;
-        jaw.startNewSubPath(19.5f,40.5f);
-        jaw.lineTo(36.5f,40.5f);
-        jaw.lineTo(36.f,47.4f);
-        jaw.quadraticTo(28.f,52.5f,20.f,47.4f);
+        jaw.startNewSubPath(19.3f,39.8f);
+        jaw.lineTo(34.f,39.8f);
+        jaw.lineTo(33.6f,47.2f);
+        jaw.quadraticTo(26.7f,50.9f,19.8f,47.2f);
         jaw.closeSubPath();
-        g.fillPath(jaw);
-        g.setColour(ink.withAlpha(.95f));
-        g.drawLine(20.f,42.2f,36.f,42.2f,1.f);
-        for(int i=1;i<=5;++i) {
-            const float x=20.f+16.f*(float)i/6.f;
-            g.drawLine(x,42.4f,x,49.f-1.4f*std::abs(x-28.f)/8.f,.9f);
+        g.setColour(bone.darker(.10f));g.fillPath(jaw);
+        g.setColour(ink.withAlpha(.90f));
+        g.drawLine(20.f,41.4f,33.2f,41.4f,1.f);
+        for(int i=1;i<=5;++i){
+            const float x=19.8f+13.6f*i/6.f;
+            g.drawLine(x,41.4f,x,48.f-1.2f*std::abs(x-26.7f)/7.f,.86f);
         }
-        g.setColour(accent.withAlpha(hovered?.65f:.16f));
-        g.drawLine(13.f,33.f,18.f,37.4f,1.f);
-        g.drawLine(43.f,33.f,38.f,37.4f,1.f);
+        g.setColour(shade.withAlpha(.35f));
+        g.drawLine(16.f,34.f,19.8f,38.5f,.8f);
+        g.drawLine(37.5f,34.f,33.6f,38.5f,.8f);
 
-        if(pressed) {
-            g.setColour(ink.withAlpha(.22f));
-            g.fillRoundedRectangle(5.f,5.f,46.f,46.f,6.f);
+        // Skell mic is a small accessory, not a second skull feature.
+        // The microphone shape stays fully inside the 56px symbol.
+        g.setColour(ink);
+        g.fillRoundedRectangle(42.4f,27.5f,8.7f,14.3f,4.1f);
+        g.setColour(signal);
+        g.drawRoundedRectangle(43.0f,28.1f,7.4f,13.f,3.65f,1.25f);
+        for(int k=0;k<3;++k){
+            g.setColour(signal.withAlpha(.6f));
+            g.drawLine(44.7f,31.5f+2.5f*k,48.9f,31.5f+2.5f*k,.75f);
+        }
+        g.setColour(signal);
+        juce::Path mount;
+        mount.startNewSubPath(41.5f,37.f);
+        mount.quadraticTo(41.5f,44.6f,46.8f,44.6f);
+        mount.quadraticTo(52.f,44.6f,52.f,37.f);
+        g.strokePath(mount,juce::PathStrokeType(1.f));
+        g.drawLine(46.8f,44.7f,46.8f,49.1f,1.f);
+        g.drawLine(43.f,49.5f,50.4f,49.5f,1.1f);
+
+        if(pressed){
+            g.setColour(ink.withAlpha(.2f));
+            g.fillRoundedRectangle(4.5f,4.5f,47.f,47.f,6.f);
         }
     }
 private:

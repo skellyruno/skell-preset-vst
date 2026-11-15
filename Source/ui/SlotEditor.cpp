@@ -127,8 +127,13 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         }
     };
     editExternal.onClick=[this] {
+        // Explicit detach/fallback for native editors that prefer a normal
+        // top-level window. Never open a second view of one processor.
+        releaseEmbeddedEditor();
         processor.openHostedVST3Editor(slot);
     };
+    editExternal.setButtonText("OPEN IN WINDOW");
+    editExternal.setTooltip("Detach third-party UI into its own window if needed");
     upgradeEq.setTooltip("Convert this classic single-bell EQ into an editable eight-band parametric EQ; previous presets are unchanged.");
     upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
@@ -504,6 +509,44 @@ void SlotEditor::applyKnobReadouts() {
     eqQSlider.updateText();
     for(auto& knob:knobs)knob.updateText();
 }
+void SlotEditor::releaseEmbeddedEditor(){
+    if(!embeddedEditor)return;
+    removeChildComponent(embeddedEditor.get());
+    // Destroy before the hosted processor, on the JUCE GUI/message thread.
+    embeddedEditor.reset();
+    embeddedHost=nullptr;
+}
+void SlotEditor::layoutEmbeddedEditor(){
+    if(!embeddedEditor)return;
+    constexpr float x=55.f,y=134.f,w=795.f,h=251.f;
+    const float editorWidth=(float)juce::jmax(1,embeddedEditor->getWidth());
+    const float editorHeight=(float)juce::jmax(1,embeddedEditor->getHeight());
+    const float scale=juce::jlimit(.1f,1.f,
+        juce::jmin(w/editorWidth,h/editorHeight));
+    embeddedEditor->setTransform(juce::AffineTransform::scale(scale));
+    const float actualW=editorWidth*scale,actualH=editorHeight*scale;
+    embeddedEditor->setTopLeftPosition(
+        juce::roundToInt(x+(w-actualW)*.5f),
+        juce::roundToInt(y+(h-actualH)*.5f));
+}
+void SlotEditor::syncEmbeddedEditor(){
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::ExternalVST3){
+        releaseEmbeddedEditor();return;
+    }
+    auto* instance=processor.hostedVST3InstanceForUI(slot);
+    if(embeddedHost==instance && embeddedEditor)return;
+    releaseEmbeddedEditor();
+    if(!instance || !instance->hasEditor())return;
+    // Do not take an editor already displayed by a floating host window.
+    if(instance->getActiveEditor()!=nullptr)return;
+    auto* view=instance->createEditorIfNeeded();
+    if(!view)return; // unsupported editor remains usable via window fallback
+    embeddedHost=instance;
+    embeddedEditor.reset(view);
+    addAndMakeVisible(*view);
+    layoutEmbeddedEditor();
+    view->toFront(false);
+}
 void SlotEditor::loadVST3FromFile(const juce::File& path) {
     if(path.getFullPathName().isEmpty())return;
     const auto result=processor.loadHostedVST3(slot,path);
@@ -511,6 +554,7 @@ void SlotEditor::loadVST3FromFile(const juce::File& path) {
         juce::AlertWindow::showMessageBoxAsync(
             juce::AlertWindow::WarningIcon,"VST3 could not load",
             result.getErrorMessage());
+    else syncEmbeddedEditor();
     graphSnapshotValid=false;
     refreshIfChanged();
     repaint();
@@ -713,6 +757,7 @@ void SlotEditor::openModulePicker() {
     else modulePicker.open(processor.slotType(slot));
 }
 void SlotEditor::select(int newSlot) {
+    if(slot!=newSlot)releaseEmbeddedEditor();
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     eqBank=0;activeEqBand=0;matchPage=0;
     lastPeakLevel=-1;
@@ -852,8 +897,10 @@ void SlotEditor::refreshIfChanged() {
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
     if(!external && installedBrowser.isVisible())installedBrowser.hide();
+    syncEmbeddedEditor();
     loadExternal.setVisible(external);
-    editExternal.setVisible(external && processor.hasHostedVST3(slot));
+    editExternal.setVisible(external && processor.hasHostedVST3(slot)
+                            && processor.hostedVST3InstanceForUI(slot)->hasEditor());
     // No competing "upgrade EQ" button: modern EQ is the single library
     // choice, while older saved EQ instances remain editable and recallable.
     upgradeEq.setVisible(false);
@@ -885,6 +932,7 @@ void SlotEditor::resized() {
     addEqNode.setBounds(74,96,127,26);
     eqNodeMenu.setBounds(610,156,205,241);
     editExternal.setBounds(246,420,188,62);
+    layoutEmbeddedEditor();
     upgradeEq.setBounds(650,97,212,31);
     modOrbButton.setBounds(764,77,95,23);
     // Center the four effect controls inside the expanded Advanced deck.
@@ -902,7 +950,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     }
     const int type=processor.slotType(slot);
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
-    Theme::text(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
+    Theme::fittedText(g,processor.moduleName(type),{21,29,420,38},25,Theme::white,true);
     // Remove the duplicate module dropdown and ON/WET controls. One action
     // surface lives in the rack, including for external hosted VST3 effects.
     Theme::text(g,"DOUBLE-CLICK AN EFFECT IN THE RACK TO REPLACE IT",
@@ -1286,7 +1334,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,name.isEmpty()?"NO PLUGIN LOADED":name.toUpperCase(),
             {81,225,720,34},17,Theme::white,true);
         Theme::text(g,name.isEmpty()?"Choose LOAD VST3 below to select a plug-in.":
-            "OPEN PLUGIN UI to adjust the hosted effect.",
+            (embeddedEditor?"HOSTED EDITOR EMBEDDED / OPEN IN WINDOW TO DETACH":
+                            "OPEN IN WINDOW IF THE PLUGIN HAS ITS OWN EDITOR"),
             {83,270,720,23},13,Theme::muted);
         Theme::text(g,"IN-PROCESS HOST  /  THIRD-PARTY CODE RUNS INSIDE YOUR DAW",
             {85,313,735,20},11,Theme::amber);
@@ -1966,7 +2015,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             // Match Finish already draws its measured harmonic-transfer curve,
             // a muted clean reference and its own labels above. The generic
             // fallback title used to cover that curve and the XY edit marker.
-            Theme::text(g,processor.moduleName(type).toUpperCase(),
+            Theme::fittedText(g,processor.moduleName(type).toUpperCase(),
                 {65,198,740,40},25,Theme::green,true,juce::Justification::centred);
             Theme::text(g,"DRAG THE GRAPH TO EDIT THE FIRST TWO CONTROLS",
                 {120,249,620,22},12,Theme::muted,false,juce::Justification::centred);
@@ -2096,8 +2145,8 @@ void SlotEditor::paint(juce::Graphics&g) {
     // 8-band EQ owns the 96..148px header for its band selectors and
     // filter controls. Don't draw duplicate effect headings over them.
     if(effectTitle.isNotEmpty() && type!=SkellPresetAudioProcessor::EightBandToneFX){
-        Theme::text(g,effectTitle,{47,103,730,22},14,Theme::green,true);
-        Theme::text(g,effectDetail,{47,128,755,18},12,Theme::muted);
+        Theme::fittedText(g,effectTitle,{47,103,730,22},14,Theme::green,true);
+        Theme::fittedText(g,effectDetail,{47,128,755,18},12,Theme::muted);
     }
     if(type==SkellPresetAudioProcessor::Compressor ||
        type==SkellPresetAudioProcessor::Gate ||
@@ -2162,7 +2211,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                  "B"+juce::String(eqBank+2)+" FREQ", "B"+juce::String(eqBank+2)+" GAIN" };
     }
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
-        Theme::text(g,"HOSTED VST3  /  USE ITS OWN UI TO EDIT PARAMETERS",
+        Theme::fittedText(g,"HOSTED VST3  /  INLINE UI IF SUPPORTED / WINDOW FALLBACK",
             {447,462,424,49},12,Theme::muted,true);
     } else {
         for(int i=0;i<4;i++) {
@@ -2170,7 +2219,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             // captions became very faint and long labels looked clipped.
             // Give each hardware rotary a high-contrast, full-width legend.
             const int available=i==3?115:142;
-            Theme::text(g,labels[(size_t)i].toUpperCase(),
+            Theme::fittedText(g,labels[(size_t)i].toUpperCase(),
                         {146+211*i,455,available,25},
                         13.3f,Theme::white.withAlpha(.78f),true);
         }

@@ -74,6 +74,11 @@ public:
     void openHostedVST3Editor(int slot);
     juce::String hostedVST3Name(int slot) const {return hosted.getName(slot);}
     bool hasHostedVST3(int slot) const noexcept {return hosted.get(slot)!=nullptr;}
+    // Message-thread-only borrowed pointer for optional inline JUCE editor.
+    // The host retains plugin instances until processor destruction.
+    juce::AudioPluginInstance* hostedVST3InstanceForUI(int slot) const noexcept {
+        return hosted.get(slot);
+    }
     int hostedVST3LatencySamples(int slot) const noexcept {return hosted.getLatency(slot);}
     void refreshHostedLatency();
     double preparedAudioRate() const noexcept {

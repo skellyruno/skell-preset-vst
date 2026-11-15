@@ -81,4 +81,13 @@ inline void text(juce::Graphics& g,const juce::String& value,juce::Rectangle<int
                  juce::Justification justify=juce::Justification::centredLeft) {
     g.setColour(colour);g.setFont(font(size,bold));g.drawText(value,area,justify,true);
 }
+inline void fittedText(juce::Graphics& g,const juce::String& value,
+                       juce::Rectangle<int> area,float size,
+                       juce::Colour colour=white,bool bold=false,
+                       juce::Justification justify=juce::Justification::centredLeft) {
+    // Effect names, popup headings and long knobs must never clip at 70% UI.
+    // Leave font size intact whenever text fits; scale only as a last resort.
+    g.setColour(colour);g.setFont(font(size,bold));
+    g.drawFittedText(value,area,justify,1,.74f);
+}
 }
