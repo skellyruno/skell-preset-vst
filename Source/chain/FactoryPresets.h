@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,44> factoryPresets {{
+inline constexpr std::array<FactoryPreset,46> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -59,5 +59,19 @@ inline constexpr std::array<FactoryPreset,44> factoryPresets {{
     {"Alchemist (Native Preview)","Main Vocals",
      "Experimental vocal match: EQ, FET/Opto-role dynamics and gentle multiband colour",
      4,.50f,.42f,.02f,.12f},
+    // Index 44 is D/Max-inspired NATIVE TRIAL, not the protected D/Max
+    // lossless audio champion or an exact proprietary processor port.
+    {"Deuce D/Max (Native Trial)","Main Vocals",
+     "Editable Deuce REC to MAIN native chain based on documented references",
+     5,.52f,.50f,.04f,.20f},
+    // Index 45 is an opt-in quality candidate; old Alchemist at index 43
+    // remains unchanged for instantaneous host-side A/B and rollback.
+    {"Alchemist Refined (Trial)","Main Vocals",
+     "Protected Alchemist preview with five opt-in causal polish refinements",
+     4,.50f,.42f,.02f,.12f},
 }};
+static_assert(factoryPresets[43].name==std::string_view("Alchemist (Native Preview)"),
+    "Do not change approved Alchemist factory index");
+static_assert(factoryPresets[44].name==std::string_view("Deuce D/Max (Native Trial)"),
+    "Deuce trial must be discoverable as a Main Vocals factory preset");
 }
