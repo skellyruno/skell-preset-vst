@@ -742,12 +742,17 @@ public:
                !on || on->load()<.5f)
                 issues.add("Studio Six native effect chain is missing a stage");
         }
-        if(processor.getNumPrograms()!=47 ||
+        // The append-only catalog now contains 49 programs. Preserve the
+        // original Alchemist index and assert every later sound-match trial
+        // stays at its documented factory ID as new candidates are appended.
+        if(processor.getNumPrograms()!=49 ||
            processor.getProgramName(43)!="Alchemist (Native Preview)" ||
            processor.getProgramName(44)!="Deuce D/Max (Native Trial)" ||
            processor.getProgramName(45)!="Alchemist Refined (Trial)" ||
-           processor.getProgramName(46)!="Deuce v2.5 (Native Trial)")
-            issues.add("Append-only main-vocal factories or legacy Alchemist index changed");
+           processor.getProgramName(46)!="Deuce v2.5 (Native Trial)" ||
+           processor.getProgramName(47)!="Alchemist Peak Guard (Trial)" ||
+           processor.getProgramName(48)!="Alchemist Tone Match (Trial)")
+            issues.add("Append-only factory catalog or legacy Alchemist index changed");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);
