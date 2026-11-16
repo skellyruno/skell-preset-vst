@@ -254,21 +254,21 @@ public:
         g.setColour(Theme::green.withAlpha(.62f));
         g.fillRoundedRectangle({13.f,13.f,3.f,17.f},1.f);
         Theme::text(g,"MIC MODEL",{25,9,getWidth()-143,27},16,Theme::white,true);
-        Theme::text(g,"DRAG HEADER  /  CORNER TO RESIZE",{17,37,getWidth()-34,15},9,Theme::muted);
-        Theme::text(g,"INPUT MIC",{16,51,170,17},10,Theme::muted,true);
+        Theme::text(g,"DRAG HEADER  /  RESIZE CORNER",{17,37,getWidth()-34,16},10.2f,Theme::muted);
+        Theme::text(g,"INPUT MICROPHONE",{16,51,188,18},11.5f,Theme::white,true);
         const juce::StringArray descriptions{
             "FLAT","WARM","FOCUS","AIR"};
         const auto* rawTarget=processor.state.getRawParameterValue("micPreTarget");
         const int target=rawTarget?juce::jlimit(0,3,(int)rawTarget->load()):0;
         // The old target description at y=212 covered AMOUNT at compact
         // heights. Keep active-model feedback beside SIMULATE instead.
-        Theme::text(g,"SIMULATE",{16,109,107,17},10,Theme::muted,true);
+        Theme::text(g,"MODEL",{16,109,80,18},11.5f,Theme::white,true);
         Theme::fittedText(g,descriptions[target]+" MODEL",
-                          {getWidth()-153,109,132,17},10.f,Theme::green,true,
+                          {getWidth()-153,109,132,18},11.4f,Theme::green,true,
                           juce::Justification::centredRight);
         const int lower=juce::jmax(215,getHeight()-83);
-        Theme::text(g,"AMOUNT",{16,lower,62,23},10,Theme::white,true);
-        Theme::text(g,"TRIM",{16,lower+40,62,23},10,Theme::white,true);
+        Theme::text(g,"AMOUNT",{16,lower,70,23},11.4f,Theme::white,true);
+        Theme::text(g,"TRIM",{16,lower+40,62,23},11.4f,Theme::white,true);
         g.setColour(Theme::stroke.withAlpha(.8f));
         g.drawLine(16.f,(float)lower-10.f,(float)getWidth()-16.f,(float)lower-10.f,1.f);
         Theme::fittedText(g,"TONAL MODEL / NOT A MEASURED MIC IR",
