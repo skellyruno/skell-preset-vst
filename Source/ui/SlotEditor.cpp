@@ -1143,11 +1143,13 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(type!=SkellPresetAudioProcessor::ExternalVST3) {
         // Remove the duplicate module dropdown and ON/WET controls. One action
         // surface lives in the rack, including for external hosted VST3 effects.
-        Theme::text(g,"SELECT RACK EFFECT  /  DOUBLE-CLICK TO REPLACE",
-                    {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
+        Theme::text(g,"CLICK RACK TO EDIT  /  DOUBLE-CLICK TO REPLACE",
+                    {479,24,386,25},12.0f,Theme::green.withAlpha(.90f),true);
         const auto category=type==SkellPresetAudioProcessor::StudioLimiterFX
             ?juce::String("LIMITER")
-            :juce::String(skellpreset::registry::at(type).category).toUpperCase();
+            :type==SkellPresetAudioProcessor::AlchemistMatchFinishFX
+                ?juce::String("MATCH")
+                :juce::String(skellpreset::registry::at(type).category).toUpperCase();
         // Keep this status chip entirely clear of Alchemist page tabs
         // (starting at x=512) and the Mod Orb button (x=764).
         const auto chip=juce::Rectangle<float>(395.f,68.f,107.f,25.f);
@@ -1157,7 +1159,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::fittedText(g,category,{403,71,91,19},11.5f,Theme::green,true);
         // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
         // vertebrae respond to the signal while leaving parameter graphs readable.
-        Theme::text(g,"BONE SIGNAL",{22,73,158,18},9.8f,Theme::muted,true);
+        Theme::text(g,"SLOT OUTPUT",{22,73,158,18},11.2f,Theme::muted,true);
         const float level=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
         for(int rib=0;rib<14;++rib) {
             const float x=178.f+13.5f*(float)rib;
@@ -2419,8 +2421,8 @@ void SlotEditor::paint(juce::Graphics&g) {
                     (type==SkellPresetAudioProcessor::StudioEQFX?" WIDTH":" Q"),
                     {680,96,172,17},11,Theme::green,true);
         if(type==SkellPresetAudioProcessor::EightBandToneFX) {
-            Theme::text(g,"LOW CUT",{20,127,48,16},9,Theme::amber,true);
-            Theme::text(g,"HIGH CUT",{342,127,80,16},9,Theme::amber,true);
+            Theme::text(g,"LOW CUT",{20,127,55,16},10.5f,Theme::amber,true);
+            Theme::text(g,"HIGH CUT",{342,127,80,16},10.5f,Theme::amber,true);
         }
     }
     if(type==SkellPresetAudioProcessor::EQ){
