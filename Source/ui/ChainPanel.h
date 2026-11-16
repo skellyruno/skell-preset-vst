@@ -68,6 +68,7 @@ private:
     int contextSlot=-1,contextTop=50,contextHover=-1;
     float slotWet(int physicalSlot) const noexcept;
     void setSlotWet(int physicalSlot,float wet);
+    void applyWetWheel(int physicalSlot,float deltaY); // host-gestured fine trim
     void toggleSlotPower(int physicalSlot);
     bool selectAndReplace(int row);
 };
