@@ -29,8 +29,8 @@ int main() {
     assert(std::strcmp(factoryPresets[45].name,alchemist_trial::name)==0);
     assert(std::strcmp(factoryPresets[46].name,deuce_v25::name)==0);
     assert(std::strcmp(factoryPresets[46].bank,"Main Vocals")==0);
-    assert(deuce_v25::stages.size()==14);
-    assert(deuce_v25::stages[13].module==3);
+    assert(deuce_v25::stages.size()==13);
+    assert(deuce_v25::stages[12].module==26);
     for(std::size_t k=0;k<deuce::stages.size();++k){
         assert(deuce_v25::stages[k].module==deuce::stages[k].module);
         assert(deuce_v25::stages[k].wet==deuce::stages[k].wet);
