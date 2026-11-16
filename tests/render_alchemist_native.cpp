@@ -642,7 +642,7 @@ int nativeTrialsSmoke() {
         // smoothed initial DSP states, not actual serialization fidelity.
         plugin->loadFactoryPreset(factory);
         plugin->prepareToPlay(48000.,256);
-        const int expectedCount=factory==skellpreset::deuce_v25::factoryIndex?14:
+        const int expectedCount=factory==skellpreset::deuce_v25::factoryIndex?13:
             factory==skellpreset::deuce::factoryIndex?12:10;
         if(plugin->loadedFactoryPresetIndex()!=factory ||
            plugin->activeSlotCount()!=expectedCount)return 201;
