@@ -16,8 +16,8 @@ int main() {
     static_assert(de::factoryIndex==al::factoryIndex+1,"append-only Deuce index");
     static_assert(skellpreset::deuce_v25::factoryIndex==atr::factoryIndex+1,
                   "v2.5 appended without changing existing indexes");
-    static_assert(skellpreset::deuce_v25::stages.size()==13,
-                  "v2.5 has the evidence-based native presence EQ");
+    static_assert(skellpreset::deuce_v25::stages.size()==14,
+                  "v2.5 has 7kHz EQ plus bounded final limiting");
     static_assert(skellpreset::deuce_v25::stages[12].module==26,
                   "v2.5 final stage is an editable EightBandTone EQ");
     static_assert(atr::factoryIndex==de::factoryIndex+1,"append-only Alchemist trial");
