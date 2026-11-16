@@ -63,31 +63,51 @@ static_assert(stages[6].module==2 && stages[7].module==11,
 }
 
 namespace skellpreset::deuce_v25 {
-// Native listening TRIAL derived from the user's approved OFFLINE v2.5.
-// The approved offline v2.5 audio is v2.3 Sustained Air followed by a
-// 7 kHz +0.75dB Q0.75 presence bell and -0.146715 dB output trim.
-// The complete v2.3 REC/MAIN algorithm is not ported to this VST3, so this
-// cannot claim audible equality with the protected v2.5 listening winner.
-// Append this trial AFTER D/Max and Alchemist Refined, without renumbering.
+// Native listening TRIAL informed by the latest user-approved OFFLINE v2.5.
+// v2.5 = v2.3 Sustained Air + 7 kHz 0.75dB Q.75 repair. The v2.3
+// original processing has NOT been ported, so do not call this an exact match.
+//
+// Same-take initial native render showed >10dB low output, excess sub-250Hz,
+// and weak air. Add a SMALL broad corrective EQ, preserve the exact +0.75dB
+// 7k bell, and apply bounded final lookahead limiting. This native trial
+// does not change the separately protected D/Max index 44 or Alchemist 43.
 constexpr auto makeStages() noexcept {
-    std::array<alchemist::NativeStage,13> result{};
+    std::array<alchemist::NativeStage,14> result{};
     for(std::size_t i=0;i<deuce::stages.size();++i)
         result[i]=deuce::stages[i];
-    auto presence=alchemist::neutral(26);
-    // Native EightBandTone band 7 maps roughly 3600..7500 Hz and
-    // p[13]=.525 means +0.75dB; q[6]=.2098347 means Q~0.75.
-    presence.p[12]=.9060003f;
-    presence.p[13]=.525f;
-    presence.q[6]=.2098347f;
-    result[12]=presence; // append exact native correction as own EQ row
+    auto equalizer=alchemist::neutral(26); // 8 Band Tone; full native editor
+    // Conservative held-out comparison against provided same-take Deuce
+    // main-vocal audio: ±3.5dB broad balance to avoid v1's bass-heavy/airless
+    // native sound. Band 7 remains the APPROVED v2.5 +0.75 dB / Q0.75.
+    equalizer.p[1]=.5f-2.5f/30.f; // band1 56Hz   -2.5dB
+    equalizer.p[3]=.5f-3.f/30.f;   // band2 129Hz  -3dB
+    equalizer.p[5]=.5f-2.f/30.f;   // band3 265Hz  -2dB
+    equalizer.p[9]=.5f+1.f/30.f;   // band5 1.18kHz +1dB
+    equalizer.p[11]=.5f+1.f/30.f;  // band6 2.47kHz +1dB
+    equalizer.p[12]=.9060003f;    // band7 ~7000Hz
+    equalizer.p[13]=.525f;       // exact approved +0.75dB presence repair
+    equalizer.p[15]=.5f+3.5f/30.f; // band8 11.5kHz +3.5dB air
+    constexpr float broadQ=.196f; // Q~0.72
+    for(auto& value:equalizer.q)value=broadQ;
+    equalizer.q[6]=.2098347f;     // Q~0.75 at the 7k presence band
+    result[12]=equalizer;
+    // A final real native Skell limiter restores the observed ~10.7dB
+    // level gap safely. This adds the plugin's existing ~3ms lookahead PDC
+    // (tested by host); never pretend to be zero-latency or Fruity Limiter.
+    auto finalLimiter=alchemist::neutral(3);
+    finalLimiter.p[0]=.90f;           // ceiling ~-0.9 dBFS
+    finalLimiter.p[1]=10.5f/18.f;     // input drive +10.5dB
+    finalLimiter.p[2]=.40f;           // smooth release
+    result[13]=finalLimiter;
     return result;
 }
 inline constexpr auto stages=makeStages();
 inline constexpr int factoryIndex=46;
 inline constexpr const char* name="Deuce v2.5 (Native Trial)";
 inline constexpr const char* bank="Main Vocals";
-static_assert(stages.size()==13 && stages[12].module==26,
-    "Native v2.5 study must preserve 12 Deuce stages and final 7kHz EQ");
+static_assert(stages.size()==14 && stages[12].module==26
+              && stages[13].module==3,
+    "Current Deuce v2.5 trial has editable EQ and output limiter");
 }
 
 namespace skellpreset::alchemist_trial {
