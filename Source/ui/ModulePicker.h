@@ -131,7 +131,7 @@ public:
     int resultCountForTest() const noexcept {return (int)results.size();}
     bool testVisibleKeyboardRow() {
         const int count=visibleRows();
-        if(results.size()<=count)return true;
+        if(static_cast<int>(results.size())<=count)return true;
         const int oldSelected=selectedRow,oldTop=topItem;
         topItem=0;selectedRow=0;
         for(int i=0;i<count;++i)if(search.onArrow)search.onArrow(1);
@@ -210,7 +210,7 @@ public:
         Theme::text(g,juce::String(results.size())+" EFFECTS",
                     {getWidth()-125,foot,105,17},9,Theme::green,false,
                     juce::Justification::centredRight);
-        if(results.size()>visible) {
+        if(static_cast<int>(results.size())>visible) {
             const float trackH=(float)(visible*rowHeight);
             const float gripH=trackH*visible/(float)results.size();
             const float progress=topItem/(float)std::max(1,(int)results.size()-visible);
