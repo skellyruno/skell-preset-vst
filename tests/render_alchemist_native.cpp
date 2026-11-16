@@ -469,16 +469,23 @@ int render(const juce::File& source, const juce::File& destination,
     if(factoryIndex!=skellpreset::alchemist::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_trial::factoryIndex &&
        factoryIndex!=skellpreset::deuce::factoryIndex &&
-       factoryIndex!=skellpreset::deuce_v25::factoryIndex) {
-        std::fprintf(stderr,"ERROR: factory selection must be 43, 44, 45 or 46\n");
+       factoryIndex!=skellpreset::deuce_v25::factoryIndex &&
+       factoryIndex!=skellpreset::alchemist_peak_guard_trial::factoryIndex) {
+        std::fprintf(stderr,"ERROR: factory selection must be 43, 44, 45, 46 or 47\n");
         return 7;
     }
     plugin->loadFactoryPreset(factoryIndex);
+    const bool deuceFactory=factoryIndex==skellpreset::deuce::factoryIndex ||
+                             factoryIndex==skellpreset::deuce_v25::factoryIndex;
+    const bool deuceCountValid=factoryIndex==skellpreset::deuce::factoryIndex
+        ?plugin->activeSlotCount()==12
+        :plugin->activeSlotCount()==13;
+    const bool alchemistChainValid=plugin->slotType(6)==SkellPresetAudioProcessor::AlchemistMatchFinishFX &&
+        (factoryIndex==skellpreset::alchemist_peak_guard_trial::factoryIndex
+            ?plugin->slotType(7)==SkellPresetAudioProcessor::Limiter
+            :plugin->slotType(7)==SkellPresetAudioProcessor::Empty);
     if(plugin->loadedFactoryPresetIndex()!=factoryIndex ||
-       (factoryIndex==skellpreset::deuce::factoryIndex ||
-        factoryIndex==skellpreset::deuce_v25::factoryIndex
-          ?plugin->activeSlotCount()!=(factoryIndex==skellpreset::deuce::factoryIndex?12:13)
-          :plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX)) {
+       (deuceFactory ? !deuceCountValid : !alchemistChainValid)) {
         std::fprintf(stderr,"ERROR: incorrect native factory rack loaded\n");
         return 7;
     }
@@ -635,7 +642,8 @@ int nativeTrialsSmoke() {
     for(int factory:{skellpreset::alchemist::factoryIndex,
                      skellpreset::deuce::factoryIndex,
                      skellpreset::alchemist_trial::factoryIndex,
-                     skellpreset::deuce_v25::factoryIndex}) {
+                     skellpreset::deuce_v25::factoryIndex,
+                     skellpreset::alchemist_peak_guard_trial::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
         // Recall comparison must use the SAME prepare/order for both
         // instances. Preparing the source before loading its program while
@@ -662,6 +670,13 @@ int nativeTrialsSmoke() {
             std::abs(plugin->getSlotParam(6,13)-.25f)>.001f ||
             std::abs(plugin->getSlotParam(6,14)-.45f)>.001f ||
             std::abs(plugin->getSlotParam(6,15)-.38f)>.001f))return 203;
+        if(factory==skellpreset::alchemist_peak_guard_trial::factoryIndex &&
+           (plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+            plugin->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
+            std::abs(plugin->getSlotParam(7,0)-.89f)>.001f ||
+            std::abs(plugin->getSlotParam(7,1))>.001f ||
+            plugin->getLatencySamples()<48 || plugin->getLatencySamples()>1024))
+            return 219;
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=plugin->state.getRawParameterValue("s13_eqQ7");
             const auto* output=plugin->state.getRawParameterValue("output");
@@ -707,6 +722,11 @@ int nativeTrialsSmoke() {
             std::abs(recalled->getSlotParam(6,13)-.25f)>.001f ||
             std::abs(recalled->getSlotParam(6,14)-.45f)>.001f ||
             std::abs(recalled->getSlotParam(6,15)-.38f)>.001f))return 211;
+        if(factory==skellpreset::alchemist_peak_guard_trial::factoryIndex &&
+           (recalled->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
+            std::abs(recalled->getSlotParam(7,0)-.89f)>.001f ||
+            std::abs(recalled->getSlotParam(7,1))>.001f ||
+            recalled->getLatencySamples()!=plugin->getLatencySamples()))return 220;
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=recalled->state.getRawParameterValue("s13_eqQ7");
             const auto* output=recalled->state.getRawParameterValue("output");
@@ -756,6 +776,21 @@ int nativeTrialsSmoke() {
         }
         if(squared<1.e-6)return 206;
     }
+    // The peak-guard variant must add PDC only while its final limiter is active.
+    auto peakSwitcher=std::make_unique<SkellPresetAudioProcessor>();
+    peakSwitcher->loadFactoryPreset(skellpreset::alchemist_peak_guard_trial::factoryIndex);
+    peakSwitcher->prepareToPlay(48000.,256);
+    const int guardedLatency=peakSwitcher->getLatencySamples();
+    if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
+       guardedLatency<48 || guardedLatency>1024)return 221;
+    peakSwitcher->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Empty ||
+       peakSwitcher->getLatencySamples()!=0 ||
+       std::abs(peakSwitcher->getSlotParam(6,12)-.5f)>1.e-6f)return 222;
+    peakSwitcher->loadFactoryPreset(skellpreset::alchemist_peak_guard_trial::factoryIndex);
+    if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
+       peakSwitcher->getLatencySamples()!=guardedLatency)return 223;
+    peakSwitcher->releaseResources();
     // Switching between the protected original and opt-in trial must
     // restore every refinement control instead of leaving stale automation.
     auto switcher=std::make_unique<SkellPresetAudioProcessor>();
@@ -814,13 +849,13 @@ int main(int argc,char** argv) {
                            juce::File(juce::String::fromUTF8(argv[3])));
     if(argc==5 && juce::String(argv[1])=="--factory") {
         const auto requested=juce::String(argv[2]);
-        if(requested!="43" && requested!="44" && requested!="45" && requested!="46")return 7;
+        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47")return 7;
         return render(juce::File(juce::String::fromUTF8(argv[3])),
                       juce::File(juce::String::fromUTF8(argv[4])),
                       requested.getIntValue());
     }
     if(argc!=3) {
-        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46 INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
     }

@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,47> factoryPresets {{
+inline constexpr std::array<FactoryPreset,48> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -74,6 +74,10 @@ inline constexpr std::array<FactoryPreset,47> factoryPresets {{
     {"Deuce v2.5 (Native Trial)","Main Vocals",
      "Preferred v2.5 reference: native REC/MAIN approximation with 7 kHz correction",
      5,.52f,.50f,.04f,.20f},
+    // Index 47 is an opt-in Alchemist safety variant; 43 and 45 stay unchanged.
+    {"Alchemist Peak Guard (Trial)","Main Vocals",
+     "Alchemist refinement plus 4x interpolated-peak guard (~-0.97 dB, 3 ms PDC; not BS.1770 certified)",
+     4,.50f,.42f,.02f,.12f},
 }};
 static_assert(factoryPresets[43].name==std::string_view("Alchemist (Native Preview)"),
     "Do not change approved Alchemist factory index");
@@ -83,4 +87,6 @@ static_assert(factoryPresets[45].name==std::string_view("Alchemist Refined (Tria
     "Alchemist refinement stays at index 45");
 static_assert(factoryPresets[46].name==std::string_view("Deuce v2.5 (Native Trial)"),
     "Newest user-preferred Deuce study appended at 46");
+static_assert(factoryPresets[47].name==std::string_view("Alchemist Peak Guard (Trial)"),
+    "Alchemist peak-guard variant must remain append-only at 47");
 }

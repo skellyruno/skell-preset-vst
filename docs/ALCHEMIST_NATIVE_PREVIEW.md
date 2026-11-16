@@ -93,3 +93,22 @@ The first native Skell preset incorrectly attenuated the high bands, making it e
 - No Skell Studio process, Python, external vendor VST3 or reference-audio file is needed at runtime.
 - Use an explicitly **preview** identity and leave the shipped factory preset intact until native-audio A/B is measured.
 - A separate `.skellpreset` package can be imported into existing Skell Preset versions supporting all seven module IDs, including new ID 31, and schema v2, even before the built-in preset ships.
+
+
+## Optional factory 47 — Alchemist Peak Guard (Trial)
+
+Factory 47 is a separate, append-only safety comparison. It copies the opt-in
+factory 45 Alchemist Refined chain and appends the existing rack Limiter
+(module ID 3) after Match Finish. The normalized ceiling control is 0.89,
+which maps through the existing limiter law to approximately -0.97 dB; drive
+is zero and the limiter is fully wet. The existing SkellCore Standard limiter
+uses four interpolated phases and 16 taps, with approximately 3 ms host PDC
+(132 samples at 44.1 kHz; 144 at 48 kHz).
+
+This variant does **not** replace factory 43 or 45, does not alter the default
+empty rack, and does not claim BS.1770-certified true-peak compliance. It is
+a safety-oriented listening candidate, not a proven closer sound match. The
+factory recall test checks the appended module, ceiling, state roundtrip and
+PDC restoration when switching back to the original Alchemist. The original
+dry/processed same-take WAV comparison and FL Studio session check are still
+required before promotion.

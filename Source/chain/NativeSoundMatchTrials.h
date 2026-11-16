@@ -125,3 +125,29 @@ static_assert(stages[6].module==31,"Alchemist refinement must use legacy MatchFi
 static_assert(alchemist::stages[6].p[12]==.5f,
     "Approved Alchemist preview's optional quality path remains OFF");
 }
+
+
+// Separate, opt-in peak-safety candidate. It preserves factories 43 and 45,
+// then appends the existing SkellCore 4-phase/16-tap interpolated-peak limiter.
+// Ceiling is approximately -0.97 dB; the limiter adds 3 ms host PDC.
+// This estimator is NOT BS.1770-certified and needs same-take listening A/B.
+namespace skellpreset::alchemist_peak_guard_trial {
+constexpr auto makeStages() noexcept {
+    std::array<alchemist::NativeStage,8> result{};
+    for(std::size_t i=0;i<alchemist_trial::stages.size();++i)
+        result[i]=alchemist_trial::stages[i];
+    auto limiter=alchemist::neutral(3,1.f);
+    limiter.p[0]=.89f; // 20*log10(.12 + .87*.89) ~= -0.97 dB
+    limiter.p[1]=0.f;  // no additional drive
+    result[7]=limiter;
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=47;
+inline constexpr const char* name="Alchemist Peak Guard (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==8 && stages[6].module==31 && stages[7].module==3,
+    "Peak guard must append the existing limiter after Alchemist Match Finish");
+static_assert(stages[7].wet==1.f && stages[7].p[0]==.89f && stages[7].p[1]==0.f,
+    "Peak guard defaults must remain fully wet, bounded and zero-drive");
+}
