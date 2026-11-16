@@ -632,8 +632,10 @@ int nativeTrialsSmoke() {
             ?"Deuce D/Max":factory==skellpreset::alchemist_trial::factoryIndex
             ?"Alchemist Refined":"Deuce v2.5";
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
-        plugin->prepareToPlay(48000.,256);
+        // Mirror the restored instance: apply the complete factory state before
+        // prepareToPlay so both processors start from the same DSP lifecycle.
         plugin->loadFactoryPreset(factory);
+        plugin->prepareToPlay(48000.,256);
         const int expectedCount=factory==skellpreset::deuce::factoryIndex?12:
             factory==skellpreset::alchemist_trial::factoryIndex?10:13;
         if(plugin->loadedFactoryPresetIndex()!=factory ||
