@@ -3,7 +3,7 @@ on:
   push:
     branches: [ci/skell-preset-quick4-20261115, feat/skell-preset-rack-polish-20261115]
   pull_request:
-    branches: [ci/skell-preset-quick4-20261115, test/alchemist-original-factory-recall-20261116]
+    branches: [ci/skell-preset-quick4-20261115, test/alchemist-original-factory-recall-20261116, feat/alchemist-peak-guard-trial-20261116]
 permissions:
   contents: read
 concurrency:
