@@ -1305,6 +1305,8 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         loadNativeStages(skellpreset::deuce::stages);
     else if(index==skellpreset::alchemist_trial::factoryIndex)
         loadNativeStages(skellpreset::alchemist_trial::stages);
+    else if(index==skellpreset::deuce_v25::factoryIndex)
+        loadNativeStages(skellpreset::deuce_v25::stages);
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("micPreOn",0);setReal("micPreInput",0);
     setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
