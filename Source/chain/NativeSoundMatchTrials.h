@@ -177,3 +177,25 @@ static_assert(stages[1].p[11]==.478534f &&
               stages[1].p[15]==.830000f,
     "Measured tone-match corrections must remain explicit and bounded");
 }
+
+// Controlled dynamics comparison: retain factory 48's measured EQ and peak
+// guard, but reduce only the fast/slow compressor wet blends. This is an
+// opt-in listening trial; it does not replace factories 43, 45, 47 or 48.
+namespace skellpreset::alchemist_lighter_dynamics_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_tone_match_trial::stages;
+    result[2].wet=.20f; // Fast compressor: 35% -> 20% wet
+    result[3].wet=.50f; // Smooth compressor: 70% -> 50% wet
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=49;
+inline constexpr const char* name="Alchemist Lighter Dynamics (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==8 && stages[2].module==2 && stages[3].module==19,
+    "Dynamics trial must preserve the same Alchemist compressor stages");
+static_assert(stages[2].wet==.20f && stages[3].wet==.50f,
+    "Only the two compressor wet blends are reduced");
+static_assert(stages[7].module==3 && stages[7].wet==1.f,
+    "Keep factory 48 peak guard as the final stage");
+}

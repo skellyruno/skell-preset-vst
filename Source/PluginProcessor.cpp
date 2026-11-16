@@ -1311,6 +1311,8 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         loadNativeStages(skellpreset::alchemist_peak_guard_trial::stages);
     else if(index==skellpreset::alchemist_tone_match_trial::factoryIndex)
         loadNativeStages(skellpreset::alchemist_tone_match_trial::stages);
+    else if(index==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_lighter_dynamics_trial::stages);
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     // Calibrated against protected 15s OFFLINE v2.5 (~-20.0 LUFS,
     // -4.03 dBTP), not the ~6.8dB louder original FL recording chain.

@@ -762,6 +762,21 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr,"Alchemist refined factory screenshot failed\n");
                 ++failures;
             }
+            processor.loadFactoryPreset(skellpreset::alchemist_lighter_dynamics_trial::factoryIndex);
+            if(processor.slotType(2)!=skellpreset::alchemist_lighter_dynamics_trial::stages[2].module ||
+               processor.slotType(3)!=skellpreset::alchemist_lighter_dynamics_trial::stages[3].module) {
+                std::fprintf(stderr,"Alchemist lighter-dynamics factory did not load\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(2,0);
+            const auto lighterDynamics=skellcore::ui::headless::capture(editor,1168,688);
+            if(!lighterDynamics.image.isValid() || lighterDynamics.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(lighterDynamics.image,
+                   folder.getChildFile("obsidian-alchemist-lighter-dynamics-100.png"))) {
+                std::fprintf(stderr,"Alchemist lighter-dynamics factory screenshot failed\n");
+                ++failures;
+            }
             processor.loadFactoryPreset(0);
             editor.configureForScreenshot(0,1,false);
             editor.selectRackSlotForScreenshot(0,0);

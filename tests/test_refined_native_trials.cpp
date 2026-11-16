@@ -23,6 +23,14 @@ int main() {
     static_assert(atr::factoryIndex==de::factoryIndex+1,"append-only Alchemist trial");
     static_assert(al::stages.size()==7 && de::stages.size()==12,"factory shape");
     static_assert(al::stages[6].p[12]==.5f,"base Alchemist must stay refined-OFF");
+    static_assert(skellpreset::alchemist_lighter_dynamics_trial::factoryIndex==49,
+                  "Alchemist lighter-dynamics trial is append-only");
+    static_assert(skellpreset::alchemist_lighter_dynamics_trial::stages.size()==8 &&
+                  skellpreset::alchemist_lighter_dynamics_trial::stages[7].module==3,
+                  "Lighter-dynamics trial retains the 8-stage tone-match/guard chain");
+    static_assert(skellpreset::alchemist_lighter_dynamics_trial::stages[2].wet==.20f &&
+                  skellpreset::alchemist_lighter_dynamics_trial::stages[3].wet==.50f,
+                  "Only the fast/slow compressor wet blends are reduced");
     static_assert(atr::stages[6].p[12]==1.f,"new refinement trial opt-in");
     for(double sr:{8000.,44100.,48000.,96000.,192000.}) {
         AlchemistRefinedDSP fx;fx.prepare(sr);
@@ -88,6 +96,21 @@ int main() {
         const float x=.15f*std::sin(2.f*3.14159265f*344.f*i/48000.f);
         assert(legacy.process(x,x)==disabled.process(x,x));
     }
+    // Factory 49 is a controlled wet-mix comparison against factory 48.
+    // EQ, compressor parameters, Match Finish, limiter and automation IDs
+    // must remain identical; only stages 2 and 3 change wet blend.
+    for(std::size_t i=0;i<skellpreset::alchemist_lighter_dynamics_trial::stages.size();++i) {
+        const auto& base=skellpreset::alchemist_tone_match_trial::stages[i];
+        const auto& trial=skellpreset::alchemist_lighter_dynamics_trial::stages[i];
+        if(base.module!=trial.module || base.p!=trial.p || base.q!=trial.q)
+            return 10;
+        const float expected=i==2?.20f:(i==3?.50f:base.wet);
+        if(std::abs(trial.wet-expected)>1.e-7f)return 11;
+        for(float value:trial.p)
+            if(!std::isfinite(value)||value<0.f||value>1.f)return 12;
+        for(float value:trial.q)
+            if(!std::isfinite(value)||value<0.f||value>1.f)return 13;
+    }
     std::cout<<"Five opt-in causal refinements, untouched original preset, "
-                "12-slot Deuce candidate, 8–192 kHz: PASS\n";
+                "12-slot Deuce candidate, append-only Alchemist factory 49, 8–192 kHz: PASS\n";
 }
