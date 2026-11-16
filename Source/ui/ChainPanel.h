@@ -24,6 +24,16 @@ public:
     bool testWheelScrollDoesNotReorder();
     bool testWheelWetAndRack();
     bool testRemoveExtraSlot();
+    // Local Quick4 captures the ACTUAL custom right-click menu, including
+    // the bottom Remove from Rack action. No mock popup is drawn.
+    bool openContextMenuForScreenshot(int visualRow) {
+        if(visualRow<scrollOffset || visualRow>=processor.activeSlotCount() ||
+           visualRow>=scrollOffset+visibleRows)return false;
+        popupFor(processor.slotIdAt(visualRow),{});
+        return contextOpen && contextTop>=0 &&
+               contextTop+218<=getHeight() && getWidth()>=209;
+    }
+    void dismissContextMenuForScreenshot() {contextOpen=false;contextHover=-1;repaint();}
     bool canScrollForTest() const noexcept {
         return processor.activeSlotCount()>visibleRows;
     }
