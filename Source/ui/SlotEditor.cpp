@@ -2051,8 +2051,8 @@ void SlotEditor::paint(juce::Graphics&g) {
             Theme::text(g,juce::String(rackPeak*100.f,0)+"%",
                         {(int)rail.getX()+39,(int)rail.getY()+69,60,24},
                         15,Theme::white,true);
-            Theme::text(g,"STATIC CEILING MAP / REAL LEVEL-DEPENDENT DYNAMICS",
-                {58,327,715,17},10,Theme::muted);
+            // Explanation belongs in the effect help text, not on top of
+            // the green transfer line at the left edge of this plot.
         } else if(type==SkellPresetAudioProcessor::Saturator){
             // Waveshaper response changes as the real Drive and Character do.
             juce::Path shape,unity;
