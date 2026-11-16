@@ -724,6 +724,29 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr,"Deuce D/Max native rack screenshot failed\n");
                 ++failures;
             }
+            // Latest *approved listening winner* v2.5 is a separate native
+            // 13-slot preview, not a 1:1 recreation of offline v2.3 DSP.
+            processor.loadFactoryPreset(skellpreset::deuce_v25::factoryIndex);
+            if(processor.activeSlotCount()!=13 ||
+               processor.slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX)
+                ++failures;
+            editor.configureForScreenshot(0,0,false);
+            const auto v25Simple=skellcore::ui::headless::capture(editor,1168,688);
+            if(!v25Simple.image.isValid() || v25Simple.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(v25Simple.image,
+                   folder.getChildFile("obsidian-deuce-v25-native-simple-100.png"))) {
+                std::fprintf(stderr,"Deuce v2.5 native Simple screenshot failed\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(12,6);
+            const auto v25Rack=skellcore::ui::headless::capture(editor,1168,688);
+            if(!v25Rack.image.isValid() || v25Rack.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(v25Rack.image,
+                   folder.getChildFile("obsidian-deuce-v25-native-7khz-100.png"))) {
+                std::fprintf(stderr,"Deuce v2.5 presence EQ screenshot failed\n");
+                ++failures;
+            }
             processor.loadFactoryPreset(skellpreset::alchemist_trial::factoryIndex);
             if(processor.getSlotParam(6,12)<=.75f ||
                processor.slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
