@@ -606,6 +606,8 @@ public:
             issues.add("Studio EQ double-click on the graph did not create/edit a real eighth node");
         if(!slot.testMatchFinishPages())
             issues.add("Alchemist Shape/Calibration tabs do not expose all eight real parameters");
+        if(!slot.testStudioLimiterPages())
+            issues.add("Studio Limiter pages or dedicated p9 gate floor do not control host DSP");
         if(!slot.testMicModelCards())
             issues.add("Mic Modeling profile cards failed to update stable host parameters");
         if(!slot.testModOrbToggle())
