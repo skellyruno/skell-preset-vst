@@ -660,14 +660,20 @@ int nativeTrialsSmoke() {
         }
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=plugin->state.getRawParameterValue("s13_eqQ7");
+            const float qNormalized=eqQ?eqQ->load():-1.f;
+            // APVTS EQ-Q parameters have a 0.001 normalized host step.
+            // The source target .2098347 therefore recalls as .210; assert
+            // both that legal stored value and its physical Q ~= 0.75.
+            const float qPhysical=eqQ?.4f*std::pow(20.f,qNormalized):-1.f;
             if(plugin->slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX ||
                std::abs(plugin->getSlotParam(12,12)-.9060003f)>.00001f ||
                std::abs(plugin->getSlotParam(12,13)-.525f)>.00001f ||
-               !eqQ || std::abs(eqQ->load()-.2098347f)>.00001f) {
+               !eqQ || std::abs(qNormalized-.210f)>.00051f ||
+               std::abs(qPhysical-.75f)>.001f) {
                 std::fprintf(stderr,
-                    "FAIL %s appended EQ slot: type=%d frequency=%g gain=%g q=%g\\n",
+                    "FAIL %s appended EQ slot: type=%d frequency=%g gain=%g qNorm=%g qPhysical=%g\\n",
                     label,plugin->slotType(12),plugin->getSlotParam(12,12),
-                    plugin->getSlotParam(12,13),eqQ?eqQ->load():-1.f);
+                    plugin->getSlotParam(12,13),qNormalized,qPhysical);
                 return 203;
             }
         }
