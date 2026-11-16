@@ -742,8 +742,12 @@ public:
                !on || on->load()<.5f)
                 issues.add("Studio Six native effect chain is missing a stage");
         }
-        if(processor.getNumPrograms()!=44)
-            issues.add("Alchemist factory program did not append at index 43");
+        if(processor.getNumPrograms()!=47 ||
+           processor.getProgramName(43)!="Alchemist (Native Preview)" ||
+           processor.getProgramName(44)!="Deuce D/Max (Native Trial)" ||
+           processor.getProgramName(45)!="Alchemist Refined (Trial)" ||
+           processor.getProgramName(46)!="Deuce v2.5 (Native Trial)")
+            issues.add("Append-only main-vocal factories or legacy Alchemist index changed");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);
