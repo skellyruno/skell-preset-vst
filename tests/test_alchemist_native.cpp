@@ -18,7 +18,7 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==48,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==49,"Append only; preserve prior programs");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
@@ -37,6 +37,16 @@ int main() {
     assert(alchemist_peak_guard_trial::stages[7].wet==1.f);
     assert(std::abs(alchemist_peak_guard_trial::stages[7].p[0]-.89f)<1.e-7f);
     assert(alchemist_peak_guard_trial::stages[7].p[1]==0.f);
+    assert(std::strcmp(factoryPresets[48].name,alchemist_tone_match_trial::name)==0);
+    assert(std::strcmp(factoryPresets[48].bank,"Main Vocals")==0);
+    assert(alchemist_tone_match_trial::stages.size()==8);
+    assert(alchemist_tone_match_trial::stages[7].module==3);
+    assert(alchemist_tone_match_trial::stages[7].wet==1.f);
+    assert(std::abs(alchemist_tone_match_trial::stages[1].p[11]-.478534f)<1.e-7f);
+    assert(std::abs(alchemist_tone_match_trial::stages[1].p[13]-.738915f)<1.e-7f);
+    assert(std::abs(alchemist_tone_match_trial::stages[1].p[15]-.830000f)<1.e-7f);
+    for(std::size_t i=0;i<alchemist_peak_guard_trial::stages.size();++i)
+        assert(alchemist_tone_match_trial::stages[i].module==alchemist_peak_guard_trial::stages[i].module);
     assert(std::strcmp(factoryPresets[46].bank,"Main Vocals")==0);
     assert(deuce_v25::stages.size()==13);
     assert(deuce_v25::stages[12].module==26);

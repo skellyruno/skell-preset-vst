@@ -112,3 +112,21 @@ factory recall test checks the appended module, ceiling, state roundtrip and
 PDC restoration when switching back to the original Alchemist. The original
 dry/processed same-take WAV comparison and FL Studio session check are still
 required before promotion.
+
+
+## Optional factory 48 — Alchemist Tone Match (Trial)
+
+Factory 48 is a measured, append-only tonal correction on top of factory 47.
+The same-take native factory 43/45 renders were aligned and LUFS-matched to
+the hash-verified MAIN effects target. Across the full 42.602-second print,
+both candidates were about 1.0 dB low from 1.5–3.5 kHz and about 0.6 dB /
+1.1 dB high from 3.5–7.5 / 7.5–12 kHz. Factory 48 therefore changes only
+three existing eight-band EQ gains: 2.93 kHz +1.0 dB, 5.10 kHz -0.6 dB,
+and 12.0 kHz -1.1 dB. It retains the factory 47 final interpolated-peak
+limiter and its approximately 3 ms PDC.
+
+This is a **new test candidate**, not an approved sound champion. The
+corrections were estimated from the rendered output bands; they must be
+verified by rendering factory 48 from the current source against the same
+target and comparing LUFS, 4x peak, band error and 20/50/200/400 ms envelope.
+Factories 43, 45 and 47 remain available unchanged for A/B rollback.

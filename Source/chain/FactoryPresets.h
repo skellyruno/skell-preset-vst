@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,48> factoryPresets {{
+inline constexpr std::array<FactoryPreset,49> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -78,6 +78,11 @@ inline constexpr std::array<FactoryPreset,48> factoryPresets {{
     {"Alchemist Peak Guard (Trial)","Main Vocals",
      "Alchemist refinement plus 4x interpolated-peak guard (~-0.97 dB, 3 ms PDC; not BS.1770 certified)",
      4,.50f,.42f,.02f,.12f},
+    // Index 48 applies measured native-vs-MAIN tonal corrections while keeping
+    // the previous 43/45/47 factory candidates available for A/B rollback.
+    {"Alchemist Tone Match (Trial)","Main Vocals",
+     "Measured 2.93k +1.0dB / 5.1k -0.6dB / 12k -1.1dB correction plus peak guard; 3 ms PDC",
+     4,.50f,.42f,.02f,.12f},
 }};
 static_assert(factoryPresets[43].name==std::string_view("Alchemist (Native Preview)"),
     "Do not change approved Alchemist factory index");
@@ -89,4 +94,6 @@ static_assert(factoryPresets[46].name==std::string_view("Deuce v2.5 (Native Tria
     "Newest user-preferred Deuce study appended at 46");
 static_assert(factoryPresets[47].name==std::string_view("Alchemist Peak Guard (Trial)"),
     "Alchemist peak-guard variant must remain append-only at 47");
+static_assert(factoryPresets[48].name==std::string_view("Alchemist Tone Match (Trial)"),
+    "Measured Alchemist tone-match trial must remain append-only at 48");
 }

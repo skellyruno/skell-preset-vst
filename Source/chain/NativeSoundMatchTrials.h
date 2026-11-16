@@ -151,3 +151,29 @@ static_assert(stages.size()==8 && stages[6].module==31 && stages[7].module==3,
 static_assert(stages[7].wet==1.f && stages[7].p[0]==.89f && stages[7].p[1]==0.f,
     "Peak guard defaults must remain fully wet, bounded and zero-drive");
 }
+
+
+// Append-only tonal correction derived from the compiled factory 43/45
+// renders against the hash-verified MAIN target. After full-file LUFS match,
+// the native outputs were ~1.0 dB low at 1.5-3.5 kHz and ~0.6 / 1.1 dB
+// high at 3.5-7.5 / 7.5-12 kHz. Only the three matching EQ gains are changed.
+// This remains a same-take candidate; it is not yet user-approved.
+namespace skellpreset::alchemist_tone_match_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_peak_guard_trial::stages;
+    result[1].p[11]=.478534f; // 2.93 kHz band: +1.0 dB
+    result[1].p[13]=.738915f; // 5.10 kHz band: -0.6 dB
+    result[1].p[15]=.830000f; // 12.0 kHz band: -1.1 dB
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=48;
+inline constexpr const char* name="Alchemist Tone Match (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==8 && stages[6].module==31 && stages[7].module==3,
+    "Tone-match trial must preserve Alchemist finish and final peak guard");
+static_assert(stages[1].p[11]==.478534f &&
+              stages[1].p[13]==.738915f &&
+              stages[1].p[15]==.830000f,
+    "Measured tone-match corrections must remain explicit and bounded");
+}
