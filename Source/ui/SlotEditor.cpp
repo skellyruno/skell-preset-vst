@@ -558,7 +558,11 @@ void SlotEditor::layoutEmbeddedEditor(){
     constexpr float x=18.f,y=85.f,w=870.f,h=437.f;
     const float editorWidth=(float)juce::jmax(1,embeddedEditor->getWidth());
     const float editorHeight=(float)juce::jmax(1,embeddedEditor->getHeight());
-    const float scale=juce::jlimit(.1f,1.f,
+    // Fit small third-party editors UP as well as large ones down, while
+    // retaining their native aspect and hit-test coordinates. Bound the
+    // optional enlargement to 135% to keep text/raster UIs legible; any
+    // incompatible editor can still be detached at native size.
+    const float scale=juce::jlimit(.1f,1.35f,
         juce::jmin(w/editorWidth,h/editorHeight));
     embeddedEditor->setTransform(juce::AffineTransform::scale(scale));
     const float actualW=editorWidth*scale,actualH=editorHeight*scale;
