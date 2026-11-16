@@ -1268,9 +1268,9 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.strokePath(curve,juce::PathStrokeType(2.4f));
         g.setColour(Theme::green.withAlpha(.08f));
         g.fillRoundedRectangle(plot.reduced(13.f),4.f);
-        Theme::text(g,"CAUSAL HARMONIC TRANSFER  /  SOLID = ACTIVE · DIM = CLEAN",
+        Theme::text(g,"CAUSAL HARMONIC TRANSFER / SOLID = ACTIVE / DIM = CLEAN",
             {56,166,620,19},10,Theme::green,true);
-        Theme::text(g,"20 / 120 / 280ms detector  ·  ±0.6dB bounded contour  ·  0ms lookahead",
+        Theme::text(g,"20 / 120 / 280ms DETECTORS / +/-0.6 dB CONTOUR / 0ms LOOKAHEAD",
             {56,325,700,20},10,Theme::muted);
         }
     }
@@ -2350,7 +2350,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail="RIGHT-CLICK A NODE FOR HP / LP / SHELF / REMOVE";
     } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         effectTitle="8-BAND EQ  /  EIGHT INDEPENDENT FREQUENCY + GAIN NODES";
-        effectDetail="SELECT ANY DOT TO EDIT FREQUENCY / GAIN / Q  ·  ZERO ADDED PDC";
+        effectDetail="SELECT ANY DOT TO EDIT FREQUENCY / GAIN / Q / ZERO ADDED PDC";
     } else if(type==SkellPresetAudioProcessor::SerialDynamicsFX) {
         effectTitle="FET + OPTO  /  TWO-STAGE VOCAL COMPRESSION";
         effectDetail=juce::String(-48.f+42.f*processor.getSlotParam(slot,0),0)+
@@ -2375,7 +2375,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             "  /  DUCK "+juce::String(processor.getSlotParam(slot,2)*100.f,0)+
             "%  /  HOST BPM FALLBACK 120";
     } else if(type==SkellPresetAudioProcessor::SkelldizerFX) {
-        effectTitle="SKELLDIZER / PUNCH · WARM · AIR · GRIT";
+        effectTitle="SKELLDIZER / PUNCH / WARM / AIR / GRIT";
         effectDetail="3-BAND HARMONIC CHARACTER / OPTIONAL LEVEL MATCH / ZERO LOOKAHEAD";
     } else if(type==SkellPresetAudioProcessor::MicModelFX) {
         effectTitle="MIC MODELING  /  NATIVE TONAL PROFILE";
@@ -2504,7 +2504,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::EightBandToneFX ? "CLICK ANY OF EIGHT NODES  /  DRAG TO CHANGE ITS FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::AdaptiveNoiseFX ? "ADAPTIVE GATE  /  NOT AN RNNOISE NEURAL MODEL" :
-                  type==SkellPresetAudioProcessor::StudioPitchFormantFX ? "SPECTRAL PITCH / FORMANT  ·  ALIGNED HOST LATENCY 768 SAMPLES" :
+                  type==SkellPresetAudioProcessor::StudioPitchFormantFX ? "SPECTRAL PITCH / FORMANT / HOST LATENCY 768 SAMPLES" :
                   type==SkellPresetAudioProcessor::AlchemistMatchFinishFX ? "CAUSAL REFERENCE-LEARNED CONTOUR  /  CALIBRATE FOR EACH DIFFERENT VOICE" :
                   type==SkellPresetAudioProcessor::MicModelFX ? "TONAL RESPONSE SKETCH  /  NOT A MEASURED HARDWARE MICROPHONE IMPULSE" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
