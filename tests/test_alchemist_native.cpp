@@ -18,7 +18,7 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==46,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==47,"Append only; preserve prior programs");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
@@ -27,6 +27,48 @@ int main() {
     assert(std::strcmp(factoryPresets[44].name,deuce::name)==0);
     assert(std::strcmp(factoryPresets[44].bank,"Main Vocals")==0);
     assert(std::strcmp(factoryPresets[45].name,alchemist_trial::name)==0);
+    assert(std::strcmp(factoryPresets[46].name,deuce_v25::name)==0);
+    assert(std::strcmp(factoryPresets[46].bank,"Main Vocals")==0);
+    assert(deuce_v25::stages.size()==13);
+    for(size_t i=0;i<deuce::stages.size();++i) {
+        const auto& oldStage=deuce::stages[i];
+        const auto& newStage=deuce_v25::stages[i];
+        assert(oldStage.module==newStage.module && oldStage.wet==newStage.wet);
+        assert(oldStage.p==newStage.p && oldStage.q==newStage.q);
+    }
+    const auto& presence=deuce_v25::stages.back();
+    assert(presence.module==26 && presence.wet==1.f);
+    const double hz=EightBandTone::edges[6]*
+        std::pow(EightBandTone::edges[7]/EightBandTone::edges[6],presence.p[12]);
+    const double db=(presence.p[13]-.5f)*30.;
+    assert(std::abs(hz-7000.)<1.);
+    assert(std::abs(db-.75)<.0001);
+    assert(std::abs(EightBandTone::qFromNormalized(presence.q[6])-.75f)<.0001f);
+    for(size_t i=0;i<8;++i)if(i!=6)
+        assert(presence.p[i*2+1]==.5f); // all other bands remain 0 dB
+    // Run the native EQ on real synthetic audio; each test starts with fresh
+    // state so no stale smoothed-filter coefficients enter the result.
+    for(double sr:{44100.,48000.,96000.}) {
+        auto responseDb=[&](double frequency) {
+            EightBandTone filter;
+            filter.prepare(sr);
+            filter.set(sr,presence.p,presence.q);
+            double in=0.,out=0.;
+            const int samples=(int)(sr*.25);
+            for(int n=0;n<samples;++n) {
+                const float x=.1f*std::sin(float(2.*pi*frequency*n/sr));
+                const auto y=filter.process(x,x);
+                assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+                if(n>samples/2) {
+                    in+=(double)x*x;
+                    out+=(double)y[0]*y[0];
+                }
+            }
+            return 10.*std::log10(out/in);
+        };
+        assert(std::abs(responseDb(7000.)-.75)<.09);
+        assert(std::abs(responseDb(1000.))<.07);
+    }
     for(const auto& stage:deuce::stages){
         assert(stage.module>=1 && stage.module<38);
         assert(stage.wet>=0.f&&stage.wet<=1.f);

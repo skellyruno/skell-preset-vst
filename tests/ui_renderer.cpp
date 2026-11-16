@@ -3,6 +3,7 @@
 #include "../Source/PluginEditor.h"
 #include "../Source/PluginProcessor.h"
 #include "../Source/chain/AlchemistNativePreset.h"
+#include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/host/InstalledVST3Index.h"
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -39,6 +40,24 @@ int main(int argc, char** argv) {
     SkellPresetAudioProcessor processor;
     processor.prepareToPlay(48000.0, 512);
     int failures = 0;
+    // Exercise the actual factory loader: v2.5 must survive all 13 editable
+    // APVTS slots, remain independent of D/Max, and report no surprise PDC.
+    processor.loadFactoryPreset(skellpreset::deuce_v25::factoryIndex);
+    if(processor.loadedFactoryPresetIndex()!=skellpreset::deuce_v25::factoryIndex
+       || processor.activeSlotCount()!=13
+       || processor.slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX
+       || std::abs(processor.getSlotParam(12,13)-.525f)>.00001f
+       || processor.getLatencySamples()!=0) {
+        std::fprintf(stderr,"Deuce v2.5 native factory rack missing/preset not recalled\n");
+        ++failures;
+    }
+    processor.loadFactoryPreset(skellpreset::deuce::factoryIndex);
+    if(processor.activeSlotCount()!=12
+       || processor.loadedFactoryPresetIndex()!=skellpreset::deuce::factoryIndex) {
+        std::fprintf(stderr,"Deuce D/Max prior factory rack was changed\n");
+        ++failures;
+    }
+    processor.loadFactoryPreset(0);
     // Verify filesystem-only VST3 browsing independently of installed plugin
     // binaries. This runs in the actual JUCE UI harness on Linux as well.
     {
@@ -697,6 +716,50 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr,"Actual Studio limiter editor screenshot failed\n");
                 ++failures;
             }
+            // User-requested native listening trials. These are screenshots
+            // of REAL plugin factory states, not renders of protected audio.
+            processor.loadFactoryPreset(skellpreset::deuce::factoryIndex);
+            if(processor.activeSlotCount()!=12 ||
+               processor.slotType(6)!=SkellPresetAudioProcessor::Compressor ||
+               processor.slotType(7)!=SkellPresetAudioProcessor::DeEsser) {
+                std::fprintf(stderr,"Deuce D/Max native 12-slot factory not loaded\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,0,false);
+            const auto deuceSimple=skellcore::ui::headless::capture(editor,1168,688);
+            if(!deuceSimple.image.isValid() || deuceSimple.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(deuceSimple.image,
+                   folder.getChildFile("obsidian-deuce-dmax-native-simple-100.png"))) {
+                std::fprintf(stderr,"Deuce D/Max native Simple screenshot failed\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(6,3);
+            const auto deuceRack=skellcore::ui::headless::capture(editor,1168,688);
+            if(!deuceRack.image.isValid() || deuceRack.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(deuceRack.image,
+                   folder.getChildFile("obsidian-deuce-dmax-native-rack-100.png"))) {
+                std::fprintf(stderr,"Deuce D/Max native rack screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(skellpreset::alchemist_trial::factoryIndex);
+            if(processor.getSlotParam(6,12)<=.75f ||
+               processor.slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+                std::fprintf(stderr,"Alchemist refined opt-in factory not loaded\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(6,0);
+            const auto refined=skellcore::ui::headless::capture(editor,1168,688);
+            if(!refined.image.isValid() || refined.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(refined.image,
+                   folder.getChildFile("obsidian-alchemist-refined-trial-100.png"))) {
+                std::fprintf(stderr,"Alchemist refined factory screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(0);
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(0,0);
             // The rack menu was previously never photographed, so clipped
             // bottom actions could pass the 110-scene audit unnoticed.
             if(!editor.openRackContextMenuForScreenshot(0)) {

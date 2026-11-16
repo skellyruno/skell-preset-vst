@@ -15,6 +15,8 @@ int main() {
     namespace de=skellpreset::deuce;
     static_assert(de::factoryIndex==al::factoryIndex+1,"append-only Deuce index");
     static_assert(atr::factoryIndex==de::factoryIndex+1,"append-only Alchemist trial");
+    static_assert(skellpreset::deuce_v25::factoryIndex==atr::factoryIndex+1,
+                  "append-only v2.5 Deuce trial");
     static_assert(al::stages.size()==7 && de::stages.size()==12,"factory shape");
     static_assert(al::stages[6].p[12]==.5f,"base Alchemist must stay refined-OFF");
     static_assert(atr::stages[6].p[12]==1.f,"new refinement trial opt-in");

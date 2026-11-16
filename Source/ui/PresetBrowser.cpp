@@ -1,6 +1,7 @@
 #include "PresetBrowser.h"
 #include "Theme.h"
 #include "../chain/AlchemistNativePreset.h"
+#include "../chain/NativeSoundMatchTrials.h"
 #include <algorithm>
 #include <cmath>
 #include <array>
@@ -336,7 +337,11 @@ std::vector<int> PresetBrowser::filtered() const {
     if(bank==0 || bank==1 || bank==3)for(int i=0;i<(int)skellpreset::factoryPresets.size();++i) {
         const auto& item=skellpreset::factoryPresets[(size_t)i];
         const juce::String name(item.name),b(item.bank),desc(item.description);
-        if(i!=alchemistIndex)continue; // Hide old factory sounds, preserve their host program IDs.
+        // Expose the two Deuce trials for instant owner A/B against the
+        // established Alchemist program; preserve all historical factory
+        // IDs and keep previously hidden legacy sounds hidden.
+        if(i!=alchemistIndex && i!=skellpreset::deuce::factoryIndex
+           && i!=skellpreset::deuce_v25::factoryIndex)continue;
         if(bank==1 && b!=banks[bank])continue;
         if(bank==3 && !isFavorite(i))continue;
         bool found=q.isEmpty() || name.containsIgnoreCase(q) ||

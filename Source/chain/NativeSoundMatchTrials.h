@@ -6,6 +6,7 @@
 // Append the factory slot; preserve all preceding factory names/indices.
 #include "AlchemistNativePreset.h"
 #include <array>
+#include <cstddef>
 
 namespace skellpreset::deuce {
 using skellpreset::alchemist::NativeStage;
@@ -60,6 +61,37 @@ inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()<=16,"Deuce chain must fit Skell physical rack");
 static_assert(stages[6].module==2 && stages[7].module==11,
     "Preserve evidence-mapped Deuce compressor and De-Esser order");
+}
+
+namespace skellpreset::deuce_v25 {
+// The owner's preferred *offline* Deuce v2.5 was v2.3 Sustained Air followed
+// by a causal RBJ bell at 7000 Hz, Q .75, +.75 dB and -0.146715 dB trim.
+// v2.3's entire REC/MAIN algorithm is NOT available as this live native rack.
+// This append-only experiment retains the earlier D/Max-inspired stages
+// bit-for-bit and adds the measured presence correction as an editable
+// EightBandTone module (ID 26), with no new APVTS IDs or audio-thread work.
+// The offline gain trim is deliberately omitted: its loudness reference was
+// v2.3 audio and cannot correctly calibrate this different native base.
+constexpr auto makeStages() noexcept {
+    std::array<alchemist::NativeStage,13> result{};
+    for(size_t i=0;i<deuce::stages.size();++i)
+        result[i]=deuce::stages[i];
+    auto presence=alchemist::neutral(26);
+    // EightBandTone band 7 maps [3600,7500] Hz logarithmically;
+    // (0.525 - 0.5) * 30 dB = +0.75 dB, Q = 0.4 * 20^0.209835.
+    presence.p[12]=.9060003f;  // ~7000 Hz
+    presence.p[13]=.525f;      // +0.75 dB
+    presence.q[6]=.2098347f;   // Q = 0.75
+    result[12]=presence;
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=46;
+inline constexpr const char* name="Deuce v2.5 (Native Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()<=16,"Deuce v2.5 must fit existing physical rack");
+static_assert(stages[12].module==26 && stages[12].wet==1.f,
+              "Presence correction must be a fully wet native eight-band EQ");
 }
 
 namespace skellpreset::alchemist_trial {
