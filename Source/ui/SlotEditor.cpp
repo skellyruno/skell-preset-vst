@@ -2766,6 +2766,35 @@ void SlotEditor::mouseUp(const juce::MouseEvent&){
     gestureEqBand=-1;
 }
 
+bool SlotEditor::testClassicDynamicsUnits() {
+    // Headless test only: save and restore all existing slot parameters.
+    const int physical=slot, originalType=processor.slotType(physical);
+    std::array<float,9> original{};
+    for(int i=0;i<9;++i)original[(size_t)i]=processor.getSlotParam(physical,i);
+    processor.setSlotType(physical,SkellPresetAudioProcessor::Compressor);
+    select(physical);
+    const bool compressor=knobs[0].getTextFromValue(.5).contains("dBFS") &&
+        knobs[1].getTextFromValue(.5)=="6.5:1" &&
+        knobs[2].getTextFromValue(.5).contains("ms") &&
+        knobs[1].valueFromTextFunction &&
+        std::abs(knobs[1].valueFromTextFunction("6.5:1")-.5)<.002;
+    processor.setSlotType(physical,SkellPresetAudioProcessor::Gate);
+    select(physical);
+    const bool gate=knobs[0].getTextFromValue(.5)=="-40.0 dBFS" &&
+        knobs[2].getTextFromValue(.5)=="60 ms" &&
+        knobs[0].valueFromTextFunction &&
+        std::abs(knobs[0].valueFromTextFunction("-40 dBFS")-.5)<.002;
+    processor.setSlotType(physical,SkellPresetAudioProcessor::DeEsser);
+    select(physical);
+    const bool deesser=knobs[0].getTextFromValue(.5)=="7.50 kHz" &&
+        knobs[1].getTextFromValue(.5).contains("dBFS") &&
+        knobs[0].valueFromTextFunction &&
+        std::abs(knobs[0].valueFromTextFunction("7.5 kHz")-.5)<.002;
+    processor.setSlotType(physical,originalType);
+    for(int i=0;i<9;++i)processor.setSlotParam(physical,i,original[(size_t)i]);
+    select(physical);
+    return compressor&&gate&&deesser;
+}
 bool SlotEditor::testKnobReadouts() {
     const auto frequency=knobs[0].getTextFromValue(.5);
     const auto gain=knobs[1].getTextFromValue(.5);
