@@ -468,14 +468,16 @@ int render(const juce::File& source, const juce::File& destination,
     auto plugin=std::make_unique<SkellPresetAudioProcessor>();
     if(factoryIndex!=skellpreset::alchemist::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_trial::factoryIndex &&
-       factoryIndex!=skellpreset::deuce::factoryIndex) {
-        std::fprintf(stderr,"ERROR: factory selection must be 43, 44 or 45\n");
+       factoryIndex!=skellpreset::deuce::factoryIndex &&
+       factoryIndex!=skellpreset::deuce_v25::factoryIndex) {
+        std::fprintf(stderr,"ERROR: factory selection must be 43, 44, 45 or 46\n");
         return 7;
     }
     plugin->loadFactoryPreset(factoryIndex);
     if(plugin->loadedFactoryPresetIndex()!=factoryIndex ||
-       (factoryIndex==skellpreset::deuce::factoryIndex
-          ?plugin->activeSlotCount()!=12
+       (factoryIndex==skellpreset::deuce::factoryIndex ||
+        factoryIndex==skellpreset::deuce_v25::factoryIndex
+          ?plugin->activeSlotCount()!=(factoryIndex==skellpreset::deuce::factoryIndex?12:13)
           :plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX)) {
         std::fprintf(stderr,"ERROR: incorrect native factory rack loaded\n");
         return 7;
@@ -631,11 +633,13 @@ int monoSmoke() {
 
 int nativeTrialsSmoke() {
     for(int factory:{skellpreset::deuce::factoryIndex,
-                     skellpreset::alchemist_trial::factoryIndex}) {
+                     skellpreset::alchemist_trial::factoryIndex,
+                     skellpreset::deuce_v25::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
         plugin->prepareToPlay(48000.,256);
         plugin->loadFactoryPreset(factory);
-        const int expectedCount=factory==skellpreset::deuce::factoryIndex?12:10;
+        const int expectedCount=factory==skellpreset::deuce_v25::factoryIndex?13:
+            factory==skellpreset::deuce::factoryIndex?12:10;
         if(plugin->loadedFactoryPresetIndex()!=factory ||
            plugin->activeSlotCount()!=expectedCount)return 201;
         if(factory==skellpreset::deuce::factoryIndex &&
@@ -645,6 +649,9 @@ int nativeTrialsSmoke() {
         if(factory==skellpreset::alchemist_trial::factoryIndex &&
            (plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
             plugin->getSlotParam(6,12)<.75f))return 203;
+        if(factory==skellpreset::deuce_v25::factoryIndex &&
+           (plugin->slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX ||
+            std::abs(plugin->getSlotParam(12,13)-.525f)>.001f))return 208;
         juce::MemoryBlock state;
         plugin->getStateInformation(state);
         auto recalled=std::make_unique<SkellPresetAudioProcessor>();
@@ -703,13 +710,13 @@ int main(int argc,char** argv) {
                            juce::File(juce::String::fromUTF8(argv[3])));
     if(argc==5 && juce::String(argv[1])=="--factory") {
         const auto requested=juce::String(argv[2]);
-        if(requested!="43" && requested!="44" && requested!="45")return 7;
+        if(requested!="43" && requested!="44" && requested!="45" && requested!="46")return 7;
         return render(juce::File(juce::String::fromUTF8(argv[3])),
                       juce::File(juce::String::fromUTF8(argv[4])),
                       requested.getIntValue());
     }
     if(argc!=3) {
-        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45 INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
     }
