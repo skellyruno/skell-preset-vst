@@ -168,22 +168,23 @@ public:
         inputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"input",input);
         mixAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"mix",mix);
         outputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"output",output);
-        // Host attachments otherwise show opaque raw decimals such as 0.000
-        // and 1.000. Display physical units without changing DSP precision
-        // or the existing automated parameter normalization.
-        // Value presentation only: -24..+24 dB is mapped onto 0..100%.
-        // 50% remains 0 dB (unity). The actual audio gain ranges, default
-        // value and host automation IDs are unchanged.
-        auto gainPercent=[](double db) {
-            return juce::String(juce::roundToInt(50.+db*100./48.))+"%";
+        // Input and Output drive real -24..+24 dB gain stages. Show actual
+        // dB instead of a pseudo-percent where 50% ambiguously meant unity.
+        // This is PRESENTATION ONLY: physical ranges, APVTS IDs and DSP
+        // are unchanged. Accept legacy typed percentages as a fallback.
+        auto gainDb=[](double db) {
+            return juce::String(db>0.001?"+":"")+juce::String(db,1)+" dB";
         };
-        auto parseGainPercent=[](const juce::String& text) {
-            return juce::jlimit(-24.,24.,(text.getDoubleValue()-50.)*48./100.);
+        auto parseGainDb=[](const juce::String& text) {
+            const double displayed=text.getDoubleValue();
+            const double db=text.contains("%")
+                ?(displayed-50.)*48./100.:displayed;
+            return juce::jlimit(-24.,24.,db);
         };
-        input.textFromValueFunction=gainPercent;
-        output.textFromValueFunction=gainPercent;
-        input.valueFromTextFunction=parseGainPercent;
-        output.valueFromTextFunction=parseGainPercent;
+        input.textFromValueFunction=gainDb;
+        output.textFromValueFunction=gainDb;
+        input.valueFromTextFunction=parseGainDb;
+        output.valueFromTextFunction=parseGainDb;
         mix.textFromValueFunction=[](double value) {
             return juce::String(juce::roundToInt(juce::jlimit(0.,1.,value)*100.))+"%";
         };
@@ -192,9 +193,9 @@ public:
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
         input.updateText();output.updateText();mix.updateText();
-        input.setTooltip("Input gain 0-100% (50%=0 dB unity) · double-click for 50%");
-        mix.setTooltip("Global dry / wet mix · double-click for 100%");
-        output.setTooltip("Output gain 0-100% (50%=0 dB unity) · double-click for 50%");
+        input.setTooltip("Input gain -24 to +24 dB · 0 dB is unity");
+        mix.setTooltip("Global dry / wet mix · 100% is fully processed");
+        output.setTooltip("Output gain -24 to +24 dB · 0 dB is unity");
         sizeSelect.addItemList({"70%","85%","100%","125%"},1);
         const float restored=(float)processor.state.state.getProperty("uiScale",.70f);
         const float available[]{.70f,.85f,1.f,1.25f};
@@ -834,8 +835,8 @@ public:
             g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getOutputPeak())?Theme::green:Theme::stroke);
             g.fillRect(263+ix*10,651,7,11);
         }
-        // Hardware dials plus large, legible 0-100 readouts. Readouts are
-        // calculated from physical gain/mix parameters (not rounded audio DSP).
+        // Hardware dials show the true physical gain and mix readouts.
+        // The actual gain stages operate in dB; only dry/wet uses %.
         const juce::StringArray masterNames{"INPUT","MIX","OUTPUT"};
         const float values[]{(float)input.getValue(),(float)mix.getValue(),
                              (float)output.getValue()};
@@ -846,11 +847,12 @@ public:
             g.setColour(Theme::green.withAlpha(.78f));
             g.fillRoundedRectangle((float)x+7.f,645.f,2.f,9.f,1.f);
             Theme::text(g,masterNames[i],{x+47,641,58,13},10.8f,Theme::muted,true);
-            const int percent=juce::roundToInt(i==1
-                ?juce::jlimit(0.f,1.f,values[i])*100.f
-                :juce::jlimit(0.f,100.f,50.f+values[i]*100.f/48.f));
-            Theme::text(g,juce::String(percent)+"%",
-                        {x+43,655,62,23},17.2f,Theme::white,true);
+            const auto readout=i==1
+                ?mix.getTextFromValue(values[i])
+                :(i==0?input.getTextFromValue(values[i])
+                     :output.getTextFromValue(values[i]));
+            Theme::fittedText(g,readout,
+                        {x+43,655,63,23},15.4f,Theme::white,true);
         }
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
