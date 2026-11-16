@@ -9,6 +9,7 @@
 #include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/chain/ABMetrics.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -36,6 +37,39 @@ int process(juce::AudioBuffer<float>& block, SkellPresetAudioProcessor& plugin,
             ++count;
         }
     return 0;
+}
+
+// Offline 4-phase / 16-tap interpolated-peak estimate, matching the
+// SkellCore Standard limiter's detector kernel for post-render verification.
+double estimateFourPhasePeak(const std::vector<float>& samples) {
+    constexpr int taps=16, phases=4;
+    constexpr double pi=3.1415926535897932384626433832795;
+    std::array<std::array<double,taps>,phases> kernel{};
+    for(int phase=0;phase<phases;++phase) {
+        double sum=0.;
+        for(int j=0;j<taps;++j) {
+            const double offset=j-(taps-1)*.5+double(phase)/phases;
+            const double sinc=std::abs(offset)<1.e-10?1.:
+                std::sin(pi*offset)/(pi*offset);
+            const double window=.5-.5*std::cos(2.*pi*j/(taps-1));
+            kernel[(size_t)phase][(size_t)j]=sinc*window;
+            sum+=sinc*window;
+        }
+        for(auto& value:kernel[(size_t)phase])value/=sum;
+    }
+    double peak=0.;
+    for(size_t i=0;i<samples.size();++i) {
+        peak=std::max(peak,std::abs((double)samples[i]));
+        if(i+1<(size_t)taps)continue;
+        for(int phase=0;phase<phases;++phase) {
+            double interpolated=0.;
+            for(int j=0;j<taps;++j)
+                interpolated+=kernel[(size_t)phase][(size_t)j]*
+                    samples[i-(size_t)j];
+            peak=std::max(peak,std::abs(interpolated));
+        }
+    }
+    return peak;
 }
 
 // Newly added instances must start without an effect or hidden lookahead.
@@ -782,7 +816,7 @@ int nativeTrialsSmoke() {
     peakSwitcher->prepareToPlay(48000.,256);
     const int guardedLatency=peakSwitcher->getLatencySamples();
     if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
-       guardedLatency<48 || guardedLatency>1024)return 221;
+       guardedLatency!=144)return 221;
     peakSwitcher->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
     if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Empty ||
        peakSwitcher->getLatencySamples()!=0 ||
@@ -791,6 +825,35 @@ int nativeTrialsSmoke() {
     if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
        peakSwitcher->getLatencySamples()!=guardedLatency)return 223;
     peakSwitcher->releaseResources();
+    // The final guard must actually constrain a high-frequency, high-crest
+    // signal after the full native chain, not merely load the limiter slot.
+    auto peakGuardStress=std::make_unique<SkellPresetAudioProcessor>();
+    peakGuardStress->loadFactoryPreset(skellpreset::alchemist_peak_guard_trial::factoryIndex);
+    peakGuardStress->prepareToPlay(44100.,256);
+    if(peakGuardStress->getLatencySamples()!=132)return 224;
+    std::vector<float> guardLeft,guardRight;
+    guardLeft.reserve(80*256);guardRight.reserve(80*256);
+    for(int block=0;block<80;++block) {
+        juce::AudioBuffer<float> stress(2,256);
+        for(int n=0;n<256;++n) {
+            const float t=float(block*256+n)/44100.f;
+            const float x=.50f*std::sin(2.f*juce::MathConstants<float>::pi*19000.f*t)
+                         +.08f*std::sin(2.f*juce::MathConstants<float>::pi*211.f*t);
+            stress.setSample(0,n,x);
+            stress.setSample(1,n,-.83f*x);
+        }
+        juce::MidiBuffer midi;
+        peakGuardStress->processBlock(stress,midi);
+        for(int n=0;n<256;++n) {
+            const float l=stress.getSample(0,n),r=stress.getSample(1,n);
+            if(!std::isfinite(l)||!std::isfinite(r))return 225;
+            guardLeft.push_back(l);guardRight.push_back(r);
+        }
+    }
+    const double guardedTruePeak=std::max(estimateFourPhasePeak(guardLeft),
+                                          estimateFourPhasePeak(guardRight));
+    if(!std::isfinite(guardedTruePeak)||guardedTruePeak>.91)return 226;
+    peakGuardStress->releaseResources();
     // Switching between the protected original and opt-in trial must
     // restore every refinement control instead of leaving stale automation.
     auto switcher=std::make_unique<SkellPresetAudioProcessor>();
