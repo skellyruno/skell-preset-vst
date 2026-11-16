@@ -425,7 +425,8 @@ int stress() {
     return 0;
 }
 
-int render(const juce::File& source, const juce::File& destination) {
+int render(const juce::File& source, const juce::File& destination,
+           int factoryIndex=skellpreset::alchemist::factoryIndex) {
     if (!source.existsAsFile() || source == destination) {
         std::fprintf(stderr,"ERROR: source missing or output equals input\n");
         return 2;
@@ -465,10 +466,18 @@ int render(const juce::File& source, const juce::File& destination) {
     // Large rack engines must be allocated on the heap: Windows main thread
     // defaults to a substantially smaller stack than the Linux renderer.
     auto plugin=std::make_unique<SkellPresetAudioProcessor>();
-    plugin->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
-    if(plugin->loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex
-       || plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
-        std::fprintf(stderr,"ERROR: Alchemist stage order or factory selection wrong\n");
+    if(factoryIndex!=skellpreset::alchemist::factoryIndex &&
+       factoryIndex!=skellpreset::alchemist_trial::factoryIndex &&
+       factoryIndex!=skellpreset::deuce::factoryIndex) {
+        std::fprintf(stderr,"ERROR: factory selection must be 43, 44 or 45\n");
+        return 7;
+    }
+    plugin->loadFactoryPreset(factoryIndex);
+    if(plugin->loadedFactoryPresetIndex()!=factoryIndex ||
+       (factoryIndex==skellpreset::deuce::factoryIndex
+          ?plugin->activeSlotCount()!=12
+          :plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX)) {
+        std::fprintf(stderr,"ERROR: incorrect native factory rack loaded\n");
         return 7;
     }
     plugin->prepareToPlay(reader->sampleRate,blockSize);
@@ -497,8 +506,8 @@ int render(const juce::File& source, const juce::File& destination) {
         std::fprintf(stderr,"ERROR: native render aborted; partial WAV removed\n");
         return 8;
     }
-    std::printf("Rendered native Alchemist factory %d: %lld samples, %.0f Hz, peak %.5f, RMS %.5f\n",
-                skellpreset::alchemist::factoryIndex,
+    std::printf("Rendered native factory %d: %lld samples, %.0f Hz, peak %.5f, RMS %.5f\n",
+                factoryIndex,
                 static_cast<long long>(total/2),reader->sampleRate,
                 peak,std::sqrt(energy/total));
     std::puts("NOTE: this uses the plugin's compiled processBlock, not a hosted VST3. A/B and FL Studio checks are separate.");
@@ -692,8 +701,15 @@ int main(int argc,char** argv) {
     if(argc==4 && juce::String(argv[1])=="--compare")
         return compareWavs(juce::File(juce::String::fromUTF8(argv[2])),
                            juce::File(juce::String::fromUTF8(argv[3])));
+    if(argc==5 && juce::String(argv[1])=="--factory") {
+        const auto requested=juce::String(argv[2]);
+        if(requested!="43" && requested!="44" && requested!="45")return 7;
+        return render(juce::File(juce::String::fromUTF8(argv[3])),
+                      juce::File(juce::String::fromUTF8(argv[4])),
+                      requested.getIntValue());
+    }
     if(argc!=3) {
-        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender INPUT_MONO_OR_STEREO.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
     }
