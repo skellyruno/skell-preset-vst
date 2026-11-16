@@ -30,8 +30,20 @@ public:
         // Two tiny bone dancers react to the REAL processed output level.
         // Animation is UI-thread only and repaints with the existing live
         // waveform timer; silence leaves them still. No fake FFT/DSP work.
-        const float peak=juce::jlimit(0.f,1.f,processor.getOutputPeak());
-        const float activity=juce::jlimit(0.f,1.f,peak*2.4f);
+        // The peak meter can retain the most recent processing block even
+        // when the 128-sample live waveform is idle (seen in real Quick4).
+        // Distinguish a historical last peak from a currently live trace.
+        std::array<float,128> wave{};
+        processor.getLiveWaveform(wave);
+        float waveformPeak=0.f;
+        for(float sample:wave)
+            if(std::isfinite(sample))
+                waveformPeak=juce::jmax(waveformPeak,std::abs(sample));
+        const bool signalNow=waveformPeak>.0005f;
+        const float measuredPeak=processor.getOutputPeak();
+        const float peak=std::isfinite(measuredPeak)
+            ?juce::jmax(0.f,measuredPeak):0.f;
+        const float activity=signalNow?juce::jlimit(0.f,1.f,peak*2.4f):0.f;
         const float seconds=(float)(juce::Time::getMillisecondCounterHiRes()*.001);
         auto dancer=[&](float x,float phase){
             const float swing=std::sin(seconds*6.2f+phase)*activity;
@@ -76,7 +88,8 @@ public:
         g.setColour(Theme::stroke.withAlpha(.82f));
         g.drawLine(plot.getX()+8.f,plot.getCentreY(),
                    plot.getRight()-8.f,plot.getCentreY(),.6f);
-        Theme::text(g,"OUTPUT PEAK  /  LIVE READOUT",
+        Theme::text(g,signalNow?"OUTPUT PEAK  /  LIVE":
+                          (peak>1.e-6f?"OUTPUT PEAK  /  LAST":"OUTPUT PEAK  /  IDLE"),
                     {getWidth()-324,229,243,18},11.f,
                     Theme::muted,true,juce::Justification::centredRight);
         const juce::String peakReadout=peak<1.e-6f
@@ -84,11 +97,9 @@ public:
             :juce::String(20.f*std::log10(peak),1)+" dBFS";
         Theme::fittedText(g,peakReadout,{getWidth()-338,251,257,38},
                          30.f,Theme::white,true,juce::Justification::centredRight);
-        Theme::text(g,peak<1.e-6f?"SIGNAL IDLE":"SIGNAL ACTIVE",
+        Theme::text(g,signalNow?"SIGNAL ACTIVE":"SIGNAL IDLE",
                     {82,237,189,20},12.f,
-                    peak<1.e-6f?Theme::muted:Theme::green,true);
-        std::array<float,128> wave{};
-        processor.getLiveWaveform(wave);
+                    signalNow?Theme::green:Theme::muted,true);
         juce::Path signal;
         for(int i=0;i<128;++i) {
             const float v=juce::jlimit(-1.f,1.f,wave[(size_t)i]);
