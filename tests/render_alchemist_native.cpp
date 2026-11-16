@@ -772,25 +772,25 @@ int nativeTrialsSmoke() {
        std::abs(switcher->getSlotParam(6,15)-.5f)>1.e-6f)return 213;
     // Host program changes must restore the v2.5-only output calibration,
     // then clear it when returning to the original Deuce/Alchemist programs.
-    auto switcher=std::make_unique<SkellPresetAudioProcessor>();
-    switcher->setCurrentProgram(skellpreset::deuce_v25::factoryIndex);
-    auto* switchedOutput=switcher->state.getRawParameterValue("output");
-    if(switcher->getCurrentProgram()!=skellpreset::deuce_v25::factoryIndex ||
+    auto deuceSwitcher=std::make_unique<SkellPresetAudioProcessor>();
+    deuceSwitcher->setCurrentProgram(skellpreset::deuce_v25::factoryIndex);
+    auto* switchedOutput=deuceSwitcher->state.getRawParameterValue("output");
+    if(deuceSwitcher->getCurrentProgram()!=skellpreset::deuce_v25::factoryIndex ||
        !switchedOutput || std::abs(switchedOutput->load()-5.17f)>.001f)
         return 215;
-    switcher->setCurrentProgram(skellpreset::deuce::factoryIndex);
-    if(switcher->getCurrentProgram()!=skellpreset::deuce::factoryIndex ||
+    deuceSwitcher->setCurrentProgram(skellpreset::deuce::factoryIndex);
+    if(deuceSwitcher->getCurrentProgram()!=skellpreset::deuce::factoryIndex ||
        std::abs(switchedOutput->load())>.001f)
         return 216;
-    switcher->setCurrentProgram(skellpreset::alchemist::factoryIndex);
-    if(switcher->getCurrentProgram()!=skellpreset::alchemist::factoryIndex ||
+    deuceSwitcher->setCurrentProgram(skellpreset::alchemist::factoryIndex);
+    if(deuceSwitcher->getCurrentProgram()!=skellpreset::alchemist::factoryIndex ||
        std::abs(switchedOutput->load())>.001f ||
-       std::abs(switcher->getSlotParam(6,12)-.5f)>1.e-6f)
+       std::abs(deuceSwitcher->getSlotParam(6,12)-.5f)>1.e-6f)
         return 217;
-    switcher->setCurrentProgram(skellpreset::deuce_v25::factoryIndex);
-    if(switcher->getCurrentProgram()!=skellpreset::deuce_v25::factoryIndex ||
+    deuceSwitcher->setCurrentProgram(skellpreset::deuce_v25::factoryIndex);
+    if(deuceSwitcher->getCurrentProgram()!=skellpreset::deuce_v25::factoryIndex ||
        std::abs(switchedOutput->load()-5.17f)>.001f ||
-       std::abs(switcher->getSlotParam(12,13)-.525f)>.001f)
+       std::abs(deuceSwitcher->getSlotParam(12,13)-.525f)>.001f)
         return 218;
     std::puts("PASS: original/refined Alchemist + Deuce recall, v2.5 EQ/output, host switching and 0-NaN stereo");
     return 0;
