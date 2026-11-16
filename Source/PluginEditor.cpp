@@ -864,13 +864,13 @@ public:
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
             Theme::panelBox(g,{14.f,90.f,1140.f,507.f},11.f);
-            Theme::text(g,"SIMPLE  /  MACRO MIXER",{52,115,520,25},14,Theme::green,true);
-            Theme::text(g,processor.presetName(),{74,164,988,69},47,Theme::white,true);
-            Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,248,900,24},14,Theme::muted,true);
-            Theme::text(g,"Four macros, one full effect rack. Open Advanced to edit every module.",{79,278,960,24},13,Theme::muted);
+            Theme::text(g,"SIMPLE  /  MACRO MIXER",{52,115,520,25},15.8f,Theme::green,true);
+            Theme::fittedText(g,processor.presetName(),{74,164,988,69},47,Theme::white,true);
+            Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,248,900,24},16.0f,Theme::white.withAlpha(.86f),true);
+            Theme::text(g,"FOUR MACROS  /  OPEN ADVANCED TO EDIT EACH EFFECT",{79,278,960,24},14.6f,Theme::muted);
             // Expanded live scope in the Simple view: this is actual
             // post-effects output, not a random waveform drawn for decoration.
-            Theme::text(g,"LIVE AUDIO",{79,306,110,20},11,
+            Theme::text(g,"LIVE AUDIO",{79,306,110,20},13,
                 processor.isCapturing()?Theme::red:Theme::green,true);
             g.setColour(Theme::stroke.withAlpha(.48f));
             g.drawHorizontalLine(317,202.f,1077.f);
