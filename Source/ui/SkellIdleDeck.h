@@ -67,8 +67,26 @@ public:
         g.fillRoundedRectangle(plot,9.f);
         g.setColour(Theme::stroke.withAlpha(.70f));
         g.drawRoundedRectangle(plot,9.f,1.f);
+        // Scope has true amplitude data; draw restrained hardware-grid
+        // divisions and a measured digital peak readout in its empty top.
+        g.setColour(Theme::stroke.withAlpha(.27f));
+        for(int division=1;division<8;++division)
+            g.drawVerticalLine((int)(plot.getX()+plot.getWidth()*division/8.f),
+                               plot.getY()+9.f,plot.getBottom()-9.f);
+        g.setColour(Theme::stroke.withAlpha(.82f));
         g.drawLine(plot.getX()+8.f,plot.getCentreY(),
                    plot.getRight()-8.f,plot.getCentreY(),.6f);
+        Theme::text(g,"OUTPUT PEAK  /  LIVE READOUT",
+                    {getWidth()-324,229,243,18},11.f,
+                    Theme::muted,true,juce::Justification::centredRight);
+        const juce::String peakReadout=peak<1.e-6f
+            ?juce::String("-INF dBFS")
+            :juce::String(20.f*std::log10(peak),1)+" dBFS";
+        Theme::fittedText(g,peakReadout,{getWidth()-338,251,257,38},
+                         30.f,Theme::white,true,juce::Justification::centredRight);
+        Theme::text(g,peak<1.e-6f?"SIGNAL IDLE":"SIGNAL ACTIVE",
+                    {82,237,189,20},12.f,
+                    peak<1.e-6f?Theme::muted:Theme::green,true);
         std::array<float,128> wave{};
         processor.getLiveWaveform(wave);
         juce::Path signal;
