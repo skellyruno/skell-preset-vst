@@ -662,9 +662,36 @@ int nativeTrialsSmoke() {
             std::abs(plugin->getSlotParam(6,13)-.25f)>.001f ||
             std::abs(plugin->getSlotParam(6,14)-.45f)>.001f ||
             std::abs(plugin->getSlotParam(6,15)-.38f)>.001f))return 203;
-        if(factory==skellpreset::deuce_v25::factoryIndex &&
-           (plugin->slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX ||
-            std::abs(plugin->getSlotParam(12,13)-.525f)>.001f))return 208;
+        if(factory==skellpreset::deuce_v25::factoryIndex) {
+            const auto* eqQ=plugin->state.getRawParameterValue("s13_eqQ7");
+            const auto* output=plugin->state.getRawParameterValue("output");
+            const auto* wet=plugin->state.getRawParameterValue("s13_wet");
+            const auto* enabled=plugin->state.getRawParameterValue("s13_on");
+            const float qNormalized=eqQ?eqQ->load():-1.f;
+            const float qPhysical=.4f*std::pow(20.f,qNormalized);
+            bool baseChainMatches=true;
+            for(int stage=0;stage<12;++stage)
+                baseChainMatches=baseChainMatches &&
+                    plugin->slotType(stage)==skellpreset::deuce::stages[(size_t)stage].module;
+            if(!baseChainMatches ||
+               plugin->slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX ||
+               std::abs(plugin->getSlotParam(12,12)-.906f)>.001f ||
+               std::abs(plugin->getSlotParam(12,13)-.525f)>.001f ||
+               !eqQ || std::abs(qNormalized-.210f)>.00051f ||
+               std::abs(qPhysical-.75f)>.001f ||
+               !output || std::abs(output->load()-5.17f)>.001f ||
+               !wet || wet->load()<.999f || !enabled || enabled->load()<.999f ||
+               plugin->getLatencySamples()!=0) {
+                std::fprintf(stderr,
+                    "Deuce v2.5 factory mismatch: base=%d type=%d freq=%g gain=%g qNorm=%g q=%g output=%g wet=%g on=%g PDC=%d\\n",
+                    baseChainMatches?1:0,plugin->slotType(12),
+                    plugin->getSlotParam(12,12),plugin->getSlotParam(12,13),
+                    qNormalized,qPhysical,output?output->load():-999.f,
+                    wet?wet->load():-1.f,enabled?enabled->load():-1.f,
+                    plugin->getLatencySamples());
+                return 208;
+            }
+        }
         juce::MemoryBlock state;
         plugin->getStateInformation(state);
         auto recalled=std::make_unique<SkellPresetAudioProcessor>();
@@ -680,6 +707,24 @@ int nativeTrialsSmoke() {
             std::abs(recalled->getSlotParam(6,13)-.25f)>.001f ||
             std::abs(recalled->getSlotParam(6,14)-.45f)>.001f ||
             std::abs(recalled->getSlotParam(6,15)-.38f)>.001f))return 211;
+        if(factory==skellpreset::deuce_v25::factoryIndex) {
+            const auto* eqQ=recalled->state.getRawParameterValue("s13_eqQ7");
+            const auto* output=recalled->state.getRawParameterValue("output");
+            const float qNormalized=eqQ?eqQ->load():-1.f;
+            const float qPhysical=.4f*std::pow(20.f,qNormalized);
+            if(!eqQ || std::abs(qNormalized-.210f)>.00051f ||
+               std::abs(qPhysical-.75f)>.001f ||
+               std::abs(recalled->getSlotParam(12,12)-.906f)>.001f ||
+               std::abs(recalled->getSlotParam(12,13)-.525f)>.001f ||
+               !output || std::abs(output->load()-5.17f)>.001f ||
+               recalled->getLatencySamples()!=0) {
+                std::fprintf(stderr,
+                    "Deuce v2.5 state roundtrip mismatch: qNorm=%g q=%g output=%g PDC=%d\\n",
+                    qNormalized,qPhysical,output?output->load():-999.f,
+                    recalled->getLatencySamples());
+                return 214;
+            }
+        }
         double squared=0.;
         for(int block=0;block<60;++block) {
             juce::AudioBuffer<float> signal(2,256),other(2,256);
@@ -725,7 +770,29 @@ int nativeTrialsSmoke() {
        std::abs(switcher->getSlotParam(6,13)-.5f)>1.e-6f ||
        std::abs(switcher->getSlotParam(6,14)-.5f)>1.e-6f ||
        std::abs(switcher->getSlotParam(6,15)-.5f)>1.e-6f)return 213;
-    std::puts("PASS: original/refined Alchemist + Deuce factory recall, switch and 0-NaN stereo");
+    // Host program changes must restore the v2.5-only output calibration,
+    // then clear it when returning to the original Deuce/Alchemist programs.
+    auto switcher=std::make_unique<SkellPresetAudioProcessor>();
+    switcher->setCurrentProgram(skellpreset::deuce_v25::factoryIndex);
+    auto* switchedOutput=switcher->state.getRawParameterValue("output");
+    if(switcher->getCurrentProgram()!=skellpreset::deuce_v25::factoryIndex ||
+       !switchedOutput || std::abs(switchedOutput->load()-5.17f)>.001f)
+        return 215;
+    switcher->setCurrentProgram(skellpreset::deuce::factoryIndex);
+    if(switcher->getCurrentProgram()!=skellpreset::deuce::factoryIndex ||
+       std::abs(switchedOutput->load())>.001f)
+        return 216;
+    switcher->setCurrentProgram(skellpreset::alchemist::factoryIndex);
+    if(switcher->getCurrentProgram()!=skellpreset::alchemist::factoryIndex ||
+       std::abs(switchedOutput->load())>.001f ||
+       std::abs(switcher->getSlotParam(6,12)-.5f)>1.e-6f)
+        return 217;
+    switcher->setCurrentProgram(skellpreset::deuce_v25::factoryIndex);
+    if(switcher->getCurrentProgram()!=skellpreset::deuce_v25::factoryIndex ||
+       std::abs(switchedOutput->load()-5.17f)>.001f ||
+       std::abs(switcher->getSlotParam(12,13)-.525f)>.001f)
+        return 218;
+    std::puts("PASS: original/refined Alchemist + Deuce recall, v2.5 EQ/output, host switching and 0-NaN stereo");
     return 0;
 }
 
