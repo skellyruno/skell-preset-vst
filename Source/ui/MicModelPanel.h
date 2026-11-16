@@ -256,22 +256,24 @@ public:
         Theme::text(g,"MIC MODEL",{25,9,getWidth()-143,27},16,Theme::white,true);
         Theme::text(g,"DRAG HEADER  /  CORNER TO RESIZE",{17,37,getWidth()-34,15},9,Theme::muted);
         Theme::text(g,"INPUT MIC",{16,51,170,17},10,Theme::muted,true);
-        Theme::text(g,"SIMULATE",{16,109,170,17},10,Theme::muted,true);
         const juce::StringArray descriptions{
-            "FLAT  /  UNCOLORED","WARM  /  SOFT LOW-MIDS",
-            "FOCUS  /  MID PRESENCE","AIR  /  UPPER AIR"};
+            "FLAT","WARM","FOCUS","AIR"};
         const auto* rawTarget=processor.state.getRawParameterValue("micPreTarget");
         const int target=rawTarget?juce::jlimit(0,3,(int)rawTarget->load()):0;
-        Theme::fittedText(g,descriptions[target],{19,212,getWidth()-38,15},
-                          10.5f,Theme::green,true);
+        // The old target description at y=212 covered AMOUNT at compact
+        // heights. Keep active-model feedback beside SIMULATE instead.
+        Theme::text(g,"SIMULATE",{16,109,107,17},10,Theme::muted,true);
+        Theme::fittedText(g,descriptions[target]+" MODEL",
+                          {getWidth()-153,109,132,17},10.f,Theme::green,true,
+                          juce::Justification::centredRight);
         const int lower=juce::jmax(215,getHeight()-83);
         Theme::text(g,"AMOUNT",{16,lower,62,23},10,Theme::white,true);
         Theme::text(g,"TRIM",{16,lower+40,62,23},10,Theme::white,true);
         g.setColour(Theme::stroke.withAlpha(.8f));
         g.drawLine(16.f,(float)lower-10.f,(float)getWidth()-16.f,(float)lower-10.f,1.f);
-        Theme::text(g,"FIVE-BAND RESPONSE MODEL / NO HARDWARE IMPULSE",
-            {16,getHeight()-19,getWidth()-32,13},8.5f,Theme::muted,false,
-             juce::Justification::centred);
+        Theme::fittedText(g,"TONAL MODEL / NOT A MEASURED MIC IR",
+            {16,getHeight()-16,getWidth()-55,12},8.2f,Theme::muted,false,
+             juce::Justification::centredLeft);
         // Resize handle, intentionally inside the panel bounds.
         g.setColour(Theme::green.withAlpha(.7f));
         const float right=(float)getWidth()-5.f,bottom=(float)getHeight()-5.f;
