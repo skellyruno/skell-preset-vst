@@ -712,7 +712,8 @@ int nativeTrialsSmoke() {
             std::abs(plugin->getSlotParam(6,14)-.45f)>.001f ||
             std::abs(plugin->getSlotParam(6,15)-.38f)>.001f))return 203;
         if((factory==skellpreset::alchemist_peak_guard_trial::factoryIndex ||
-            factory==skellpreset::alchemist_tone_match_trial::factoryIndex) &&
+            factory==skellpreset::alchemist_tone_match_trial::factoryIndex ||
+            factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex) &&
            (plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
             plugin->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
             std::abs(plugin->getSlotParam(7,0)-.89f)>.001f ||
