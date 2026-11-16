@@ -377,6 +377,20 @@ void SlotEditor::applyKnobReadouts() {
                 if(parameter==0)
                     return juce::String(20.*std::log10(.12+.87*v),1)+" dBFS";
                 if(parameter==1)return juce::String(18.*v,1)+" dB";
+                if(parameter==2 || parameter==4) {
+                    // Same discrete Studio level law used by Compressor/Gate,
+                    // including the -60 dB compressor floor and gate OFF.
+                    if(parameter==4 && v<=.0001)return "OFF";
+                    const float amplitude=skellpreset::studio::detail::level(
+                        juce::roundToInt(v*1000.),7.);
+                    const float floor=parameter==2?.001f:1.e-6f;
+                    return juce::String(20.f*std::log10(
+                        juce::jmax(floor,amplitude)),1)+" dBFS";
+                }
+                if(parameter==3) {
+                    const double ratio=1.+.38*(std::pow(51.,v)-1.);
+                    return juce::String(ratio,1)+":1";
+                }
                 if(parameter==5 || parameter==6)
                     return juce::String(skellpreset::studio::detail::timeMs(
                         juce::roundToInt(v*10000.)),1)+" ms";
@@ -787,11 +801,16 @@ bool SlotEditor::testStudioLimiterPages() {
     processor.setSlotParam(slot,5,.61f);
     select(slot);
     const bool first=limiterPage==0 && limiterPageButtons[0].isVisible() &&
-        studioGateFloor.isVisible() && std::abs(knobs[0].getValue()-.89)<.01;
+        studioGateFloor.isVisible() && std::abs(knobs[0].getValue()-.89)<.01 &&
+        knobs[2].getTextFromValue(1.).contains("dBFS") &&
+        knobs[3].getTextFromValue(0.)=="1.0:1" &&
+        knobs[3].getTextFromValue(1.)=="20.0:1";
     showLimiterPage(1);
     const bool second=limiterPage==1 &&
         std::abs(knobs[0].getValue()-.25)<.01 &&
-        std::abs(knobs[1].getValue()-.61)<.01;
+        std::abs(knobs[1].getValue()-.61)<.01 &&
+        knobs[0].getTextFromValue(0.)=="OFF" &&
+        knobs[1].getTextFromValue(.61).contains("ms");
     const float protectedCeiling=processor.getSlotParam(slot,0);
     const float protectedDrive=processor.getSlotParam(slot,1);
     updateGraphNode({800.f,160.f});
