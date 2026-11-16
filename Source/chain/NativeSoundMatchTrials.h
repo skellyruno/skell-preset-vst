@@ -62,6 +62,34 @@ static_assert(stages[6].module==2 && stages[7].module==11,
     "Preserve evidence-mapped Deuce compressor and De-Esser order");
 }
 
+namespace skellpreset::deuce_v25 {
+// Native listening TRIAL derived from the user's approved OFFLINE v2.5.
+// The approved offline v2.5 audio is v2.3 Sustained Air followed by a
+// 7 kHz +0.75dB Q0.75 presence bell and -0.146715 dB output trim.
+// The complete v2.3 REC/MAIN algorithm is not ported to this VST3, so this
+// cannot claim audible equality with the protected v2.5 listening winner.
+// Append this trial AFTER D/Max and Alchemist Refined, without renumbering.
+constexpr auto makeStages() noexcept {
+    std::array<alchemist::NativeStage,13> result{};
+    for(std::size_t i=0;i<deuce::stages.size();++i)
+        result[i]=deuce::stages[i];
+    auto presence=alchemist::neutral(26);
+    // Native EightBandTone band 7 maps roughly 3600..7500 Hz and
+    // p[13]=.525 means +0.75dB; q[6]=.2098347 means Q~0.75.
+    presence.p[12]=.9060003f;
+    presence.p[13]=.525f;
+    presence.q[6]=.2098347f;
+    result[12]=presence; // append exact native correction as own EQ row
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=46;
+inline constexpr const char* name="Deuce v2.5 (Native Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==13 && stages[12].module==26,
+    "Native v2.5 study must preserve 12 Deuce stages and final 7kHz EQ");
+}
+
 namespace skellpreset::alchemist_trial {
 constexpr auto makeStages() noexcept {
     auto stages=alchemist::makeStages();
