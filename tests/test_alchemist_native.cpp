@@ -18,7 +18,7 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==46,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==47,"Append only; preserve prior programs");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
@@ -27,6 +27,13 @@ int main() {
     assert(std::strcmp(factoryPresets[44].name,deuce::name)==0);
     assert(std::strcmp(factoryPresets[44].bank,"Main Vocals")==0);
     assert(std::strcmp(factoryPresets[45].name,alchemist_trial::name)==0);
+    assert(std::strcmp(factoryPresets[46].name,deuce_v25::name)==0);
+    assert(std::strcmp(factoryPresets[46].bank,"Main Vocals")==0);
+    assert(deuce_v25::stages.size()==13);
+    for(std::size_t k=0;k<deuce::stages.size();++k){
+        assert(deuce_v25::stages[k].module==deuce::stages[k].module);
+        assert(deuce_v25::stages[k].wet==deuce::stages[k].wet);
+    }
     for(const auto& stage:deuce::stages){
         assert(stage.module>=1 && stage.module<38);
         assert(stage.wet>=0.f&&stage.wet<=1.f);
