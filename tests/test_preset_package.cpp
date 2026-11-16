@@ -318,6 +318,49 @@ int main(){
     createArchive(malformed,"preset.json","not json");
     check(skellpreset::package::read(malformed,second).failed(),"Reject malformed JSON");
     check(unchanged(),"Malformed JSON rejection keeps entire prior preset");
+    // Import-side corruption regressions: a valid exported ZIP can be
+    // modified into a structurally valid but semantically invalid archive.
+    // Rejection must leave the entire previously loaded document intact.
+    {
+        const auto checkTampered = [&](const juce::String& label,
+                                       const std::function<void(juce::var&)>& mutate) {
+            juce::ZipFile original(path);
+            std::unique_ptr<juce::InputStream> source(original.createStreamForEntry(0));
+            check(source != nullptr, "Reference preset can be opened for tamper tests");
+            if (!source) return;
+            auto json = juce::JSON::parse(source->readEntireStreamAsString());
+            if (!json.isObject()) { check(false, "Tamper source JSON is an object"); return; }
+            mutate(json);
+            const auto corrupted = testFile(dir, label);
+            createArchive(corrupted, "preset.json", juce::JSON::toString(json).toStdString());
+            check(skellpreset::package::read(corrupted, second).failed(),
+                  "Reject semantically invalid imported preset");
+            check(unchanged(), "Rejected semantic corruption preserves full prior state");
+        };
+        checkTampered("duplicate-import-slot-id", [](juce::var& json) {
+            auto* chain = json.getProperty("chain", {}).getArray();
+            if (chain && chain->size() > 1)
+                (*chain)[1].getDynamicObject()->setProperty(
+                    "slotId", (*chain)[0].getProperty("slotId", {}));
+        });
+        checkTampered("invalid-import-studio-eq-kind", [](juce::var& json) {
+            auto* chain = json.getProperty("chain", {}).getArray();
+            if (chain && !chain->isEmpty()) {
+                juce::Array<juce::var> kinds;
+                for (int i = 0; i < 8; ++i) kinds.add(i == 7 ? 5 : 0);
+                (*chain)[0].getDynamicObject()->setProperty("studioEqKind", juce::var(kinds));
+            }
+        });
+        checkTampered("invalid-import-studio-eq-on", [](juce::var& json) {
+            auto* chain = json.getProperty("chain", {}).getArray();
+            if (chain && !chain->isEmpty()) {
+                juce::Array<juce::var> flags;
+                for (int i = 0; i < 8; ++i)
+                    flags.add(i == 7 ? juce::var(1) : juce::var(false));
+                (*chain)[0].getDynamicObject()->setProperty("studioEqOn", juce::var(flags));
+            }
+        });
+    }
     check(second.name==first.name || second.name=="Wide Ghost Vocal", "Bad input keeps previous successful document");
     dir.deleteRecursively();
     if(failures)std::cerr<<failures<<" package tests failed\n";
