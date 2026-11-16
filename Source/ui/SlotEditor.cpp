@@ -2405,8 +2405,16 @@ void SlotEditor::paint(juce::Graphics&g) {
             // Give each hardware rotary a high-contrast, full-width legend.
             const int available=i==3?115:142;
             Theme::fittedText(g,labels[(size_t)i].toUpperCase(),
-                        {146+211*i,455,available,25},
-                        13.3f,Theme::white.withAlpha(.78f),true);
+                        {146+211*i,451,available,23},
+                        12.8f,Theme::white.withAlpha(.77f),true);
+            // Physical value readout comes from the exact bound APVTS
+            // slider formatter, not an independently estimated graph.
+            // Text stays within the gap before the NEXT rotary control.
+            const auto& control=knobs[(size_t)i];
+            const auto readout=control.getTextFromValue(control.getValue());
+            Theme::fittedText(g,readout,
+                        {146+211*i,477,104,25},
+                        16.8f,Theme::green.brighter(.25f),true);
         }
     }
     const juce::String gestureHint="DRAG GRAPH  /  X: "+
