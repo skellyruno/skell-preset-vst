@@ -2410,7 +2410,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             // Physical value readout comes from the exact bound APVTS
             // slider formatter, not an independently estimated graph.
             // Text stays within the gap before the NEXT rotary control.
-            const auto& control=knobs[(size_t)i];
+            auto& control=knobs[(size_t)i];
             const auto readout=control.getTextFromValue(control.getValue());
             Theme::fittedText(g,readout,
                         {146+211*i,477,104,25},
