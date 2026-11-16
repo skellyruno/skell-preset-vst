@@ -1068,7 +1068,9 @@ void SlotEditor::paint(juce::Graphics&g) {
         // surface lives in the rack, including for external hosted VST3 effects.
         Theme::text(g,"SELECT RACK EFFECT  /  DOUBLE-CLICK TO REPLACE",
                     {479,24,386,25},10.5f,Theme::green.withAlpha(.78f),true);
-        const auto category=juce::String(skellpreset::registry::at(type).category).toUpperCase();
+        const auto category=type==SkellPresetAudioProcessor::StudioLimiterFX
+            ?juce::String("LIMITER")
+            :juce::String(skellpreset::registry::at(type).category).toUpperCase();
         // Keep this status chip entirely clear of Alchemist page tabs
         // (starting at x=512) and the Mod Orb button (x=764).
         const auto chip=juce::Rectangle<float>(395.f,68.f,107.f,25.f);
@@ -2184,7 +2186,12 @@ void SlotEditor::paint(juce::Graphics&g) {
         }
         // Non-EQ modules share the two-axis universal marker.
         if(!isPagedEQ(type) &&
+           type!=SkellPresetAudioProcessor::Limiter &&
+           type!=SkellPresetAudioProcessor::StudioLimiterFX &&
            !(modOrbView && isModulationOrbEffect(type))) {
+        // The limiter has its own output meter and transfer curve.
+        // Its generic XY crosshair obscured those readouts without adding
+        // meaningful parameter feedback.
         const float markerX=x0+w*first,markerY=y1-h*second;
         g.setColour(Theme::green.withAlpha(.24f));
         g.drawVerticalLine((int)markerX,y0,y1);
@@ -2358,7 +2365,13 @@ void SlotEditor::paint(juce::Graphics&g) {
             const int x=(int)(plot.getX()+plot.getWidth()*k/4.f);
             Theme::text(g,juce::String(db),{x-22,360,44,17},10,Theme::muted,false,juce::Justification::centred);
         }
-        Theme::text(g,compressor?"OUTPUT dB":"OPEN",{1,142,36,15},9,Theme::muted);
+        // Old axis title began at x=1 and clipped on the narrow effect
+        // deck (especially at 70% UI scale). Place it INSIDE the graph.
+        // Gate already draws its OPEN threshold legend in the graph.
+        if(compressor)
+            Theme::text(g,"OUT dB",
+                        {(int)plot.getX()+12,(int)plot.getY()+34,85,17},
+                        10.3f,Theme::muted,true);
         Theme::text(g,"INPUT dB",{(int)plot.getRight()-86,376,85,15},9,Theme::muted,false,juce::Justification::centredRight);
     } else if(type==SkellPresetAudioProcessor::Delay || type==SkellPresetAudioProcessor::AdlibThrow) {
         Theme::text(g,"ECHO NUMBER  1 - 5",{38,364,360,17},10,Theme::muted);
