@@ -792,6 +792,12 @@ bool SlotEditor::testStudioLimiterPages() {
     const bool second=limiterPage==1 &&
         std::abs(knobs[0].getValue()-.25)<.01 &&
         std::abs(knobs[1].getValue()-.61)<.01;
+    const float protectedCeiling=processor.getSlotParam(slot,0);
+    const float protectedDrive=processor.getSlotParam(slot,1);
+    updateGraphNode({800.f,160.f});
+    const bool noHiddenMutation=
+        std::abs(processor.getSlotParam(slot,0)-protectedCeiling)<1.e-6f &&
+        std::abs(processor.getSlotParam(slot,1)-protectedDrive)<1.e-6f;
     knobs[0].setValue(.36,juce::sendNotificationSync);
     const bool controlled=std::abs(processor.getSlotParam(slot,4)-.36f)<.01f;
     studioGateFloor.setValue(.44,juce::sendNotificationSync);
@@ -799,7 +805,7 @@ bool SlotEditor::testStudioLimiterPages() {
     processor.setSlotType(physical,previousType);
     for(int i=0;i<9;++i)processor.setSlotParam(physical,i,original[(size_t)i]);
     select(physical);
-    return first&&second&&controlled&&floor;
+    return first&&second&&noHiddenMutation&&controlled&&floor;
 }
 bool SlotEditor::testMatchFinishPages() {
     processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
@@ -2403,7 +2409,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                         13.3f,Theme::white.withAlpha(.78f),true);
         }
     }
-    const juce::String gestureHint="DRAG GREEN HANDLE  /  X: "+
+    const juce::String gestureHint="DRAG GRAPH  /  X: "+
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
@@ -2416,11 +2422,16 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::MicModelFX ? "TONAL RESPONSE SKETCH  /  NOT A MEASURED HARDWARE MICROPHONE IMPULSE" :
                   type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
                   type==SkellPresetAudioProcessor::ExternalVST3
-                    ? juce::String("EXTERNAL VST3  /  THIRD-PARTY EDITOR OPENS SEPARATELY")
+                    ? juce::String("HOSTED VST3  /  INLINE EDITOR OR OPEN PLUGIN UI")
+                  : type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1
+                    ? juce::String("DYNAMICS PAGE  /  GRAPH READ-ONLY  /  USE KNOBS BELOW")
                     : gestureHint,{30,386,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {
     const int type=processor.slotType(slot);
+    // Dynamics is a display of the limiter transfer, while its four knobs
+    // edit p5..p8. Do not silently change off-page p1/p2 on graph drag.
+    if(type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1)return;
     constexpr float plotCentreY=254.f;
     if(type==SkellPresetAudioProcessor::EQ){
         const auto x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
@@ -2604,6 +2615,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
     }
     if(type==SkellPresetAudioProcessor::Empty
         || type==SkellPresetAudioProcessor::ExternalVST3
+        || (type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1)
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
     if(type==SkellPresetAudioProcessor::StudioEQFX && e.mods.isPopupMenu()){
         int best=-1;
