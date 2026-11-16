@@ -1,6 +1,7 @@
 // Alchemist Native Preview: source-derived stage invariants plus audio-path
 // sanity tests. No JUCE dependency or proprietary plugin code.
 #include "../Source/chain/AlchemistNativePreset.h"
+#include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/chain/FactoryPresets.h"
 #include "../Source/chain/AdvancedVocalDSP.h"
 #include "../Source/chain/VoxRackFX.h"
@@ -17,12 +18,23 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==44,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==46,"Append only; preserve prior programs");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
     assert(std::strcmp(factoryPresets[43].name,alchemist::name)==0);
     assert(std::strcmp(factoryPresets[43].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[44].name,deuce::name)==0);
+    assert(std::strcmp(factoryPresets[44].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[45].name,alchemist_trial::name)==0);
+    for(const auto& stage:deuce::stages){
+        assert(stage.module>=1 && stage.module<38);
+        assert(stage.wet>=0.f&&stage.wet<=1.f);
+        for(float value:stage.p)assert(std::isfinite(value)&&value>=0.f&&value<=1.f);
+    }
+    assert(alchemist::stages[6].p[12]==.5f);
+    assert(alchemist_trial::stages[6].p[12]==1.f);
+
 
     const int expectedTypes[7]{1,26,2,19,33,5,31};
     for(int i=0;i<7;++i) {
