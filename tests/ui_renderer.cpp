@@ -697,6 +697,20 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr,"Actual Studio limiter editor screenshot failed\n");
                 ++failures;
             }
+            // The rack menu was previously never photographed, so clipped
+            // bottom actions could pass the 110-scene audit unnoticed.
+            if(!editor.openRackContextMenuForScreenshot(0)) {
+                std::fprintf(stderr,"Real rack context menu out of bounds\n");
+                ++failures;
+            } else {
+                const auto menu=skellcore::ui::headless::capture(editor,1168,688);
+                if(!menu.image.isValid() || menu.distinctColours<12 ||
+                   !skellcore::ui::headless::writePng(
+                       menu.image,folder.getChildFile("obsidian-rack-context-menu-100.png"))) {
+                    std::fprintf(stderr,"Real rack context menu screenshot failed\n");
+                    ++failures;
+                }
+            }
         }
         editor.configureForScreenshot(0, 1, false);
         std::printf("Skell-Preset shared SkellCore renderer: %d scenes, %d failures\n",
