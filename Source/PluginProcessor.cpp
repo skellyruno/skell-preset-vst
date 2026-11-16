@@ -1308,6 +1308,12 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     else if(index==skellpreset::deuce_v25::factoryIndex)
         loadNativeStages(skellpreset::deuce_v25::stages);
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
+    // Calibrated against protected 15s OFFLINE v2.5 (~-20.0 LUFS,
+    // -4.03 dBTP), not the ~6.8dB louder original FL recording chain.
+    // This is factory-specific; existing user and Alchemist programs
+    // retain their prior master gain and automation identities.
+    if(index==skellpreset::deuce_v25::factoryIndex)
+        setReal("output",5.17f);
     setReal("micPreOn",0);setReal("micPreInput",0);
     setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
     setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
