@@ -9,10 +9,10 @@
 #include <functional>
 #include "Theme.h"
 
-// Stable 0-100 effect control indicator: numeric readouts are hidden while
-// idle and appear only during hover, drag or mouse-wheel interaction.
-// Host parameter precision, Hz/dB/Q conversion and automation IDs are
-// unchanged. Labels remain visible in the parent effect panel.
+// The actual DSP parameter value is always painted beside the dial by
+// SlotEditor. The old normalized 0-100 hover badge was contradictory (e.g.
+// "68" over a -19.4 dBFS threshold) and is intentionally removed.
+// Retain precise host automation and mouse-wheel behavior.
 class SkellHoverPercentKnob final:public juce::Slider {
 public:
     void mouseEnter(const juce::MouseEvent& e) override {
@@ -34,18 +34,8 @@ public:
 protected:
     void paintOverChildren(juce::Graphics& g) override {
         juce::Slider::paintOverChildren(g);
-        if(!hovered && !editing)return;
-        const float w=(float)getWidth();
-        const auto rect=juce::Rectangle<float>(w*.5f-23.f,(float)getHeight()-19.f,46.f,18.f);
-        g.setColour(Theme::panelAlt);
-        g.fillRoundedRectangle(rect,4.f);
-        g.setColour(Theme::green.withAlpha(.7f));
-        g.drawRoundedRectangle(rect,4.f,.85f);
-        g.setColour(Theme::white);
-        g.setFont(Theme::font(13.f,true));
-        g.drawFittedText(juce::String(juce::roundToInt(
-            juce::jlimit(0.,1.,getValue())*100.)),rect.toNearestInt(),
-            juce::Justification::centred,1);
+        // Physical-unit readout is permanently visible beside the dial;
+        // no competing normalized percentage bubble on hover/drag.
     }
 private:
     bool hovered=false,editing=false;
@@ -83,6 +73,7 @@ public:
     bool testStudioEqAddAndFilterTypes();
     bool testStudioEqGraphDoubleClick();
     bool testKnobReadouts();
+    bool testClassicDynamicsUnits();
     bool testMatchFinishPages();
     bool testStudioLimiterPages();
     bool testMicModelCards();
