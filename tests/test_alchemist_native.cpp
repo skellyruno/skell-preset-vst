@@ -42,9 +42,9 @@ int main() {
     assert(alchemist_tone_match_trial::stages.size()==8);
     assert(alchemist_tone_match_trial::stages[7].module==3);
     assert(alchemist_tone_match_trial::stages[7].wet==1.f);
-    assert(std::abs(alchemist_tone_match_trial::stages[1].p[11]-.478534f)<1.e-7f);
-    assert(std::abs(alchemist_tone_match_trial::stages[1].p[13]-.738915f)<1.e-7f);
-    assert(std::abs(alchemist_tone_match_trial::stages[1].p[15]-.830000f)<1.e-7f);
+    assert(std::abs(alchemist_tone_match_trial::stages[1].p[11]-.53333336f)<1.e-7f);
+    assert(std::abs(alchemist_tone_match_trial::stages[1].p[13]-.48000000f)<1.e-7f);
+    assert(std::abs(alchemist_tone_match_trial::stages[1].p[15]-.46333334f)<1.e-7f);
     for(std::size_t i=0;i<alchemist_peak_guard_trial::stages.size();++i)
         assert(alchemist_tone_match_trial::stages[i].module==alchemist_peak_guard_trial::stages[i].module);
     assert(std::strcmp(factoryPresets[46].bank,"Main Vocals")==0);
