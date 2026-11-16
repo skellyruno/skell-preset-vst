@@ -69,8 +69,8 @@ constexpr auto makeStages() noexcept {
     // This source-relative refinement is only a listening candidate:
     // five quality routines enabled via existing MatchFinish p13..p16.
     stages[6].p[12]=1.f;  // quality-enable (legacy p13=.5 bypass)
-    stages[6].p[13]=.46f; // stereo-linked sibilance control
-    stages[6].p[14]=.42f; // phrase density
+    stages[6].p[13]=.25f; // gentle stereo-linked HF sibilance control
+    stages[6].p[14]=.45f; // bounded phrase density
     stages[6].p[15]=.38f; // transient retention
     return stages;
 }
