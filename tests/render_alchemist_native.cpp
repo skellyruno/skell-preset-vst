@@ -636,9 +636,13 @@ int nativeTrialsSmoke() {
                      skellpreset::alchemist_trial::factoryIndex,
                      skellpreset::deuce_v25::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
-        plugin->prepareToPlay(48000.,256);
+        // Recall comparison must use the SAME prepare/order for both
+        // instances. Preparing the source before loading its program while
+        // preparing the restored copy after recall compared different
+        // smoothed initial DSP states, not actual serialization fidelity.
         plugin->loadFactoryPreset(factory);
-        const int expectedCount=factory==skellpreset::deuce_v25::factoryIndex?13:
+        plugin->prepareToPlay(48000.,256);
+        const int expectedCount=factory==skellpreset::deuce_v25::factoryIndex?14:
             factory==skellpreset::deuce::factoryIndex?12:10;
         if(plugin->loadedFactoryPresetIndex()!=factory ||
            plugin->activeSlotCount()!=expectedCount)return 201;
@@ -679,7 +683,12 @@ int nativeTrialsSmoke() {
                 const float saved=other.getSample(ch,n);
                 if(!std::isfinite(value) || !std::isfinite(saved) ||
                    std::abs(value)>8.f ||
-                   std::abs(value-saved)>1.e-3f)return 205;
+                   std::abs(value-saved)>1.e-3f) {
+                    std::fprintf(stderr,
+                      "Factory %d recall output mismatch block %d ch %d n %d: %.7f vs %.7f\n",
+                      factory,block,ch,n,(double)value,(double)saved);
+                    return 205;
+                }
                 squared+=(double)value*value;
             }
         }
