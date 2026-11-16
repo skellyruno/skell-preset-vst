@@ -6,6 +6,7 @@
 #include "../Source/PluginProcessor.h"
 #include "../Source/PluginEditor.h"
 #include "../Source/chain/AlchemistNativePreset.h"
+#include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/chain/ABMetrics.h"
 #include <algorithm>
 #include <cmath>
@@ -619,6 +620,141 @@ int monoSmoke() {
     return 0;
 }
 
+
+int nativeTrialsSmoke() {
+    const int factories[]{
+        skellpreset::deuce::factoryIndex,
+        skellpreset::alchemist_trial::factoryIndex,
+        skellpreset::deuce_v25::factoryIndex
+    };
+    for(const int factory:factories) {
+        const char* label=factory==skellpreset::deuce::factoryIndex
+            ?"Deuce D/Max":factory==skellpreset::alchemist_trial::factoryIndex
+            ?"Alchemist Refined":"Deuce v2.5";
+        auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+        plugin->prepareToPlay(48000.,256);
+        plugin->loadFactoryPreset(factory);
+        const int expectedCount=factory==skellpreset::deuce::factoryIndex?12:
+            factory==skellpreset::alchemist_trial::factoryIndex?10:13;
+        if(plugin->loadedFactoryPresetIndex()!=factory ||
+           plugin->activeSlotCount()!=expectedCount) {
+            std::fprintf(stderr,
+                "FAIL %s initial recall: program=%d slots=%d expected program=%d slots=%d\\n",
+                label,plugin->loadedFactoryPresetIndex(),plugin->activeSlotCount(),
+                factory,expectedCount);
+            return 201;
+        }
+        if(factory==skellpreset::deuce::factoryIndex &&
+           (plugin->slotType(6)!=SkellPresetAudioProcessor::Compressor ||
+            plugin->slotType(7)!=SkellPresetAudioProcessor::DeEsser)) {
+            std::fprintf(stderr,"FAIL %s REC/MAIN compressor or de-esser order\\n",label);
+            return 202;
+        }
+        if(factory==skellpreset::alchemist_trial::factoryIndex &&
+           (plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+            plugin->getSlotParam(6,12)<.75f)) {
+            std::fprintf(stderr,"FAIL %s opt-in finish stage/quality flag\\n",label);
+            return 203;
+        }
+        if(factory==skellpreset::deuce_v25::factoryIndex) {
+            const auto* eqQ=plugin->state.getRawParameterValue("s13_eqQ7");
+            if(plugin->slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX ||
+               std::abs(plugin->getSlotParam(12,12)-.9060003f)>.00001f ||
+               std::abs(plugin->getSlotParam(12,13)-.525f)>.00001f ||
+               !eqQ || std::abs(eqQ->load()-.2098347f)>.00001f) {
+                std::fprintf(stderr,
+                    "FAIL %s appended EQ slot: type=%d frequency=%g gain=%g q=%g\\n",
+                    label,plugin->slotType(12),plugin->getSlotParam(12,12),
+                    plugin->getSlotParam(12,13),eqQ?eqQ->load():-1.f);
+                return 203;
+            }
+        }
+        if(plugin->getLatencySamples()!=0) {
+            std::fprintf(stderr,"FAIL %s introduced unexpected PDC: %d samples\\n",
+                         label,plugin->getLatencySamples());
+            return 208;
+        }
+        juce::MemoryBlock state;
+        plugin->getStateInformation(state);
+        if(state.getSize()<=0) {
+            std::fprintf(stderr,"FAIL %s produced an empty host state snapshot\\n",label);
+            return 204;
+        }
+        auto recalled=std::make_unique<SkellPresetAudioProcessor>();
+        recalled->setStateInformation(state.getData(),(int)state.getSize());
+        recalled->prepareToPlay(48000.,256);
+        if(recalled->loadedFactoryPresetIndex()!=factory ||
+           recalled->activeSlotCount()!=expectedCount) {
+            std::fprintf(stderr,
+                "FAIL %s state recall: program=%d slots=%d expected program=%d slots=%d\\n",
+                label,recalled->loadedFactoryPresetIndex(),recalled->activeSlotCount(),
+                factory,expectedCount);
+            return 204;
+        }
+        double squared=0.;
+        for(int block=0;block<60;++block) {
+            juce::AudioBuffer<float> signal(2,256),other(2,256);
+            for(int n=0;n<256;++n) {
+                const float t=(float)(block*256+n)/48000.f;
+                constexpr float testPi=3.14159265358979323846f;
+                const float l=.06f*std::sin(2.f*testPi*213.f*t)
+                   +.02f*std::sin(2.f*testPi*6593.f*t);
+                signal.setSample(0,n,l);
+                signal.setSample(1,n,.87f*l);
+            }
+            other.makeCopyOf(signal);
+            juce::MidiBuffer midi,otherMidi;
+            plugin->processBlock(signal,midi);
+            recalled->processBlock(other,otherMidi);
+            for(int ch=0;ch<2;++ch)for(int n=0;n<256;++n) {
+                const float value=signal.getSample(ch,n);
+                const float saved=other.getSample(ch,n);
+                if(!std::isfinite(value) || !std::isfinite(saved) ||
+                   std::abs(value)>8.f ||
+                   std::abs(value-saved)>1.e-3f) {
+                    std::fprintf(stderr,
+                        "FAIL %s audio/state parity: block=%d channel=%d sample=%d original=%g restored=%g\\n",
+                        label,block,ch,n,value,saved);
+                    return 205;
+                }
+                squared+=(double)value*value;
+            }
+        }
+        if(squared<1.e-6) {
+            std::fprintf(stderr,"FAIL %s produced silent trial audio\\n",label);
+            return 206;
+        }
+        recalled->releaseResources();
+        plugin->releaseResources();
+    }
+
+    // Switching back from the 13-slot trial must not leave its appended EQ
+    // active in the earlier 12-slot D/Max or approved Alchemist program.
+    auto switching=std::make_unique<SkellPresetAudioProcessor>();
+    switching->prepareToPlay(48000.,256);
+    switching->loadFactoryPreset(skellpreset::deuce_v25::factoryIndex);
+    switching->loadFactoryPreset(skellpreset::deuce::factoryIndex);
+    const auto* slot13On=switching->state.getRawParameterValue("s13_on");
+    if(switching->activeSlotCount()!=12 ||
+       switching->slotType(12)!=SkellPresetAudioProcessor::Empty ||
+       !slot13On || slot13On->load()>.5f) {
+        std::fprintf(stderr,"FAIL switching v2.5 -> D/Max left the appended EQ active\\n");
+        return 209;
+    }
+    switching->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    if(switching->loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex ||
+       switching->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+       switching->getSlotParam(6,12)!=.5f ||
+       switching->slotType(12)!=SkellPresetAudioProcessor::Empty ||
+       slot13On->load()>.5f) {
+        std::fprintf(stderr,"FAIL switching back to approved Alchemist changed its baseline\\n");
+        return 210;
+    }
+    switching->releaseResources();
+    std::puts("PASS: Deuce 12/13-slot and Alchemist trial recall, EQ state, finite audio, zero-PDC and switching");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc,char** argv) {
@@ -631,6 +767,7 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--percent-smoke")return percentDisplaySmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
+    if(argc==2 && juce::String(argv[1])=="--native-trials-smoke")return nativeTrialsSmoke();
     if(argc==4 && juce::String(argv[1])=="--compare")
         return compareWavs(juce::File(juce::String::fromUTF8(argv[2])),
                            juce::File(juce::String::fromUTF8(argv[3])));
