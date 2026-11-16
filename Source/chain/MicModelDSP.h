@@ -43,10 +43,11 @@ public:
     void prepare(double rate) noexcept {
         if(!std::isfinite(rate))rate=48000.;
         const float sr=(float)std::clamp(rate,8000.,192000.);
-        constexpr float pi=3.14159265358979323846f;
+        // Avoid shadowing skellpreset::dsp::pi under MSVC /WX (C4459).
+        constexpr float micModelPi=3.14159265358979323846f;
         constexpr std::array<float,4> crossover{{140.f,600.f,3000.f,8200.f}};
         for(int k=0;k<4;++k)
-            coeff[(size_t)k]=1.f-std::exp(-2.f*pi*crossover[(size_t)k]/sr);
+            coeff[(size_t)k]=1.f-std::exp(-2.f*micModelPi*crossover[(size_t)k]/sr);
         smoothing=1.f-std::exp(-1.f/(sr*.025f));
         reset();
     }
