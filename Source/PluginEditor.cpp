@@ -398,6 +398,9 @@ public:
         if(chain.onClearSelection)chain.onClearSelection();
         refresh();
     }
+    bool openRackContextMenuForScreenshot(int visualRow) {
+        return chain.openContextMenuForScreenshot(visualRow);
+    }
     void openModulePickerForScreenshot() {
         editingIdle=false;idle.setVisible(false);
         slot.openModulePickerForScreenshot();
@@ -1206,6 +1209,9 @@ void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
 
 void SkellPresetAudioProcessorEditor::showHomeForScreenshot() {
     canvas->showHomeForScreenshot();
+}
+bool SkellPresetAudioProcessorEditor::openRackContextMenuForScreenshot(int visualRow) {
+    return canvas->openRackContextMenuForScreenshot(visualRow);
 }
 void SkellPresetAudioProcessorEditor::openModulePickerForScreenshot() {
     canvas->openModulePickerForScreenshot();
