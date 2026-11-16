@@ -105,6 +105,12 @@ add_executable(SkellPresetMicModelTest test_mic_model_dsp.cpp)
 target_compile_features(SkellPresetMicModelTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetMicModelTest COMMAND SkellPresetMicModelTest)
 
+# Five opt-in zero-latency DSP refinements plus 12-slot Deuce D/Max
+# native TRIAL, with exact bypass parity for all historical Alchemist states.
+add_executable(SkellPresetRefinedNativeTrialTest test_refined_native_trials.cpp)
+target_compile_features(SkellPresetRefinedNativeTrialTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetRefinedNativeTrialTest COMMAND SkellPresetRefinedNativeTrialTest)
+
 # The fitted contour is opted into only by Alchemist factory p9=1;
 # all historic p9=0.5 finish slots must retain their original signal path.
 add_executable(SkellPresetAlchemistContourTest test_alchemist_reference_contour.cpp)
