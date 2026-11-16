@@ -6,6 +6,7 @@
 #include "../Source/PluginProcessor.h"
 #include "../Source/PluginEditor.h"
 #include "../Source/chain/AlchemistNativePreset.h"
+#include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/chain/ABMetrics.h"
 #include <algorithm>
 #include <cmath>
@@ -619,6 +620,62 @@ int monoSmoke() {
     return 0;
 }
 
+int nativeTrialsSmoke() {
+    for(int factory:{skellpreset::deuce::factoryIndex,
+                     skellpreset::alchemist_trial::factoryIndex}) {
+        auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+        plugin->prepareToPlay(48000.,256);
+        plugin->loadFactoryPreset(factory);
+        const int expectedCount=factory==skellpreset::deuce::factoryIndex?12:10;
+        if(plugin->loadedFactoryPresetIndex()!=factory ||
+           plugin->activeSlotCount()!=expectedCount)return 201;
+        if(factory==skellpreset::deuce::factoryIndex &&
+           (plugin->slotType(6)!=SkellPresetAudioProcessor::Compressor ||
+            plugin->slotType(7)!=SkellPresetAudioProcessor::DeEsser))
+            return 202;
+        if(factory==skellpreset::alchemist_trial::factoryIndex &&
+           (plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+            plugin->getSlotParam(6,12)<.75f))return 203;
+        juce::MemoryBlock state;
+        plugin->getStateInformation(state);
+        auto recalled=std::make_unique<SkellPresetAudioProcessor>();
+        recalled->setStateInformation(state.getData(),(int)state.getSize());
+        recalled->prepareToPlay(48000.,256);
+        if(recalled->loadedFactoryPresetIndex()!=factory ||
+           recalled->activeSlotCount()!=expectedCount)return 204;
+        double squared=0.;
+        for(int block=0;block<60;++block) {
+            juce::AudioBuffer<float> signal(2,256),other(2,256);
+            for(int n=0;n<256;++n) {
+                const float t=(float)(block*256+n)/48000.f;
+                constexpr float testPi=3.14159265358979323846f;
+                const float l=.06f*std::sin(2.f*testPi*213.f*t)
+                   +.02f*std::sin(2.f*testPi*6593.f*t);
+                signal.setSample(0,n,l);
+                signal.setSample(1,n,.87f*l);
+            }
+            other.makeCopyOf(signal);
+            juce::MidiBuffer midi,otherMidi;
+            plugin->processBlock(signal,midi);
+            recalled->processBlock(other,otherMidi);
+            for(int ch=0;ch<2;++ch)for(int n=0;n<256;++n) {
+                const float value=signal.getSample(ch,n);
+                const float saved=other.getSample(ch,n);
+                if(!std::isfinite(value) || !std::isfinite(saved) ||
+                   std::abs(value)>8.f ||
+                   std::abs(value-saved)>1.e-3f)return 205;
+                squared+=(double)value*value;
+            }
+        }
+        if(squared<1.e-6)return 206;
+    }
+    auto protectedPreset=std::make_unique<SkellPresetAudioProcessor>();
+    protectedPreset->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    if(protectedPreset->getSlotParam(6,12)!=.5f)return 207;
+    std::puts("PASS: Deuce and Alchemist trial recall, 12-slot rack, 0-NaN stereo, legacy bypass");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc,char** argv) {
@@ -628,6 +685,7 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--smoke-slot-order")return strictSlotOrderSmoke();
     if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
     if(argc==2 && juce::String(argv[1])=="--studio-smoke")return studioSmoke();
+    if(argc==2 && juce::String(argv[1])=="--native-trials-smoke")return nativeTrialsSmoke();
     if(argc==2 && juce::String(argv[1])=="--percent-smoke")return percentDisplaySmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
