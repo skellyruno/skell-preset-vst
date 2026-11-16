@@ -18,7 +18,9 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==49,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==50,"Append only; preserve prior programs");
+    static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
+                  "Alchemist lighter-dynamics candidate must append at index 49");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
@@ -39,6 +41,10 @@ int main() {
     assert(alchemist_peak_guard_trial::stages[7].p[1]==0.f);
     assert(std::strcmp(factoryPresets[48].name,alchemist_tone_match_trial::name)==0);
     assert(std::strcmp(factoryPresets[48].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[49].name,alchemist_lighter_dynamics_trial::name)==0);
+    assert(std::strcmp(factoryPresets[49].bank,"Main Vocals")==0);
+    assert(alchemist_lighter_dynamics_trial::stages[2].wet==.20f);
+    assert(alchemist_lighter_dynamics_trial::stages[3].wet==.50f);
     assert(alchemist_tone_match_trial::stages.size()==8);
     assert(alchemist_tone_match_trial::stages[7].module==3);
     assert(alchemist_tone_match_trial::stages[7].wet==1.f);
