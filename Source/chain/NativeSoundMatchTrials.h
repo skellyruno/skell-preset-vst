@@ -69,10 +69,10 @@ namespace skellpreset::deuce_v25 {
 //
 // Same-take initial native render showed >10dB low output, excess sub-250Hz,
 // and weak air. Add a SMALL broad corrective EQ, preserve the exact +0.75dB
-// 7k bell, and apply bounded final lookahead limiting. This native trial
+// 7k bell, and calibrate output to the approved v2.5 LUFS. This trial
 // does not change the separately protected D/Max index 44 or Alchemist 43.
 constexpr auto makeStages() noexcept {
-    std::array<alchemist::NativeStage,14> result{};
+    std::array<alchemist::NativeStage,13> result{};
     for(std::size_t i=0;i<deuce::stages.size();++i)
         result[i]=deuce::stages[i];
     auto equalizer=alchemist::neutral(26); // 8 Band Tone; full native editor
@@ -91,23 +91,18 @@ constexpr auto makeStages() noexcept {
     for(auto& value:equalizer.q)value=broadQ;
     equalizer.q[6]=.2098347f;     // Q~0.75 at the 7k presence band
     result[12]=equalizer;
-    // A final real native Skell limiter restores the observed ~10.7dB
-    // level gap safely. This adds the plugin's existing ~3ms lookahead PDC
-    // (tested by host); never pretend to be zero-latency or Fruity Limiter.
-    auto finalLimiter=alchemist::neutral(3);
-    finalLimiter.p[0]=.90f;           // ceiling ~-0.9 dBFS
-    finalLimiter.p[1]=10.5f/18.f;     // input drive +10.5dB
-    finalLimiter.p[2]=.40f;           // smooth release
-    result[13]=finalLimiter;
+    // V2.5's protected offline winner is ~-20 LUFS / -4.03 dBTP,
+    // NOT the much louder original full-chain reference (-13.2 LUFS).
+    // Factory loading sets +5.17dB output gain after this EQ to match
+    // the preferred OFFLINE winner, avoiding an unnecessary 3ms limiter.
     return result;
 }
 inline constexpr auto stages=makeStages();
 inline constexpr int factoryIndex=46;
 inline constexpr const char* name="Deuce v2.5 (Native Trial)";
 inline constexpr const char* bank="Main Vocals";
-static_assert(stages.size()==14 && stages[12].module==26
-              && stages[13].module==3,
-    "Current Deuce v2.5 trial has editable EQ and output limiter");
+static_assert(stages.size()==13 && stages[12].module==26,
+    "Current Deuce v2.5 trial has zero-lookahead presence/balance EQ");
 }
 
 namespace skellpreset::alchemist_trial {
