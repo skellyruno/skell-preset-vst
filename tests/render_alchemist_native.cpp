@@ -632,7 +632,8 @@ int monoSmoke() {
 }
 
 int nativeTrialsSmoke() {
-    for(int factory:{skellpreset::deuce::factoryIndex,
+    for(int factory:{skellpreset::alchemist::factoryIndex,
+                     skellpreset::deuce::factoryIndex,
                      skellpreset::alchemist_trial::factoryIndex,
                      skellpreset::deuce_v25::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
@@ -650,9 +651,17 @@ int nativeTrialsSmoke() {
            (plugin->slotType(6)!=SkellPresetAudioProcessor::Compressor ||
             plugin->slotType(7)!=SkellPresetAudioProcessor::DeEsser))
             return 202;
+        if(factory==skellpreset::alchemist::factoryIndex &&
+           (plugin->slotType(1)!=SkellPresetAudioProcessor::EightBandToneFX ||
+            plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+            std::abs(plugin->getSlotParam(1,15)-.866667f)>.001f ||
+            std::abs(plugin->getSlotParam(6,12)-.5f)>1.e-6f))return 209;
         if(factory==skellpreset::alchemist_trial::factoryIndex &&
            (plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
-            plugin->getSlotParam(6,12)<.75f))return 203;
+            plugin->getSlotParam(6,12)<.75f ||
+            std::abs(plugin->getSlotParam(6,13)-.25f)>.001f ||
+            std::abs(plugin->getSlotParam(6,14)-.45f)>.001f ||
+            std::abs(plugin->getSlotParam(6,15)-.38f)>.001f))return 203;
         if(factory==skellpreset::deuce_v25::factoryIndex &&
            (plugin->slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX ||
             std::abs(plugin->getSlotParam(12,13)-.525f)>.001f))return 208;
@@ -663,6 +672,14 @@ int nativeTrialsSmoke() {
         recalled->prepareToPlay(48000.,256);
         if(recalled->loadedFactoryPresetIndex()!=factory ||
            recalled->activeSlotCount()!=expectedCount)return 204;
+        if(factory==skellpreset::alchemist::factoryIndex &&
+           (std::abs(recalled->getSlotParam(1,15)-.866667f)>.001f ||
+            std::abs(recalled->getSlotParam(6,12)-.5f)>1.e-6f))return 210;
+        if(factory==skellpreset::alchemist_trial::factoryIndex &&
+           (recalled->getSlotParam(6,12)<.75f ||
+            std::abs(recalled->getSlotParam(6,13)-.25f)>.001f ||
+            std::abs(recalled->getSlotParam(6,14)-.45f)>.001f ||
+            std::abs(recalled->getSlotParam(6,15)-.38f)>.001f))return 211;
         double squared=0.;
         for(int block=0;block<60;++block) {
             juce::AudioBuffer<float> signal(2,256),other(2,256);
@@ -694,10 +711,21 @@ int nativeTrialsSmoke() {
         }
         if(squared<1.e-6)return 206;
     }
-    auto protectedPreset=std::make_unique<SkellPresetAudioProcessor>();
-    protectedPreset->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
-    if(protectedPreset->getSlotParam(6,12)!=.5f)return 207;
-    std::puts("PASS: Deuce and Alchemist trial recall, 12-slot rack, 0-NaN stereo, legacy bypass");
+    // Switching between the protected original and opt-in trial must
+    // restore every refinement control instead of leaving stale automation.
+    auto switcher=std::make_unique<SkellPresetAudioProcessor>();
+    switcher->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    switcher->loadFactoryPreset(skellpreset::alchemist_trial::factoryIndex);
+    if(switcher->getSlotParam(6,12)<.75f ||
+       std::abs(switcher->getSlotParam(6,13)-.25f)>.001f ||
+       std::abs(switcher->getSlotParam(6,14)-.45f)>.001f ||
+       std::abs(switcher->getSlotParam(6,15)-.38f)>.001f)return 212;
+    switcher->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    if(std::abs(switcher->getSlotParam(6,12)-.5f)>1.e-6f ||
+       std::abs(switcher->getSlotParam(6,13)-.5f)>1.e-6f ||
+       std::abs(switcher->getSlotParam(6,14)-.5f)>1.e-6f ||
+       std::abs(switcher->getSlotParam(6,15)-.5f)>1.e-6f)return 213;
+    std::puts("PASS: original/refined Alchemist + Deuce factory recall, switch and 0-NaN stereo");
     return 0;
 }
 
