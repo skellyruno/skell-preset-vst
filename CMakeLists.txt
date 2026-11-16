@@ -196,6 +196,8 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
         COMMAND SkellPresetAlchemistRender --ui-smoke)
     add_test(NAME SkellPresetAlchemistMonoWavRenderSmoke
         COMMAND SkellPresetAlchemistRender --smoke-mono)
+    add_test(NAME SkellPresetNativeSoundMatchTrialSmoke
+        COMMAND SkellPresetAlchemistRender --native-trials-smoke)
     # Serial 5/10/20-instance workload of the real native processor with
     # finite/peak checks and host-PDC assertions (not DAW CPU certification).
     add_test(NAME SkellPresetRealRackStress
