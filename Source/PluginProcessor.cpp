@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "chain/EffectRegistry.h"
 #include "chain/AlchemistNativePreset.h"
+#include "chain/NativeSoundMatchTrials.h"
 #include "chain/RackRealtimePolicy.h"
 #include <cmath>
 
@@ -1268,33 +1269,42 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
             compactOrder|=(std::uint64_t)ids[position] << (4*position);
         packedOrder.store(compactOrder,std::memory_order_release);
     }
-    if(index==skellpreset::alchemist::factoryIndex) {
-        // Append-only sound study. The original source chain's plugin types
-        // are documented, but proprietary Waves/FL plugin state is NOT ported.
-        // Do not insert a default final limiter: measured reference difference
-        // was negligible for the supplied sample, and it would add PDC.
+    // Preserve factory indices. Append-only native sound-match trials
+    // share the same serialized 16-slot APVTS structure and cannot overwrite
+    // the protected factory index 43 or any previously saved FL Studio state.
+    auto loadNativeStages=[this](const auto& nativeStages) {
         for(int physical=0;physical<slotCount;++physical) {
             setSlotOn(physical,false);
             setSlotType(physical,Empty);
             setReal(slotPrefix(physical)+"wet",1.f);
         }
-        for(int position=0;
-            position<(int)skellpreset::alchemist::stages.size();++position) {
-            const auto& stage=skellpreset::alchemist::stages[(size_t)position];
+        for(int position=0;position<(int)nativeStages.size();++position) {
+            const auto& stage=nativeStages[(size_t)position];
             setSlotType(position,stage.module);
             setSlotOn(position,true);
             setReal(slotPrefix(position)+"wet",stage.wet);
             for(int k=0;k<16;++k)setSlotParam(position,k,stage.p[(size_t)k]);
             for(int k=0;k<8;++k)
-                setReal(slotPrefix(position)+"eqQ"+juce::String(k+1),stage.q[(size_t)k]);
+                setReal(slotPrefix(position)+"eqQ"+juce::String(k+1),
+                        stage.q[(size_t)k]);
         }
-        // Explicit identity ordering prevents inherited legacy factory
-        // reorders from silently changing Alchemist's serial stage order.
+        // A 12-slot Deuce study must actually be scrollable/accessible;
+        // historical ten-slot presets retain ten visible physical rows.
+        const int count=juce::jlimit(defaultSlotCount,slotCount,
+                                    (int)nativeStages.size());
+        activeSlots.store(count,std::memory_order_release);
+        state.state.setProperty("rackSlots",count,nullptr);
         std::uint64_t identityOrder=0;
         for(int position=0;position<slotCount;++position)
             identityOrder|=(std::uint64_t)position << (4*position);
         packedOrder.store(identityOrder,std::memory_order_release);
-    }
+    };
+    if(index==skellpreset::alchemist::factoryIndex)
+        loadNativeStages(skellpreset::alchemist::stages);
+    else if(index==skellpreset::deuce::factoryIndex)
+        loadNativeStages(skellpreset::deuce::stages);
+    else if(index==skellpreset::alchemist_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_trial::stages);
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
     setReal("micPreOn",0);setReal("micPreInput",0);
     setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
