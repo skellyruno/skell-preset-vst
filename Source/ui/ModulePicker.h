@@ -160,8 +160,8 @@ public:
                     false,juce::Justification::centredRight);
         Theme::text(g,"X",{getWidth()-34,9,23,26},15,Theme::muted,true,
                     juce::Justification::centred);
-        Theme::text(g,"SEARCH / CLICK TO LOAD / SCROLL FOR MORE",
-                    {18,86,getWidth()-34,17},10,Theme::muted);
+        Theme::text(g,"SEARCH  •  CLICK TO LOAD  •  SCROLL EFFECTS",
+                    {18,86,getWidth()-34,17},11.4f,Theme::muted.brighter(.18f));
 
         const int visible=visibleRows();
         constexpr int rowHeight=37,rowY=108;
@@ -180,9 +180,10 @@ public:
                 g.drawRoundedRectangle(rect.reduced(.5f),5.f,1.1f);
             }
             const auto name=processor.moduleName(type);
-            Theme::text(g,name,{27,y+4,198,23},13,active?Theme::green:Theme::white,true);
+            Theme::fittedText(g,name,{27,y+4,203,23},14.0f,
+                              active?Theme::green:Theme::white,true);
             Theme::text(g,category(type).toUpperCase(),
-                        {getWidth()-130,y+7,100,17},9,
+                        {getWidth()-130,y+7,100,17},10.6f,
                         active?Theme::green:Theme::muted,false,
                         juce::Justification::centredRight);
         }
