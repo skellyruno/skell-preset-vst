@@ -372,6 +372,31 @@ void SlotEditor::applyKnobReadouts() {
                 }
                 return juce::String((v-.5)*30.,1)+"dB";
             }
+            // Native dynamic processors display the same physical units as
+            // their real DSP coefficient mapping, not misleading percentages.
+            if(module==SkellPresetAudioProcessor::Compressor) {
+                const auto* p=processor.state.getRawParameterValue("macro2");
+                const double punch=p?p->load():.5;
+                if(i==0)return juce::String(-48.+42.*v-12.*(punch-.5),1)+" dBFS";
+                if(i==1)return juce::String(1.+11.*v,1)+":1";
+                if(i==2)return juce::String(2.+98.*v,1)+" ms";
+                return juce::String(20.+480.*v,0)+" ms";
+            }
+            if(module==SkellPresetAudioProcessor::Gate) {
+                if(i==0)return juce::String(-75.+70.*v,1)+" dBFS";
+                if(i==1)return juce::String(40.+600.*v,0)+" ms";
+                if(i==2)return juce::String(120.*v,0)+" ms";
+                return juce::String(8.*v,1)+" dB";
+            }
+            if(module==SkellPresetAudioProcessor::DeEsser) {
+                if(i==0) {
+                    const double hz=3500.+8000.*v;
+                    return juce::String(hz/1000.,2)+" kHz";
+                }
+                if(i==1)return juce::String(-53.+39.*v,1)+" dBFS";
+                if(i==2)return juce::String(2.+20.*v,1)+" dB";
+                return juce::String(35.+245.*v,0)+" ms";
+            }
             if(module==SkellPresetAudioProcessor::StudioLimiterFX) {
                 const int parameter=limiterPage*4+i;
                 if(parameter==0)
@@ -481,6 +506,33 @@ void SlotEditor::applyKnobReadouts() {
                 const double hi=skellpreset::dsp::EightBandTone::edges[(size_t)band+1];
                 const double hz=juce::jmax(1.,value*(text.contains("khz")?1000.:1.));
                 return juce::jlimit(0.,1.,std::log(hz/lo)/std::log(hi/lo));
+            }
+            if(module==SkellPresetAudioProcessor::Compressor) {
+                if(text.contains("%"))return juce::jlimit(0.,1.,value/100.);
+                const auto* p=processor.state.getRawParameterValue("macro2");
+                const double punch=p?p->load():.5;
+                if(i==0)return juce::jlimit(0.,1.,
+                    (value+48.+12.*(punch-.5))/42.);
+                if(i==1)return juce::jlimit(0.,1.,(value-1.)/11.);
+                if(i==2)return juce::jlimit(0.,1.,(value-2.)/98.);
+                return juce::jlimit(0.,1.,(value-20.)/480.);
+            }
+            if(module==SkellPresetAudioProcessor::Gate) {
+                if(text.contains("%"))return juce::jlimit(0.,1.,value/100.);
+                if(i==0)return juce::jlimit(0.,1.,(value+75.)/70.);
+                if(i==1)return juce::jlimit(0.,1.,(value-40.)/600.);
+                if(i==2)return juce::jlimit(0.,1.,value/120.);
+                return juce::jlimit(0.,1.,value/8.);
+            }
+            if(module==SkellPresetAudioProcessor::DeEsser) {
+                if(text.contains("%"))return juce::jlimit(0.,1.,value/100.);
+                if(i==0) {
+                    const double hz=value*(text.contains("khz")?1000.:1.);
+                    return juce::jlimit(0.,1.,(hz-3500.)/8000.);
+                }
+                if(i==1)return juce::jlimit(0.,1.,(value+53.)/39.);
+                if(i==2)return juce::jlimit(0.,1.,(value-2.)/20.);
+                return juce::jlimit(0.,1.,(value-35.)/245.);
             }
             if(module==SkellPresetAudioProcessor::MicModelFX) {
                 if(i==0 || i==1) {
@@ -2067,9 +2119,15 @@ void SlotEditor::paint(juce::Graphics&g) {
             Theme::fittedText(g,"OUT PEAK",
                         {(int)rail.getX()+39,(int)rail.getY()+19,57,19},
                         10.8f,Theme::muted,true);
-            Theme::text(g,juce::String(rackPeak*100.f,0)+"%",
-                        {(int)rail.getX()+39,(int)rail.getY()+69,60,24},
-                        15,Theme::white,true);
+            const juce::String peakDb=rackPeak<=.000001f
+                ?juce::String("-INF")
+                :juce::String(20.f*std::log10(rackPeak),1);
+            Theme::fittedText(g,peakDb,
+                        {(int)rail.getX()+39,(int)rail.getY()+65,58,23},
+                        15.0f,Theme::white,true);
+            Theme::text(g,"dBFS",
+                        {(int)rail.getX()+40,(int)rail.getY()+88,54,14},
+                        10.0f,Theme::muted,true);
             // Explanation belongs in the effect help text, not on top of
             // the green transfer line at the left edge of this plot.
         } else if(type==SkellPresetAudioProcessor::Saturator){
