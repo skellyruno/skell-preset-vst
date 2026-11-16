@@ -58,6 +58,20 @@ int main() {
             assert(std::isfinite(y[0])&&std::isfinite(y[1]));
         }
     }
+    // The optional reference-informed air shelf must audibly act on the
+    // previously weak 14–18.5 kHz region but never affect legacy output.
+    AlchemistRefinedDSP air;air.prepare(44100.);air.set(1.f,0.f,0.f,0.f);
+    double inEnergy=0.,outEnergy=0.;
+    for(int i=0;i<44100;++i) {
+        const float x=.009f*std::sin(
+            2.f*3.14159265f*16000.f*i/44100.f);
+        const auto y=air.process(x,x);
+        if(i>22050) {
+            inEnergy+=(double)x*x;
+            outEnergy+=(double)y[0]*y[0];
+        }
+    }
+    assert(outEnergy>inEnergy*1.1); // >0.4 dB top-end restoration
     // Actual full Match Finish is identical with old arguments and explicit
     // p13=.5; quality is opt-in, not silently enabled for existing sessions.
     skellpreset::dsp::AlchemistMatchFinish legacy,disabled;
