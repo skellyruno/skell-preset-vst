@@ -255,9 +255,22 @@ void ChainPanel::paint(juce::Graphics& g) {
         else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX)compact="Noise";
         else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX)compact="Pitch";
         else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)compact="Match Finish";
-        const float nameSize=compact.length()>10?9.1f:compact.length()>8?9.9f:10.8f;
-        Theme::fittedText(g,compact,{78,top+8,69,19},nameSize,
-                    type==0?Theme::muted:(enabled?Theme::white:Theme::muted),selected==slot);
+        const auto labelColour=type==0?Theme::muted:
+            (enabled?Theme::white:Theme::muted);
+        // Two short fitted lines keep long native and third-party product
+        // names legible in the hardware rack without colliding with wet.
+        const int wrapAt=compact.substring(0,15).lastIndexOfChar(' ');
+        if(compact.length()>12 && wrapAt>2 && wrapAt<compact.length()-2) {
+            Theme::fittedText(g,compact.substring(0,wrapAt),
+                              {78,top+4,69,15},9.4f,labelColour,selected==slot);
+            Theme::fittedText(g,compact.substring(wrapAt+1),
+                              {78,top+20,69,14},9.4f,labelColour,false);
+        } else {
+            const float nameSize=compact.length()>10?9.1f:
+                                 compact.length()>8?9.9f:10.8f;
+            Theme::fittedText(g,compact,{78,top+8,69,19},nameSize,
+                              labelColour,selected==slot);
+        }
         const float cx=165.f, cy=(float)top+19.f;
         const float wet=slotWet(slot);
         // Empty physical slots have no audible wet blend. Don't show a
@@ -613,26 +626,29 @@ void ChainPanel::applyWheelDelta(float deltaY) {
     if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
         visualSnapshotValid=false;repaint();}
 }
+void ChainPanel::applyWetWheel(int physical,float deltaY) {
+    if(physical<0 || physical>=SkellPresetAudioProcessor::slotCount ||
+       processor.slotType(physical)==SkellPresetAudioProcessor::Empty ||
+       !std::isfinite(deltaY) || deltaY==0.f)return;
+    auto* p=processor.state.getParameter("s"+
+        juce::String(physical+1)+"_wet");
+    if(!p)return;
+    // Smooth trackpads produce tiny deltas; old fixed 2.5%/event jumps
+    // were overly sensitive. Cap each gesture to 5% and preserve the
+    // physical slot ID even after rack reordering.
+    const float delta=juce::jlimit(-.05f,.05f,deltaY*.09f);
+    p->beginChangeGesture();
+    setSlotWet(physical,slotWet(physical)+delta);
+    p->endChangeGesture();
+    hoveredWetSlot=physical;repaint();
+}
 void ChainPanel::mouseWheelMove(const juce::MouseEvent& event,
                                 const juce::MouseWheelDetails& wheel) {
     if(contextOpen){contextOpen=false;contextHover=-1;repaint();}
-    // Wheel on a wet dial edits THAT physical slot's blend. Everywhere
-    // else inside the rack it scrolls the effect list; never the DAW/editor.
     const int row=rowAt(event.y);
     if(row>=0 && event.x>=wetControlLeft && event.x<=wetControlRight) {
-        const int physical=processor.slotIdAt(row);
-        if(processor.slotType(physical)!=SkellPresetAudioProcessor::Empty) {
-            if(auto* p=processor.state.getParameter("s"+
-                   juce::String(physical+1)+"_wet")) {
-                p->beginChangeGesture();
-                const float step=wheel.deltaY>=0.f?.025f:-.025f;
-                setSlotWet(physical,slotWet(physical)+step);
-                p->endChangeGesture();
-            }
-            hoveredWetSlot=physical;
-            repaint();
-            return;
-        }
+        applyWetWheel(processor.slotIdAt(row),wheel.deltaY);
+        return;
     }
     applyWheelDelta(wheel.deltaY);
 }
@@ -657,20 +673,24 @@ bool ChainPanel::testWheelScrollDoesNotReorder() {
 bool ChainPanel::testWheelWetAndRack() {
     if(processor.activeSlotCount()<=visibleRows)return false;
     const int physical=processor.slotIdAt(0);
-    const float prior=slotWet(physical);
+    if(processor.slotType(physical)==SkellPresetAudioProcessor::Empty)return false;
+    const float previous=slotWet(physical);
     const int previousScroll=scrollOffset;
-    setSlotWet(physical,prior-.025f);
-    const bool changed=std::abs(slotWet(physical)-prior)>.001f ||
-                       prior<=.025f;
-    setSlotWet(physical,prior);
-    scrollOffset=0;
-    railWheelCarry=0.f;
+    setSlotWet(physical,.50f);
+    applyWetWheel(physical,.5f);
+    const bool wetIncreased=std::abs(slotWet(physical)-.545f)<.002f;
+    const int initialScroll=scrollOffset;
+    applyWetWheel(physical,-.5f);
+    const bool wetRestored=std::abs(slotWet(physical)-.50f)<.002f &&
+                           scrollOffset==initialScroll;
+    setSlotWet(physical,previous);
+    scrollOffset=0;railWheelCarry=0.f;
     applyWheelDelta(-.2f);
     const bool scrolled=scrollOffset==1;
     scrollOffset=previousScroll;
     railWheelCarry=0.f;
     visualSnapshotValid=false;repaint();
-    return changed && scrolled;
+    return wetIncreased && wetRestored && scrolled;
 }
 bool ChainPanel::testRemoveExtraSlot() {
     const int before=processor.activeSlotCount();
