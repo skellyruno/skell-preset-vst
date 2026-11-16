@@ -727,9 +727,8 @@ int main(int argc, char** argv) {
             // Latest *approved listening winner* v2.5 is a separate native
             // 13-slot preview, not a 1:1 recreation of offline v2.3 DSP.
             processor.loadFactoryPreset(skellpreset::deuce_v25::factoryIndex);
-            if(processor.activeSlotCount()!=14 ||
-               processor.slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX ||
-               processor.slotType(13)!=SkellPresetAudioProcessor::Limiter)
+            if(processor.activeSlotCount()!=13 ||
+               processor.slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX)
                 ++failures;
             editor.configureForScreenshot(0,0,false);
             const auto v25Simple=skellcore::ui::headless::capture(editor,1168,688);
