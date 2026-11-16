@@ -18,9 +18,9 @@ public:
     void prepare(double rate) noexcept {
         if(!std::isfinite(rate))rate=48000.;
         sr=(float)std::clamp(rate,8000.,192000.);
-        constexpr float pi=3.14159265358979323846f;
-        hpPole=std::exp(-2.f*pi*18.f/sr);
-        lpStep=1.f-std::exp(-2.f*pi*std::min(6200.f,sr*.43f)/sr);
+        constexpr float refinedPi=3.14159265358979323846f;
+        hpPole=std::exp(-2.f*refinedPi*18.f/sr);
+        lpStep=1.f-std::exp(-2.f*refinedPi*std::min(6200.f,sr*.43f)/sr);
         fastStep=1.f-std::exp(-1.f/(sr*.0025f));
         slowStep=1.f-std::exp(-1.f/(sr*.070f));
         gainStep=1.f-std::exp(-1.f/(sr*.045f));
