@@ -196,6 +196,10 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
         COMMAND SkellPresetAlchemistRender --ui-smoke)
     add_test(NAME SkellPresetAlchemistMonoWavRenderSmoke
         COMMAND SkellPresetAlchemistRender --smoke-mono)
+    # Exercise append-only Deuce and Alchemist trial factory load, host-state
+    # save/restore, finite audio, zero PDC and switching in the compiled JUCE processor.
+    add_test(NAME SkellPresetNativeSoundMatchTrialsRecall
+        COMMAND SkellPresetAlchemistRender --native-trials-smoke)
     # Serial 5/10/20-instance workload of the real native processor with
     # finite/peak checks and host-PDC assertions (not DAW CPU certification).
     add_test(NAME SkellPresetRealRackStress
