@@ -606,6 +606,8 @@ public:
             issues.add("8-Band EQ graph did not edit the eighth band and its Q");
         if(!slot.testKnobReadouts())
             issues.add("APVTS overwrote physical Hz/dB/Q knob readouts");
+        if(!slot.testClassicDynamicsUnits())
+            issues.add("Classic dynamics controls do not display or parse their physical units");
         if(!slot.testStudioEqSeventhBand())
             issues.add("Studio seven-band EQ last page does not edit B7 frequency, gain or width");
         if(!slot.testStudioEqAddAndFilterTypes())
@@ -920,11 +922,12 @@ public:
                     g.drawLine(centreX+dx*tickInner,centreY+dy*tickInner,
                                centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
                 }
-                if(macro[(size_t)k].showsValueForTest()) {
-                    Theme::text(g,juce::String(juce::roundToInt(amount*100.f))+"%",
-                        {(int)x+55,510,110,29},21,Theme::green,true,
-                        juce::Justification::centred);
-                }
+                // Macro value is useful even when not hovering. At 70%
+                // scale the old hover-only readout left four expensive
+                // looking but opaque knobs with no numeric feedback.
+                Theme::text(g,juce::String(juce::roundToInt(amount*100.f))+"%",
+                    {(int)x+55,510,110,29},21,Theme::green,true,
+                    juce::Justification::centred);
                 const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
                 g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
                 if(amount>.0001f){
