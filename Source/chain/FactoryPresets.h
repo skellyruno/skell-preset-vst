@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,46> factoryPresets {{
+inline constexpr std::array<FactoryPreset,47> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -69,9 +69,18 @@ inline constexpr std::array<FactoryPreset,46> factoryPresets {{
     {"Alchemist Refined (Trial)","Main Vocals",
      "Protected Alchemist preview with five opt-in causal polish refinements",
      4,.50f,.42f,.02f,.12f},
+    // User APPROVED v2.5 OFFLINE sound, but live native v2.5 is only
+    // a comparative candidate until its underlying v2.3 DSP is ported.
+    {"Deuce v2.5 (Native Trial)","Main Vocals",
+     "Preferred v2.5 reference: native REC/MAIN approximation with 7 kHz correction",
+     5,.52f,.50f,.04f,.20f},
 }};
 static_assert(factoryPresets[43].name==std::string_view("Alchemist (Native Preview)"),
     "Do not change approved Alchemist factory index");
 static_assert(factoryPresets[44].name==std::string_view("Deuce D/Max (Native Trial)"),
     "Deuce trial must be discoverable as a Main Vocals factory preset");
+static_assert(factoryPresets[45].name==std::string_view("Alchemist Refined (Trial)"),
+    "Alchemist refinement stays at index 45");
+static_assert(factoryPresets[46].name==std::string_view("Deuce v2.5 (Native Trial)"),
+    "Newest user-preferred Deuce study appended at 46");
 }
