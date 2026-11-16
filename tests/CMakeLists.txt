@@ -87,9 +87,8 @@ add_executable(SkellPresetAlchemistNativeTest test_alchemist_native.cpp)
 target_compile_features(SkellPresetAlchemistNativeTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetAlchemistNativeTest COMMAND SkellPresetAlchemistNativeTest)
 
-# Factory 48's three measured tonal corrections are expressed in normalized
-# 8-band EQ gain units (physical dB = (normalized - 0.5) * 30).
-# Verify both parameter mapping and the actual filter response in Release builds.
+# Factory 48's three measured tonal corrections are relative to protected
+# factory 43. Verify normalized deltas and actual filter response in Release builds.
 add_executable(SkellPresetAlchemistToneMatchMappingTest test_alchemist_tone_match_mapping.cpp)
 target_compile_features(SkellPresetAlchemistToneMatchMappingTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetAlchemistToneMatchMappingTest COMMAND SkellPresetAlchemistToneMatchMappingTest)

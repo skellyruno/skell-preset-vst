@@ -717,9 +717,9 @@ int nativeTrialsSmoke() {
             plugin->getLatencySamples()<48 || plugin->getLatencySamples()>1024))
             return 219;
         if(factory==skellpreset::alchemist_tone_match_trial::factoryIndex &&
-           (std::abs(plugin->getSlotParam(1,11)-.53333336f)>.001f ||
-            std::abs(plugin->getSlotParam(1,13)-.48000000f)>.001f ||
-            std::abs(plugin->getSlotParam(1,15)-.46333334f)>.001f))
+           (std::abs(plugin->getSlotParam(1,11)-.478534f)>.001f ||
+            std::abs(plugin->getSlotParam(1,13)-.738915f)>.001f ||
+            std::abs(plugin->getSlotParam(1,15)-.830000f)>.001f))
             return 227;
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=plugin->state.getRawParameterValue("s13_eqQ7");
@@ -773,9 +773,9 @@ int nativeTrialsSmoke() {
             std::abs(recalled->getSlotParam(7,1))>.001f ||
             recalled->getLatencySamples()!=plugin->getLatencySamples()))return 220;
         if(factory==skellpreset::alchemist_tone_match_trial::factoryIndex &&
-           (std::abs(recalled->getSlotParam(1,11)-.53333336f)>.001f ||
-            std::abs(recalled->getSlotParam(1,13)-.48000000f)>.001f ||
-            std::abs(recalled->getSlotParam(1,15)-.46333334f)>.001f))return 228;
+           (std::abs(recalled->getSlotParam(1,11)-.478534f)>.001f ||
+            std::abs(recalled->getSlotParam(1,13)-.738915f)>.001f ||
+            std::abs(recalled->getSlotParam(1,15)-.830000f)>.001f))return 228;
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=recalled->state.getRawParameterValue("s13_eqQ7");
             const auto* output=recalled->state.getRawParameterValue("output");
@@ -842,9 +842,9 @@ int nativeTrialsSmoke() {
     peakSwitcher->loadFactoryPreset(skellpreset::alchemist_tone_match_trial::factoryIndex);
     if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
        peakSwitcher->getLatencySamples()!=guardedLatency ||
-       std::abs(peakSwitcher->getSlotParam(1,11)-.53333336f)>.001f ||
-       std::abs(peakSwitcher->getSlotParam(1,13)-.48000000f)>.001f ||
-       std::abs(peakSwitcher->getSlotParam(1,15)-.46333334f)>.001f)return 229;
+       std::abs(peakSwitcher->getSlotParam(1,11)-.478534f)>.001f ||
+       std::abs(peakSwitcher->getSlotParam(1,13)-.738915f)>.001f ||
+       std::abs(peakSwitcher->getSlotParam(1,15)-.830000f)>.001f)return 229;
     peakSwitcher->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
     if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Empty ||
        peakSwitcher->getLatencySamples()!=0)return 230;

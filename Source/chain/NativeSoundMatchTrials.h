@@ -161,9 +161,9 @@ static_assert(stages[7].wet==1.f && stages[7].p[0]==.89f && stages[7].p[1]==0.f,
 namespace skellpreset::alchemist_tone_match_trial {
 constexpr auto makeStages() noexcept {
     auto result=alchemist_peak_guard_trial::stages;
-    result[1].p[11]=.53333336f; // 2.93 kHz band: +1.0 dB ((gainNorm-.5)*30dB)
-    result[1].p[13]=.48000000f; // 5.10 kHz band: -0.6 dB
-    result[1].p[15]=.46333334f; // 12.0 kHz band: -1.1 dB
+    result[1].p[11]=.478534f; // 2.93 kHz band: +1.0 dB relative to factory 43
+    result[1].p[13]=.738915f; // 5.10 kHz band: -0.6 dB relative to factory 43
+    result[1].p[15]=.830000f; // 12.0 kHz band: -1.1 dB relative to factory 43
     return result;
 }
 inline constexpr auto stages=makeStages();
@@ -172,8 +172,8 @@ inline constexpr const char* name="Alchemist Tone Match (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==8 && stages[6].module==31 && stages[7].module==3,
     "Tone-match trial must preserve Alchemist finish and final peak guard");
-static_assert(stages[1].p[11]==.53333336f &&
-              stages[1].p[13]==.48000000f &&
-              stages[1].p[15]==.46333334f,
+static_assert(stages[1].p[11]==.478534f &&
+              stages[1].p[13]==.738915f &&
+              stages[1].p[15]==.830000f,
     "Measured tone-match corrections must remain explicit and bounded");
 }
