@@ -236,6 +236,21 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(button);
         button.setVisible(false);
     }
+    for(int page=0;page<2;++page) {
+        auto& button=limiterPageButtons[(size_t)page];
+        button.setButtonText(page==0?"LIMIT":"DYNAMICS");
+        button.setTooltip(page==0?"Ceiling, drive and compression":
+                                  "Gate threshold, release, attack and knee");
+        button.onClick=[this,page]{showLimiterPage(page);};
+        addAndMakeVisible(button);
+        button.setVisible(false);
+    }
+    studioGateFloor.setSliderStyle(juce::Slider::LinearHorizontal);
+    studioGateFloor.setTextBoxStyle(juce::Slider::TextBoxRight,false,54,20);
+    studioGateFloor.setScrollWheelEnabled(true);
+    studioGateFloor.setTooltip("Studio gate floor: 0% = maximum reduction; 100% = no gate reduction");
+    addAndMakeVisible(studioGateFloor);
+    studioGateFloor.setVisible(false);
     for(int index=0;index<2;++index) {
         auto& control=eqCutSliders[(size_t)index];
         control.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -302,6 +317,13 @@ void SlotEditor::applyKnobReadouts() {
             (float)(std::log(juce::jlimit(1800.f,20000.f,hz)/20000.f)/std::log(.09f)));
     };
     eqCutSliders[0].updateText();eqCutSliders[1].updateText();
+    studioGateFloor.textFromValueFunction=[](double v) {
+        return juce::String(juce::roundToInt(juce::jlimit(0.,1.,v)*100.))+"%";
+    };
+    studioGateFloor.valueFromTextFunction=[](const juce::String& text) {
+        return juce::jlimit(0.,1.,text.getDoubleValue()/100.);
+    };
+    studioGateFloor.updateText();
     eqQSlider.textFromValueFunction=[this](double normalized) {
         if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioEQFX)
             return "WIDTH "+juce::String(normalized,2);
@@ -349,6 +371,16 @@ void SlotEditor::applyKnobReadouts() {
                            juce::String(juce::roundToInt(hz))+"Hz";
                 }
                 return juce::String((v-.5)*30.,1)+"dB";
+            }
+            if(module==SkellPresetAudioProcessor::StudioLimiterFX) {
+                const int parameter=limiterPage*4+i;
+                if(parameter==0)
+                    return juce::String(20.*std::log10(.12+.87*v),1)+" dBFS";
+                if(parameter==1)return juce::String(18.*v,1)+" dB";
+                if(parameter==5 || parameter==6)
+                    return juce::String(skellpreset::studio::detail::timeMs(
+                        juce::roundToInt(v*10000.)),1)+" ms";
+                return juce::String(juce::roundToInt(v*100.))+"%";
             }
             if(module==SkellPresetAudioProcessor::MicModelFX) {
                 if(i==0)return skellpreset::dsp::MicModelTone::inputName(
@@ -591,8 +623,8 @@ void SlotEditor::applyTheme() {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(juce::Slider* s:std::array<juce::Slider*,7>{{
-        &eqQSlider,&eqCutSliders[0],&eqCutSliders[1],
+    for(juce::Slider* s:std::array<juce::Slider*,8>{{
+        &eqQSlider,&eqCutSliders[0],&eqCutSliders[1],&studioGateFloor,
         &knobs[0],&knobs[1],&knobs[2],&knobs[3]}}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
@@ -721,6 +753,50 @@ void SlotEditor::showMatchPage(int page) {
     graphSnapshotValid=false;
     repaint();
 }
+void SlotEditor::showLimiterPage(int page) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioLimiterFX)return;
+    limiterPage=juce::jlimit(0,1,page);
+    for(auto& attachment:knobAttachment)attachment.reset();
+    const auto prefix="s"+juce::String(slot+1)+"_";
+    for(int i=0;i<4;++i)
+        knobAttachment[(size_t)i]=
+            std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"p"+juce::String(limiterPage*4+i+1),
+                knobs[(size_t)i]);
+    for(int i=0;i<2;++i){
+        auto& button=limiterPageButtons[(size_t)i];
+        button.setColour(juce::TextButton::buttonColourId,
+            i==limiterPage?Theme::green.withAlpha(.31f):Theme::panelAlt);
+        button.setColour(juce::TextButton::textColourOffId,
+            i==limiterPage?Theme::green:Theme::white);
+    }
+    applyKnobReadouts();graphSnapshotValid=false;repaint();
+}
+bool SlotEditor::testStudioLimiterPages() {
+    const int previousType=processor.slotType(slot);
+    const int physical=slot;
+    std::array<float,9> original{};
+    for(int i=0;i<9;++i)original[(size_t)i]=processor.getSlotParam(slot,i);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::StudioLimiterFX);
+    processor.setSlotParam(slot,0,.89f);
+    processor.setSlotParam(slot,4,.25f);
+    processor.setSlotParam(slot,5,.61f);
+    select(slot);
+    const bool first=limiterPage==0 && limiterPageButtons[0].isVisible() &&
+        studioGateFloor.isVisible() && std::abs(knobs[0].getValue()-.89)<.01;
+    showLimiterPage(1);
+    const bool second=limiterPage==1 &&
+        std::abs(knobs[0].getValue()-.25)<.01 &&
+        std::abs(knobs[1].getValue()-.61)<.01;
+    knobs[0].setValue(.36,juce::sendNotificationSync);
+    const bool controlled=std::abs(processor.getSlotParam(slot,4)-.36f)<.01f;
+    studioGateFloor.setValue(.44,juce::sendNotificationSync);
+    const bool floor=std::abs(processor.getSlotParam(slot,8)-.44f)<.01f;
+    processor.setSlotType(physical,previousType);
+    for(int i=0;i<9;++i)processor.setSlotParam(physical,i,original[(size_t)i]);
+    select(physical);
+    return first&&second&&controlled&&floor;
+}
 bool SlotEditor::testMatchFinishPages() {
     processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
     processor.setSlotOn(0,true);
@@ -764,12 +840,13 @@ void SlotEditor::openModulePicker() {
 void SlotEditor::select(int newSlot) {
     if(slot!=newSlot)releaseEmbeddedEditor();
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
-    eqBank=0;activeEqBand=0;matchPage=0;
+    eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
     lastPeakLevel=-1;
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
     graphSnapshotValid=false;
     eqQAttachment.reset();
+    gateFloorAttachment.reset();
     for(auto& a:eqCutAttachments)a.reset();
     externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
@@ -792,6 +869,8 @@ void SlotEditor::select(int newSlot) {
         showEqBank(0);
     if(processor.slotType(slot)==SkellPresetAudioProcessor::AlchemistMatchFinishFX)
         showMatchPage(0);
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioLimiterFX)
+        showLimiterPage(0);
     repaint();
 }
 void SlotEditor::refreshIfChanged() {
@@ -872,7 +951,8 @@ void SlotEditor::refreshIfChanged() {
     if(type!=lastType){
         // A new effect resets the EQ bank, preserving all saved parameter
         // values while reattaching only the controls visible on this page.
-        eqBank=0;activeEqBand=0;matchPage=0;
+        eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
+        gateFloorAttachment.reset();
         modOrbView=false;
         modOrbButton.setButtonText("ORB");
         eqQAttachment.reset();
@@ -897,7 +977,18 @@ void SlotEditor::refreshIfChanged() {
             showEqBank(activeEqBand);
         else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)
             showMatchPage(0);
+        else if(type==SkellPresetAudioProcessor::StudioLimiterFX) {
+            gateFloorAttachment=
+                std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                    processor.state,prefix+"p9",studioGateFloor);
+            showLimiterPage(0);
+        }
     }
+    // Selection may reuse a type with a different physical slot. Attach
+    // the ninth control even when lastType coincidentally remains the same.
+    if(type==SkellPresetAudioProcessor::StudioLimiterFX && !gateFloorAttachment)
+        gateFloorAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            processor.state,prefix+"p9",studioGateFloor);
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
@@ -919,6 +1010,8 @@ void SlotEditor::refreshIfChanged() {
              studioEqBandEnabled(index)));
     syncStudioEqNodeButtons();
     for(auto& button:matchPageButtons)button.setVisible(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX);
+    for(auto& button:limiterPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
+    studioGateFloor.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
     for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
 }
@@ -933,6 +1026,9 @@ void SlotEditor::resized() {
     matchPageButtons[0].setBounds(512,72,105,23);
     matchPageButtons[1].setBounds(623,72,125,23);
     matchPageButtons[2].setBounds(754,72,112,23);
+    limiterPageButtons[0].setBounds(62,106,113,26);
+    limiterPageButtons[1].setBounds(183,106,124,26);
+    studioGateFloor.setBounds(548,104,298,27);
     loadExternal.setBounds(542,33,164,32);
     installedBrowser.setBounds(85,62,735,385);
     addEqNode.setBounds(74,96,127,26);
@@ -2268,10 +2364,14 @@ void SlotEditor::paint(juce::Graphics&g) {
         labels={"Envelope Centre","Reference Level","Output Trim","Gain Smoothing"};
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage==2)
         labels={"Reference On","Level Match","Air Match","Base Gain"};
+    if(type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1)
+        labels={"Gate Threshold","Release","Attack","Knee"};
     if(isPagedEQ(type)) {
         labels={ "B"+juce::String(eqBank+1)+" FREQ", "B"+juce::String(eqBank+1)+" GAIN",
                  "B"+juce::String(eqBank+2)+" FREQ", "B"+juce::String(eqBank+2)+" GAIN" };
     }
+    if(type==SkellPresetAudioProcessor::StudioLimiterFX)
+        Theme::text(g,"GATE FLOOR",{430,107,116,20},11.5f,Theme::white,true);
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
         Theme::fittedText(g,"HOSTED VST3  /  INLINE UI IF SUPPORTED / WINDOW FALLBACK",
             {447,462,424,49},12,Theme::muted,true);
