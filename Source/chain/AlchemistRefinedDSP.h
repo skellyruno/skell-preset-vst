@@ -108,7 +108,11 @@ public:
             if(magnitude>.89f)
                 shaped=std::copysign(.89f+.08f*
                     std::tanh((magnitude-.89f)/.08f),shaped);
-            const float mixed=input[c]+(shaped-input[c])*wet;
+            // Measured same-take native trial reached +0.33dBTP at 4x.
+            // Reserve 1.11 dB extra sample-domain headroom on THIS OPT-IN
+            // candidate only. Original factory index 43 remains bit-exact.
+            constexpr float refinedHeadroom=.88f;
+            const float mixed=input[c]+(shaped*refinedHeadroom-input[c])*wet;
             result[(size_t)c]=std::isfinite(mixed)?
                 std::clamp(mixed,-8.f,8.f):0.f;
         }
