@@ -84,6 +84,7 @@ public:
     bool testStudioEqGraphDoubleClick();
     bool testKnobReadouts();
     bool testMatchFinishPages();
+    bool testStudioLimiterPages();
     bool testMicModelCards();
     bool testModOrbToggle();
     void setModOrbForScreenshot(bool enabled);
@@ -98,8 +99,10 @@ private:
     int eqBank=0; // two editable EQ bands per knob row; graph shows all eight
     int activeEqBand=0;
     int matchPage=0; // 0: sound shape / 1: calibration / 2: native reference match
+    int limiterPage=0; // local UI pages only; existing p1..p9 host IDs
     void showEqBank(int firstBand);
     void showMatchPage(int page);
+    void showLimiterPage(int page);
     void applyKnobReadouts();
     // ComboBox remains as a noninteractive compatibility/synchronization
     // adapter; the user-facing selector is the searchable native overlay.
@@ -133,6 +136,9 @@ private:
     std::array<juce::Slider,2> eqCutSliders;
     std::array<juce::TextButton,8> eqBandButtons;
     std::array<juce::TextButton,3> matchPageButtons;
+    std::array<juce::TextButton,2> limiterPageButtons;
+    juce::Slider studioGateFloor;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateFloorAttachment;
     std::array<SkellHoverPercentKnob,4> knobs;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> eqQAttachment;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,2> eqCutAttachments;
