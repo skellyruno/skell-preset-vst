@@ -519,9 +519,11 @@ public:
         chain.triggerMicForTest();
         preset.onClick();
         if(!browser.isVisible())issues.add("Preset selector did not open browser");
-        if(browser.visibleFactoryPresetsForTest()!=1 ||
+        if(browser.visibleFactoryPresetsForTest()!=3 ||
+
            !browser.canSetCoverForTest())
-            issues.add("Browser must show only Alchemist and allow changing its cover");
+
+            issues.add("Browser must expose Alchemist, Deuce D/Max and Deuce v2.5 trials and allow changing covers");
         if(!browser.testFavoritesFilterForTest())
             issues.add("Favorites category must filter stars without rewriting preset data");
         preset.onClick();
@@ -742,8 +744,17 @@ public:
                !on || on->load()<.5f)
                 issues.add("Studio Six native effect chain is missing a stage");
         }
-        if(processor.getNumPrograms()!=44)
-            issues.add("Alchemist factory program did not append at index 43");
+        if(processor.getNumPrograms()!=47 ||
+
+           processor.getProgramName(43)!="Alchemist (Native Preview)" ||
+
+           processor.getProgramName(44)!="Deuce D/Max (Native Trial)" ||
+
+           processor.getProgramName(45)!="Alchemist Refined (Trial)" ||
+
+           processor.getProgramName(46)!="Deuce v2.5 (Native Trial)")
+
+            issues.add("Factory program IDs 43-46 must remain stable with Deuce v2.5 appended at 46");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);
