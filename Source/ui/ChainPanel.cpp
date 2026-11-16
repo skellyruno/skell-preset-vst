@@ -205,7 +205,7 @@ void ChainPanel::paint(juce::Graphics& g) {
     Theme::text(g,"EFFECT RACK",{15,8,142,22},15,Theme::white,true);
     Theme::text(g,dockingDrag?"RELEASE TO DOCK":
         (dockedRight?"DRAG LEFT TO DOCK":"DRAG RIGHT TO DOCK"),
-        {15,28,130,14},9,dockingDrag?Theme::green:Theme::muted);
+        {15,28,141,15},10.1f,dockingDrag?Theme::green:Theme::muted);
     // Dedicated MIC widget trigger replaces redundant FX and 10/16 badges.
     // Compact mic art retains a generous 42x38 hit target, not just the 1px microphone path.
     const auto micRegion=juce::Rectangle<float>(164.f,9.f,31.f,29.f);
@@ -232,9 +232,9 @@ void ChainPanel::paint(juce::Graphics& g) {
         if(dragging && dragTo==row) {
             g.setColour(Theme::green);g.fillRoundedRectangle(10.f,(float)top-2.f,196.f,2.5f,1.f);
         }
-        g.setColour(Theme::muted.withAlpha(.38f));
+        g.setColour(Theme::muted.withAlpha(selected==slot?.67f:.51f));
         for(int dot=0;dot<6;dot++)g.fillEllipse(18.f+(dot%2)*4.f,(float)top+12.f+(dot/2)*4.f,1.6f,1.6f);
-        Theme::text(g,juce::String(row+1).paddedLeft('0',2),{32,top+9,21,18},10,Theme::muted);
+        Theme::text(g,juce::String(row+1).paddedLeft('0',2),{32,top+9,21,18},11.5f,Theme::muted,true);
         // Thin bone engraving on each module face; no generic FL clone art.
         drawIcon(g,type,54,top+10);
         // Narrow, hardware-like row: effect / FL-style wet trim / power dot.
@@ -255,19 +255,19 @@ void ChainPanel::paint(juce::Graphics& g) {
         else if(type==SkellPresetAudioProcessor::AdaptiveNoiseFX)compact="Noise";
         else if(type==SkellPresetAudioProcessor::StudioPitchFormantFX)compact="Pitch";
         else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)compact="Match Finish";
-        const auto labelColour=type==0?Theme::muted:
+        const auto labelColour=type==0?Theme::muted.brighter(.20f):
             (enabled?Theme::white:Theme::muted);
         // Two short fitted lines keep long native and third-party product
         // names legible in the hardware rack without colliding with wet.
         const int wrapAt=compact.substring(0,15).lastIndexOfChar(' ');
         if(compact.length()>12 && wrapAt>2 && wrapAt<compact.length()-2) {
             Theme::fittedText(g,compact.substring(0,wrapAt),
-                              {78,top+4,69,15},9.4f,labelColour,selected==slot);
+                              {78,top+4,69,15},10.6f,labelColour,selected==slot);
             Theme::fittedText(g,compact.substring(wrapAt+1),
-                              {78,top+20,69,14},9.4f,labelColour,false);
+                              {78,top+20,69,14},10.6f,labelColour,false);
         } else {
-            const float nameSize=compact.length()>10?9.1f:
-                                 compact.length()>8?9.9f:10.8f;
+            const float nameSize=compact.length()>10?10.1f:
+                                 compact.length()>8?10.7f:11.6f;
             Theme::fittedText(g,compact,{78,top+8,69,19},nameSize,
                               labelColour,selected==slot);
         }
@@ -324,17 +324,17 @@ void ChainPanel::paint(juce::Graphics& g) {
         const float thumbH=railH*(float)visibleRows/(float)active;
         const float y=railY+(railH-thumbH)*(float)scrollOffset/(float)(active-visibleRows);
         g.setColour(Theme::stroke.withAlpha(.8f));
-        g.fillRoundedRectangle(209.f,railY,3.f,railH,1.5f);
+        g.fillRoundedRectangle(208.f,railY,4.f,railH,2.f);
         g.setColour(Theme::green.withAlpha(.80f));
-        g.fillRoundedRectangle(209.f,y,3.f,thumbH,1.5f);
+        g.fillRoundedRectangle(208.f,y,4.f,thumbH,2.f);
     }
     const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
     g.setColour(active==16?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,"WHEEL: RACK OR WET / DRAG: ORDER",
-        {13,511,193,18},8.5f,Theme::muted,false,juce::Justification::centred);
+    Theme::text(g,"SCROLL RACK  |  WHEEL ON WET = MIX",
+        {13,511,193,18},10.0f,Theme::muted,false,juce::Justification::centred);
     if(contextOpen) {
         const auto bounds=juce::Rectangle<float>(7.f,(float)contextTop,202.f,218.f);
         g.setColour(Theme::bg.withAlpha(.98f));g.fillRoundedRectangle(bounds,8.f);
