@@ -434,10 +434,14 @@ public:
         if(input.getBounds().intersects(mix.getBounds()) ||
            mix.getBounds().intersects(output.getBounds()))
             issues.add("Footer master knobs overlap");
-        if(!input.textFromValueFunction || input.textFromValueFunction(0.)!="50%"
-           || !output.textFromValueFunction || output.textFromValueFunction(0.)!="50%"
-           || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%")
-            issues.add("Master strip displays raw values rather than physical dB/% labels");
+        if(!input.textFromValueFunction || input.textFromValueFunction(0.)!="0.0 dB"
+           || input.textFromValueFunction(6.)!="+6.0 dB"
+           || !output.textFromValueFunction || output.textFromValueFunction(-6.)!="-6.0 dB"
+           || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%"
+           || !input.valueFromTextFunction
+           || std::abs(input.valueFromTextFunction("50%"))>1.e-5
+           || std::abs(input.valueFromTextFunction("+6 dB")-6.)>1.e-5)
+            issues.add("Master rotary readout or legacy percent input incorrectly maps physical dB");
         const std::array<const juce::Component*,5> top{{&preset,&match,&viewSwitch,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
