@@ -839,6 +839,12 @@ int nativeTrialsSmoke() {
         }
         juce::MemoryBlock state;
         plugin->getStateInformation(state);
+        // Factory 52's preceding smoke intentionally advances its compressor envelopes.
+        // Runtime DSP history is not serialized into DAW/plugin state, so reset the
+        // source after capturing parameters and before comparing it with a freshly
+        // prepared restored instance. This tests preset/state recall, not envelope cloning.
+        if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex)
+            plugin->prepareToPlay(48000.,256);
         auto recalled=std::make_unique<SkellPresetAudioProcessor>();
         recalled->setStateInformation(state.getData(),(int)state.getSize());
         recalled->prepareToPlay(48000.,256);
