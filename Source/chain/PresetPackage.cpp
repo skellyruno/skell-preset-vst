@@ -31,6 +31,10 @@ bool decodeInteger(const juce::var& v, int lo, int hi, int& out) {
     out = (int)number;
     return true;
 }
+bool hasJsonProperty(const juce::var& object, const char* name) {
+    const auto* dynamic = object.getDynamicObject();
+    return dynamic != nullptr && dynamic->hasProperty(juce::Identifier(name));
+}
 
 juce::Result validate(const Document& d) {
     if (! validText(d.name, 96) || ! validText(d.author, 96)
@@ -136,36 +140,35 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         || ! decodeFloat(globals.getProperty("outputDb", {}), -24, 24, candidate.outputDb))
         return juce::Result::fail("Invalid global values");
     // Optional added fields: do not invalidate v1 or v2 user archives.
-    const auto maybeMicOn=globals.getProperty("micPreOn",{});
-    if(!maybeMicOn.isVoid()) {
-        if(!maybeMicOn.isBool())return juce::Result::fail("Invalid mic enabled value");
-        candidate.micPreOn=(bool)maybeMicOn;
+    // Distinguish an absent property from explicit JSON null. JUCE represents
+    // JSON null as a void var, so isVoid() alone would silently accept null.
+    if (hasJsonProperty(globals,"micPreOn")) {
+        const auto value=globals.getProperty("micPreOn",{});
+        if(!value.isBool())return juce::Result::fail("Invalid mic enabled value");
+        candidate.micPreOn=(bool)value;
     }
-    const auto maybeMicInput=globals.getProperty("micPreInput",{});
-    if(!maybeMicInput.isVoid() &&
-       !decodeInteger(maybeMicInput,0,3,candidate.micPreInput))
+    if (hasJsonProperty(globals,"micPreInput")
+        && !decodeInteger(globals.getProperty("micPreInput",{}),0,3,candidate.micPreInput))
         return juce::Result::fail("Invalid mic input profile");
-    const auto maybeMicTarget=globals.getProperty("micPreTarget",{});
-    if(!maybeMicTarget.isVoid() &&
-       !decodeInteger(maybeMicTarget,0,3,candidate.micPreTarget))
+    if (hasJsonProperty(globals,"micPreTarget")
+        && !decodeInteger(globals.getProperty("micPreTarget",{}),0,3,candidate.micPreTarget))
         return juce::Result::fail("Invalid mic target profile");
-    const auto maybeMicAmount=globals.getProperty("micPreAmount",{});
-    if(!maybeMicAmount.isVoid() &&
-       !decodeFloat(maybeMicAmount,0,1,candidate.micPreAmount))
+    if (hasJsonProperty(globals,"micPreAmount")
+        && !decodeFloat(globals.getProperty("micPreAmount",{}),0,1,candidate.micPreAmount))
         return juce::Result::fail("Invalid mic amount");
-    const auto maybeMicTrim=globals.getProperty("micPreTrim",{});
-    if(!maybeMicTrim.isVoid() &&
-       !decodeFloat(maybeMicTrim,0,1,candidate.micPreTrim))
+    if (hasJsonProperty(globals,"micPreTrim")
+        && !decodeFloat(globals.getProperty("micPreTrim",{}),0,1,candidate.micPreTrim))
         return juce::Result::fail("Invalid mic trim");
-    const auto macros=globals.getProperty("macros", {});
     // Schema-v2 macros were added as an optional extension. Older v1/v2
     // archives without the property retain neutral 50% host defaults.
-    // If present, the array remains strictly validated and transactional.
-    if (!macros.isVoid()) {
+    // If present (including explicit null), the array remains strictly
+    // validated and transactional.
+    if (hasJsonProperty(globals,"macros")) {
+        const auto macros=globals.getProperty("macros",{});
         if (!macros.isArray() || macros.getArray()->size() != (int)candidate.macros.size())
             return juce::Result::fail("Eight macros required");
         for (int k=0;k<(int)candidate.macros.size();++k)
-            if (!decodeFloat((*macros.getArray())[k], 0, 1, candidate.macros[(size_t)k]))
+            if (!decodeFloat((*macros.getArray())[k],0,1,candidate.macros[(size_t)k]))
                 return juce::Result::fail("Invalid macro value");
     }
     const auto chain=root.getProperty("chain", {});
@@ -182,7 +185,8 @@ juce::Result fromJson(const juce::var& root, Document& out) {
     }
     for (int i=0;i<encodedSlots;++i) {
         const auto item=(*chain.getArray())[i];
-        if (! item.isObject()) return juce::Result::fail("Invalid chain entry");
+        if (!item.isObject() || item.getDynamicObject()==nullptr)
+            return juce::Result::fail("Invalid chain entry");
         auto& slot=candidate.slots[(size_t)i];
         const auto enabled=item.getProperty("enabled", {});
         if (! decodeInteger(item.getProperty("slotId", {}),0,encodedSlots-1,slot.slotId)
@@ -200,7 +204,7 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         // Optional extension is compatible with native schema-v1/v2 presets.
         // Malformed Q arrays are rejected transactionally instead of ignored.
         const auto eqQ=item.getProperty("eqQ",{});
-        if(!eqQ.isVoid()) {
+        if(hasJsonProperty(item,"eqQ")) {
             if(!eqQ.isArray() || eqQ.getArray()->size()!=8)
                 return juce::Result::fail("Invalid eight-band EQ Q array");
             for(int k=0;k<8;++k)
@@ -211,7 +215,7 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         // rejects the whole ZIP before any destination state is modified.
         const auto kinds=item.getProperty("studioEqKind",{});
         const auto active=item.getProperty("studioEqOn",{});
-        if(!kinds.isVoid()){
+        if(hasJsonProperty(item,"studioEqKind")){
             if(!kinds.isArray() || kinds.getArray()->size()!=8)
                 return juce::Result::fail("Invalid Studio EQ type array");
             for(int k=0;k<8;++k)
@@ -219,7 +223,7 @@ juce::Result fromJson(const juce::var& root, Document& out) {
                         slot.studioEqKind[(size_t)k]))
                     return juce::Result::fail("Invalid Studio EQ type value");
         }
-        if(!active.isVoid()){
+        if(hasJsonProperty(item,"studioEqOn")){
             if(!active.isArray() || active.getArray()->size()!=8)
                 return juce::Result::fail("Invalid Studio EQ enable array");
             for(int k=0;k<8;++k){
@@ -231,8 +235,8 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         // Optional extensions keep legacy .skellpreset v1 and v2 readable.
         const auto lo=item.getProperty("eqLowCut",{});
         const auto hi=item.getProperty("eqHighCut",{});
-        if((!lo.isVoid() && !decodeFloat(lo,0,1,slot.eqLowCut))
-            ||(!hi.isVoid() && !decodeFloat(hi,0,1,slot.eqHighCut)))
+        if((hasJsonProperty(item,"eqLowCut") && !decodeFloat(lo,0,1,slot.eqLowCut))
+            ||(hasJsonProperty(item,"eqHighCut") && !decodeFloat(hi,0,1,slot.eqHighCut)))
             return juce::Result::fail("Invalid EQ cut value");
     }
     if (auto status=validate(candidate);status.failed())return status;

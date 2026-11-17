@@ -258,6 +258,54 @@ int main(){
                       && rejected.macros[0]==.23f,
                       "Malformed optional macro import leaves destination unchanged");
             } else check(false,"Malformed schema-v2 globals object exists");
+            struct NullCase {
+                bool global;
+                const char* property;
+                const char* suffix;
+                const char* label;
+            };
+            const NullCase nullCases[] = {
+                {true,"micPreOn","mic-pre-on","Reject explicit null mic-pre enable"},
+                {true,"micPreInput","mic-pre-input","Reject explicit null mic-pre input"},
+                {true,"micPreTarget","mic-pre-target","Reject explicit null mic-pre target"},
+                {true,"micPreAmount","mic-pre-amount","Reject explicit null mic-pre amount"},
+                {true,"micPreTrim","mic-pre-trim","Reject explicit null mic-pre trim"},
+                {true,"macros","macros","Reject explicit null macro array"},
+                {false,"eqQ","eq-q","Reject explicit null EQ Q array"},
+                {false,"studioEqKind","studio-eq-kind","Reject explicit null Studio EQ type array"},
+                {false,"studioEqOn","studio-eq-on","Reject explicit null Studio EQ enable array"},
+                {false,"eqLowCut","eq-low-cut","Reject explicit null EQ low-cut value"},
+                {false,"eqHighCut","eq-high-cut","Reject explicit null EQ high-cut value"}
+            };
+            for(const auto& test:nullCases) {
+                auto nullJson=juce::JSON::parse(jsonText);
+                auto* nullRoot=nullJson.getDynamicObject();
+                auto* nullGlobals=nullRoot
+                    ?nullRoot->getProperty("globals").getDynamicObject():nullptr;
+                auto* nullChain=nullRoot
+                    ?nullRoot->getProperty("chain").getArray():nullptr;
+                juce::DynamicObject* target=test.global
+                    ?nullGlobals
+                    :(nullChain && nullChain->size()>0
+                        ?(*nullChain)[0].getDynamicObject():nullptr);
+                if(!target) {
+                    check(false,"Build explicit-null optional field fixture");
+                    break;
+                }
+                target->setProperty(juce::Identifier(test.property),juce::var());
+                const auto nullFile=testFile(
+                    dir,juce::String("schema-v2-null-")+test.suffix);
+                createArchive(nullFile,"preset.json",
+                    juce::JSON::toString(nullJson).toStdString());
+                skellpreset::package::Document preserved;
+                preserved.name="Preserve Existing Preset";
+                preserved.macros[0]=.23f;
+                const auto nullResult=skellpreset::package::read(nullFile,preserved);
+                check(nullResult.failed(),test.label);
+                check(preserved.name=="Preserve Existing Preset"
+                      &&preserved.macros[0]==.23f,
+                      "Explicit-null optional import leaves destination unchanged");
+            }
         }
     }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
