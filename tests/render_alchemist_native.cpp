@@ -764,6 +764,49 @@ int nativeTrialsSmoke() {
             std::abs(plugin->getSlotParam(2,3)-.15f)>.001f ||
             plugin->getLatencySamples()<48 || plugin->getLatencySamples()>1024))
             return 235;
+        if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex) {
+            juce::MidiBuffer midi;
+            juce::AudioBuffer<float> audio(2,256);
+            double energy=0.;
+            float peak=0.f;
+            const int latencyBefore=plugin->getLatencySamples();
+            for(int block=0;block<375;++block) {
+                for(int i=0;i<256;++i) {
+                    const int sample=block*256+i;
+                    const double t=(double)sample/48000.;
+                    float x=.28f*(float)std::sin(6.283185307179586*220.*t)
+                            +.12f*(float)std::sin(6.283185307179586*3150.*t);
+                    if(sample%4800==0)x+=.25f;
+                    audio.setSample(0,i,x);
+                    audio.setSample(1,i,-.85f*x);
+                }
+                midi.clear();
+                plugin->processBlock(audio,midi);
+                for(int i=0;i<256;++i) {
+                    const float l=audio.getSample(0,i),r=audio.getSample(1,i);
+                    if(!std::isfinite(l)||!std::isfinite(r)||std::abs(l)>=1.f||std::abs(r)>=1.f)
+                        return 237;
+                    peak=std::max(peak,std::max(std::abs(l),std::abs(r)));
+                    energy+=(double)l*l+(double)r*r;
+                }
+            }
+            if(energy<1.e-3||peak>=1.f)return 238;
+            // Bypass the new stage once and verify the rest of the rack and PDC stay valid.
+            plugin->setSlotOn(2,false);
+            for(int block=0;block<4;++block) {
+                for(int i=0;i<256;++i) {
+                    const double t=(double)(block*256+i)/48000.;
+                    const float x=.2f*(float)std::sin(6.283185307179586*440.*t);
+                    audio.setSample(0,i,x);audio.setSample(1,i,-.8f*x);
+                }
+                midi.clear();plugin->processBlock(audio,midi);
+                for(int i=0;i<256;++i)
+                    if(!std::isfinite(audio.getSample(0,i))||
+                       !std::isfinite(audio.getSample(1,i)))return 239;
+            }
+            plugin->setSlotOn(2,true);
+            if(plugin->getLatencySamples()!=latencyBefore)return 240;
+        }
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=plugin->state.getRawParameterValue("s13_eqQ7");
             const auto* output=plugin->state.getRawParameterValue("output");
