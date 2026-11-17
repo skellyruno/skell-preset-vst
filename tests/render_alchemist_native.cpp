@@ -1080,6 +1080,8 @@ int nativeTrialsSmoke() {
        std::abs(switcher->getSlotParam(6,15)-.5f)>1.e-6f)return 213;
     // Host program changes must also switch into and out of the opt-in serial
     // FET/RMS trial without leaving its module IDs, parameters or 3ms PDC behind.
+    // APVTS slot floats use a 0.001 step, so nominal .428571 is stored as .429.
+    // Keep the host-state assertion within that declared parameter precision.
     auto serialSwitcher=std::make_unique<SkellPresetAudioProcessor>();
     serialSwitcher->setCurrentProgram(skellpreset::alchemist_serial_dynamics_trial::factoryIndex);
     serialSwitcher->prepareToPlay(48000.,256);
@@ -1089,7 +1091,7 @@ int nativeTrialsSmoke() {
        serialSwitcher->slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
        serialSwitcher->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
        serialSwitcher->getLatencySamples()!=144 ||
-       std::abs(serialSwitcher->getSlotParam(2,0)-.428571f)>1.e-6f ||
+       std::abs(serialSwitcher->getSlotParam(2,0)-.428571f)>.001f ||
        std::abs(serialSwitcher->getSlotParam(2,1)-.5f)>1.e-6f)
         return 241;
     serialSwitcher->setCurrentProgram(skellpreset::alchemist::factoryIndex);
@@ -1106,7 +1108,7 @@ int nativeTrialsSmoke() {
     serialSwitcher->prepareToPlay(48000.,256);
     if(serialSwitcher->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
        serialSwitcher->getLatencySamples()!=144 ||
-       std::abs(serialSwitcher->getSlotParam(2,0)-.428571f)>1.e-6f)
+       std::abs(serialSwitcher->getSlotParam(2,0)-.428571f)>.001f)
         return 243;
     // Host program changes must restore the v2.5-only output calibration,
     // then clear it when returning to the original Deuce/Alchemist programs.
