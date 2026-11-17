@@ -30,6 +30,9 @@ int main(){
             valid = valid && empty.slots[(size_t)s].slotId == s
                           && !empty.slots[(size_t)s].enabled;
         check(valid, "Default Alchemist-compatible rack has unique inactive slots");
+        bool neutralMacros=true;
+        for(float value:empty.macros)neutralMacros=neutralMacros && value==.5f;
+        check(neutralMacros,"Default preset macros match neutral host defaults");
         const auto emptyPath = testFile(dir, "default-empty-rack");
         check(skellpreset::package::write(emptyPath, empty).wasOk(),
               "Default rack exports without duplicate IDs");
@@ -212,6 +215,45 @@ int main(){
                  testFile(dir,"unknown-id38"),newest).failed(),
               "Reject unknown module 38");
     }
+    // Schema-v2 macros are optional too: absent means neutral, malformed means reject.
+    {
+        juce::ZipFile v2(path);
+        std::unique_ptr<juce::InputStream> input(v2.createStreamForEntry(0));
+        check(input!=nullptr,"Schema-v2 archive has JSON entry for optional-macro test");
+        if(input) {
+            const auto jsonText=input->readEntireStreamAsString();
+            auto noMacros=juce::JSON::parse(jsonText);
+            auto* object=noMacros.getDynamicObject();
+            auto* globals=object?object->getProperty("globals").getDynamicObject():nullptr;
+            check(globals!=nullptr,"Schema-v2 globals object exists");
+            if(globals) {
+                globals->removeProperty("macros");
+                const auto json=juce::JSON::toString(noMacros);
+                auto file=testFile(dir,"schema-v2-no-macros");
+                createArchive(file,"preset.json",json.toStdString());
+                skellpreset::package::Document restored;
+                const auto result=skellpreset::package::read(file,restored);
+                check(result.wasOk(),"Import schema-v2 archive without optional macros");
+                if(result.wasOk())
+                    check(restored.macros[0]==.5f&&restored.macros[7]==.5f,
+                          "Missing schema-v2 macros default to neutral 50%");
+            }
+            auto malformed=juce::JSON::parse(jsonText);
+            auto* malformedObject=malformed.getDynamicObject();
+            auto* malformedGlobals=malformedObject
+                ?malformedObject->getProperty("globals").getDynamicObject():nullptr;
+            if(malformedGlobals) {
+                juce::Array<juce::var> shortMacros;
+                for(int i=0;i<7;++i)shortMacros.add(.5f);
+                malformedGlobals->setProperty("macros",juce::var(shortMacros));
+                auto file=testFile(dir,"schema-v2-short-macros");
+                createArchive(file,"preset.json",juce::JSON::toString(malformed).toStdString());
+                skellpreset::package::Document rejected;
+                check(skellpreset::package::read(file,rejected).failed(),
+                      "Reject malformed optional macro array when present");
+            } else check(false,"Malformed schema-v2 globals object exists");
+        }
+    }
     // A Stage 4/8 schema-v1 ten-slot ZIP must import with identity slots
     // 11..16 appended and no change to old slot IDs.
     {
@@ -226,6 +268,16 @@ int main(){
         if(object){
             object->setProperty("schemaVersion",1);
             object->removeProperty("activeSlotCount");
+            auto* globals=object->getProperty("globals").getDynamicObject();
+            check(globals!=nullptr,"Legacy globals object exists");
+            if(globals) {
+                globals->removeProperty("macros");
+                globals->removeProperty("micPreOn");
+                globals->removeProperty("micPreInput");
+                globals->removeProperty("micPreTarget");
+                globals->removeProperty("micPreAmount");
+                globals->removeProperty("micPreTrim");
+            }
             auto* chain=object->getProperty("chain").getArray();
             check(chain!=nullptr,"V2 chain array");
             if(chain){
@@ -243,6 +295,10 @@ int main(){
                 check(restored.activeSlotCount==10&&restored.slots[10].slotId==10
                       &&restored.slots[15].slotId==15,
                       "Legacy rack defaults and slot identity preserved");
+                check(restored.macros[0]==.5f&&restored.macros[7]==.5f
+                      &&!restored.micPreOn&&restored.micPreAmount==1.f
+                      &&restored.micPreTrim==.5f,
+                      "Legacy optional controls restore to neutral/off defaults");
             }
         }
     }
