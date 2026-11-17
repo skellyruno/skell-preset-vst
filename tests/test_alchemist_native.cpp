@@ -278,6 +278,13 @@ int main() {
         std::numeric_limits<float>::max(),
         -std::numeric_limits<float>::max());
     if(!std::isfinite(huge[0])||!std::isfinite(huge[1]))return 46;
+    SerialVocalDynamics outputGuard;
+    outputGuard.prepare(48000.);
+    outputGuard.set(serialStage.p[0],serialStage.p[1],
+                    serialStage.p[2],0.f);
+    for(int i=0;i<24000;++i)outputGuard.process(.28f,-.28f);
+    const auto tinyWet=outputGuard.process(1.e-37f,-1.e-37f);
+    if(tinyWet[0]!=0.f||tinyWet[1]!=0.f)return 47;
     // Exercise host-style block-boundary automation across every supported
     // rate. All four normalized controls move while transients and stereo-link
     // stress are present; no nonfinite or over-range output is permitted.
