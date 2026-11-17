@@ -104,7 +104,7 @@ int blankSmoke() {
                 if(std::abs(signal.getSample(ch,i)-original.getSample(ch,i))>1.e-6f)
                     return 34;
     }
-    // Test actual state save/restore, not just loading a factory preset.
+    // Switching from a custom/imported macro state to any factory preset must\n    // clear all eight serialized macro slots. The last four are currently hidden\n    // from the UI/audio mixer, but remain in APVTS and .skellpreset state.\n    for(int k=0;k<8;++k) {\n        auto* parameter=plugin->state.getParameter("macro"+juce::String(k+1));\n        if(!parameter)return 46;\n        parameter->setValueNotifyingHost(.13f+.09f*(float)k);\n    }\n    plugin->loadFactoryPreset(skellpreset::alchemist::factoryIndex);\n    for(int k=0;k<8;++k) {\n        auto* macro=plugin->state.getRawParameterValue("macro"+juce::String(k+1));\n        if(!macro || std::abs(macro->load()-.5f)>1.e-6f)return 47;\n    }\n\n    // Test actual state save/restore, not just loading a factory preset.
     plugin->loadFactoryPreset(0); // published legacy limiter chain
     if(plugin->slotType(6)!=SkellPresetAudioProcessor::Limiter)return 35;
     juce::MemoryBlock save;
