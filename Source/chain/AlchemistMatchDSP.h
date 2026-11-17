@@ -79,9 +79,9 @@ public:
         power20=advance(power20,d,fastPole);
         power120=advance(power120,d,gatePole);
         power280=advance(power280,d,slowPole);
-        const float db20=10.f*std::log10(power20+1.e-14f);
-        const float db120=10.f*std::log10(power120+1.e-14f);
-        const float db280=10.f*std::log10(power280+1.e-14f);
+        const float db20=alchemist_fast_math::powerDb(power20);
+        const float db120=alchemist_fast_math::powerDb(power120);
+        const float db280=alchemist_fast_math::powerDb(power280);
         const float gate=std::clamp((db120+49.f)/11.f,0.f,1.f);
         const float shapeSlow=(db280-centerDb)*.1f;
         const float shapeFast=(db20-db280)*.1f;
@@ -92,7 +92,7 @@ public:
         currentCubicDenominator=advance(
             currentCubicDenominator,targetCubicDenominator,cubicPole);
         currentTrimGain=advance(currentTrimGain,targetTrimGain,cubicPole);
-        const float dyn=std::exp(gainDb*.11512925465f); // ln(10)/20
+        const float dyn=alchemist_fast_math::gainFromDb(gainDb);
         const float amount=currentCubic*currentCubicDenominator;
         const float mult=currentTrimGain*dyn;
         const float outL=(left+amount*left*left*left)*mult;

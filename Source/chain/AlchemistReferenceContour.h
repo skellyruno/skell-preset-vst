@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include "AlchemistFastMath.h"
 
 namespace skellpreset::dsp {
 class AlchemistReferenceContour final {
@@ -54,7 +55,7 @@ public:
         // Same output of the previous six rack stages is the detector input.
         const float p=std::clamp(.5f*(left*left+right*right),0.f,64.f);
         power=advance(power,p,detectorPole);
-        const float rmsDb=10.f*std::log10(power+1.e-14f);
+        const float rmsDb=alchemist_fast_math::powerDb(power);
         const float speech=std::clamp((rmsDb+59.f)/13.f,0.f,1.f);
         // Reference 20ms RMS regression: low-level phrases need distinctly
         // more makeup than already-loud phrases. The two fixed coefficients
@@ -62,7 +63,7 @@ public:
         const float targetDb=std::clamp(
             (baseDb+.38f*(-20.f-rmsDb))*speech*intensity,-1.f,10.5f);
         gainDb=advance(gainDb,targetDb,gainPole);
-        const float gain=std::exp(gainDb*.11512925465f);
+        const float gain=alchemist_fast_math::gainFromDb(gainDb);
         const auto processed=shelf.process(left*gain,right*gain);
         airWet=advance(airWet,airAmount,wetPole);
         const float shapedL=left*gain+(processed[0]-left*gain)*airWet;
@@ -116,14 +117,7 @@ private:
     // extreme sample peaks approach 0.93 with no hard clipping steps.
     // This is not a certified intersample true-peak limiter on all inputs.
     static float softCeiling(float in) noexcept {
-        // Tested against the real Alchemist reference render:
-        // 0.85 / 0.08 retains the 20ms envelope + band match while
-        // bringing 4x estimated true peak from +0.27 to -0.16 dBTP.
-        constexpr float threshold=.85f,range=.08f;
-        const auto a=std::abs(in);
-        if(a<=threshold)return in;
-        const float out=threshold+range*std::tanh((a-threshold)/range);
-        return std::copysign(out,in);
+        return alchemist_fast_math::softCeiling(in);
     }
     HighShelf shelf;
     float sr=48000.f,detectorPole=0.f,gainPole=0.f,wetPole=0.f;

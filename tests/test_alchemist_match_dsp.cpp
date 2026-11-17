@@ -2,6 +2,7 @@
 // Distinguishes a live *causal* port from the v0.7 offline symmetric filter.
 #include "../Source/chain/AlchemistMatchDSP.h"
 #include "../Source/chain/AlchemistNativePreset.h"
+#include "../Source/chain/AlchemistFastMath.h"
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -17,6 +18,34 @@ static void configure(AlchemistMatchFinish& f) {
 }
 
 int main() {
+    // Verify the hot-path identities against the original libm functions and
+    // bound the only approximation (tanh used by the reference soft ceiling).
+    for(int i=0;i<=20000;++i) {
+        const float t=(float)i/20000.f;
+        const float power=1.e-14f+64.f*t;
+        const float db=-1.f+11.5f*t;
+        const float x=-4.f+8.f*t;
+        if(!std::isfinite(alchemist_fast_math::powerDb(power))
+           ||std::abs(alchemist_fast_math::powerDb(power)-10.f*std::log10(power))>1.e-5f)
+            return 50;
+        if(!std::isfinite(alchemist_fast_math::gainFromDb(db))
+           ||std::abs(alchemist_fast_math::gainFromDb(db)-std::exp(db*.11512925465f))>2.e-6f)
+            return 51;
+        if(std::abs(alchemist_fast_math::tanhPade(x)-std::tanh(x))>1.6e-5f)
+            return 52;
+    }
+    float previous=0.f;
+    for(int i=0;i<=16000;++i) {
+        const float x=8.f*(float)i/16000.f;
+        const float exact=x<=.85f?x:.85f+.08f*std::tanh((x-.85f)/.08f);
+        const float fast=alchemist_fast_math::softCeiling(x);
+        if(!std::isfinite(fast)||fast<previous||fast>.93001f
+           ||std::abs(fast-exact)>6.e-5f)
+            return 53;
+        if(std::abs(alchemist_fast_math::softCeiling(-x)+fast)>1.e-7f)
+            return 54;
+        previous=fast;
+    }
     static_assert(stages.size()==7,"Alchemist must include the match-finish module");
     static_assert(stages[6].module==31,"Append-only processor ID");
     for(double rate:{8000.,44100.,48000.,96000.,192000.}) {
