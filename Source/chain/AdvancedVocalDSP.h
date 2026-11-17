@@ -122,7 +122,7 @@ private:
             std::array<float,intervals+1> result{};
             for(int i=0;i<=intervals;++i) {
                 const float db=maxDb*(float)i/(float)intervals;
-                result[(size_t)i]=std::exp2(-db*dbToLog2);
+                result[(size_t)i]=std::exp2(-db*DbGainLookup::dbToLog2);
             }
             return result;
         }();
