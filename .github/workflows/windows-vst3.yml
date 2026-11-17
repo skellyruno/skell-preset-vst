@@ -68,6 +68,13 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure -E SkellPresetRealRackStress
       - name: Stress compiled full rack and print CPU/latency metrics
         run: ctest --test-dir build -C Release --verbose -R SkellPresetRealRackStress
+      - name: Attribute Alchemist CPU by native rack stage (diagnostic)
+        shell: pwsh
+        run: |
+          $renderer = Get-ChildItem build -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Native Alchemist diagnostic renderer missing' }
+          & $renderer.FullName --profile-alchemist
+          if ($LASTEXITCODE -ne 0) { throw "Alchemist stage-attribution profile failed: $LASTEXITCODE" }
       - name: Prove external VST3 load and audio with owned test fixture
         shell: pwsh
         run: |

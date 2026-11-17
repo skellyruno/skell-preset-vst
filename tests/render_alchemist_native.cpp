@@ -495,6 +495,184 @@ int stress() {
     return 0;
 }
 
+
+// Diagnostic-only full-rack CPU attribution. Compares the original Alchemist
+// (43), the measured tone-match/guard chain (48), the serial trial (52), then
+// removes one factory-52 stage at a time. All 20 instances receive identical
+// deterministic stereo vocal-like input. Signal generation/copies and output
+// validation are outside the timed processBlock region. No CPU threshold is
+// asserted because hosted CI load varies; results are evidence, not a DAW
+// certification. The final limiter's PDC is checked when it is removed.
+struct AlchemistProfileResult {
+    double medianRealtime=0.;
+    double p95Callback=0.;
+    double worstCallback=0.;
+    double peak=0.;
+    int latency=0;
+};
+
+bool profileAlchemistScenario(int factory,int disabledSlot,const char* label,
+                              AlchemistProfileResult& result) {
+    constexpr double sampleRate=96000.;
+    constexpr int frames=64,instances=20,repeats=3;
+    const int warmupBlocks=std::max(1,(int)std::lround(sampleRate*.08/frames));
+    const int measuredBlocks=std::max(1,(int)std::lround(sampleRate*.35/frames));
+    const double callbackBudget=(double)frames/sampleRate;
+    std::vector<std::unique_ptr<SkellPresetAudioProcessor>> plugins;
+    std::vector<std::unique_ptr<juce::AudioBuffer<float>>> work;
+    plugins.reserve(instances);
+    work.reserve(instances);
+
+    for(int instance=0;instance<instances;++instance) {
+        auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+        plugin->loadFactoryPreset(factory);
+        if(disabledSlot>=0) {
+            if(factory!=skellpreset::alchemist_serial_dynamics_trial::factoryIndex
+               || disabledSlot>=7
+               || plugin->slotType(disabledSlot)==SkellPresetAudioProcessor::Empty) {
+                std::fprintf(stderr,"PROFILE invalid disabled stage %d for factory %d\n",
+                             disabledSlot,factory);
+                return false;
+            }
+            plugin->setSlotOn(disabledSlot,false);
+            plugin->setSlotType(disabledSlot,SkellPresetAudioProcessor::Empty);
+            if(plugin->slotType(disabledSlot)!=SkellPresetAudioProcessor::Empty) {
+                std::fprintf(stderr,"PROFILE failed to remove slot %d\n",disabledSlot);
+                return false;
+            }
+        }
+        plugin->prepareToPlay(sampleRate,frames);
+        const int expectedLatency=(factory==skellpreset::alchemist::factoryIndex
+            ?0:std::max(48,(int)std::lround(sampleRate*.003)));
+        const int expectedAfterRemoval=
+            factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex
+            && disabledSlot==6 ? 0:expectedLatency;
+        if(plugin->getLatencySamples()!=expectedAfterRemoval) {
+            std::fprintf(stderr,
+                "PROFILE PDC mismatch label=%s got=%d expected=%d\n",
+                label,plugin->getLatencySamples(),expectedAfterRemoval);
+            return false;
+        }
+        if(instance==0)result.latency=plugin->getLatencySamples();
+        plugins.push_back(std::move(plugin));
+        work.push_back(std::make_unique<juce::AudioBuffer<float>>(2,frames));
+    }
+
+    juce::AudioBuffer<float> source(2,frames);
+    juce::MidiBuffer midi;
+    std::vector<double> realtimeFactors;
+    std::vector<double> callbackFactors;
+    realtimeFactors.reserve(repeats);
+    callbackFactors.reserve((size_t)repeats*measuredBlocks);
+    auto fillSource=[&](int block) {
+        for(int n=0;n<frames;++n) {
+            const auto absolute=(std::int64_t)block*frames+n;
+            const double t=(double)absolute/sampleRate;
+            const float envelope=.32f+.68f*(float)std::abs(
+                std::sin(2.*juce::MathConstants<double>::pi*1.73*t));
+            const float transient=(absolute%4093)==0?.19f:0.f;
+            const float left=envelope*(.13f*(float)std::sin(
+                2.*juce::MathConstants<double>::pi*207.*t)
+                +.038f*(float)std::sin(2.*juce::MathConstants<double>::pi*6100.*t))
+                +transient;
+            const float right=envelope*(.12f*(float)std::sin(
+                2.*juce::MathConstants<double>::pi*207.*t+.13)
+                +.031f*(float)std::sin(2.*juce::MathConstants<double>::pi*5100.*t))
+                +transient*.78f;
+            source.setSample(0,n,left);
+            source.setSample(1,n,right);
+        }
+    };
+    auto copySource=[&] {
+        for(int instance=0;instance<instances;++instance) {
+            work[(size_t)instance]->copyFrom(0,0,source,0,0,frames);
+            work[(size_t)instance]->copyFrom(1,0,source,1,0,frames);
+        }
+    };
+
+    for(int repeat=0;repeat<repeats;++repeat) {
+        for(auto& plugin:plugins)plugin->prepareToPlay(sampleRate,frames);
+        for(int block=0;block<warmupBlocks;++block) {
+            fillSource(block);copySource();
+            for(int instance=0;instance<instances;++instance)
+                plugins[(size_t)instance]->processBlock(*work[(size_t)instance],midi);
+        }
+        double dspSeconds=0.;
+        for(int block=0;block<measuredBlocks;++block) {
+            fillSource(warmupBlocks+block);copySource();
+            const auto start=std::chrono::steady_clock::now();
+            for(int instance=0;instance<instances;++instance)
+                plugins[(size_t)instance]->processBlock(*work[(size_t)instance],midi);
+            const double elapsed=std::chrono::duration<double>(
+                std::chrono::steady_clock::now()-start).count();
+            dspSeconds+=elapsed;
+            callbackFactors.push_back(elapsed/callbackBudget);
+            for(const auto& buffer:work)
+                for(int channel=0;channel<2;++channel)
+                    for(int n=0;n<frames;++n) {
+                        const float value=buffer->getSample(channel,n);
+                        if(!std::isfinite(value)||std::abs(value)>32.f) {
+                            std::fprintf(stderr,
+                                "PROFILE nonfinite/unbounded output label=%s repeat=%d block=%d\n",
+                                label,repeat,block);
+                            return false;
+                        }
+                        result.peak=std::max(result.peak,(double)std::abs(value));
+                    }
+        }
+        const double audioSeconds=(double)measuredBlocks*frames/sampleRate;
+        const double factor=dspSeconds/audioSeconds;
+        if(!std::isfinite(factor)||factor<=0.)return false;
+        realtimeFactors.push_back(factor);
+    }
+    std::sort(realtimeFactors.begin(),realtimeFactors.end());
+    std::sort(callbackFactors.begin(),callbackFactors.end());
+    result.medianRealtime=realtimeFactors[realtimeFactors.size()/2];
+    const size_t p95Index=std::min(callbackFactors.size()-1,
+        (size_t)std::floor(.95*(double)(callbackFactors.size()-1)));
+    result.p95Callback=callbackFactors[p95Index];
+    result.worstCallback=callbackFactors.back();
+    for(auto& plugin:plugins)plugin->releaseResources();
+    std::printf(
+        "ALCHEMIST-STAGE-PROFILE label=%s factory=%d disabled_slot=%d "
+        "avg_rt_median=%.3f p95_callback=%.3f worst_callback=%.3f "
+        "pdc=%d peak=%.5f instances=%d rate=%.0f block=%d\n",
+        label,factory,disabledSlot,result.medianRealtime,result.p95Callback,
+        result.worstCallback,result.latency,result.peak,instances,sampleRate,frames);
+    return true;
+}
+
+int profileAlchemist() {
+    AlchemistProfileResult original{},guarded{},serial{};
+    if(!profileAlchemistScenario(skellpreset::alchemist::factoryIndex,-1,
+                                "factory43-original",original)
+       ||!profileAlchemistScenario(skellpreset::alchemist_tone_match_trial::factoryIndex,-1,
+                                  "factory48-tone-match-guard",guarded)
+       ||!profileAlchemistScenario(skellpreset::alchemist_serial_dynamics_trial::factoryIndex,-1,
+                                  "factory52-serial-full",serial))
+        return 61;
+    struct Stage { const char* name; };
+    constexpr Stage stages[]{
+        {"HPF-EQ"},{"8-band-EQ"},{"Serial-FET-RMS"},{"Skelldizer"},
+        {"Saturator"},{"Match-Finish"},{"Final-peak-limiter"}
+    };
+    std::puts("ALCHEMIST-STAGE-ATTRIBUTION: positive saved_rt means removing that stage reduced measured CPU; negative values are retained as runner-noise/regression evidence.");
+    for(int slot=0;slot<7;++slot) {
+        AlchemistProfileResult without{};
+        if(!profileAlchemistScenario(
+            skellpreset::alchemist_serial_dynamics_trial::factoryIndex,slot,
+            stages[slot].name,without))
+            return 62+slot;
+        const double saved=serial.medianRealtime-without.medianRealtime;
+        const double percent=serial.medianRealtime>0.
+            ?100.*saved/serial.medianRealtime:0.;
+        std::printf("ALCHEMIST-STAGE-COST stage=%s slot=%d saved_rt=%.3f share_of_full=%.1f%%\n",
+                    stages[slot].name,slot,saved,percent);
+    }
+    std::puts("PASS: Alchemist full-rack stage-attribution profile; CPU numbers are diagnostic, not pass/fail or DAW certification.");
+    return 0;
+}
+
 int render(const juce::File& source, const juce::File& destination,
            int factoryIndex=skellpreset::alchemist::factoryIndex) {
     if (!source.existsAsFile() || source == destination) {
@@ -1179,6 +1357,7 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--native-trials-smoke")return nativeTrialsSmoke();
     if(argc==2 && juce::String(argv[1])=="--percent-smoke")return percentDisplaySmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
+    if(argc==2 && juce::String(argv[1])=="--profile-alchemist")return profileAlchemist();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
     if(argc==4 && juce::String(argv[1])=="--compare")
         return compareWavs(juce::File(juce::String::fromUTF8(argv[2])),
@@ -1193,6 +1372,7 @@ int main(int argc,char** argv) {
     if(argc!=3) {
         std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --profile-alchemist\n");
         return 1;
     }
     return render(juce::File(juce::String::fromUTF8(argv[1])),

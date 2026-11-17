@@ -123,6 +123,7 @@ second VST3 or a substitute for FL Studio. Build with
 .\SkellPresetAlchemistRender.exe --smoke
 .\SkellPresetAlchemistRender.exe --smoke-mono
 .\SkellPresetAlchemistRender.exe --stress
+.\SkellPresetAlchemistRender.exe --profile-alchemist
 .\SkellPresetAlchemistRender.exe ".\dry-vocal.wav" ".\alchemist-preview.wav"
 .\SkellPresetAlchemistRender.exe --compare ".\alchemist-preview.wav" ".\original-FL-wet.wav"
 ```
@@ -142,6 +143,8 @@ after RMS-only gain matching (without changing either file). Inputs must use
 the **same original take, same sample rate and matching sample start**;
 otherwise a low correlation does not mean the tonal match is bad. This is a
 diagnostic tool, **not true-peak, LUFS, blind listening or perceptual scoring**.
+
+The `--profile-alchemist` mode compares factory 43, factory 48 and factory 52, then removes each factory-52 stage one at a time at 96 kHz / 64 samples / 20 instances. It reports median realtime factor, p95/worst callback, PDC and the estimated CPU contribution of each stage. It has no CPU pass threshold because hosted-runner load varies; use the deltas to choose the next profiler target, not as a DAW benchmark.
 
 The `--stress` mode measures 5/10/20 serialized full-processor instances at
 44.1/48/96 kHz and 64/128/256-sample buffer sizes. It checks output finiteness,
