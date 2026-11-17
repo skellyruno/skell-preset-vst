@@ -362,11 +362,13 @@ int stress() {
     const double rates[]{44100.,48000.,96000.};
     for(const double sr:rates) {
         // Check actual host-facing processor PDC, not a helper's estimate.
-        for(const int preset:{skellpreset::alchemist::factoryIndex,25,0}) {
+        for(const int preset:{skellpreset::alchemist::factoryIndex,
+                                skellpreset::alchemist_serial_dynamics_trial::factoryIndex,25,0}) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
             p->loadFactoryPreset(preset);
             p->prepareToPlay(sr,64);
-            const int expected=preset==0?std::max(48,(int)(sr*.003)):0;
+            const int expected=(preset==0 || preset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex)
+                ?std::max(48,(int)(sr*.003)):0;
             if(p->getLatencySamples()!=expected) {
                 std::fprintf(stderr,
                     "FAIL factory %d / %.0f Hz: reported=%d expected=%d samples\n",
@@ -375,7 +377,9 @@ int stress() {
             }
             p->releaseResources();
         }
-        for(const int frames:buffers) {
+        for(const int rackPreset:{skellpreset::alchemist::factoryIndex,
+                                  skellpreset::alchemist_serial_dynamics_trial::factoryIndex}) {
+          for(const int frames:buffers) {
             for(const int count:instances) {
                 // Construct/prepare and allocate audio buffers outside timing.
                 std::vector<std::unique_ptr<SkellPresetAudioProcessor>> plugins;
@@ -384,9 +388,11 @@ int stress() {
                 work.reserve((size_t)count);
                 for(int n=0;n<count;++n) {
                     auto p=std::make_unique<SkellPresetAudioProcessor>();
-                    p->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+                    p->loadFactoryPreset(rackPreset);
                     p->prepareToPlay(sr,frames);
-                    if(p->getLatencySamples()!=0)return 10;
+                    const int expectedLatency=rackPreset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex
+                        ?std::max(48,(int)(sr*.003)):0;
+                    if(p->getLatencySamples()!=expectedLatency)return 10;
                     plugins.push_back(std::move(p));
                     work.push_back(std::make_unique<juce::AudioBuffer<float>>(2,frames));
                 }
@@ -444,18 +450,19 @@ int stress() {
                 }
                 const double audioSeconds=(double)(blocks*frames)/sr;
                 const double callbackBudget=(double)frames/sr;
-                std::printf("REAL-RACK instances=%d rate=%.0f block=%d audio_s=%.3f dsp_s=%.3f "
+                std::printf("REAL-RACK preset=%d instances=%d rate=%.0f block=%d audio_s=%.3f dsp_s=%.3f "
                             "dsp_cpu_vs_realtime=%.3f worst_callback_vs_budget=%.3f "
                             "peak=%.4f RMS=%.4f\n",
-                            count,sr,frames,audioSeconds,dspSeconds,
+                            rackPreset,count,sr,frames,audioSeconds,dspSeconds,
                             dspSeconds/audioSeconds,worstCallback/callbackBudget,peak,
                             std::sqrt(energy/(2.*blocks*frames*count)));
                 if(!std::isfinite(energy) || energy<=0. || peak<=0.)return 12;
                 for(auto& p:plugins)p->releaseResources();
             }
+          }
         }
     }
-    std::puts("PASS compiled 5/10/20-instance full rack finite-output and latency stress");
+    std::puts("PASS compiled 5/10/20-instance Alchemist baseline + serial-trial finite-output and latency stress");
     return 0;
 }
 
@@ -1071,6 +1078,36 @@ int nativeTrialsSmoke() {
        std::abs(switcher->getSlotParam(6,13)-.5f)>1.e-6f ||
        std::abs(switcher->getSlotParam(6,14)-.5f)>1.e-6f ||
        std::abs(switcher->getSlotParam(6,15)-.5f)>1.e-6f)return 213;
+    // Host program changes must also switch into and out of the opt-in serial
+    // FET/RMS trial without leaving its module IDs, parameters or 3ms PDC behind.
+    auto serialSwitcher=std::make_unique<SkellPresetAudioProcessor>();
+    serialSwitcher->setCurrentProgram(skellpreset::alchemist_serial_dynamics_trial::factoryIndex);
+    serialSwitcher->prepareToPlay(48000.,256);
+    if(serialSwitcher->getCurrentProgram()!=skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
+       serialSwitcher->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+       serialSwitcher->slotType(3)!=SkellPresetAudioProcessor::SkelldizerFX ||
+       serialSwitcher->slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+       serialSwitcher->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
+       serialSwitcher->getLatencySamples()!=144 ||
+       std::abs(serialSwitcher->getSlotParam(2,0)-.428571f)>1.e-6f ||
+       std::abs(serialSwitcher->getSlotParam(2,1)-.5f)>1.e-6f)
+        return 241;
+    serialSwitcher->setCurrentProgram(skellpreset::alchemist::factoryIndex);
+    serialSwitcher->prepareToPlay(48000.,256);
+    if(serialSwitcher->getCurrentProgram()!=skellpreset::alchemist::factoryIndex ||
+       serialSwitcher->slotType(2)!=SkellPresetAudioProcessor::Compressor ||
+       serialSwitcher->slotType(3)!=SkellPresetAudioProcessor::VoxRackSmoothComp ||
+       serialSwitcher->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+       serialSwitcher->slotType(7)!=SkellPresetAudioProcessor::Empty ||
+       serialSwitcher->getLatencySamples()!=0 ||
+       std::abs(serialSwitcher->getSlotParam(2,0)-skellpreset::alchemist::stages[2].p[0])>1.e-6f)
+        return 242;
+    serialSwitcher->setCurrentProgram(skellpreset::alchemist_serial_dynamics_trial::factoryIndex);
+    serialSwitcher->prepareToPlay(48000.,256);
+    if(serialSwitcher->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+       serialSwitcher->getLatencySamples()!=144 ||
+       std::abs(serialSwitcher->getSlotParam(2,0)-.428571f)>1.e-6f)
+        return 243;
     // Host program changes must restore the v2.5-only output calibration,
     // then clear it when returning to the original Deuce/Alchemist programs.
     auto deuceSwitcher=std::make_unique<SkellPresetAudioProcessor>();

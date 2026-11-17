@@ -129,6 +129,12 @@ int main(){
         advanced.slots[4].type=30;
         advanced.slots[5].type=31; // Alchemist causal finish, append-only native module
         advanced.slots[6].type=32; // Mic Modeling must roundtrip in schema v2
+        // Factory 52's exact FET/Opto normalized controls must survive .skellpreset export/import.
+        advanced.slots[1].wet=.70f;
+        advanced.slots[1].params[0]=.428571f;
+        advanced.slots[1].params[1]=.50f;
+        advanced.slots[1].params[2]=.35f;
+        advanced.slots[1].params[3]=.15f;
         advanced.slots[0].eqQ[0]=.81f;
         advanced.slots[0].eqQ[7]=.12f;
         advanced.slots[0].eqLowCut=.63f;
@@ -145,6 +151,11 @@ int main(){
               &&loaded.slots[4].type==30
               &&loaded.slots[5].type==31
               &&loaded.slots[6].type==32
+              &&loaded.slots[1].wet==.70f
+              &&std::abs(loaded.slots[1].params[0]-.428571f)<1.e-6f
+              &&std::abs(loaded.slots[1].params[1]-.50f)<1.e-6f
+              &&std::abs(loaded.slots[1].params[2]-.35f)<1.e-6f
+              &&std::abs(loaded.slots[1].params[3]-.15f)<1.e-6f
               &&loaded.slots[0].eqQ[0]==.81f
               &&loaded.slots[0].eqQ[7]==.12f
               &&loaded.slots[0].eqLowCut==.63f

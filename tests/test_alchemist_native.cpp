@@ -234,5 +234,26 @@ int main() {
             assert(y[0]==0.f&&y[1]==0.f);
         }
     }
+    // Exercise host-style block-boundary automation across every supported
+    // rate. All four normalized controls move while transients and stereo-link
+    // stress are present; no nonfinite or over-range output is permitted.
+    for(const double sr:{44100.,48000.,96000.,192000.}) {
+        SerialVocalDynamics automated;
+        automated.prepare(sr);
+        for(int block=0;block<128;++block) {
+            const float t=(float)block/127.f;
+            automated.set(.20f+.60f*t,.15f+.75f*t,.10f+.75f*t,.05f+.20f*t);
+            for(int n=0;n<256;++n) {
+                const auto sample=(std::int64_t)block*256+n;
+                float x=.22f*std::sin(float(2.*pi*220.*sample/sr))
+                       +.09f*std::sin(float(2.*pi*3100.*sample/sr));
+                if(sample%4096==0)x+=.30f;
+                const auto y=automated.process(x,-x);
+                assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+                assert(std::abs(y[0])<1.f&&std::abs(y[1])<1.f);
+                assert(std::abs(y[0]+y[1])<1.e-6f);
+            }
+        }
+    }
     return 0;
 }

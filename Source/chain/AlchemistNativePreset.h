@@ -34,8 +34,10 @@ constexpr auto makeStages() noexcept {
     highpass.p[2]=.50f; highpass.p[3]=.18f; // 65Hz cutoff
 
     auto tone=neutral(26); // 8-Band EQ
-    // Measured dry-vs-original-processed Alchemist reference suggested
-    // a broad +10 to +12.5 dB increase in the upper vocal spectrum.
+    // The archived comparison input is the user's REC-processed vocal with
+    // MAIN effects off; the reference is the MAIN-effects-on print. This is
+    // NOT an unprocessed/dry-vocal measurement. The REC-only -> MAIN-on fit
+    // suggested a broad +10 to +12.5 dB increase in the upper vocal spectrum.
     // v0.1 incorrectly CUT the 5k/12k bands and sounded much too dull.
     // These eight bounded native bands are a regularised static fit to
     // source-relative Welch spectra (44.1 kHz, same take, 70Hz–12kHz);
