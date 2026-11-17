@@ -102,6 +102,7 @@ class DbGainLookup final {
 public:
     static constexpr int intervals=4096;
     static constexpr float maxDb=144.f;
+    static constexpr float dbToLog2=0.1660964047443681f;
 
     static void warm() noexcept { (void)table(); }
 
