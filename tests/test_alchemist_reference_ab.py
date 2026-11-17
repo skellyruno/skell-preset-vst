@@ -147,6 +147,18 @@ class AlchemistReferenceABTests(unittest.TestCase):
         self.assertLess(gain, 1.0)
         self.assertLessEqual(ab.true_peak_linear(hot * gain), safe_peak + 1e-6)
 
+    def test_polarity_normalized_correlation_is_diagnostic_only(self):
+        raw_signed = -0.236
+        self.assertAlmostEqual(
+            ab.polarity_normalized_correlation(raw_signed, -1), 0.236
+        )
+        self.assertAlmostEqual(
+            ab.polarity_normalized_correlation(raw_signed, 1), -0.236
+        )
+        self.assertIsNone(ab.polarity_normalized_correlation(None, -1))
+        with self.assertRaises(ValueError):
+            ab.polarity_normalized_correlation(raw_signed, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
