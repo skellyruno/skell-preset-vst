@@ -41,7 +41,7 @@ int main() {
                     -10.f*std::log10(power+1.e-12f))>1.e-5f)
             return 56;
     }
-    float previous=0.f;
+    float previous=0.f,previousRefined=0.f;
     for(int i=0;i<=16000;++i) {
         const float x=8.f*(float)i/16000.f;
         const float exact=x<=.85f?x:.85f+.08f*std::tanh((x-.85f)/.08f);
@@ -52,7 +52,18 @@ int main() {
         if(std::abs(alchemist_fast_math::softCeiling(-x)+fast)>1.e-7f)
             return 54;
         previous=fast;
+        const float exactRefined=x<=.89f?x:.89f+.08f*std::tanh((x-.89f)/.08f);
+        const float fastRefined=alchemist_fast_math::softCeiling(x,.89f,.08f);
+        if(!std::isfinite(fastRefined)||fastRefined<previousRefined
+           ||fastRefined>.97001f||std::abs(fastRefined-exactRefined)>6.e-5f)
+            return 57;
+        if(std::abs(alchemist_fast_math::softCeiling(-x,.89f,.08f)+fastRefined)>1.e-7f)
+            return 58;
+        previousRefined=fastRefined;
     }
+    if(alchemist_fast_math::softCeiling(std::numeric_limits<float>::quiet_NaN())!=0.f
+       ||alchemist_fast_math::softCeiling(std::numeric_limits<float>::infinity())!=0.f)
+        return 59;
     static_assert(stages.size()==7,"Alchemist must include the match-finish module");
     static_assert(stages[6].module==31,"Append-only processor ID");
     for(double rate:{8000.,44100.,48000.,96000.,192000.}) {

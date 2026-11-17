@@ -105,10 +105,7 @@ public:
             shaped=airShelf.processOne(shaped,c);
             // (5) Differentiable, bounded sample-peak safety above -1 dBFS.
             // This is NOT a 4x oversampled true-peak limiter.
-            const float magnitude=std::abs(shaped);
-            if(magnitude>.89f)
-                shaped=std::copysign(.89f+.08f*
-                    std::tanh((magnitude-.89f)/.08f),shaped);
+            shaped=alchemist_fast_math::softCeiling(shaped,.89f,.08f);
             // Measured same-take native trial reached +0.33dBTP at 4x.
             // Reserve 1.11 dB extra sample-domain headroom on THIS OPT-IN
             // candidate only. Original factory index 43 remains bit-exact.

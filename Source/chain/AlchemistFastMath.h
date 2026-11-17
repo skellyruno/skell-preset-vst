@@ -33,10 +33,11 @@ inline float tanhPade(float x) noexcept {
          / (135135.f + 62370.f * x2 + 3150.f * x4 + 28.f * x4 * x2);
 }
 
-inline float softCeiling(float input) noexcept {
-    if (!std::isfinite(input)) return 0.f;
-    constexpr float threshold = .85f;
-    constexpr float range = .08f;
+inline float softCeiling(float input, float threshold = .85f,
+                         float range = .08f) noexcept {
+    if (!std::isfinite(input) || !std::isfinite(threshold)
+        || !std::isfinite(range) || range <= 0.f)
+        return 0.f;
     const float magnitude = std::abs(input);
     if (magnitude <= threshold) return input;
     const float output = threshold
