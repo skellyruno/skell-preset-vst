@@ -13,7 +13,14 @@ struct Slot {
     int type = 0;
     bool enabled = false;
     float wet = 1.0f;
-    std::array<float, parameterCount> params {};
+    // A blank native package must agree with APVTS' 50% parameter defaults.
+    // Otherwise importing a programmatically-created empty rack leaves new
+    // effects at their minimum values instead of their neutral positions.
+    std::array<float, parameterCount> params = [] {
+        std::array<float, parameterCount> values {};
+        values.fill(.5f);
+        return values;
+    }();
     // Optional v2 extension, ignored by older readers. Preserves all eight
     // parametric-EQ bandwidths when saving and reloading native rack presets.
     std::array<float,8> eqQ {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
