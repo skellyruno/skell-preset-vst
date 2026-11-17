@@ -40,6 +40,11 @@ int main() {
     static_assert(skellpreset::alchemist_smooth_compressor_blend_trial::stages[2].wet==.35f &&
                   skellpreset::alchemist_smooth_compressor_blend_trial::stages[3].wet==.50f,
                   "Factory 51 changes only smooth compressor blend");
+    static_assert(skellpreset::alchemist_serial_dynamics_trial::factoryIndex==52 &&
+                  skellpreset::alchemist_serial_dynamics_trial::stages.size()==7 &&
+                  skellpreset::alchemist_serial_dynamics_trial::stages[2].module==27 &&
+                  skellpreset::alchemist_serial_dynamics_trial::stages[6].module==3,
+                  "Factory 52 appends the serial FET/RMS trial without moving earlier IDs");
     static_assert(atr::stages[6].p[12]==1.f,"new refinement trial opt-in");
     for(double sr:{8000.,44100.,48000.,96000.,192000.}) {
         AlchemistRefinedDSP fx;fx.prepare(sr);

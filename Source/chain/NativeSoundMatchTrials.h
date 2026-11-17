@@ -237,3 +237,39 @@ static_assert(stages[2].wet==.35f && stages[3].wet==.50f,
 static_assert(stages[7].module==3 && stages[7].wet==1.f,
     "Smooth-blend trial must retain factory 48 final limiter");
 }
+
+ 
+// Replace the two generic Alchemist compressor blocks with the existing
+// stereo-linked FET peak catcher + slower RMS leveler. Opt-in role-matched
+// trial only; this is not a Waves CLA-76/CLA-2A emulation or approved champion.
+namespace skellpreset::alchemist_serial_dynamics_trial {
+constexpr auto makeStages() noexcept {
+    const auto& base=alchemist_tone_match_trial::stages;
+    std::array<alchemist::NativeStage,7> result{};
+    result[0]=base[0];
+    result[1]=base[1];
+    auto dynamics=alchemist::neutral(27,.70f); // SerialDynamicsFX
+    dynamics.p[0]=.428571f; // -30 dB threshold between the two fitted roles
+    dynamics.p[1]=.5f;      // 7:1 FET peak-catcher slope
+    dynamics.p[2]=.35f;     // 3.15 ms FET attack / 157 ms release
+    dynamics.p[3]=.15f;     // restrained parallel density
+    result[2]=dynamics;
+    result[3]=base[4]; // Skelldizer
+    result[4]=base[5]; // Saturation
+    result[5]=base[6]; // Match Finish
+    result[6]=base[7]; // Existing final peak guard
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=52;
+inline constexpr const char* name="Alchemist Serial Dynamics (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==7 && stages[2].module==27 &&
+              stages[3].module==33 && stages[5].module==31 &&
+              stages[6].module==3,
+    "Serial-dynamics trial must preserve EQ, colour, Match Finish and final guard");
+static_assert(stages[2].wet==.70f && stages[2].p[0]==.428571f &&
+              stages[2].p[1]==.5f && stages[2].p[2]==.35f &&
+              stages[2].p[3]==.15f,
+    "Serial-dynamics trial controls must remain explicit and bounded");
+}

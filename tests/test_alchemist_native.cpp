@@ -18,13 +18,15 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==52,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==53,"Append only; preserve prior programs");
     static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
                   "Alchemist lighter-dynamics candidate must remain at index 49");
     static_assert(factoryPresets[50].name==std::string_view("Alchemist Fast Compressor Blend (Trial)"),
                   "Fast-compressor blend trial must append at index 50");
     static_assert(factoryPresets[51].name==std::string_view("Alchemist Smooth Compressor Blend (Trial)"),
                   "Smooth-compressor blend trial must append at index 51");
+    static_assert(factoryPresets[52].name==std::string_view("Alchemist Serial Dynamics (Trial)"),
+                  "Serial FET/RMS trial must append at index 52");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
@@ -57,6 +59,24 @@ int main() {
     assert(std::strcmp(factoryPresets[51].bank,"Main Vocals")==0);
     assert(alchemist_smooth_compressor_blend_trial::stages[2].wet==.35f);
     assert(alchemist_smooth_compressor_blend_trial::stages[3].wet==.50f);
+    assert(std::strcmp(factoryPresets[52].name,alchemist_serial_dynamics_trial::name)==0);
+    assert(std::strcmp(factoryPresets[52].bank,"Main Vocals")==0);
+    assert(alchemist_serial_dynamics_trial::stages.size()==7);
+    assert(alchemist_serial_dynamics_trial::stages[2].module==27);
+    assert(alchemist_serial_dynamics_trial::stages[3].module==33);
+    assert(alchemist_serial_dynamics_trial::stages[5].module==31);
+    assert(alchemist_serial_dynamics_trial::stages[6].module==3);
+    assert(alchemist_serial_dynamics_trial::stages[2].wet==.70f);
+    assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[0]-.428571f)<1.e-6f);
+    assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[1]-.5f)<1.e-6f);
+    assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[2]-.35f)<1.e-6f);
+    assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[3]-.15f)<1.e-6f);
+    for(const auto& stage:alchemist_serial_dynamics_trial::stages) {
+        assert(stage.module>=1 && stage.module<38);
+        assert(stage.wet>=0.f && stage.wet<=1.f);
+        for(float v:stage.p)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
+        for(float v:stage.q)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
+    }
     // Audit every factory label, cover index and macro range; names must be unique.
     for(std::size_t i=0;i<factoryPresets.size();++i) {
         const auto& preset=factoryPresets[i];
@@ -184,6 +204,35 @@ int main() {
         assert(dryEnergy>1e-3 && wetEnergy>1e-3);
         const double ratio=wetEnergy/dryEnergy;
         assert(ratio>.005 && ratio<8.);
+    }
+    // Exercise the exact native FET/RMS processor used by factory 52.
+    // The compressor remains stereo-linked, finite and bounded at all host rates.
+    const auto& serialStage=alchemist_serial_dynamics_trial::stages[2];
+    for(const double sr:{44100.,48000.,96000.,192000.}) {
+        SerialVocalDynamics serial;
+        serial.prepare(sr);
+        serial.set(serialStage.p[0],serialStage.p[1],
+                   serialStage.p[2],serialStage.p[3]);
+        double inputEnergy=0.,outputEnergy=0.;
+        for(int i=0;i<(int)(sr*.75);++i) {
+            const float amplitude=i<(int)(sr*.35)?.28f:.12f;
+            const float wave=amplitude*(
+                .65f*std::sin(float(2.*pi*220.*i/sr))+
+                .35f*std::sin(float(2.*pi*3100.*i/sr)));
+            const auto y=serial.process(wave,-wave);
+            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            assert(std::abs(y[0]+y[1])<1.e-6f);
+            assert(std::abs(y[0])<1.f&&std::abs(y[1])<1.f);
+            inputEnergy+=(double)wave*wave;
+            outputEnergy+=(double)y[0]*y[0];
+        }
+        assert(inputEnergy>1.e-3&&outputEnergy>1.e-3);
+        assert(std::isfinite(serial.reductionDb())&&serial.reductionDb()>0.f);
+        serial.reset();
+        for(int i=0;i<2048;++i) {
+            const auto y=serial.process(0.f,0.f);
+            assert(y[0]==0.f&&y[1]==0.f);
+        }
     }
     return 0;
 }

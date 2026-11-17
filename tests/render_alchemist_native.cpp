@@ -508,8 +508,9 @@ int render(const juce::File& source, const juce::File& destination,
        factoryIndex!=skellpreset::alchemist_tone_match_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_lighter_dynamics_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex &&
-       factoryIndex!=skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex) {
-        std::fprintf(stderr,"ERROR: factory selection must be 43, 44, 45, 46, 47, 48, 49, 50 or 51\n");
+       factoryIndex!=skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex &&
+       factoryIndex!=skellpreset::alchemist_serial_dynamics_trial::factoryIndex) {
+        std::fprintf(stderr,"ERROR: factory selection must be 43 through 52\n");
         return 7;
     }
     plugin->loadFactoryPreset(factoryIndex);
@@ -518,13 +519,17 @@ int render(const juce::File& source, const juce::File& destination,
     const bool deuceCountValid=factoryIndex==skellpreset::deuce::factoryIndex
         ?plugin->activeSlotCount()==12
         :plugin->activeSlotCount()==13;
+    const bool serialDynamicsFactory=factoryIndex==skellpreset::alchemist_serial_dynamics_trial::factoryIndex;
     const bool peakGuardFactory=factoryIndex==skellpreset::alchemist_peak_guard_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_tone_match_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex;
-    const bool alchemistChainValid=plugin->slotType(6)==SkellPresetAudioProcessor::AlchemistMatchFinishFX &&
-        (peakGuardFactory
+    const bool alchemistChainValid=serialDynamicsFactory
+        ?plugin->slotType(5)==SkellPresetAudioProcessor::AlchemistMatchFinishFX &&
+         plugin->slotType(6)==SkellPresetAudioProcessor::Limiter
+        :plugin->slotType(6)==SkellPresetAudioProcessor::AlchemistMatchFinishFX &&
+         (peakGuardFactory
             ?plugin->slotType(7)==SkellPresetAudioProcessor::Limiter
             :plugin->slotType(7)==SkellPresetAudioProcessor::Empty);
     if(plugin->loadedFactoryPresetIndex()!=factoryIndex ||
@@ -690,7 +695,8 @@ int nativeTrialsSmoke() {
                      skellpreset::alchemist_tone_match_trial::factoryIndex,
                      skellpreset::alchemist_lighter_dynamics_trial::factoryIndex,
                      skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex,
-                     skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex}) {
+                     skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex,
+                     skellpreset::alchemist_serial_dynamics_trial::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
         // Recall comparison must use the SAME prepare/order for both
         // instances. Preparing the source before loading its program while
@@ -747,6 +753,17 @@ int nativeTrialsSmoke() {
                plugin->getLatencySamples()<48 || plugin->getLatencySamples()>1024)
                 return 231;
         }
+        if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex &&
+           (plugin->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+            plugin->slotType(3)!=SkellPresetAudioProcessor::SkelldizerFX ||
+            plugin->slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+            plugin->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
+            std::abs(plugin->getSlotParam(2,0)-.428571f)>.001f ||
+            std::abs(plugin->getSlotParam(2,1)-.5f)>.001f ||
+            std::abs(plugin->getSlotParam(2,2)-.35f)>.001f ||
+            std::abs(plugin->getSlotParam(2,3)-.15f)>.001f ||
+            plugin->getLatencySamples()<48 || plugin->getLatencySamples()>1024))
+            return 235;
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=plugin->state.getRawParameterValue("s13_eqQ7");
             const auto* output=plugin->state.getRawParameterValue("output");
@@ -816,6 +833,17 @@ int nativeTrialsSmoke() {
                !slowWet || std::abs(slowWet->load()-expectedSlow)>.001f)
                 return 232;
         }
+        if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex &&
+           (recalled->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+            recalled->slotType(3)!=SkellPresetAudioProcessor::SkelldizerFX ||
+            recalled->slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+            recalled->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
+            std::abs(recalled->getSlotParam(2,0)-.428571f)>.001f ||
+            std::abs(recalled->getSlotParam(2,1)-.5f)>.001f ||
+            std::abs(recalled->getSlotParam(2,2)-.35f)>.001f ||
+            std::abs(recalled->getSlotParam(2,3)-.15f)>.001f ||
+            recalled->getLatencySamples()!=plugin->getLatencySamples()))
+            return 236;
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=recalled->state.getRawParameterValue("s13_eqQ7");
             const auto* output=recalled->state.getRawParameterValue("output");
@@ -1038,13 +1066,13 @@ int main(int argc,char** argv) {
                            juce::File(juce::String::fromUTF8(argv[3])));
     if(argc==5 && juce::String(argv[1])=="--factory") {
         const auto requested=juce::String(argv[2]);
-        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51")return 7;
+        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51" && requested!="52")return 7;
         return render(juce::File(juce::String::fromUTF8(argv[3])),
                       juce::File(juce::String::fromUTF8(argv[4])),
                       requested.getIntValue());
     }
     if(argc!=3) {
-        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51 INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
     }

@@ -807,6 +807,22 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr,"Alchemist smooth-compressor blend screenshot failed\n");
                 ++failures;
             }
+            processor.loadFactoryPreset(skellpreset::alchemist_serial_dynamics_trial::factoryIndex);
+            if(processor.slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+               processor.slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+               processor.slotType(6)!=SkellPresetAudioProcessor::Limiter) {
+                std::fprintf(stderr,"Alchemist serial-dynamics trial factory did not load\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(2,0);
+            const auto serialDynamics=skellcore::ui::headless::capture(editor,1168,688);
+            if(!serialDynamics.image.isValid() || serialDynamics.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(
+                   serialDynamics.image,folder.getChildFile("obsidian-alchemist-serial-dynamics-100.png"))) {
+                std::fprintf(stderr,"Alchemist serial-dynamics factory screenshot failed\n");
+                ++failures;
+            }
             processor.loadFactoryPreset(0);
             editor.configureForScreenshot(0,1,false);
             editor.selectRackSlotForScreenshot(0,0);
