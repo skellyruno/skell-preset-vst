@@ -13,6 +13,8 @@ int main() {
     namespace al=skellpreset::alchemist;
     namespace atr=skellpreset::alchemist_trial;
     namespace de=skellpreset::deuce;
+    namespace fast=skellpreset::alchemist_fast_blend_trial;
+    namespace slow=skellpreset::alchemist_slow_blend_trial;
     static_assert(de::factoryIndex==al::factoryIndex+1,"append-only Deuce index");
     static_assert(skellpreset::deuce_v25::factoryIndex==atr::factoryIndex+1,
                   "v2.5 appended without changing existing indexes");
@@ -31,6 +33,14 @@ int main() {
     static_assert(skellpreset::alchemist_lighter_dynamics_trial::stages[2].wet==.20f &&
                   skellpreset::alchemist_lighter_dynamics_trial::stages[3].wet==.50f,
                   "Only the fast/slow compressor wet blends are reduced");
+    static_assert(fast::factoryIndex==50 && slow::factoryIndex==51,
+                  "Independent blend trials append after factory 49");
+    static_assert(fast::stages[2].wet==.20f && fast::stages[3].wet==.70f,
+                  "Factory 50 changes only the fast FET blend");
+    static_assert(slow::stages[2].wet==.35f && slow::stages[3].wet==.50f,
+                  "Factory 51 changes only the slow Opto blend");
+    static_assert(fast::stages[7].module==3 && slow::stages[7].module==3,
+                  "Both isolated trials retain the final peak guard");
     static_assert(atr::stages[6].p[12]==1.f,"new refinement trial opt-in");
     for(double sr:{8000.,44100.,48000.,96000.,192000.}) {
         AlchemistRefinedDSP fx;fx.prepare(sr);
@@ -111,6 +121,23 @@ int main() {
         for(float value:trial.q)
             if(!std::isfinite(value)||value<0.f||value>1.f)return 13;
     }
-    std::cout<<"Five opt-in causal refinements, untouched original preset, "
-                "12-slot Deuce candidate, append-only Alchemist factory 49, 8–192 kHz: PASS\n";
+    const auto verifyIndependent=[](const auto& trial,float fastWet,float slowWet) {
+        for(std::size_t i=0;i<trial.stages.size();++i) {
+            const auto& base=skellpreset::alchemist_tone_match_trial::stages[i];
+            const auto& stage=trial.stages[i];
+            if(stage.module!=base.module || stage.p!=base.p || stage.q!=base.q)
+                return false;
+            const float expected=i==2?fastWet:(i==3?slowWet:base.wet);
+            if(std::abs(stage.wet-expected)>1.e-7f)return false;
+            for(float value:stage.p)
+                if(!std::isfinite(value)||value<0.f||value>1.f)return false;
+            for(float value:stage.q)
+                if(!std::isfinite(value)||value<0.f||value>1.f)return false;
+        }
+        return true;
+    };
+    if(!verifyIndependent(fast,.20f,.70f) ||
+       !verifyIndependent(slow,.35f,.50f))return 14;
+    std::cout<<"Six opt-in causal refinements, untouched original preset, "
+                "12-slot Deuce candidate, append-only Alchemist factories 49–51, 8–192 kHz: PASS\n";
 }

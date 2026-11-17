@@ -18,7 +18,7 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==50,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==52,"Append only; preserve prior programs");
     static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
                   "Alchemist lighter-dynamics candidate must append at index 49");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
@@ -45,6 +45,27 @@ int main() {
     assert(std::strcmp(factoryPresets[49].bank,"Main Vocals")==0);
     assert(alchemist_lighter_dynamics_trial::stages[2].wet==.20f);
     assert(alchemist_lighter_dynamics_trial::stages[3].wet==.50f);
+    assert(std::strcmp(factoryPresets[50].name,alchemist_fast_blend_trial::name)==0);
+    assert(std::strcmp(factoryPresets[50].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[51].name,alchemist_slow_blend_trial::name)==0);
+    assert(std::strcmp(factoryPresets[51].bank,"Main Vocals")==0);
+    assert(alchemist_fast_blend_trial::stages[2].wet==.20f);
+    assert(alchemist_fast_blend_trial::stages[3].wet==.70f);
+    assert(alchemist_slow_blend_trial::stages[2].wet==.35f);
+    assert(alchemist_slow_blend_trial::stages[3].wet==.50f);
+    for(std::size_t i=0;i<alchemist_tone_match_trial::stages.size();++i) {
+        const auto& base=alchemist_tone_match_trial::stages[i];
+        const auto& fast=alchemist_fast_blend_trial::stages[i];
+        const auto& slow=alchemist_slow_blend_trial::stages[i];
+        assert(base.module==fast.module && base.p==fast.p && base.q==fast.q);
+        assert(base.module==slow.module && base.p==slow.p && base.q==slow.q);
+        assert(std::abs(fast.wet-(i==2?.20f:base.wet))<1.e-7f);
+        assert(std::abs(slow.wet-(i==3?.50f:base.wet))<1.e-7f);
+        for(float v:fast.p)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
+        for(float v:slow.p)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
+        for(float v:fast.q)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
+        for(float v:slow.q)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
+    }
     assert(alchemist_tone_match_trial::stages.size()==8);
     assert(alchemist_tone_match_trial::stages[7].module==3);
     assert(alchemist_tone_match_trial::stages[7].wet==1.f);

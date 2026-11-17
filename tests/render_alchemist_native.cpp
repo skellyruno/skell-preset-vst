@@ -506,8 +506,10 @@ int render(const juce::File& source, const juce::File& destination,
        factoryIndex!=skellpreset::deuce_v25::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_peak_guard_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_tone_match_trial::factoryIndex &&
-       factoryIndex!=skellpreset::alchemist_lighter_dynamics_trial::factoryIndex) {
-        std::fprintf(stderr,"ERROR: factory selection must be 43, 44, 45, 46, 47, 48 or 49\n");
+       factoryIndex!=skellpreset::alchemist_lighter_dynamics_trial::factoryIndex &&
+       factoryIndex!=skellpreset::alchemist_fast_blend_trial::factoryIndex &&
+       factoryIndex!=skellpreset::alchemist_slow_blend_trial::factoryIndex) {
+        std::fprintf(stderr,"ERROR: factory selection must be 43, 44, 45, 46, 47, 48, 49, 50 or 51\n");
         return 7;
     }
     plugin->loadFactoryPreset(factoryIndex);
@@ -518,7 +520,9 @@ int render(const juce::File& source, const juce::File& destination,
         :plugin->activeSlotCount()==13;
     const bool peakGuardFactory=factoryIndex==skellpreset::alchemist_peak_guard_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_tone_match_trial::factoryIndex ||
-                                 factoryIndex==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex;
+                                 factoryIndex==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex ||
+                                  factoryIndex==skellpreset::alchemist_fast_blend_trial::factoryIndex ||
+                                  factoryIndex==skellpreset::alchemist_slow_blend_trial::factoryIndex;
     const bool alchemistChainValid=plugin->slotType(6)==SkellPresetAudioProcessor::AlchemistMatchFinishFX &&
         (peakGuardFactory
             ?plugin->slotType(7)==SkellPresetAudioProcessor::Limiter
@@ -684,7 +688,9 @@ int nativeTrialsSmoke() {
                      skellpreset::deuce_v25::factoryIndex,
                      skellpreset::alchemist_peak_guard_trial::factoryIndex,
                      skellpreset::alchemist_tone_match_trial::factoryIndex,
-                     skellpreset::alchemist_lighter_dynamics_trial::factoryIndex}) {
+                     skellpreset::alchemist_lighter_dynamics_trial::factoryIndex,
+                      skellpreset::alchemist_fast_blend_trial::factoryIndex,
+                      skellpreset::alchemist_slow_blend_trial::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
         // Recall comparison must use the SAME prepare/order for both
         // instances. Preparing the source before loading its program while
@@ -713,7 +719,9 @@ int nativeTrialsSmoke() {
             std::abs(plugin->getSlotParam(6,15)-.38f)>.001f))return 203;
         if((factory==skellpreset::alchemist_peak_guard_trial::factoryIndex ||
             factory==skellpreset::alchemist_tone_match_trial::factoryIndex ||
-            factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex) &&
+            factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex ||
+            factory==skellpreset::alchemist_fast_blend_trial::factoryIndex ||
+            factory==skellpreset::alchemist_slow_blend_trial::factoryIndex) &&
            (plugin->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
             plugin->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
             std::abs(plugin->getSlotParam(7,0)-.89f)>.001f ||
@@ -725,14 +733,18 @@ int nativeTrialsSmoke() {
             std::abs(plugin->getSlotParam(1,13)-.738915f)>.001f ||
             std::abs(plugin->getSlotParam(1,15)-.830000f)>.001f))
             return 227;
-        if(factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex) {
+        if(factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex ||
+           factory==skellpreset::alchemist_fast_blend_trial::factoryIndex ||
+           factory==skellpreset::alchemist_slow_blend_trial::factoryIndex) {
             const auto* fastWet=plugin->state.getRawParameterValue("s3_wet");
             const auto* slowWet=plugin->state.getRawParameterValue("s4_wet");
-            if(plugin->slotType(2)!=skellpreset::alchemist_lighter_dynamics_trial::stages[2].module ||
-               plugin->slotType(3)!=skellpreset::alchemist_lighter_dynamics_trial::stages[3].module ||
-               !fastWet || std::abs(fastWet->load()-.20f)>.001f ||
-               !slowWet || std::abs(slowWet->load()-.50f)>.001f ||
-               plugin->getLatencySamples()<48 || plugin->getLatencySamples()>1024)
+            const float expectedFast=(factory==skellpreset::alchemist_slow_blend_trial::factoryIndex)?.35f:.20f;
+            const float expectedSlow=(factory==skellpreset::alchemist_fast_blend_trial::factoryIndex)?.70f:.50f;
+            if(plugin->slotType(2)!=SkellPresetAudioProcessor::Compressor ||
+               plugin->slotType(3)!=skellpreset::alchemist_tone_match_trial::stages[3].module ||
+               !fastWet || std::abs(fastWet->load()-expectedFast)>.001f ||
+               !slowWet || std::abs(slowWet->load()-expectedSlow)>.001f ||
+               plugin->getLatencySamples()!=144)
                 return 231;
         }
         if(factory==skellpreset::deuce_v25::factoryIndex) {
@@ -782,7 +794,9 @@ int nativeTrialsSmoke() {
             std::abs(recalled->getSlotParam(6,15)-.38f)>.001f))return 211;
         if((factory==skellpreset::alchemist_peak_guard_trial::factoryIndex ||
             factory==skellpreset::alchemist_tone_match_trial::factoryIndex ||
-            factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex) &&
+            factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex ||
+            factory==skellpreset::alchemist_fast_blend_trial::factoryIndex ||
+            factory==skellpreset::alchemist_slow_blend_trial::factoryIndex) &&
            (recalled->slotType(7)!=SkellPresetAudioProcessor::Limiter ||
             std::abs(recalled->getSlotParam(7,0)-.89f)>.001f ||
             std::abs(recalled->getSlotParam(7,1))>.001f ||
@@ -791,11 +805,15 @@ int nativeTrialsSmoke() {
            (std::abs(recalled->getSlotParam(1,11)-.478534f)>.001f ||
             std::abs(recalled->getSlotParam(1,13)-.738915f)>.001f ||
             std::abs(recalled->getSlotParam(1,15)-.830000f)>.001f))return 228;
-        if(factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex) {
+        if(factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex ||
+           factory==skellpreset::alchemist_fast_blend_trial::factoryIndex ||
+           factory==skellpreset::alchemist_slow_blend_trial::factoryIndex) {
             const auto* fastWet=recalled->state.getRawParameterValue("s3_wet");
             const auto* slowWet=recalled->state.getRawParameterValue("s4_wet");
-            if(!fastWet || std::abs(fastWet->load()-.20f)>.001f ||
-               !slowWet || std::abs(slowWet->load()-.50f)>.001f)
+            const float expectedFast=(factory==skellpreset::alchemist_slow_blend_trial::factoryIndex)?.35f:.20f;
+            const float expectedSlow=(factory==skellpreset::alchemist_fast_blend_trial::factoryIndex)?.70f:.50f;
+            if(!fastWet || std::abs(fastWet->load()-expectedFast)>.001f ||
+               !slowWet || std::abs(slowWet->load()-expectedSlow)>.001f)
                 return 232;
         }
         if(factory==skellpreset::deuce_v25::factoryIndex) {
@@ -880,6 +898,24 @@ int nativeTrialsSmoke() {
     if(!fastWet || std::abs(fastWet->load()-.35f)>.001f ||
        !slowWet || std::abs(slowWet->load()-.70f)>.001f ||
        peakSwitcher->getLatencySamples()!=guardedLatency)return 234;
+    peakSwitcher->loadFactoryPreset(skellpreset::alchemist_fast_blend_trial::factoryIndex);
+    fastWet=peakSwitcher->state.getRawParameterValue("s3_wet");
+    slowWet=peakSwitcher->state.getRawParameterValue("s4_wet");
+    if(!fastWet || std::abs(fastWet->load()-.20f)>.001f ||
+       !slowWet || std::abs(slowWet->load()-.70f)>.001f ||
+       peakSwitcher->getLatencySamples()!=guardedLatency)return 235;
+    peakSwitcher->loadFactoryPreset(skellpreset::alchemist_slow_blend_trial::factoryIndex);
+    fastWet=peakSwitcher->state.getRawParameterValue("s3_wet");
+    slowWet=peakSwitcher->state.getRawParameterValue("s4_wet");
+    if(!fastWet || std::abs(fastWet->load()-.35f)>.001f ||
+       !slowWet || std::abs(slowWet->load()-.50f)>.001f ||
+       peakSwitcher->getLatencySamples()!=guardedLatency)return 236;
+    peakSwitcher->loadFactoryPreset(skellpreset::alchemist_tone_match_trial::factoryIndex);
+    fastWet=peakSwitcher->state.getRawParameterValue("s3_wet");
+    slowWet=peakSwitcher->state.getRawParameterValue("s4_wet");
+    if(!fastWet || std::abs(fastWet->load()-.35f)>.001f ||
+       !slowWet || std::abs(slowWet->load()-.70f)>.001f ||
+       peakSwitcher->getLatencySamples()!=guardedLatency)return 237;
     peakSwitcher->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
     if(peakSwitcher->slotType(7)!=SkellPresetAudioProcessor::Empty ||
        peakSwitcher->getLatencySamples()!=0)return 230;
@@ -971,13 +1007,13 @@ int main(int argc,char** argv) {
                            juce::File(juce::String::fromUTF8(argv[3])));
     if(argc==5 && juce::String(argv[1])=="--factory") {
         const auto requested=juce::String(argv[2]);
-        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49")return 7;
+        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51")return 7;
         return render(juce::File(juce::String::fromUTF8(argv[3])),
                       juce::File(juce::String::fromUTF8(argv[4])),
                       requested.getIntValue());
     }
     if(argc!=3) {
-        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49 INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
     }

@@ -777,6 +777,26 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr,"Alchemist lighter-dynamics factory screenshot failed\n");
                 ++failures;
             }
+            processor.loadFactoryPreset(skellpreset::alchemist_fast_blend_trial::factoryIndex);
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(2,0);
+            const auto fastBlend=skellcore::ui::headless::capture(editor,1168,688);
+            if(!fastBlend.image.isValid() || fastBlend.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(fastBlend.image,
+                   folder.getChildFile("obsidian-alchemist-fast-blend-100.png"))) {
+                std::fprintf(stderr,"Alchemist fast-blend factory screenshot failed\\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(skellpreset::alchemist_slow_blend_trial::factoryIndex);
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(3,0);
+            const auto slowBlend=skellcore::ui::headless::capture(editor,1168,688);
+            if(!slowBlend.image.isValid() || slowBlend.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(slowBlend.image,
+                   folder.getChildFile("obsidian-alchemist-slow-blend-100.png"))) {
+                std::fprintf(stderr,"Alchemist slow-blend factory screenshot failed\\n");
+                ++failures;
+            }
             processor.loadFactoryPreset(0);
             editor.configureForScreenshot(0,1,false);
             editor.selectRackSlotForScreenshot(0,0);

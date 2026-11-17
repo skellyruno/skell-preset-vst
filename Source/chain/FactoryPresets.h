@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,50> factoryPresets {{
+inline constexpr std::array<FactoryPreset,52> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -86,6 +86,12 @@ inline constexpr std::array<FactoryPreset,50> factoryPresets {{
     {"Alchemist Lighter Dynamics (Trial)","Main Vocals",
      "Factory 48 tone match with reduced fast/slow compressor wet blend for envelope A/B",
      4,.50f,.42f,.02f,.12f},
+    {"Alchemist Fast Blend (Trial)","Main Vocals",
+     "Factory 48 tone match with fast FET blend reduced to 20%; slow Opto remains at 70%",
+     4,.50f,.42f,.02f,.12f},
+    {"Alchemist Slow Blend (Trial)","Main Vocals",
+     "Factory 48 tone match with slow Opto blend reduced to 50%; fast FET remains at 35%",
+     4,.50f,.42f,.02f,.12f},
 }};
 static_assert(factoryPresets[43].name==std::string_view("Alchemist (Native Preview)"),
     "Do not change approved Alchemist factory index");
@@ -101,4 +107,8 @@ static_assert(factoryPresets[48].name==std::string_view("Alchemist Tone Match (T
     "Measured Alchemist tone-match trial must remain append-only at 48");
 static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
     "Lighter Alchemist dynamics trial must remain append-only at 49");
+static_assert(factoryPresets[50].name==std::string_view("Alchemist Fast Blend (Trial)"),
+    "Isolated fast-compressor trial must remain append-only at 50");
+static_assert(factoryPresets[51].name==std::string_view("Alchemist Slow Blend (Trial)"),
+    "Isolated slow-compressor trial must remain append-only at 51");
 }

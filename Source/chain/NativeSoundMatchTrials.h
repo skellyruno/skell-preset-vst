@@ -199,3 +199,46 @@ static_assert(stages[2].wet==.20f && stages[3].wet==.50f,
 static_assert(stages[7].module==3 && stages[7].wet==1.f,
     "Keep factory 48 peak guard as the final stage");
 }
+
+
+// Isolated fast-compressor blend trial. Derive from factory 48 and change only
+// the FET-role wet blend; the slow Opto-role stage and all tone/finish/guard
+// settings remain identical. This isolates the fast stage's contribution.
+namespace skellpreset::alchemist_fast_blend_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_tone_match_trial::stages;
+    result[2].wet=.20f; // Fast FET: 35% -> 20%; slow Opto stays at 70%
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=50;
+inline constexpr const char* name="Alchemist Fast Blend (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==8 && stages[2].module==2 && stages[3].module==19,
+    "Fast-blend trial must retain both Alchemist compressor stages");
+static_assert(stages[2].wet==.20f && stages[3].wet==.70f,
+    "Fast-blend trial changes only the fast FET wet amount");
+static_assert(stages[7].module==3 && stages[7].wet==1.f,
+    "Fast-blend trial retains the final peak guard");
+}
+
+// Isolated slow-compressor blend trial. Derive from factory 48 and change only
+// the Opto-role wet blend; the fast FET stage and all tone/finish/guard
+// settings remain identical. This isolates the slow stage's contribution.
+namespace skellpreset::alchemist_slow_blend_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_tone_match_trial::stages;
+    result[3].wet=.50f; // Slow Opto: 70% -> 50%; fast FET stays at 35%
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=51;
+inline constexpr const char* name="Alchemist Slow Blend (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==8 && stages[2].module==2 && stages[3].module==19,
+    "Slow-blend trial must retain both Alchemist compressor stages");
+static_assert(stages[2].wet==.35f && stages[3].wet==.50f,
+    "Slow-blend trial changes only the slow Opto wet amount");
+static_assert(stages[7].module==3 && stages[7].wet==1.f,
+    "Slow-blend trial retains the final peak guard");
+}
