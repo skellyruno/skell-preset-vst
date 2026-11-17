@@ -140,3 +140,88 @@ jobs:
           path: Skell-Preset-Windows-VST3/**
           if-no-files-found: error
           retention-days: 30
+
+  alchemist-reference-ab:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/alchemist-reference-ab-')
+    needs: windows-vst3
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Checkout owner-approved sound reference archive
+        uses: actions/checkout@v5
+        with:
+          repository: skellyruno/skell-sound-match
+          ref: feature/deuce-v25-listening-approved-20261115
+          path: soundmatch
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: soundmatch/pyproject.toml
+      - name: Install analysis dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e soundmatch
+      - name: Verify and restore owner-approved archive
+        shell: pwsh
+        run: |
+          python soundmatch/scripts/materialize_archive.py --verify --repo-root soundmatch
+          if ($LASTEXITCODE -ne 0) { throw 'Owner archive verification failed' }
+          python soundmatch/scripts/materialize_archive.py --restore --repo-root soundmatch --output soundmatch/local_sound_archive
+          if ($LASTEXITCODE -ne 0) { throw 'Owner archive restoration failed' }
+      - name: Run Alchemist A/B tooling regressions
+        run: python -m unittest discover -s tests -p test_alchemist_reference_ab.py -v
+      - uses: actions/download-artifact@v5
+        with:
+          name: Skell-Preset-Alchemist-Renderer-Windows
+          path: renderer
+      - name: Prepare exact archived input as float WAV
+        shell: pwsh
+        run: |
+          python tools/alchemist_reference_ab.py prepare --input-flac soundmatch/local_sound_archive/data/alchemist/audio/input_rec_printed.flac --output-wav build/alchemist-input.wav
+          if ($LASTEXITCODE -ne 0) { throw 'Alchemist input conversion failed' }
+      - name: Render factory 43, 45, 47, 48 and 52 on the identical full input
+        shell: pwsh
+        run: |
+          $renderer = Get-ChildItem renderer -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Downloaded native Alchemist renderer missing' }
+          foreach ($factory in @(43,45,47,48,52)) {
+            $output = "build/alchemist-factory-$factory.wav"
+            & $renderer.FullName --factory $factory build/alchemist-input.wav $output
+            if ($LASTEXITCODE -ne 0) { throw "Native factory $factory render failed: $LASTEXITCODE" }
+          }
+      - name: Align measured delays, compare 19–34 s, and package 24-bit FLAC audition
+        shell: pwsh
+        run: |
+          $renderer = Get-ChildItem renderer -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Downloaded native Alchemist renderer missing for provenance' }
+          $archiveCommit = (git -C soundmatch rev-parse HEAD).Trim()
+          $analysisArgs = @(
+            "tools/alchemist_reference_ab.py", "analyze",
+            "--input-flac", "soundmatch/local_sound_archive/data/alchemist/audio/input_rec_printed.flac",
+            "--reference-flac", "soundmatch/local_sound_archive/data/alchemist/audio/main_effects.flac",
+            "--factory43", "build/alchemist-factory-43.wav",
+            "--factory45", "build/alchemist-factory-45.wav",
+            "--factory47", "build/alchemist-factory-47.wav",
+            "--factory48", "build/alchemist-factory-48.wav",
+            "--factory52", "build/alchemist-factory-52.wav",
+            "--renderer", $renderer.FullName,
+            "--fst", "soundmatch/local_sound_archive/data/alchemist/presets/MAIN.fst",
+            "--fst-report", "soundmatch/local_sound_archive/data/alchemist/research_reports/MAIN_FST_Structure.json",
+            "--manifest", "soundmatch/archive/manifest.json",
+            "--archive-root", "soundmatch/local_sound_archive",
+            "--out-dir", "build/alchemist-reference-ab",
+            "--plugin-commit", $env:GITHUB_SHA,
+            "--archive-commit", $archiveCommit,
+            "--archive-branch", "feature/deuce-v25-listening-approved-20261115"
+          )
+          python @analysisArgs
+          if ($LASTEXITCODE -ne 0) { throw "Alchemist same-take analysis failed: $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Alchemist-Native-SameTake-AB
+          path: build/alchemist-reference-ab.zip
+          if-no-files-found: error
+          retention-days: 30
