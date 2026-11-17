@@ -199,3 +199,41 @@ static_assert(stages[2].wet==.20f && stages[3].wet==.50f,
 static_assert(stages[7].module==3 && stages[7].wet==1.f,
     "Keep factory 48 peak guard as the final stage");
 }
+
+// Independent wet-blend experiments: change one compressor at a time from
+// factory 48. These are diagnostic trials, not replacements or champions.
+namespace skellpreset::alchemist_fast_compressor_blend_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_tone_match_trial::stages;
+    result[2].wet=.20f; // Fast compressor 35% -> 20%; smooth stays at 70%.
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=50;
+inline constexpr const char* name="Alchemist Fast Compressor Blend (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==8 && stages[2].module==2 && stages[3].module==19,
+    "Fast-blend trial must retain both original compressor stages");
+static_assert(stages[2].wet==.20f && stages[3].wet==.70f,
+    "Only fast compressor wet blend changes in factory 50");
+static_assert(stages[7].module==3 && stages[7].wet==1.f,
+    "Fast-blend trial must retain factory 48 final limiter");
+}
+
+namespace skellpreset::alchemist_smooth_compressor_blend_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_tone_match_trial::stages;
+    result[3].wet=.50f; // Smooth compressor 70% -> 50%; fast stays at 35%.
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=51;
+inline constexpr const char* name="Alchemist Smooth Compressor Blend (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==8 && stages[2].module==2 && stages[3].module==19,
+    "Smooth-blend trial must retain both original compressor stages");
+static_assert(stages[2].wet==.35f && stages[3].wet==.50f,
+    "Only smooth compressor wet blend changes in factory 51");
+static_assert(stages[7].module==3 && stages[7].wet==1.f,
+    "Smooth-blend trial must retain factory 48 final limiter");
+}
