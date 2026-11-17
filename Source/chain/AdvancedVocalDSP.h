@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 namespace skellpreset::dsp {
 
 // Eight independent peak bands. The sixteen existing rack parameters describe
@@ -170,7 +171,9 @@ private:
              /(135135.f+62370.f*x2+3150.f*x4+28.f*x4*x2);
     }
     static float unit(float v) noexcept {return std::isfinite(v)?std::clamp(v,0.f,1.f):0.f;}
-    static float sane(float v) noexcept {return std::isfinite(v)?v:0.f;}
+    static float sane(float v) noexcept {
+        return std::isfinite(v) && std::abs(v)>=std::numeric_limits<float>::min()?v:0.f;
+    }
     double sr=48000.;
     float threshold=-20.f,slope=.65f,smash=0.f;
     float fetAtt=.98f,fetRel=.999f,rmsCoeff=.999f,optoAtt=.99f,optoRel=.999f;
