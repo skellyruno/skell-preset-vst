@@ -13,6 +13,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 using namespace skellpreset;
 using namespace skellpreset::dsp;
@@ -260,6 +261,23 @@ int main() {
         }
         if(tail.reductionDb()!=0.f)return 43;
     }
+    // The processor boundary also flushes subnormal audio and rejects
+    // nonfinite samples; large finite input must remain finite through the
+    // detector clamp and bounded parallel saturator.
+    SerialVocalDynamics inputGuard;
+    inputGuard.prepare(48000.);
+    inputGuard.set(serialStage.p[0],serialStage.p[1],
+                   serialStage.p[2],serialStage.p[3]);
+    const auto tiny=inputGuard.process(1.e-40f,-1.e-40f);
+    if(tiny[0]!=0.f||tiny[1]!=0.f)return 44;
+    const auto invalid=inputGuard.process(
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity());
+    if(invalid[0]!=0.f||invalid[1]!=0.f)return 45;
+    const auto huge=inputGuard.process(
+        std::numeric_limits<float>::max(),
+        -std::numeric_limits<float>::max());
+    if(!std::isfinite(huge[0])||!std::isfinite(huge[1]))return 46;
     // Exercise host-style block-boundary automation across every supported
     // rate. All four normalized controls move while transients and stereo-link
     // stress are present; no nonfinite or over-range output is permitted.
