@@ -117,14 +117,14 @@ public:
     std::array<float,2> process(float l,float r) noexcept {
         l=sane(l);r=sane(r);
         const float peak=std::max(std::abs(l),std::abs(r));
-        const float levelDb=20.f*std::log10(std::max(peak,1e-9f));
+        const float levelDb=log2ToDb20*std::log2(std::max(peak,1e-9f));
         const float over=levelDb-threshold;
         const float knee=4.f;
         const float target=over<=-knee*.5f?0.f:
             (over>=knee*.5f?over*slope:(over+knee*.5f)*(over+knee*.5f)*slope/(2.f*knee));
         const float fCoeff=target>fetGr?fetAtt:fetRel;
         fetGr=fCoeff*fetGr+(1.f-fCoeff)*target;
-        const float fastGain=std::pow(10.f,-fetGr/20.f);
+        const float fastGain=std::exp2(-fetGr*dbToLog2);
         const float fl=l*fastGain,fr=r*fastGain;
         // Limit the *detector* energy, not the audio signal. Squaring a
         // perfectly finite, pathological floating-point input can overflow,
@@ -133,11 +133,11 @@ public:
         const float dR=std::clamp(fr,-32.f,32.f);
         power=rmsCoeff*power+(1.f-rmsCoeff)*.5f*(dL*dL+dR*dR);
         if(!std::isfinite(power)||power<1e-25f)power=0.f;
-        const float rms=10.f*std::log10(std::max(power,1e-18f));
+        const float rms=log2ToDb10*std::log2(std::max(power,1e-18f));
         const float optoTarget=std::max(0.f,(rms-threshold+3.f)*.43f);
         const float oCoeff=optoTarget>optoGr?optoAtt:optoRel;
         optoGr=oCoeff*optoGr+(1.f-oCoeff)*optoTarget;
-        const float gain=fastGain*std::pow(10.f,-optoGr/20.f);
+        const float gain=fastGain*std::exp2(-optoGr*dbToLog2);
         const float blend=smash;
         // Makeup-free parallel saturation limits additive gain; at 0 this is
         // exact gain reduction with no hidden increase in signal amplitude.
@@ -150,6 +150,11 @@ public:
     }
     float reductionDb() const noexcept {return fetGr+optoGr;}
 private:
+    // Algebraically equivalent base-2 forms for the hot per-sample dB/gain
+    // conversions. Avoid general pow(10,x) in the real-time audio loop.
+    static constexpr float dbToLog2=0.1660964047443681f;
+    static constexpr float log2ToDb20=6.020599913279624f;
+    static constexpr float log2ToDb10=3.010299956639812f;
     static float unit(float v) noexcept {return std::isfinite(v)?std::clamp(v,0.f,1.f):0.f;}
     static float sane(float v) noexcept {return std::isfinite(v)?v:0.f;}
     double sr=48000.;
