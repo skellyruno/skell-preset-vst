@@ -18,9 +18,13 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==50,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==52,"Append only; preserve prior programs");
     static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
-                  "Alchemist lighter-dynamics candidate must append at index 49");
+                  "Alchemist lighter-dynamics candidate must remain at index 49");
+    static_assert(factoryPresets[50].name==std::string_view("Alchemist Fast Compressor Blend (Trial)"),
+                  "Fast-compressor blend trial must append at index 50");
+    static_assert(factoryPresets[51].name==std::string_view("Alchemist Smooth Compressor Blend (Trial)"),
+                  "Smooth-compressor blend trial must append at index 51");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
@@ -45,6 +49,28 @@ int main() {
     assert(std::strcmp(factoryPresets[49].bank,"Main Vocals")==0);
     assert(alchemist_lighter_dynamics_trial::stages[2].wet==.20f);
     assert(alchemist_lighter_dynamics_trial::stages[3].wet==.50f);
+    assert(std::strcmp(factoryPresets[50].name,alchemist_fast_compressor_blend_trial::name)==0);
+    assert(std::strcmp(factoryPresets[50].bank,"Main Vocals")==0);
+    assert(alchemist_fast_compressor_blend_trial::stages[2].wet==.20f);
+    assert(alchemist_fast_compressor_blend_trial::stages[3].wet==.70f);
+    assert(std::strcmp(factoryPresets[51].name,alchemist_smooth_compressor_blend_trial::name)==0);
+    assert(std::strcmp(factoryPresets[51].bank,"Main Vocals")==0);
+    assert(alchemist_smooth_compressor_blend_trial::stages[2].wet==.35f);
+    assert(alchemist_smooth_compressor_blend_trial::stages[3].wet==.50f);
+    // Audit every factory label, cover index and macro range; names must be unique.
+    for(std::size_t i=0;i<factoryPresets.size();++i) {
+        const auto& preset=factoryPresets[i];
+        if(!preset.name || !*preset.name || !preset.bank || !*preset.bank ||
+           preset.colour<0 || preset.colour>5 ||
+           !std::isfinite(preset.tone) || !std::isfinite(preset.punch) ||
+           !std::isfinite(preset.space) || !std::isfinite(preset.grit) ||
+           preset.tone<0.f || preset.tone>1.f || preset.punch<0.f || preset.punch>1.f ||
+           preset.space<0.f || preset.space>1.f || preset.grit<0.f || preset.grit>1.f)
+            return 30;
+        for(std::size_t j=0;j<i;++j)
+            if(std::strcmp(preset.name,factoryPresets[j].name)==0)
+                return 31;
+    }
     assert(alchemist_tone_match_trial::stages.size()==8);
     assert(alchemist_tone_match_trial::stages[7].module==3);
     assert(alchemist_tone_match_trial::stages[7].wet==1.f);

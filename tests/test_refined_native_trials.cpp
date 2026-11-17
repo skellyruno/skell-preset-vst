@@ -30,7 +30,16 @@ int main() {
                   "Lighter-dynamics trial retains the 8-stage tone-match/guard chain");
     static_assert(skellpreset::alchemist_lighter_dynamics_trial::stages[2].wet==.20f &&
                   skellpreset::alchemist_lighter_dynamics_trial::stages[3].wet==.50f,
-                  "Only the fast/slow compressor wet blends are reduced");
+                  "Combined fast/slow trial preserves its two documented wet changes");
+    static_assert(skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex==50 &&
+                  skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex==51,
+                  "Independent Alchemist blend trials append at 50 and 51");
+    static_assert(skellpreset::alchemist_fast_compressor_blend_trial::stages[2].wet==.20f &&
+                  skellpreset::alchemist_fast_compressor_blend_trial::stages[3].wet==.70f,
+                  "Factory 50 changes only fast compressor blend");
+    static_assert(skellpreset::alchemist_smooth_compressor_blend_trial::stages[2].wet==.35f &&
+                  skellpreset::alchemist_smooth_compressor_blend_trial::stages[3].wet==.50f,
+                  "Factory 51 changes only smooth compressor blend");
     static_assert(atr::stages[6].p[12]==1.f,"new refinement trial opt-in");
     for(double sr:{8000.,44100.,48000.,96000.,192000.}) {
         AlchemistRefinedDSP fx;fx.prepare(sr);
@@ -111,6 +120,30 @@ int main() {
         for(float value:trial.q)
             if(!std::isfinite(value)||value<0.f||value>1.f)return 13;
     }
+    // Isolate each compressor blend against factory 48. Every module, EQ,
+    // compressor parameter, Match Finish control, limiter and Q value must
+    // remain identical; each candidate changes exactly one wet parameter.
+    const auto& base=skellpreset::alchemist_tone_match_trial::stages;
+    const auto& fast=skellpreset::alchemist_fast_compressor_blend_trial::stages;
+    const auto& smooth=skellpreset::alchemist_smooth_compressor_blend_trial::stages;
+    for(std::size_t i=0;i<base.size();++i) {
+        if(base[i].module!=fast[i].module || base[i].p!=fast[i].p ||
+           base[i].q!=fast[i].q || base[i].module!=smooth[i].module ||
+           base[i].p!=smooth[i].p || base[i].q!=smooth[i].q)
+            return 14;
+        const float expectedFast=i==2?.20f:base[i].wet;
+        const float expectedSmooth=i==3?.50f:base[i].wet;
+        if(std::abs(fast[i].wet-expectedFast)>1.e-7f ||
+           std::abs(smooth[i].wet-expectedSmooth)>1.e-7f)
+            return 15;
+        if(!std::isfinite(fast[i].wet) || fast[i].wet<0.f || fast[i].wet>1.f ||
+           !std::isfinite(smooth[i].wet) || smooth[i].wet<0.f || smooth[i].wet>1.f)
+            return 16;
+        for(float value:fast[i].p)if(!std::isfinite(value)||value<0.f||value>1.f)return 17;
+        for(float value:smooth[i].p)if(!std::isfinite(value)||value<0.f||value>1.f)return 18;
+        for(float value:fast[i].q)if(!std::isfinite(value)||value<0.f||value>1.f)return 19;
+        for(float value:smooth[i].q)if(!std::isfinite(value)||value<0.f||value>1.f)return 20;
+    }
     std::cout<<"Five opt-in causal refinements, untouched original preset, "
-                "12-slot Deuce candidate, append-only Alchemist factory 49, 8–192 kHz: PASS\n";
+                "12-slot Deuce candidate, independent Alchemist factories 50/51, 8–192 kHz: PASS\n";
 }

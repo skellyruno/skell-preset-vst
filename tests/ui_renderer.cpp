@@ -777,6 +777,36 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr,"Alchemist lighter-dynamics factory screenshot failed\n");
                 ++failures;
             }
+            processor.loadFactoryPreset(skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex);
+            if(processor.slotType(2)!=skellpreset::alchemist_fast_compressor_blend_trial::stages[2].module ||
+               processor.slotType(3)!=skellpreset::alchemist_fast_compressor_blend_trial::stages[3].module) {
+                std::fprintf(stderr,"Alchemist fast-compressor blend factory did not load\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(2,0);
+            const auto fastBlend=skellcore::ui::headless::capture(editor,1168,688);
+            if(!fastBlend.image.isValid() || fastBlend.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(fastBlend.image,
+                   folder.getChildFile("obsidian-alchemist-fast-compressor-blend-100.png"))) {
+                std::fprintf(stderr,"Alchemist fast-compressor blend screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex);
+            if(processor.slotType(2)!=skellpreset::alchemist_smooth_compressor_blend_trial::stages[2].module ||
+               processor.slotType(3)!=skellpreset::alchemist_smooth_compressor_blend_trial::stages[3].module) {
+                std::fprintf(stderr,"Alchemist smooth-compressor blend factory did not load\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(3,0);
+            const auto smoothBlend=skellcore::ui::headless::capture(editor,1168,688);
+            if(!smoothBlend.image.isValid() || smoothBlend.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(smoothBlend.image,
+                   folder.getChildFile("obsidian-alchemist-smooth-compressor-blend-100.png"))) {
+                std::fprintf(stderr,"Alchemist smooth-compressor blend screenshot failed\n");
+                ++failures;
+            }
             processor.loadFactoryPreset(0);
             editor.configureForScreenshot(0,1,false);
             editor.selectRackSlotForScreenshot(0,0);
