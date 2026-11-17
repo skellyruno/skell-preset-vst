@@ -1102,7 +1102,9 @@ int nativeTrialsSmoke() {
        serialSwitcher->slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
        serialSwitcher->slotType(7)!=SkellPresetAudioProcessor::Empty ||
        serialSwitcher->getLatencySamples()!=0 ||
-       std::abs(serialSwitcher->getSlotParam(2,0)-skellpreset::alchemist::stages[2].p[0])>1.e-6f)
+       // Slot parameters are stored on the APVTS 0.001 normalized grid; compare
+    // the restored factory value within one published parameter step.
+    std::abs(serialSwitcher->getSlotParam(2,0)-skellpreset::alchemist::stages[2].p[0])>.001f)
         return 242;
     serialSwitcher->setCurrentProgram(skellpreset::alchemist_serial_dynamics_trial::factoryIndex);
     serialSwitcher->prepareToPlay(48000.,256);
