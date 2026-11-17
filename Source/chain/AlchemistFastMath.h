@@ -9,8 +9,14 @@ namespace skellpreset::dsp::alchemist_fast_math {
 inline constexpr float log2ToDb10 = 3.010299956639812f;
 inline constexpr float dbToLog2 = 0.1660964047443681f;
 
-inline float powerDb(float power) noexcept {
-    return log2ToDb10 * std::log2(power + 1.e-14f);
+inline constexpr float log2ToDb20 = 6.020599913279624f;
+
+inline float powerDb(float power, float floor = 1.e-14f) noexcept {
+    return log2ToDb10 * std::log2(power + floor);
+}
+
+inline float gainDb(float gain) noexcept {
+    return log2ToDb20 * std::log2(std::max(gain, 1.e-12f));
 }
 
 inline float gainFromDb(float db) noexcept {

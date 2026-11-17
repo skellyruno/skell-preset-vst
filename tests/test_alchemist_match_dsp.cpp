@@ -26,6 +26,7 @@ int main() {
         const float power=1.e-14f+64.f*t;
         const float db=-1.f+11.5f*t;
         const float x=-4.f+8.f*t;
+        const float gain=.01f+1.49f*t;
         if(!std::isfinite(alchemist_fast_math::powerDb(power))
            ||std::abs(alchemist_fast_math::powerDb(power)-10.f*std::log10(power+1.e-14f))>1.e-5f)
             return 50;
@@ -34,6 +35,11 @@ int main() {
             return 51;
         if(std::abs(alchemist_fast_math::tanhPade(x)-std::tanh(x))>1.6e-5f)
             return 52;
+        if(std::abs(alchemist_fast_math::gainDb(gain)-20.f*std::log10(gain))>1.e-5f)
+            return 55;
+        if(std::abs(alchemist_fast_math::powerDb(power,1.e-12f)
+                    -10.f*std::log10(power+1.e-12f))>1.e-5f)
+            return 56;
     }
     float previous=0.f;
     for(int i=0;i<=16000;++i) {
