@@ -104,7 +104,7 @@ public:
     static constexpr float maxDb=144.f;
     static constexpr float dbToLog2=0.1660964047443681f;
 
-    static void warm() noexcept { (void)table(); }
+    static void warm() noexcept { (void)values[0]; }
 
     static float gain(float reductionDb) noexcept {
         if(!std::isfinite(reductionDb))return 0.f;
@@ -112,23 +112,22 @@ public:
             * ((float)intervals/maxDb);
         const int index=std::min((int)position,intervals-1);
         const float fraction=position-(float)index;
-        const auto& values=table();
         return values[(size_t)index]
             +(values[(size_t)index+1]-values[(size_t)index])*fraction;
     }
 
 private:
-    static const std::array<float,intervals+1>& table() noexcept {
-        static const auto values=[] {
-            std::array<float,intervals+1> result{};
-            for(int i=0;i<=intervals;++i) {
-                const float db=maxDb*(float)i/(float)intervals;
-                result[(size_t)i]=std::exp2(-db*DbGainLookup::dbToLog2);
-            }
-            return result;
-        }();
-        return values;
-    }
+    // Inline static storage is shared by all plugin instances. warm() touches
+    // it from prepare(); process() then performs direct immutable reads with
+    // no function-local-static guard or first-use initialization.
+    inline static const std::array<float,intervals+1> values=[] {
+        std::array<float,intervals+1> result{};
+        for(int i=0;i<=intervals;++i) {
+            const float db=maxDb*(float)i/(float)intervals;
+            result[(size_t)i]=std::exp2(-db*dbToLog2);
+        }
+        return result;
+    }();
 };
 } // namespace detail
 
