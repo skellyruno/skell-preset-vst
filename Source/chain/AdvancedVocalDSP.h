@@ -108,6 +108,11 @@ public:
 
     static float gain(float reductionDb) noexcept {
         if(!std::isfinite(reductionDb))return 0.f;
+        // The lookup covers normal vocal gain reduction. Do not plateau at
+        // 144 dB for pathological peaks: retain the original exact law beyond
+        // the table so extreme finite inputs continue to receive attenuation.
+        if(reductionDb>maxDb)
+            return std::exp2(-reductionDb*dbToLog2);
         const float position=std::clamp(reductionDb,0.f,maxDb)
             * ((float)intervals/maxDb);
         const int index=std::min((int)position,intervals-1);
