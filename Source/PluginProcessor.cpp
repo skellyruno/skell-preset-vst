@@ -1328,7 +1328,9 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal("output",5.17f);
     setReal("micPreOn",0);setReal("micPreInput",0);
     setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
-    // Factory switches must reset all serialized macro values, including the\n    // currently hidden compatibility slots 5..8, so imported state cannot leak.\n    for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);
+    // Factory switches must reset all serialized macro values, including the
+    // currently hidden compatibility slots 5..8, so imported state cannot leak.
+    for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",preset.bank,nullptr);
     updateHostLatency();
