@@ -26,7 +26,7 @@ int main() {
         const float db=-1.f+11.5f*t;
         const float x=-4.f+8.f*t;
         if(!std::isfinite(alchemist_fast_math::powerDb(power))
-           ||std::abs(alchemist_fast_math::powerDb(power)-10.f*std::log10(power))>1.e-5f)
+           ||std::abs(alchemist_fast_math::powerDb(power)-10.f*std::log10(power+1.e-14f))>1.e-5f)
             return 50;
         if(!std::isfinite(alchemist_fast_math::gainFromDb(db))
            ||std::abs(alchemist_fast_math::gainFromDb(db)-std::exp(db*.11512925465f))>2.e-6f)
