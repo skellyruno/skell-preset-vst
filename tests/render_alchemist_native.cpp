@@ -363,8 +363,8 @@ int studioSmoke() {
             }
             juce::MidiBuffer midi;
             processor->processBlock(audio,midi);
-            for(int n=0;n<257;++n){
-                const float out=audio.getSample(0,n);
+            for(int ch=0;ch<2;++ch)for(int n=0;n<257;++n){
+                const float out=audio.getSample(ch,n);
                 if(!std::isfinite(out))return 73;
                 peak=std::max(peak,(double)std::abs(out));
                 energy+=(double)out*out;
@@ -372,13 +372,17 @@ int studioSmoke() {
                     const double t=(block*257+n)/48000.;
                     const float input=(float)(.34*std::sin(2.*juce::MathConstants<double>::pi*713.*t)
                                          +.22*std::sin(2.*juce::MathConstants<double>::pi*4300.*t));
-                    difference+=std::abs((double)out-(double)input);
+                    difference+=std::abs((double)out-(double)(ch==0?input:input*.73f));
                 }
             }
         }
-        if(peak>8.||energy<.0001||difference<.05){
-            std::fprintf(stderr,"Studio effect %d audio validation failed: %.5f %.5f %.5f\n",
-                         type,peak,energy,difference);
+        // The deliberately extreme +14.4 dB Studio EQ smoke setting can exceed
+        // 0 dBFS in floating point; bound it separately from the other Studio
+        // effects so a runaway gain regression cannot hide behind the old 8x cap.
+        const double peakLimit=type==SkellPresetAudioProcessor::StudioEQFX?3.25:1.25;
+        if(peak>peakLimit||energy<.0001||difference<.05){
+            std::fprintf(stderr,"Studio effect %d audio validation failed: peak %.5f (limit %.2f), energy %.5f, change %.5f\n",
+                         type,peak,peakLimit,energy,difference);
             return 74;
         }
         juce::MemoryBlock state;
@@ -736,7 +740,113 @@ int monoSmoke() {
     return 0;
 }
 
+int eightBandAirFactorySmoke() {
+    constexpr float gains[8]{-.04f,-.06f,-.03f,-.01f,.04f,.055f,.08f,.05f};
+    auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+    plugin->setCurrentProgram(37); // legacy host program: Eight-Band Air
+    if(plugin->getCurrentProgram()!=37 ||
+       plugin->loadedFactoryPresetIndex()!=37 ||
+       plugin->activeSlotCount()!=10 ||
+       plugin->slotType(8)!=SkellPresetAudioProcessor::EightBandToneFX ||
+       plugin->slotIdAt(0)!=8)
+        return 251;
+
+    auto hasExpectedEqState=[&](SkellPresetAudioProcessor& candidate) {
+        if(candidate.activeSlotCount()!=10 ||
+           candidate.slotType(8)!=SkellPresetAudioProcessor::EightBandToneFX ||
+           candidate.slotIdAt(0)!=8)
+            return false;
+        const auto* enabled=candidate.state.getRawParameterValue("s9_on");
+        const auto* wet=candidate.state.getRawParameterValue("s9_wet");
+        if(!enabled || enabled->load()<.999f || !wet || std::abs(wet->load()-1.f)>.001f)
+            return false;
+        for(int band=0;band<8;++band) {
+            const float expectedGain=.5f+gains[band];
+            if(std::abs(candidate.getSlotParam(8,band*2)-.5f)>.001f ||
+               std::abs(candidate.getSlotParam(8,band*2+1)-expectedGain)>.001f)
+                return false;
+            const auto* q=candidate.state.getRawParameterValue(
+                "s9_eqQ"+juce::String(band+1));
+            if(!q || std::abs(q->load()-.5f)>.001f)
+                return false;
+        }
+        return true;
+    };
+    if(!hasExpectedEqState(*plugin))return 252;
+
+    plugin->prepareToPlay(48000.,256);
+    juce::MidiBuffer midi;
+    double peak=0.,energy=0.,difference=0.;
+    for(int block=0;block<60;++block) {
+        juce::AudioBuffer<float> audio(2,256);
+        for(int n=0;n<256;++n) {
+            const double t=(block*256+n)/48000.;
+            const float input=(float)(.06*std::sin(2.*juce::MathConstants<double>::pi*213.*t)
+                                     +.02*std::sin(2.*juce::MathConstants<double>::pi*6593.*t));
+            audio.setSample(0,n,input);
+            audio.setSample(1,n,input*.87f);
+        }
+        midi.clear();
+        plugin->processBlock(audio,midi);
+        for(int ch=0;ch<2;++ch)for(int n=0;n<256;++n) {
+            const float out=audio.getSample(ch,n);
+            if(!std::isfinite(out))return 253;
+            peak=std::max(peak,(double)std::abs(out));
+            energy+=(double)out*out;
+            if(block>10) {
+                const double t=(block*256+n)/48000.;
+                const float input=(float)(.06*std::sin(2.*juce::MathConstants<double>::pi*213.*t)
+                                         +.02*std::sin(2.*juce::MathConstants<double>::pi*6593.*t));
+                difference+=std::abs((double)out-(double)(ch==0?input:input*.87f));
+            }
+        }
+    }
+    // This factory curve is only a few dB of tonal shaping on a 0.08-peak
+    // test signal; a 0.20 ceiling catches runaway gain while allowing filter
+    // settling and float headroom.
+    if(peak>.20 || energy<.0001 || difference<.001)
+        return 254;
+
+    juce::MemoryBlock hostState;
+    plugin->getStateInformation(hostState);
+    auto restored=std::make_unique<SkellPresetAudioProcessor>();
+    restored->setStateInformation(hostState.getData(),static_cast<int>(hostState.getSize()));
+    restored->prepareToPlay(48000.,256);
+    if(restored->getCurrentProgram()!=37 ||
+       restored->loadedFactoryPresetIndex()!=37 ||
+       !hasExpectedEqState(*restored))
+        return 255;
+
+    const auto presetFile=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("skellpreset-eight-band-air-roundtrip",".skellpreset",false);
+    const auto exported=plugin->exportPreset(presetFile);
+    if(exported.failed()) {
+        presetFile.deleteFile();
+        std::fprintf(stderr,"Eight-Band Air .skellpreset export failed: %s\n",
+                     exported.getErrorMessage().toRawUTF8());
+        return 256;
+    }
+    auto imported=std::make_unique<SkellPresetAudioProcessor>();
+    const auto importedResult=imported->importPreset(presetFile);
+    presetFile.deleteFile();
+    if(importedResult.failed()) {
+        std::fprintf(stderr,"Eight-Band Air .skellpreset import failed: %s\n",
+                     importedResult.getErrorMessage().toRawUTF8());
+        return 257;
+    }
+    if(imported->loadedFactoryPresetIndex()!=-1 || !hasExpectedEqState(*imported))
+        return 258;
+
+    std::printf("PASS: Eight-Band Air factory 37, host state + .skellpreset EQ recall, peak %.4f, PDC %d\n",
+                peak,plugin->getLatencySamples());
+    plugin->releaseResources();
+    restored->releaseResources();
+    imported->releaseResources();
+    return 0;
+}
+
 int nativeTrialsSmoke() {
+    if(const int eqResult=eightBandAirFactorySmoke();eqResult!=0)return eqResult;
     for(int factory:{skellpreset::alchemist::factoryIndex,
                      skellpreset::deuce::factoryIndex,
                      skellpreset::alchemist_trial::factoryIndex,
