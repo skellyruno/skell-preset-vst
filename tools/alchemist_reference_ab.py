@@ -202,6 +202,24 @@ def db(value: float) -> float:
     return 20.0 * math.log10(max(float(value), 1e-12))
 
 
+def polarity_normalized_correlation(
+    signed_correlation: float | None, relative_polarity: int
+) -> float | None:
+    """Remove a measured global polarity sign from a diagnostic scalar only.
+
+    The audio itself is never polarity-inverted; the raw signed value remains
+    available so the physical phase relationship is not hidden.
+    """
+    if relative_polarity not in (-1, 1):
+        raise ValueError("Relative polarity must be +1 or -1")
+    if signed_correlation is None:
+        return None
+    value = float(signed_correlation)
+    if not math.isfinite(value):
+        return None
+    return value * relative_polarity
+
+
 def integrated_lufs(audio: np.ndarray, sample_rate: int) -> float | None:
     try:
         measured = pyln.Meter(sample_rate).integrated_loudness(
@@ -228,7 +246,7 @@ def stereo_metrics(audio: np.ndarray) -> dict:
 
 
 def track_metrics(reference: np.ndarray, candidate: np.ndarray,
-                  sample_rate: int) -> dict:
+                  sample_rate: int, relative_polarity: int = 1) -> dict:
     raw = quality_measure(reference, candidate, sample_rate)
     reference_rms = float(np.sqrt(np.mean(reference * reference)))
     candidate_rms = float(np.sqrt(np.mean(candidate * candidate)))
@@ -239,6 +257,13 @@ def track_metrics(reference: np.ndarray, candidate: np.ndarray,
     reference_lufs = integrated_lufs(reference, sample_rate)
     candidate_lufs = integrated_lufs(candidate, sample_rate)
     return {
+        "relative_alignment_polarity": relative_polarity,
+        "waveform_correlation_polarity_normalized": polarity_normalized_correlation(
+            raw.get("waveform_correlation_signed"), relative_polarity
+        ),
+        "level_matched_waveform_correlation_polarity_normalized": polarity_normalized_correlation(
+            level_matched.get("waveform_correlation_signed"), relative_polarity
+        ),
         "raw": raw,
         "rms_level_matched_diagnostic": level_matched,
         "rms_diagnostic_gain_db": db(level_gain),
@@ -306,6 +331,8 @@ def _make_html(out_dir: pathlib.Path, track_rows: list[dict],
             f"<td>{html.escape(str(raw.get('multires_spectral_mae_db', '—')))}</td>"
             f"<td>{html.escape(str(raw.get('envelope_20ms_mae_db', '—')))}</td>"
             f"<td>{html.escape(str(raw.get('waveform_correlation_signed', '—')))}</td>"
+            f"<td>{html.escape(str(metrics.get('relative_alignment_polarity', '—')))}</td>"
+            f"<td>{html.escape(str(metrics.get('waveform_correlation_polarity_normalized', '—')))}</td>"
             "</tr>"
         )
 
@@ -354,10 +381,10 @@ pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#171e1a;padding:1rem
 {''.join(audio_tags)}
 <h2>Measured source and output metrics</h2>
 <table>
-<thead><tr><th>Track</th><th>Raw LUFS</th><th>Attenuation-only gain dB</th><th>Matched LUFS</th><th>Raw 4× peak estimate dBTP</th><th>Spectral MAE dB</th><th>20 ms envelope MAE dB</th><th>Correlation</th></tr></thead>
+<thead><tr><th>Track</th><th>Raw LUFS</th><th>Attenuation-only gain dB</th><th>Matched LUFS</th><th>Raw 4× peak estimate dBTP</th><th>Spectral MAE dB</th><th>20 ms envelope MAE dB</th><th>Raw signed corr.</th><th>Relative polarity</th><th>Polarity-normalized corr.</th></tr></thead>
 <tbody>{''.join(table_rows)}</tbody>
 </table>
-<p>Raw spectral and envelope metrics compare each native render against the FL Studio wet print. RMS-level-matched metrics are recorded separately in metrics.json for diagnostics only; they are not used to create either audition mode. The 4× peak is an estimate, not a certified true-peak measurement.</p>
+<p>Raw spectral and envelope metrics compare each native render against the FL Studio wet print. RMS-level-matched metrics are recorded separately in metrics.json for diagnostics only; they are not used to create either audition mode. The raw signed correlation is preserved. The polarity-normalized correlation removes only the measured global alignment-polarity sign from that scalar; it does not invert any preview audio. The 4× peak is an estimate, not a certified true-peak measurement.</p>
 <p>Render source: SkellPresetAudioProcessor::processBlock. This is not an external VST3-host render, FL Studio session test, or user listening approval. No candidate is automatically promoted.</p>
 <h2>Provenance</h2>
 <pre>{provenance_text}</pre>
@@ -543,7 +570,13 @@ def analyze(args: argparse.Namespace) -> dict:
             "sample_peak_dbfs": db(float(np.max(np.abs(candidate_segment)))),
             "true_peak_dbtp_4x_estimate": db(true_peak_linear(candidate_segment)),
             "comparison_to_FL_target": track_metrics(
-                reference_segment, candidate_segment, sample_rate
+                reference_segment,
+                candidate_segment,
+                sample_rate,
+                relative_polarity=(
+                    target_polarity
+                    * delays[f"Factory {factory}"]["correlation_polarity"]
+                ),
             ),
         }
 
@@ -655,6 +688,7 @@ def analyze(args: argparse.Namespace) -> dict:
             "The native render uses SkellPresetAudioProcessor::processBlock, not an external VST3 host.",
             "The 4x interpolated peak is an estimate, not a certified true-peak measurement.",
             "The measured delay is an offline cross-correlation estimate; signed polarity is recorded and no audio polarity is changed.",
+            "Polarity-normalized correlation adjusts only the diagnostic scalar for the measured global polarity relation; preview audio is never inverted.",
             "Level-matched diagnostics are measurement-only; audition files receive one shared safety attenuation.",
             "No candidate is automatically promoted and no user listening approval is inferred.",
         ],
