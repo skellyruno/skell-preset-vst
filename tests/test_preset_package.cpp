@@ -33,6 +33,12 @@ int main(){
         bool neutralMacros=true;
         for(float value:empty.macros)neutralMacros=neutralMacros && value==.5f;
         check(neutralMacros,"Default preset macros match neutral host defaults");
+        bool neutralSlotParameters=true;
+        for(const auto& slot:empty.slots)
+            for(float value:slot.params)
+                neutralSlotParameters=neutralSlotParameters && value==.5f;
+        check(neutralSlotParameters,
+              "Default empty rack effect parameters match neutral APVTS defaults");
         const auto emptyPath = testFile(dir, "default-empty-rack");
         check(skellpreset::package::write(emptyPath, empty).wasOk(),
               "Default rack exports without duplicate IDs");
@@ -44,6 +50,12 @@ int main(){
               && !loaded.slots[15].enabled
               && !loaded.micPreOn,
               "Default rack imports without activating effects or mic preamp");
+        bool importedNeutralParameters=true;
+        for(const auto& slot:loaded.slots)
+            for(float value:slot.params)
+                importedNeutralParameters=importedNeutralParameters && value==.5f;
+        check(importedNeutralParameters,
+              "Default empty rack roundtrip preserves neutral parameters in all 16 slots");
     }
     skellpreset::package::Document first;
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
