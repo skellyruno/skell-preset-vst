@@ -158,11 +158,16 @@ juce::Result fromJson(const juce::var& root, Document& out) {
        !decodeFloat(maybeMicTrim,0,1,candidate.micPreTrim))
         return juce::Result::fail("Invalid mic trim");
     const auto macros=globals.getProperty("macros", {});
-    if (! macros.isArray() || macros.getArray()->size() != (int)candidate.macros.size())
-        return juce::Result::fail("Eight macros required");
-    for (int k=0;k<(int)candidate.macros.size();++k)
-        if (! decodeFloat((*macros.getArray())[k], 0, 1, candidate.macros[(size_t)k]))
-            return juce::Result::fail("Invalid macro value");
+    // Schema-v2 macros were added as an optional extension. Older v1/v2
+    // archives without the property retain neutral 50% host defaults.
+    // If present, the array remains strictly validated and transactional.
+    if (!macros.isVoid()) {
+        if (!macros.isArray() || macros.getArray()->size() != (int)candidate.macros.size())
+            return juce::Result::fail("Eight macros required");
+        for (int k=0;k<(int)candidate.macros.size();++k)
+            if (!decodeFloat((*macros.getArray())[k], 0, 1, candidate.macros[(size_t)k]))
+                return juce::Result::fail("Invalid macro value");
+    }
     const auto chain=root.getProperty("chain", {});
     const int encodedSlots=version==1?legacySlotCount:slotCount;
     if (! chain.isArray() || chain.getArray()->size()!=encodedSlots)
