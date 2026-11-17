@@ -234,6 +234,32 @@ int main() {
             assert(y[0]==0.f&&y[1]==0.f);
         }
     }
+    // Long phrase-to-silence regression: both serial gain-reduction followers
+    // must decay to exact zero without spending seconds in IEEE-754 subnormals.
+    // This catches denormal CPU spikes on hosts that do not enable FTZ/DAZ.
+    for(const double sr:{44100.,48000.,96000.,192000.}) {
+        SerialVocalDynamics tail;
+        tail.prepare(sr);
+        tail.set(serialStage.p[0],serialStage.p[1],
+                 serialStage.p[2],serialStage.p[3]);
+        for(int i=0;i<(int)(sr*.5);++i) {
+            const float wave=.28f*(
+                .65f*std::sin(float(2.*pi*220.*i/sr))+
+                .35f*std::sin(float(2.*pi*3100.*i/sr)));
+            const auto y=tail.process(wave,-wave);
+            if(!std::isfinite(y[0])||!std::isfinite(y[1]))return 40;
+        }
+        for(int i=0;i<(int)(sr*25.);++i) {
+            const auto y=tail.process(0.f,0.f);
+            const float reduction=tail.reductionDb();
+            if(!std::isfinite(y[0])||!std::isfinite(y[1])||
+               !std::isfinite(reduction)||reduction<0.f)return 41;
+            if(std::fpclassify(y[0])==FP_SUBNORMAL ||
+               std::fpclassify(y[1])==FP_SUBNORMAL ||
+               std::fpclassify(reduction)==FP_SUBNORMAL)return 42;
+        }
+        if(tail.reductionDb()!=0.f)return 43;
+    }
     // Exercise host-style block-boundary automation across every supported
     // rate. All four normalized controls move while transients and stereo-link
     // stress are present; no nonfinite or over-range output is permitted.
