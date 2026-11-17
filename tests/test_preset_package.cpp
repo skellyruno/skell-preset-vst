@@ -249,8 +249,14 @@ int main(){
                 auto file=testFile(dir,"schema-v2-short-macros");
                 createArchive(file,"preset.json",juce::JSON::toString(malformed).toStdString());
                 skellpreset::package::Document rejected;
-                check(skellpreset::package::read(file,rejected).failed(),
+                rejected.name="Preserve Existing Preset";
+                rejected.macros[0]=.23f;
+                const auto malformedResult=skellpreset::package::read(file,rejected);
+                check(malformedResult.failed(),
                       "Reject malformed optional macro array when present");
+                check(rejected.name=="Preserve Existing Preset"
+                      && rejected.macros[0]==.23f,
+                      "Malformed optional macro import leaves destination unchanged");
             } else check(false,"Malformed schema-v2 globals object exists");
         }
     }
