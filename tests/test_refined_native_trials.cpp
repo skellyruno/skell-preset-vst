@@ -121,10 +121,10 @@ int main() {
         for(float value:trial.q)
             if(!std::isfinite(value)||value<0.f||value>1.f)return 13;
     }
-    const auto verifyIndependent=[](const auto& trial,float fastWet,float slowWet) {
-        for(std::size_t i=0;i<trial.stages.size();++i) {
+    const auto verifyIndependent=[](const auto& trialStages,float fastWet,float slowWet) {
+        for(std::size_t i=0;i<trialStages.size();++i) {
             const auto& base=skellpreset::alchemist_tone_match_trial::stages[i];
-            const auto& stage=trial.stages[i];
+            const auto& stage=trialStages[i];
             if(stage.module!=base.module || stage.p!=base.p || stage.q!=base.q)
                 return false;
             const float expected=i==2?fastWet:(i==3?slowWet:base.wet);
@@ -136,8 +136,8 @@ int main() {
         }
         return true;
     };
-    if(!verifyIndependent(fast,.20f,.70f) ||
-       !verifyIndependent(slow,.35f,.50f))return 14;
+    if(!verifyIndependent(fast::stages,.20f,.70f) ||
+       !verifyIndependent(slow::stages,.35f,.50f))return 14;
     std::cout<<"Six opt-in causal refinements, untouched original preset, "
                 "12-slot Deuce candidate, append-only Alchemist factories 49–51, 8–192 kHz: PASS\n";
 }
