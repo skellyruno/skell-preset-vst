@@ -189,6 +189,8 @@ int main(){
                             item->removeProperty("eqQ");
                             item->removeProperty("eqLowCut");
                             item->removeProperty("eqHighCut");
+                            item->removeProperty("studioEqKind");
+                            item->removeProperty("studioEqOn");
                         }
             const auto noQ=testFile(dir,"legacy-v2-without-eq-q");
             createArchive(noQ,"preset.json",juce::JSON::toString(json).toStdString());
@@ -197,7 +199,13 @@ int main(){
                   &&restored.slots[0].eqQ[0]==.5f
                   &&restored.slots[0].eqQ[7]==.5f
                   &&restored.slots[0].eqLowCut==0.f
-                  &&restored.slots[0].eqHighCut==0.f,
+                  &&restored.slots[0].eqHighCut==0.f
+                  &&restored.slots[0].studioEqKind[0]==3
+                  &&restored.slots[0].studioEqKind[6]==4
+                  &&restored.slots[0].studioEqKind[7]==0
+                  &&restored.slots[0].studioEqOn[0]
+                  &&restored.slots[0].studioEqOn[6]
+                  &&!restored.slots[0].studioEqOn[7],
                   "Load old native v2 file with flat EQ cuts and neutral Q");
         }
     }
@@ -394,6 +402,55 @@ int main(){
         check(skellpreset::package::write(
                 testFile(dir,"bad-studio-eq-shape"),studio).failed(),
               "Reject unsupported Studio EQ band type 5");
+    }
+    // Full per-band EQ values must survive a native ZIP roundtrip. The
+    // earlier test covered Q/cut metadata and filter shapes; this exercises
+    // every frequency/gain pair, all eight Q values, and Studio filter enables.
+    {
+        for (const int eqType : {26,34}) {
+            auto eq = first;
+            auto& slot = eq.slots[0];
+            slot.type = eqType;
+            slot.enabled = true;
+            slot.wet = .63f;
+            slot.eqLowCut = .24f;
+            slot.eqHighCut = .78f;
+            for (int band = 0; band < 8; ++band) {
+                slot.params[(size_t)band*2] = .10f + .10f*(float)band;
+                slot.params[(size_t)band*2+1] = .15f + .08f*(float)band;
+                slot.eqQ[(size_t)band] = .11f + .10f*(float)band;
+                if (eqType == 34) {
+                    slot.studioEqKind[(size_t)band] = band % 5;
+                    slot.studioEqOn[(size_t)band] = (band % 2) == 0;
+                }
+            }
+            const auto file = testFile(dir, eqType == 26
+                ? "parametric-eight-band-full-roundtrip"
+                : "studio-eq-eight-band-full-roundtrip");
+            const auto written = skellpreset::package::write(file, eq);
+            skellpreset::package::Document restored;
+            const auto read = written.wasOk()
+                ? skellpreset::package::read(file, restored)
+                : juce::Result::fail("EQ archive write failed");
+            const auto& actual = restored.slots[0];
+            const bool common = read.wasOk()
+                && actual.slotId == slot.slotId
+                && actual.type == eqType
+                && actual.enabled == slot.enabled
+                && actual.wet == slot.wet
+                && actual.params == slot.params
+                && actual.eqQ == slot.eqQ
+                && actual.eqLowCut == slot.eqLowCut
+                && actual.eqHighCut == slot.eqHighCut;
+            if (eqType == 26) {
+                check(common, "Roundtrip all eight parametric EQ frequency/gain/Q values and cuts");
+            } else {
+                check(common
+                      && actual.studioEqKind == slot.studioEqKind
+                      && actual.studioEqOn == slot.studioEqOn,
+                      "Roundtrip all eight Studio EQ frequency/gain/Q/type/enable values");
+            }
+        }
     }
     first.activeSlotCount=17;
     check(skellpreset::package::write(testFile(dir,"bad-count"),first).failed(),
