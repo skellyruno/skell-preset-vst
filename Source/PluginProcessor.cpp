@@ -24,7 +24,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
   state(*this,nullptr,"PARAMETERS",createParameterLayout()) {
     // Warm the shared Alchemist gain table during processor construction,
     // before the host can start audio processing or call prepareToPlay().
-    detail::DbGainLookup::warm();
+    skellpreset::dsp::detail::DbGainLookup::warm();
     std::uint64_t initialOrder=0;
     for(int i=0;i<slotCount;i++){
         initialOrder|=(std::uint64_t)i << (4*i);
