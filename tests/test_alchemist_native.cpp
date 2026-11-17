@@ -19,6 +19,26 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
+    // The serial FET/RMS gain conversion is table-interpolated after prepare().
+    // Compare against the original exp2 law over the complete 0..144 dB range.
+    detail::DbGainLookup::warm();
+    float previousGain=detail::DbGainLookup::gain(0.f);
+    float maxRelativeGainError=0.f;
+    for(int i=0;i<=14400;++i) {
+        const float db=(float)i*.01f;
+        const float actual=detail::DbGainLookup::gain(db);
+        const float reference=std::exp2(-db*detail::DbGainLookup::dbToLog2);
+        const float relative=std::abs(actual-reference)/std::max(reference,1.e-30f);
+        maxRelativeGainError=std::max(maxRelativeGainError,relative);
+        if(!std::isfinite(actual)||actual<0.f||actual>previousGain+1.e-7f)
+            return 48;
+        previousGain=actual;
+    }
+    if(maxRelativeGainError>1.e-5f
+       || detail::DbGainLookup::gain(-1.f)!=1.f
+       || detail::DbGainLookup::gain(160.f)!=detail::DbGainLookup::gain(144.f)
+       || detail::DbGainLookup::gain(std::numeric_limits<float>::quiet_NaN())!=0.f)
+        return 49;
     static_assert(factoryPresets.size()==53,"Append only; preserve prior programs");
     static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
                   "Alchemist lighter-dynamics candidate must remain at index 49");
