@@ -124,6 +124,9 @@ public:
             (over>=knee*.5f?over*slope:(over+knee*.5f)*(over+knee*.5f)*slope/(2.f*knee));
         const float fCoeff=target>fetGr?fetAtt:fetRel;
         fetGr=fCoeff*fetGr+(1.f-fCoeff)*target;
+        // Flush inaudibly small release state before it enters the IEEE-754
+        // subnormal range on CPUs without FTZ/DAZ enabled.
+        if(fetGr<1.e-20f)fetGr=0.f;
         const float fastGain=std::exp2(-fetGr*dbToLog2);
         const float fl=l*fastGain,fr=r*fastGain;
         // Limit the *detector* energy, not the audio signal. Squaring a
@@ -137,6 +140,7 @@ public:
         const float optoTarget=std::max(0.f,(rms-threshold+3.f)*.43f);
         const float oCoeff=optoTarget>optoGr?optoAtt:optoRel;
         optoGr=oCoeff*optoGr+(1.f-oCoeff)*optoTarget;
+        if(optoGr<1.e-20f)optoGr=0.f;
         const float gain=fastGain*std::exp2(-optoGr*dbToLog2);
         const float blend=smash;
         // Makeup-free parallel saturation limits additive gain; at 0 this is
