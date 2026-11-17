@@ -96,8 +96,9 @@ struct EightBandTone {
 
 namespace detail {
 // Shared, immutable dB-to-linear table for the serial FET/RMS detector.
-// Initialized from prepare() (never on the audio callback); 4096 intervals
-// over 0..144 dB keep interpolation error below 1e-5 relative.
+// Pre-warmed by the processor constructor before host audio processing;
+// direct DSP harnesses call warm() explicitly. 4096 intervals over 0..144 dB
+// keep interpolation error below 1e-5 relative.
 class DbGainLookup final {
 public:
     static constexpr int intervals=4096;
@@ -122,9 +123,9 @@ public:
     }
 
 private:
-    // Inline static storage is shared by all plugin instances. warm() touches
-    // it from prepare(); process() then performs direct immutable reads with
-    // no function-local-static guard or first-use initialization.
+    // Inline static storage is shared by all plugin instances. The processor
+    // constructor pre-warms it before the host starts processing; process()
+    // then performs direct immutable reads with no lazy-init guard.
     inline static const std::array<float,intervals+1> values=[] {
         std::array<float,intervals+1> result{};
         for(int i=0;i<=intervals;++i) {
@@ -143,7 +144,6 @@ class SerialVocalDynamics {
 public:
     void prepare(double rate) noexcept {
         sr=std::isfinite(rate)?std::clamp(rate,8000.,192000.):48000.;
-        detail::DbGainLookup::warm(); // initialize shared table off the audio thread
         reset();
         rmsCoeff=std::exp(-1.f/(.030f*(float)sr));
         optoAtt=std::exp(-1.f/(.020f*(float)sr));
