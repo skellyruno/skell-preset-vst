@@ -143,8 +143,8 @@ public:
         // exact gain reduction with no hidden increase in signal amplitude.
         // Normalise the saturator's small-signal gain to unity, so enabling
         // NY parallel colouring cannot silently boost quiet material.
-        const float parallelL=std::tanh(l*3.5f)/3.5f;
-        const float parallelR=std::tanh(r*3.5f)/3.5f;
+        const float parallelL=tanhPade(l*3.5f)/3.5f;
+        const float parallelR=tanhPade(r*3.5f)/3.5f;
         return {sane(l*gain*(1.f-blend)+parallelL*blend),
                 sane(r*gain*(1.f-blend)+parallelR*blend)};
     }
@@ -155,6 +155,16 @@ private:
     static constexpr float dbToLog2=0.1660964047443681f;
     static constexpr float log2ToDb20=6.020599913279624f;
     static constexpr float log2ToDb10=3.010299956639812f;
+    // [7/7] Pade approximation to tanh. Over [-4,4] its maximum absolute
+    // error is <1.5e-5; clamping outside keeps the saturator bounded while
+    // avoiding two expensive libm tanh calls per audio sample.
+    static float tanhPade(float x) noexcept {
+        x=std::clamp(x,-4.f,4.f);
+        const float x2=x*x;
+        const float x4=x2*x2;
+        return x*(135135.f+17325.f*x2+378.f*x4+x4*x2)
+             /(135135.f+62370.f*x2+3150.f*x4+28.f*x4*x2);
+    }
     static float unit(float v) noexcept {return std::isfinite(v)?std::clamp(v,0.f,1.f):0.f;}
     static float sane(float v) noexcept {return std::isfinite(v)?v:0.f;}
     double sr=48000.;
