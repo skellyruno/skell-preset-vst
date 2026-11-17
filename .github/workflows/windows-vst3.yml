@@ -110,22 +110,33 @@ jobs:
             'Unverified installed-copy identity: check DAW plugin path separately'
           )
           $info | Set-Content -LiteralPath Skell-Preset-BUILD-INFO.txt -Encoding UTF8
-          Compress-Archive -LiteralPath @($vst.FullName, 'Skell-Preset-BUILD-INFO.txt') -DestinationPath Skell-Preset-Windows-VST3.zip -Force
+          # upload-artifact creates the downloadable ZIP itself. Stage the
+          # bundle directly so users do not receive a ZIP-inside-a-ZIP.
+          $packageRoot = Join-Path $PWD 'Skell-Preset-Windows-VST3'
+          if (Test-Path -LiteralPath $packageRoot) { Remove-Item -LiteralPath $packageRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $packageRoot | Out-Null
+          Copy-Item -LiteralPath $vst.FullName -Destination $packageRoot -Recurse -Force
+          Copy-Item -LiteralPath 'Skell-Preset-BUILD-INFO.txt' -Destination $packageRoot -Force
       - name: Package compiled Alchemist diagnostic renderer
         shell: pwsh
         run: |
           $renderer = Get-ChildItem build -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
           if (-not $renderer) { throw 'Native Alchemist diagnostic renderer missing' }
-          Compress-Archive -LiteralPath $renderer.FullName -DestinationPath Skell-Preset-Alchemist-Renderer.zip -Force
+          # Keep the executable as a direct artifact entry; upload-artifact
+          # supplies the outer ZIP and no second archive is needed.
+          $rendererRoot = Join-Path $PWD 'Skell-Preset-Alchemist-Renderer'
+          if (Test-Path -LiteralPath $rendererRoot) { Remove-Item -LiteralPath $rendererRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $rendererRoot | Out-Null
+          Copy-Item -LiteralPath $renderer.FullName -Destination $rendererRoot -Force
       - uses: actions/upload-artifact@v5
         with:
           name: Skell-Preset-Alchemist-Renderer-Windows
-          path: Skell-Preset-Alchemist-Renderer.zip
+          path: Skell-Preset-Alchemist-Renderer/**
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v5
         with:
           name: Skell-Preset-Windows-VST3
-          path: Skell-Preset-Windows-VST3.zip
+          path: Skell-Preset-Windows-VST3/**
           if-no-files-found: error
           retention-days: 30

@@ -116,6 +116,35 @@ int blankSmoke() {
     if(restored->loadedFactoryPresetIndex()!=0
         || restored->slotType(6)!=SkellPresetAudioProcessor::Limiter
         || restored->getLatencySamples()<=0)return 37;
+
+    // A pre-identity host state must not be mislabelled as factory 0.
+    // XML string values are accepted only when they are canonical integers;
+    // malformed and out-of-range values remain custom/unselected.
+    auto savedXml=juce::AudioProcessor::getXmlFromBinary(
+        save.getData(),(int)save.getSize());
+    if(!savedXml)return 38;
+    const auto savedTree=juce::ValueTree::fromXml(*savedXml);
+    if(!savedTree.isValid())return 39;
+    const auto checkProgramIdentity=[&](bool includeProgram,
+                                        const juce::var& programValue,
+                                        int expected)->bool {
+        auto document=savedTree.createCopy();
+        if(includeProgram)document.setProperty("program",programValue,nullptr);
+        else document.removeProperty("program",nullptr);
+        auto xml=document.createXml();
+        if(!xml)return false;
+        juce::MemoryBlock encoded;
+        juce::AudioProcessor::copyXmlToBinary(*xml,encoded);
+        auto candidate=std::make_unique<SkellPresetAudioProcessor>();
+        candidate->setStateInformation(encoded.getData(),(int)encoded.getSize());
+        return candidate->loadedFactoryPresetIndex()==expected;
+    };
+    if(!checkProgramIdentity(false,juce::var(),-1))return 40;
+    if(!checkProgramIdentity(true,juce::var("not-a-number"),-1))return 41;
+    if(!checkProgramIdentity(true,juce::var(99),-1))return 42;
+    if(!checkProgramIdentity(true,juce::var("0"),0))return 43;
+    if(!checkProgramIdentity(true,juce::var(-1),-1))return 44;
+    if(!checkProgramIdentity(true,juce::var(0.5),-1))return 45;
     restored->releaseResources();
     plugin->releaseResources();
     std::puts("PASS: blank rack 0-PDC identity and legacy FL Studio preset-state restore");

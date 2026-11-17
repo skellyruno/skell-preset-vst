@@ -1508,7 +1508,38 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             (int)loaded.getProperty("rackSlots",defaultSlotCount));
         activeSlots.store(restoredCount,std::memory_order_release);
         name=loaded.getProperty("presetName","Custom").toString();
-        selectedProgram=juce::jlimit(-1,(int)factoryPresets.size()-1,(int)loaded.getProperty("program",0));
+        // Legacy/custom host states may not contain a trustworthy factory ID.
+        // Never silently turn a missing or malformed identity into factory 0 or
+        // clamp an invalid positive ID onto the last factory preset.
+        selectedProgram=-1;
+        if(loaded.hasProperty("program")) {
+            const auto storedProgram=loaded.getProperty("program");
+            bool validProgram=false;
+            int parsedProgram=-1;
+            if(storedProgram.isInt() || storedProgram.isInt64() || storedProgram.isDouble()) {
+                const double numeric=static_cast<double>(storedProgram);
+                if(std::isfinite(numeric) && numeric==std::floor(numeric)
+                    && numeric>=-1.0 && numeric<(double)factoryPresets.size()) {
+                    parsedProgram=(int)numeric;
+                    validProgram=true;
+                }
+            } else if(storedProgram.isString()) {
+                // JUCE XML can surface an integer attribute as text. Accept
+                // only a canonical decimal token; getIntValue alone accepts
+                // malformed strings such as "oops" as zero.
+                const auto token=storedProgram.toString().trim();
+                if(token.isNotEmpty() && token.length()<=3
+                    && token.containsOnly("0123456789-")) {
+                    const int numeric=token.getIntValue();
+                    if(juce::String(numeric)==token && numeric>=-1
+                        && numeric<(int)factoryPresets.size()) {
+                        parsedProgram=numeric;
+                        validProgram=true;
+                    }
+                }
+            }
+            if(validProgram)selectedProgram=parsedProgram;
+        }
         state.replaceState(loaded);
         updateHostLatency();
         // Don't instantiate external code in setStateInformation(): hosts may
