@@ -36,9 +36,18 @@ int main() {
     }
     if(maxRelativeGainError>1.e-5f
        || detail::DbGainLookup::gain(-1.f)!=1.f
-       || detail::DbGainLookup::gain(160.f)!=detail::DbGainLookup::gain(144.f)
        || detail::DbGainLookup::gain(std::numeric_limits<float>::quiet_NaN())!=0.f)
         return 49;
+    // Above the table's 144 dB domain, retain the original exact exp2 law.
+    // A clamped table value would plateau and under-attenuate pathological peaks.
+    for(const float db:{150.f,160.f,200.f,400.f,800.f,1600.f}) {
+        const float actual=detail::DbGainLookup::gain(db);
+        const float reference=std::exp2(-db*detail::DbGainLookup::dbToLog2);
+        if(!std::isfinite(actual)||actual!=reference)return 50;
+    }
+    if(!(detail::DbGainLookup::gain(160.f)<detail::DbGainLookup::gain(144.f))
+       || !(detail::DbGainLookup::gain(200.f)<detail::DbGainLookup::gain(160.f)))
+        return 51;
     static_assert(factoryPresets.size()==53,"Append only; preserve prior programs");
     static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
                   "Alchemist lighter-dynamics candidate must remain at index 49");
