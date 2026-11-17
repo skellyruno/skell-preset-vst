@@ -94,6 +94,43 @@ struct EightBandTone {
     }
 };
 
+namespace detail {
+// Shared, immutable dB-to-linear table for the serial FET/RMS detector.
+// Initialized from prepare() (never on the audio callback); 4096 intervals
+// over 0..144 dB keep interpolation error below 1e-5 relative.
+class DbGainLookup final {
+public:
+    static constexpr int intervals=4096;
+    static constexpr float maxDb=144.f;
+
+    static void warm() noexcept { (void)table(); }
+
+    static float gain(float reductionDb) noexcept {
+        if(!std::isfinite(reductionDb))return 0.f;
+        const float position=std::clamp(reductionDb,0.f,maxDb)
+            * ((float)intervals/maxDb);
+        const int index=std::min((int)position,intervals-1);
+        const float fraction=position-(float)index;
+        const auto& values=table();
+        return values[(size_t)index]
+            +(values[(size_t)index+1]-values[(size_t)index])*fraction;
+    }
+
+private:
+    static const std::array<float,intervals+1>& table() noexcept {
+        static const auto values=[] {
+            std::array<float,intervals+1> result{};
+            for(int i=0;i<=intervals;++i) {
+                const float db=maxDb*(float)i/(float)intervals;
+                result[(size_t)i]=std::exp2(-db*dbToLog2);
+            }
+            return result;
+        }();
+        return values;
+    }
+};
+} // namespace detail
+
 // Serial peak catcher + slower RMS leveler; both stereo linked and entirely
 // feed-forward. Controls: threshold dB, ratio, FET speed, parallel density.
 // The output is not automatically boosted; unity makeup protects 0 input.
@@ -101,6 +138,7 @@ class SerialVocalDynamics {
 public:
     void prepare(double rate) noexcept {
         sr=std::isfinite(rate)?std::clamp(rate,8000.,192000.):48000.;
+        detail::DbGainLookup::warm(); // initialize shared table off the audio thread
         reset();
         rmsCoeff=std::exp(-1.f/(.030f*(float)sr));
         optoAtt=std::exp(-1.f/(.020f*(float)sr));
@@ -128,7 +166,7 @@ public:
         // Flush inaudibly small release state before it enters the IEEE-754
         // subnormal range on CPUs without FTZ/DAZ enabled.
         if(fetGr<1.e-20f)fetGr=0.f;
-        const float fastGain=std::exp2(-fetGr*dbToLog2);
+        const float fastGain=detail::DbGainLookup::gain(fetGr);
         const float fl=l*fastGain,fr=r*fastGain;
         // Limit the *detector* energy, not the audio signal. Squaring a
         // perfectly finite, pathological floating-point input can overflow,
@@ -142,7 +180,7 @@ public:
         const float oCoeff=optoTarget>optoGr?optoAtt:optoRel;
         optoGr=oCoeff*optoGr+(1.f-oCoeff)*optoTarget;
         if(optoGr<1.e-20f)optoGr=0.f;
-        const float gain=fastGain*std::exp2(-optoGr*dbToLog2);
+        const float gain=detail::DbGainLookup::gain(fetGr+optoGr);
         const float blend=smash;
         // Makeup-free parallel saturation limits additive gain; at 0 this is
         // exact gain reduction with no hidden increase in signal amplitude.
