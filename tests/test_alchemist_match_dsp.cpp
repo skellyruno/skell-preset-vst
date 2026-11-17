@@ -11,6 +11,7 @@
 
 using skellpreset::dsp::AlchemistMatchFinish;
 using skellpreset::alchemist::stages;
+namespace alchemist_fast_math = skellpreset::dsp::alchemist_fast_math;
 
 static void configure(AlchemistMatchFinish& f) {
     const auto& p=stages[6].p;
