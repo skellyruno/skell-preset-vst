@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <array>
+#include <cstddef>
 
 namespace skellpreset::package {
 constexpr int schemaVersion = 2;
@@ -37,7 +38,7 @@ struct Document {
     std::array<Slot, slotCount> slots = [] {
         std::array<Slot, slotCount> result {};
         for (int i=0;i<slotCount;++i)
-            result[static_cast<size_t>(i)].slotId=i;
+            result[static_cast<std::size_t>(i)].slotId=i;
         return result;
     }();
 };
