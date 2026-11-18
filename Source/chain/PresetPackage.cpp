@@ -32,6 +32,13 @@ bool decodeInteger(const juce::var& v, int lo, int hi, int& out) {
     return true;
 }
 
+// JUCE represents explicit JSON null as a void var. Check property presence
+// separately so absent legacy extensions default safely but present nulls fail.
+bool hasJsonProperty(const juce::var& object, const char* name) {
+    const auto* dynamic = object.getDynamicObject();
+    return dynamic != nullptr && dynamic->hasProperty(juce::Identifier(name));
+}
+
 juce::Result validate(const Document& d) {
     if (! validText(d.name, 96) || ! validText(d.author, 96)
         || ! validText(d.bank, 64)) return juce::Result::fail("Invalid preset name, author or bank");
@@ -112,12 +119,16 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         || ! decodeFloat(globals.getProperty("mix", {}), 0, 1, candidate.mix)
         || ! decodeFloat(globals.getProperty("outputDb", {}), -24, 24, candidate.outputDb))
         return juce::Result::fail("Invalid global values");
-    const auto macros=globals.getProperty("macros", {});
-    if (! macros.isArray() || macros.getArray()->size() != (int)candidate.macros.size())
-        return juce::Result::fail("Eight macros required");
-    for (int k=0;k<(int)candidate.macros.size();++k)
-        if (! decodeFloat((*macros.getArray())[k], 0, 1, candidate.macros[(size_t)k]))
-            return juce::Result::fail("Invalid macro value");
+    // Macros were added as a schema-v2 extension. Older v1/v2 archives may
+    // omit them and retain neutral 50% defaults. If present, validate strictly.
+    if (hasJsonProperty(globals,"macros")) {
+        const auto macros=globals.getProperty("macros",{});
+        if (!macros.isArray() || macros.getArray()->size() != (int)candidate.macros.size())
+            return juce::Result::fail("Eight macros required");
+        for (int k=0;k<(int)candidate.macros.size();++k)
+            if (!decodeFloat((*macros.getArray())[k],0,1,candidate.macros[(size_t)k]))
+                return juce::Result::fail("Invalid macro value");
+    }
     const auto chain=root.getProperty("chain", {});
     const int encodedSlots=version==1?legacySlotCount:slotCount;
     if (! chain.isArray() || chain.getArray()->size()!=encodedSlots)
@@ -132,7 +143,8 @@ juce::Result fromJson(const juce::var& root, Document& out) {
     }
     for (int i=0;i<encodedSlots;++i) {
         const auto item=(*chain.getArray())[i];
-        if (! item.isObject()) return juce::Result::fail("Invalid chain entry");
+        if (!item.isObject() || item.getDynamicObject()==nullptr)
+            return juce::Result::fail("Invalid chain entry");
         auto& slot=candidate.slots[(size_t)i];
         const auto enabled=item.getProperty("enabled", {});
         if (! decodeInteger(item.getProperty("slotId", {}),0,encodedSlots-1,slot.slotId)
@@ -150,7 +162,7 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         // Optional extension is compatible with native schema-v1/v2 presets.
         // Malformed Q arrays are rejected transactionally instead of ignored.
         const auto eqQ=item.getProperty("eqQ",{});
-        if(!eqQ.isVoid()) {
+        if(hasJsonProperty(item,"eqQ")) {
             if(!eqQ.isArray() || eqQ.getArray()->size()!=8)
                 return juce::Result::fail("Invalid eight-band EQ Q array");
             for(int k=0;k<8;++k)
