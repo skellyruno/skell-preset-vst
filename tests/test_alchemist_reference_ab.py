@@ -159,6 +159,44 @@ class AlchemistReferenceABTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ab.polarity_normalized_correlation(raw_signed, 0)
 
+    def test_audition_html_uses_tight_animation_frame_sync(self):
+        self.assertAlmostEqual(ab.SYNC_TOLERANCE_SECONDS, 0.010)
+        out_dir = self.root / "audition"
+        (out_dir / "audio" / "raw").mkdir(parents=True)
+        (out_dir / "audio" / "level-matched").mkdir(parents=True)
+        sample = self.source[:self.sample_rate]
+        sf.write(
+            out_dir / "audio" / "raw" / "input.flac",
+            sample, self.sample_rate, format="FLAC", subtype="PCM_24"
+        )
+        sf.write(
+            out_dir / "audio" / "level-matched" / "input.flac",
+            sample, self.sample_rate, format="FLAC", subtype="PCM_24"
+        )
+        ab._make_html(
+            out_dir,
+            [{
+                "id": "input",
+                "label": "Input",
+                "file_raw": "audio/raw/input.flac",
+                "file_level_matched": "audio/level-matched/input.flac",
+                "lufs_raw": -16.0,
+                "level_matched_attenuation_db": 0.0,
+                "lufs_level_matched": -16.0,
+                "true_peak_dbtp_4x_estimate": -1.7,
+                "metrics": None,
+            }],
+            -1.0,
+            -16.0,
+            {"test": "sync"},
+        )
+        page = (out_dir / "index.html").read_text(encoding="utf-8")
+        self.assertIn("const syncToleranceSeconds = 0.010;", page)
+        self.assertIn("requestAnimationFrame(syncFrame)", page)
+        self.assertIn("cancelAnimationFrame(syncAnimationFrame)", page)
+        self.assertIn("startSyncLoop();", page)
+        self.assertNotIn("timeupdate", page)
+
 
 if __name__ == "__main__":
     unittest.main()
