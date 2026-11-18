@@ -1274,9 +1274,23 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     // the protected factory index 43 or any previously saved FL Studio state.
     auto loadNativeStages=[this](const auto& nativeStages) {
         for(int physical=0;physical<slotCount;++physical) {
+            // Native factory recalls must have the same clean physical-slot
+            // baseline as the legacy factory bank. Hidden/inactive rows are
+            // still serialized and can become visible when the rack expands.
             setSlotOn(physical,false);
             setSlotType(physical,Empty);
-            setReal(slotPrefix(physical)+"wet",1.f);
+            const auto prefix=slotPrefix(physical);
+            setReal(prefix+"wet",1.f);
+            for(int k=0;k<16;++k)setSlotParam(physical,k,.5f);
+            for(int band=1;band<=8;++band) {
+                const auto suffix=juce::String(band);
+                setReal(prefix+"eqQ"+suffix,.5f);
+                setReal(prefix+"studioEqKind"+suffix,
+                        (float)(band==1?3:(band==7?4:0)));
+                setReal(prefix+"studioEqOn"+suffix,band<=7?1.f:0.f);
+            }
+            setReal(prefix+"eqLowCut",0.f);
+            setReal(prefix+"eqHighCut",0.f);
         }
         for(int position=0;position<(int)nativeStages.size();++position) {
             const auto& stage=nativeStages[(size_t)position];
