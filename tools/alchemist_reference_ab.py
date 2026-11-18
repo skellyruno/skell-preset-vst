@@ -34,6 +34,14 @@ SEGMENT_START_DEFAULT = 19.0
 SEGMENT_DURATION_DEFAULT = 15.0
 EXPECTED_TARGET_DELAY_DEFAULT = 55
 SYNC_TOLERANCE_SECONDS = 0.010
+EXPECTED_MAIN_FST_CHAIN = (
+    "Fruity Parametric EQ 2",
+    "Fruity Limiter",
+    "Waves CLA-76 Stereo",
+    "Waves CLA-2A Stereo",
+    "Soundgoodizer",
+    "Fruity Limiter",
+)
 
 # Compare the three compressor wet-blend variants that already have native
 # factory/state/PDC smoke coverage. Keep all existing Alchemist candidates.
@@ -114,30 +122,43 @@ def verify_manifest_asset(manifest_path: pathlib.Path, archive_root: pathlib.Pat
     }
 
 
-def parse_fst_chain(fst_path: pathlib.Path) -> list[str]:
+def parse_fst_chain(fst_path: pathlib.Path,
+                    chain_manifest_path: pathlib.Path) -> list[str]:
+    """Read a hash-bound slot inventory; never count plugin-name substrings.
+
+    FL Studio .fst blobs can contain plugin names inside embedded state. A raw
+    text scan therefore cannot distinguish a second rack slot from a string in
+    another plugin's state. The owner slot manifest is bound to the exact FST
+    SHA-256 and preserves repeated real slots (for example, two Fruity Limiters).
+    """
     data = fst_path.read_bytes()
     if not data.startswith(b"FLhd"):
         raise ValueError("MAIN.fst does not have the FL Studio FLhd header")
-    printable = "".join(chr(value) if 32 <= value <= 126 else " " for value in data)
-    compact = "".join(char for char in printable if not char.isspace())
-    patterns = [
-        ("FruityParametricEQ2", "Fruity Parametric EQ 2", 2),
-        ("FruityLimiter", "Fruity Limiter", 2),
-        ("CLA-76", "Waves CLA-76 Stereo", 1),
-        ("CLA-2A", "Waves CLA-2A Stereo", 1),
-        ("Soundgoodizer", "Soundgoodizer", 1),
-    ]
-    found: list[tuple[int, str]] = []
-    for needle, label, maximum in patterns:
-        start = 0
-        for _ in range(maximum):
-            position = compact.find(needle, start)
-            if position < 0:
-                break
-            found.append((position, label))
-            start = position + len(needle)
-    found.sort(key=lambda item: item[0])
-    return [label for _, label in found]
+    manifest = json.loads(chain_manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schema") != "skell.fst.slot-chain-manifest" or manifest.get("version") != 1:
+        raise ValueError("Unsupported MAIN.fst slot-chain manifest schema")
+    if manifest.get("file") != fst_path.name:
+        raise ValueError("MAIN.fst slot-chain manifest names a different source file")
+    actual_sha = sha256(fst_path)
+    if manifest.get("sha256") != actual_sha:
+        raise ValueError("MAIN.fst slot-chain manifest SHA-256 does not match the source")
+    slots = manifest.get("slots")
+    if not isinstance(slots, list) or not slots:
+        raise ValueError("MAIN.fst slot-chain manifest has no slots")
+    names: list[str] = []
+    previous_slot = -1
+    for item in slots:
+        if not isinstance(item, dict):
+            raise ValueError("Invalid MAIN.fst slot entry")
+        slot_number = item.get("slot")
+        if not isinstance(slot_number, int) or slot_number <= previous_slot:
+            raise ValueError("MAIN.fst slot numbers must be strictly increasing")
+        previous_slot = slot_number
+        name = item.get("chain_name") or item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("MAIN.fst slot entry is missing a readable name")
+        names.append(name)
+    return names
 
 
 def parse_fst_report(report_path: pathlib.Path) -> list[dict]:
@@ -483,6 +504,7 @@ def analyze(args: argparse.Namespace) -> dict:
     reference_path = pathlib.Path(args.reference_flac)
     fst_path = pathlib.Path(args.fst)
     fst_report_path = pathlib.Path(args.fst_report)
+    fst_chain_manifest_path = pathlib.Path(args.fst_chain_manifest)
     manifest_path = pathlib.Path(args.manifest)
     archive_root = pathlib.Path(args.archive_root)
     out_dir = pathlib.Path(args.out_dir)
@@ -667,18 +689,18 @@ def analyze(args: argparse.Namespace) -> dict:
             "metrics": metrics[label].get("comparison_to_FL_target"),
         })
 
-    fst_chain = parse_fst_chain(fst_path)
-    expected_fst_chain = [
-        "Fruity Parametric EQ 2",
-        "Fruity Parametric EQ 2",
-        "Fruity Limiter",
-        "Waves CLA-76 Stereo",
-        "Waves CLA-2A Stereo",
-        "Soundgoodizer",
-        "Fruity Limiter",
-    ]
-    if fst_chain != expected_fst_chain:
-        raise ValueError(f"Unexpected MAIN.fst chain order: {fst_chain}")
+    fst_chain = parse_fst_chain(fst_path, fst_chain_manifest_path)
+    if tuple(fst_chain) != EXPECTED_MAIN_FST_CHAIN:
+        raise ValueError(f"Unexpected MAIN.fst verified slot order: {fst_chain}")
+    fst_chain_manifest = json.loads(
+        fst_chain_manifest_path.read_text(encoding="utf-8")
+    )
+    fst_chain_manifest_identity = {
+        "file": fst_chain_manifest_path.name,
+        "bytes": fst_chain_manifest_path.stat().st_size,
+        "sha256": sha256(fst_chain_manifest_path),
+        "source_manifest": fst_chain_manifest.get("source_manifest"),
+    }
     fst_plugins = parse_fst_report(fst_report_path)
     provenance = {
         "plugin_commit": args.plugin_commit,
@@ -706,7 +728,8 @@ def analyze(args: argparse.Namespace) -> dict:
             "MAIN_fst_structure_report": fst_report_identity,
             "MAIN_fst_sha256": sha256(fst_path),
             "MAIN_fst_embedded_plugin_report": fst_plugins,
-            "MAIN_fst_raw_chain_order": fst_chain,
+            "MAIN_fst_verified_slot_chain": fst_chain,
+            "MAIN_fst_slot_manifest": fst_chain_manifest_identity,
         },
         "renderer_binary": renderer_identity,
         "factory_names": {
@@ -742,6 +765,7 @@ def analyze(args: argparse.Namespace) -> dict:
         f"- Shared safety attenuation: {common_gain_db:.3f} dB in both modes.\n"
         f"- Level-matched mode attenuates to {level_match_target_lufs:.2f} LUFS; no track is boosted.\n"
         "- Source: printed recording input and FL Studio main-chain wet print.\n"
+        "- MAIN.fst chain: six hash-bound owner-manifest slots (one EQ2, two Fruity Limiters).\n"
         f"- Native candidates: factories {', '.join(str(factory) for factory in CANDIDATE_FACTORY_IDS)}.\n"
         "- Original-level and attenuation-only level-matched previews are both included.\n"
         "- Render: compiled SkellPresetAudioProcessor::processBlock; not a hosted VST3 or FL Studio run.\n"
@@ -793,6 +817,7 @@ def main() -> None:
     run.add_argument("--renderer", required=True)
     run.add_argument("--fst", required=True)
     run.add_argument("--fst-report", required=True)
+    run.add_argument("--fst-chain-manifest", required=True)
     run.add_argument("--manifest", required=True)
     run.add_argument("--archive-root", required=True)
     run.add_argument("--out-dir", required=True)

@@ -80,17 +80,37 @@ class AlchemistReferenceABTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             ab.write_float_wav(source_path, output_path)
 
-    def test_fst_chain_parser_preserves_order_and_duplicates(self):
+    def _write_fst_chain_manifest(self, fst, slots, sha_override=None):
+        import hashlib
+        manifest = self.root / "fst-chain.json"
+        manifest.write_text(json.dumps({
+            "schema": "skell.fst.slot-chain-manifest",
+            "version": 1,
+            "file": fst.name,
+            "sha256": sha_override or hashlib.sha256(fst.read_bytes()).hexdigest(),
+            "slots": slots,
+        }), encoding="utf-8")
+        return manifest
+
+    def test_fst_chain_parser_uses_hash_bound_slots_not_embedded_name_text(self):
         fst = self.root / "MAIN.fst"
+        # Repeated plugin-name text in an embedded blob must not invent a rack slot.
         fst.write_bytes(
-            b"FLhd Fruity Parametric EQ 2 Fruity Parametric EQ 2 "
-            b"Fruity Limiter CLA-76 Stereo CLA-2A Stereo "
-            b"Soundgoodizer Fruity Limiter"
+            b"FLhd FruityParametricEQ2 FruityParametricEQ2 "
+            b"FruityLimiter CLA-76 CLA-2A Soundgoodizer FruityLimiter"
         )
+        slots = [
+            {"slot": 3, "name": "Fruity Parametric EQ 2"},
+            {"slot": 4, "name": "Fruity Limiter"},
+            {"slot": 5, "chain_name": "Waves CLA-76 Stereo"},
+            {"slot": 6, "chain_name": "Waves CLA-2A Stereo"},
+            {"slot": 7, "name": "Soundgoodizer"},
+            {"slot": 8, "name": "Fruity Limiter"},
+        ]
+        manifest = self._write_fst_chain_manifest(fst, slots)
         self.assertEqual(
-            ab.parse_fst_chain(fst),
+            ab.parse_fst_chain(fst, manifest),
             [
-                "Fruity Parametric EQ 2",
                 "Fruity Parametric EQ 2",
                 "Fruity Limiter",
                 "Waves CLA-76 Stereo",
@@ -100,11 +120,36 @@ class AlchemistReferenceABTests(unittest.TestCase):
             ],
         )
 
+    def test_fst_chain_parser_rejects_manifest_hash_mismatch(self):
+        fst = self.root / "MAIN.fst"
+        fst.write_bytes(b"FLhd valid owner file")
+        manifest = self._write_fst_chain_manifest(
+            fst, [{"slot": 3, "name": "Fruity Parametric EQ 2"}],
+            sha_override="0" * 64,
+        )
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
+            ab.parse_fst_chain(fst, manifest)
+
     def test_parse_fst_chain_rejects_non_flstudio_header(self):
         fst = self.root / "invalid.fst"
         fst.write_bytes(b"NOhd Fruity Parametric EQ 2")
-        with self.assertRaises(ValueError):
-            ab.parse_fst_chain(fst)
+        manifest = self._write_fst_chain_manifest(
+            fst, [{"slot": 3, "name": "Fruity Parametric EQ 2"}]
+        )
+        with self.assertRaisesRegex(ValueError, "FL Studio FLhd"):
+            ab.parse_fst_chain(fst, manifest)
+
+    def test_owner_alchemist_chain_fixture_has_one_eq2_and_two_limiters(self):
+        fixture = ROOT / "tests" / "fixtures" / "alchemist_main_fst_chain.json"
+        manifest = json.loads(fixture.read_text(encoding="utf-8"))
+        slots = manifest["slots"]
+        names = [item.get("chain_name") or item["name"] for item in slots]
+        self.assertEqual(names, list(ab.EXPECTED_MAIN_FST_CHAIN))
+        self.assertEqual(names.count("Fruity Parametric EQ 2"), 1)
+        self.assertEqual(names.count("Fruity Limiter"), 2)
+        soundgoodizer = next(item for item in slots if item.get("name") == "Soundgoodizer")
+        self.assertEqual(soundgoodizer["native_state"]["mode_index"], 0)
+        self.assertEqual(soundgoodizer["native_state"]["amount_raw_integer"], 169)
 
     def test_manifest_verification_detects_tampering(self):
         archive_root = self.root / "archive"

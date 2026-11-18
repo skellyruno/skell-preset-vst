@@ -214,6 +214,7 @@ jobs:
             "--renderer", $renderer.FullName,
             "--fst", "soundmatch/local_sound_archive/data/alchemist/presets/MAIN.fst",
             "--fst-report", "soundmatch/local_sound_archive/data/alchemist/research_reports/MAIN_FST_Structure.json",
+            "--fst-chain-manifest", "tests/fixtures/alchemist_main_fst_chain.json",
             "--manifest", "soundmatch/archive/manifest.json",
             "--archive-root", "soundmatch/local_sound_archive",
             "--out-dir", "build/alchemist-reference-ab",
