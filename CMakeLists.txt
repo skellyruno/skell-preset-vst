@@ -148,7 +148,10 @@ target_link_libraries(SkellPresetFactoryStateTests PRIVATE
     SkellPreset SkellPresetAssets SkellCore::DSP SkellCore::UI
     juce::juce_audio_utils juce::juce_gui_extra)
 target_compile_definitions(SkellPresetFactoryStateTests PRIVATE
-    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+if(WIN32)
+    target_compile_definitions(SkellPresetFactoryStateTests PRIVATE JUCE_PLUGINHOST_VST3=1)
+endif()
 target_compile_features(SkellPresetFactoryStateTests PRIVATE cxx_std_17)
 add_test(NAME SkellPresetFactoryStateTests COMMAND SkellPresetFactoryStateTests)
 
