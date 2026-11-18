@@ -33,6 +33,7 @@ except ImportError as exc:
 SEGMENT_START_DEFAULT = 19.0
 SEGMENT_DURATION_DEFAULT = 15.0
 EXPECTED_TARGET_DELAY_DEFAULT = 55
+SYNC_TOLERANCE_SECONDS = 0.010
 
 
 def sha256(path: pathlib.Path) -> str:
@@ -409,29 +410,50 @@ document.querySelectorAll('[data-track]').forEach(b =>
   b.addEventListener('click', () => selectTrack(b.dataset.track)));
 document.querySelectorAll('[data-mode]').forEach(b =>
   b.addEventListener('click', () => selectMode(b.dataset.mode)));
+const syncToleranceSeconds = {SYNC_TOLERANCE_SECONDS:.3f};
+let syncAnimationFrame = 0;
+function stopSyncLoop() {{
+  if (syncAnimationFrame !== 0) cancelAnimationFrame(syncAnimationFrame);
+  syncAnimationFrame = 0;
+}}
+function syncFrame() {{
+  const master = document.getElementById(activeAudioId());
+  if (!master || master.paused || master.ended) {{
+    syncAnimationFrame = 0;
+    return;
+  }}
+  seek.value = master.currentTime;
+  timeLabel.textContent = master.currentTime.toFixed(2) + ' s';
+  audio.forEach(a => {{
+    if (a !== master && !a.paused
+        && Math.abs(a.currentTime - master.currentTime) > syncToleranceSeconds)
+      a.currentTime = master.currentTime;
+  }});
+  syncAnimationFrame = requestAnimationFrame(syncFrame);
+}}
+function startSyncLoop() {{
+  if (syncAnimationFrame === 0)
+    syncAnimationFrame = requestAnimationFrame(syncFrame);
+}}
 document.getElementById('play').addEventListener('click', async () => {{
   const active = document.getElementById(activeAudioId());
   const t = active ? active.currentTime : 0;
   audio.forEach(a => {{ a.currentTime = t; a.muted = a.id !== activeAudioId(); }});
   await Promise.all(audio.map(a => a.play().catch(() => null)));
+  startSyncLoop();
 }});
-document.getElementById('pause').addEventListener('click', () => audio.forEach(a => a.pause()));
+document.getElementById('pause').addEventListener('click', () => {{
+  audio.forEach(a => a.pause());
+  stopSyncLoop();
+}});
 document.getElementById('restart').addEventListener('click', async () => {{
   audio.forEach(a => {{ a.pause(); a.currentTime = 0; }});
   await Promise.all(audio.map(a => a.play().catch(() => null)));
+  startSyncLoop();
 }});
 seek.addEventListener('input', () => audio.forEach(a => a.currentTime = Number(seek.value)));
 document.getElementById('rate').addEventListener('change', e =>
   audio.forEach(a => a.playbackRate = Number(e.target.value)));
-audio.forEach(master => master.addEventListener('timeupdate', () => {{
-  if (master.id !== activeAudioId()) return;
-  seek.value = master.currentTime;
-  timeLabel.textContent = master.currentTime.toFixed(2) + ' s';
-  audio.forEach(a => {{
-    if (a !== master && Math.abs(a.currentTime - master.currentTime) > 0.04)
-      a.currentTime = master.currentTime;
-  }});
-}}));
 applySelection();
 </script>
 </body>
