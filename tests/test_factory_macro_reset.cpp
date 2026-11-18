@@ -27,8 +27,9 @@ bool dirtyMacros(SkellPresetAudioProcessor& processor) {
 
 int main() {
     std::cerr << "STEP 0: main entered\n" << std::flush;
-    juce::ScopedJuceInitialiser_GUI juceInitialiser;
-    std::cerr << "STEP 1: JUCE initialized\n" << std::flush;
+    // This regression exercises APVTS and the processor state only. It does
+    // not construct an editor or use message-loop services, so keep it truly
+    // headless on Windows CI rather than starting the GUI subsystem.
 
     // The processor owns sixteen fully constructed DSP engine slots, including
     // reverb and delay state. Keep it off the small default Windows test stack.
