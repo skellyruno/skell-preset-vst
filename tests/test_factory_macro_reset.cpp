@@ -25,6 +25,7 @@ bool dirtyMacros(SkellPresetAudioProcessor& processor) {
 }
 
 int main() {
+    juce::ScopedJuceInitialiser_GUI juceInitialiser;
     SkellPresetAudioProcessor processor;
 
     if (!dirtyMacros(processor)) {
