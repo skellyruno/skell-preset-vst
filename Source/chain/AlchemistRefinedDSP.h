@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include "AlchemistFastMath.h"
 
 namespace skellpreset::dsp {
 class AlchemistRefinedDSP final {
@@ -73,15 +74,15 @@ public:
             (1.f+std::max(0.f,sibEnv-.020f)*9.f*sibStrength);
         sibGain+=gainStep*(std::clamp(desiredSib,.72f,1.f)-sibGain);
         sibGain=sanitize(sibGain);
-        lastSibReductionDb=20.f*std::log10(std::max(sibGain,.01f));
+        lastSibReductionDb=alchemist_fast_math::gainDb(std::max(sibGain,.01f));
         // (3) Controlled low-level density is gated off in silence.
         const float energy=.5f*(highpass[0]*highpass[0]+highpass[1]*highpass[1]);
         speechPower=sanitize(speechPower+slowStep*(energy-speechPower));
-        const float rmsDb=10.f*std::log10(speechPower+1.e-12f);
+        const float rmsDb=alchemist_fast_math::powerDb(speechPower,1.e-12f);
         const float voiceGate=std::clamp((rmsDb+67.f)/20.f,0.f,1.f);
         const float densityDb=1.05f*densityStrength*voiceGate*
             (1.f-std::clamp((rmsDb+33.f)/14.f,0.f,1.f));
-        const float targetDensity=std::pow(10.f,densityDb/20.f);
+        const float targetDensity=alchemist_fast_math::gainFromDb(densityDb);
         densityGain+=gainStep*(targetDensity-densityGain);
         densityGain=sanitize(densityGain);
         // (4) Protect fast consonant peaks against over-compression while
@@ -104,10 +105,7 @@ public:
             shaped=airShelf.processOne(shaped,c);
             // (5) Differentiable, bounded sample-peak safety above -1 dBFS.
             // This is NOT a 4x oversampled true-peak limiter.
-            const float magnitude=std::abs(shaped);
-            if(magnitude>.89f)
-                shaped=std::copysign(.89f+.08f*
-                    std::tanh((magnitude-.89f)/.08f),shaped);
+            shaped=alchemist_fast_math::softCeiling(shaped,.89f,.08f);
             // Measured same-take native trial reached +0.33dBTP at 4x.
             // Reserve 1.11 dB extra sample-domain headroom on THIS OPT-IN
             // candidate only. Original factory index 43 remains bit-exact.
