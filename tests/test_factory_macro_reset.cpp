@@ -25,14 +25,19 @@ bool dirtyMacros(SkellPresetAudioProcessor& processor) {
 }
 
 int main() {
+    std::cerr << "STEP 0: main entered\n" << std::flush;
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
+    std::cerr << "STEP 1: JUCE initialized\n" << std::flush;
     SkellPresetAudioProcessor processor;
+    std::cerr << "STEP 2: processor constructed\n" << std::flush;
 
     if (!dirtyMacros(processor)) {
         std::cerr << "FAIL: all eight serialized macro parameters exist\n";
         return 1;
     }
+    std::cerr << "STEP 3: macros dirtied\n" << std::flush;
     processor.loadFactoryPreset(0);
+    std::cerr << "STEP 4: factory 0 loaded\n" << std::flush;
     if (!macrosAreNeutral(processor)) {
         std::cerr << "FAIL: factory 0 did not reset all eight macros\n";
         return 2;
@@ -40,7 +45,9 @@ int main() {
 
     const auto file=juce::File::getSpecialLocation(juce::File::tempDirectory)
         .getNonexistentChildFile("skell-factory-macro-reset",".skellpreset",false);
+    std::cerr << "STEP 5: defaults checked\n" << std::flush;
     const auto saved=processor.exportPreset(file);
+    std::cerr << "STEP 6: export returned\n" << std::flush;
     if (saved.failed()) {
         std::cerr << "FAIL: factory preset export: " << saved.getErrorMessage() << '\n';
         return 3;
@@ -48,6 +55,7 @@ int main() {
 
     skellpreset::package::Document document;
     const auto loaded=skellpreset::package::read(file,document);
+    std::cerr << "STEP 7: package read returned\n" << std::flush;
     file.deleteFile();
     if (loaded.failed()) {
         std::cerr << "FAIL: exported factory package could not be read\n";
@@ -64,7 +72,9 @@ int main() {
         std::cerr << "FAIL: macro parameters disappeared after export\n";
         return 6;
     }
+    std::cerr << "STEP 8: export verified\n" << std::flush;
     processor.loadFactoryPreset(24);
+    std::cerr << "STEP 9: factory 24 loaded\n" << std::flush;
     if (!macrosAreNeutral(processor)) {
         std::cerr << "FAIL: second factory switch did not reset all eight macros\n";
         return 7;
