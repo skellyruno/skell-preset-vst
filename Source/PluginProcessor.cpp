@@ -961,7 +961,9 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         packedOrder.store(compactOrder,std::memory_order_release);
     }
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
-    setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
+    // Factory switching must reset every serialized macro. Slots 5..8 are
+    // hidden in this Simple UI generation but remain in APVTS and .skellpreset.
+    for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",preset.bank,nullptr);
     updateHostLatency();
