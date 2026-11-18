@@ -22,6 +22,24 @@ int main(){
     const auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory)
                    .getNonexistentChildFile("skell-preset-tests","",false);
     if(dir.createDirectory().failed()){std::cerr<<"Unable to create test folder\n";return 1;}
+    // A blank package must match the live APVTS neutral parameter positions.
+    skellpreset::package::Document empty;
+    bool neutralDefaults=true;
+    for(float value:empty.macros)neutralDefaults=neutralDefaults && value==.5f;
+    for(const auto& slot:empty.slots)
+        for(float value:slot.params)neutralDefaults=neutralDefaults && value==.5f;
+    check(neutralDefaults,"Blank package macros and all 16x16 slot parameters default to 50%");
+    const auto emptyPath=testFile(dir,"blank-neutral");
+    check(skellpreset::package::write(emptyPath,empty).wasOk(),
+          "Export blank neutral package");
+    skellpreset::package::Document emptyRestored;
+    const auto emptyRead=skellpreset::package::read(emptyPath,emptyRestored);
+    bool neutralRoundtrip=emptyRead.wasOk();
+    for(float value:emptyRestored.macros)neutralRoundtrip=neutralRoundtrip && value==.5f;
+    for(const auto& slot:emptyRestored.slots)
+        for(float value:slot.params)neutralRoundtrip=neutralRoundtrip && value==.5f;
+    check(neutralRoundtrip,"Blank package roundtrip preserves neutral macros and slot parameters");
+
     skellpreset::package::Document first;
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
@@ -44,6 +62,84 @@ int main(){
           &&second.activeSlotCount==14&&second.slots[15].slotId==2
           &&second.slots[11].type==13&&second.slots[15].type==17,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
+
+    // Older schema-v2 archives without optional macros must still import;
+    // malformed or explicitly-null arrays must fail without changing state.
+    {
+        juce::ZipFile archive(path);
+        std::unique_ptr<juce::InputStream> input(archive.createStreamForEntry(0));
+        check(input!=nullptr,"Schema-v2 archive has JSON entry for optional macro tests");
+        if(input) {
+            const auto jsonText=input->readEntireStreamAsString();
+            auto noMacros=juce::JSON::parse(jsonText);
+            auto* root=noMacros.getDynamicObject();
+            auto* globals=root?root->getProperty("globals").getDynamicObject():nullptr;
+            check(globals!=nullptr,"Schema-v2 globals object exists");
+            if(globals) {
+                globals->removeProperty("macros");
+                const auto noMacrosFile=testFile(dir,"schema-v2-no-macros");
+                createArchive(noMacrosFile,"preset.json",juce::JSON::toString(noMacros).toStdString());
+                skellpreset::package::Document restored;
+                const auto result=skellpreset::package::read(noMacrosFile,restored);
+                check(result.wasOk(),"Import schema-v2 archive without optional macros");
+                bool neutral=true;
+                for(float value:restored.macros)neutral=neutral && value==.5f;
+                check(result.wasOk() && neutral,"Missing schema-v2 macros restore neutral defaults");
+            }
+
+            auto malformed=juce::JSON::parse(jsonText);
+            auto* malformedRoot=malformed.getDynamicObject();
+            auto* malformedGlobals=malformedRoot
+                ?malformedRoot->getProperty("globals").getDynamicObject():nullptr;
+            if(malformedGlobals) {
+                juce::Array<juce::var> shortMacros;
+                for(int i=0;i<7;++i)shortMacros.add(.5f);
+                malformedGlobals->setProperty("macros",juce::var(shortMacros));
+                const auto malformedFile=testFile(dir,"schema-v2-short-macros");
+                createArchive(malformedFile,"preset.json",juce::JSON::toString(malformed).toStdString());
+                skellpreset::package::Document preserved;
+                preserved.name="Preserve Existing Preset";
+                preserved.macros[0]=.23f;
+                const auto result=skellpreset::package::read(malformedFile,preserved);
+                check(result.failed(),"Reject malformed optional macro array");
+                check(preserved.name=="Preserve Existing Preset" && preserved.macros[0]==.23f,
+                      "Malformed macro import leaves destination unchanged");
+            } else check(false,"Malformed schema-v2 globals object exists");
+
+            auto nullMacros=juce::JSON::parse(jsonText);
+            auto* nullRoot=nullMacros.getDynamicObject();
+            auto* nullGlobals=nullRoot?nullRoot->getProperty("globals").getDynamicObject():nullptr;
+            if(nullGlobals) {
+                nullGlobals->setProperty("macros",juce::var());
+                const auto nullFile=testFile(dir,"schema-v2-null-macros");
+                createArchive(nullFile,"preset.json",juce::JSON::toString(nullMacros).toStdString());
+                skellpreset::package::Document preserved;
+                preserved.name="Preserve Existing Preset";
+                preserved.macros[0]=.23f;
+                const auto result=skellpreset::package::read(nullFile,preserved);
+                check(result.failed(),"Reject explicit null macro array");
+                check(preserved.name=="Preserve Existing Preset" && preserved.macros[0]==.23f,
+                      "Explicit-null macro import leaves destination unchanged");
+            } else check(false,"Null schema-v2 globals object exists");
+
+            auto nullEq=juce::JSON::parse(jsonText);
+            auto* eqRoot=nullEq.getDynamicObject();
+            auto* chain=eqRoot?eqRoot->getProperty("chain").getArray():nullptr;
+            auto* firstSlot=(chain && chain->size()>0)?(*chain)[0].getDynamicObject():nullptr;
+            if(firstSlot) {
+                firstSlot->setProperty("eqQ",juce::var());
+                const auto nullFile=testFile(dir,"schema-v2-null-eq-q");
+                createArchive(nullFile,"preset.json",juce::JSON::toString(nullEq).toStdString());
+                skellpreset::package::Document preserved;
+                preserved.name="Preserve Existing Preset";
+                preserved.macros[0]=.23f;
+                const auto result=skellpreset::package::read(nullFile,preserved);
+                check(result.failed(),"Reject explicit null EQ Q array");
+                check(preserved.name=="Preserve Existing Preset" && preserved.macros[0]==.23f,
+                      "Explicit-null EQ Q import leaves destination unchanged");
+            } else check(false,"EQ slot object exists for null fixture");
+        }
+    }
 
     // Schema v2 supports all new VoxRack modules without modifying the
     // original automation indices in an older host project.
@@ -148,6 +244,9 @@ int main(){
         if(object){
             object->setProperty("schemaVersion",1);
             object->removeProperty("activeSlotCount");
+            auto* globals=object->getProperty("globals").getDynamicObject();
+            check(globals!=nullptr,"Legacy globals object exists");
+            if(globals)globals->removeProperty("macros");
             auto* chain=object->getProperty("chain").getArray();
             check(chain!=nullptr,"V2 chain array");
             if(chain){
@@ -165,6 +264,9 @@ int main(){
                 check(restored.activeSlotCount==10&&restored.slots[10].slotId==10
                       &&restored.slots[15].slotId==15,
                       "Legacy rack defaults and slot identity preserved");
+                bool neutralMacros=true;
+                for(float value:restored.macros)neutralMacros=neutralMacros && value==.5f;
+                check(neutralMacros,"Schema-v1 archives without macros restore neutral defaults");
             }
         }
     }
