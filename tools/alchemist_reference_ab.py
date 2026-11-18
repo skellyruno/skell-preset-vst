@@ -176,15 +176,37 @@ def parse_fst_report(report_path: pathlib.Path) -> list[dict]:
 
 
 def estimate_delay(source: np.ndarray, output: np.ndarray, sample_rate: int,
-                   max_lag_samples: int = 1024) -> tuple[int, float, int]:
-    """Return output delay relative to source, confidence, and correlation polarity."""
+                   max_lag_samples: int = 1024,
+                   analysis_start_seconds: float | None = None,
+                   analysis_duration_seconds: float | None = None) -> tuple[int, float, int]:
+    """Return output delay relative to source, confidence, and correlation polarity.
+
+    When an analysis window is supplied, measure it inside that exact source-time
+    interval. The A/B tool passes its audition interval here so a delay estimated
+    from a different passage cannot shift the 15-second comparison.
+    """
     count = min(len(source), len(output))
-    analysis_start = min(round(0.8 * sample_rate), max(0, count // 10))
-    analysis_end = min(round(18.5 * sample_rate), count)
-    if analysis_end - analysis_start < 2 * sample_rate:
-        analysis_start, analysis_end = 0, count
-    if analysis_end - analysis_start < sample_rate:
-        raise ValueError("Not enough audio for robust delay estimation")
+    if (analysis_start_seconds is None) != (analysis_duration_seconds is None):
+        raise ValueError("Alignment analysis start and duration must be supplied together")
+
+    if analysis_start_seconds is None:
+        # Backward-compatible default for callers that need a full-recording estimate.
+        analysis_start = min(round(0.8 * sample_rate), max(0, count // 10))
+        analysis_end = min(round(18.5 * sample_rate), count)
+        if analysis_end - analysis_start < 2 * sample_rate:
+            analysis_start, analysis_end = 0, count
+    else:
+        start = float(analysis_start_seconds)
+        duration = float(analysis_duration_seconds)
+        if (not math.isfinite(start) or not math.isfinite(duration)
+                or start < 0.0 or duration < 2.0):
+            raise ValueError("Alignment analysis window must be finite, non-negative and at least 2 seconds")
+        analysis_start = round(start * sample_rate)
+        analysis_end = round((start + duration) * sample_rate)
+        if analysis_end > count or analysis_end <= analysis_start:
+            raise ValueError("Alignment analysis window is outside the available audio")
+        if analysis_end - analysis_start < 2 * sample_rate:
+            raise ValueError("Alignment analysis window must contain at least 2 seconds")
 
     source_mono = source[analysis_start:analysis_end].mean(axis=1)
     output_mono = output[analysis_start:analysis_end].mean(axis=1)
@@ -337,6 +359,13 @@ def _write_flac(path: pathlib.Path, audio: np.ndarray, sample_rate: int) -> None
 def _make_html(out_dir: pathlib.Path, track_rows: list[dict],
                common_gain_db: float, level_match_target_lufs: float,
                provenance: dict) -> None:
+    alignment_window = provenance.get("alignment_analysis_window_seconds")
+    if isinstance(alignment_window, list) and len(alignment_window) == 2:
+        alignment_text = (
+            f"{float(alignment_window[0]):.3f}–{float(alignment_window[1]):.3f} s"
+        )
+    else:
+        alignment_text = "the audition window"
     audio_tags = []
     track_buttons = []
     for row in track_rows:
@@ -396,7 +425,7 @@ pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#171e1a;padding:1rem
 </head>
 <body>
 <h1>Alchemist — native same-take comparison</h1>
-<p>15 seconds from the same 42.6-second performance, aligned by measured sample delay. All streams start together; switching changes only which synchronized stream is audible.</p>
+<p>15 seconds from the same 42.6-second performance. Delay is measured inside the audition window ({alignment_text}), rather than from a different passage. All streams start together; switching changes only which synchronized stream is audible.</p>
 <p class="note"><b>Original level:</b> one shared safety attenuation of {common_gain_db:.3f} dB. <b>Level-matched:</b> louder tracks are attenuated down to the quietest track ({level_match_target_lufs:.2f} LUFS); no track is boosted. Both modes retain the same shared safety attenuation. The input already contains printed recording effects; it is not untreated dry vocal.</p>
 <div class="controls" id="mode-buttons">
 <button type="button" data-mode="raw" aria-pressed="true">Original level</button>
@@ -556,8 +585,18 @@ def analyze(args: argparse.Namespace) -> dict:
             "sha256": sha256(path),
         }
 
+    if (args.alignment_start is None) != (args.alignment_duration is None):
+        raise ValueError("--alignment-start and --alignment-duration must be supplied together")
+    alignment_start = (
+        args.segment_start if args.alignment_start is None else args.alignment_start
+    )
+    alignment_duration = (
+        args.segment_duration
+        if args.alignment_duration is None else args.alignment_duration
+    )
     target_lag, target_confidence, target_polarity = estimate_delay(
-        input_audio, reference_audio, sample_rate, args.max_lag
+        input_audio, reference_audio, sample_rate, args.max_lag,
+        alignment_start, alignment_duration
     )
     delays["FL target"] = {
         "delay_samples": target_lag,
@@ -566,6 +605,8 @@ def analyze(args: argparse.Namespace) -> dict:
         "correlation_polarity": target_polarity,
         "expected_delay_samples_from_prior_analysis": args.expected_target_delay,
         "difference_from_expected_samples": target_lag - args.expected_target_delay,
+        "analysis_start_seconds": alignment_start,
+        "analysis_duration_seconds": alignment_duration,
     }
     if abs(target_lag - args.expected_target_delay) > args.max_expected_delay_delta:
         raise ValueError(
@@ -576,13 +617,16 @@ def analyze(args: argparse.Namespace) -> dict:
     common_lags: list[tuple[int, int]] = [(len(reference_audio), target_lag)]
     for factory, candidate in candidates.items():
         lag, confidence, polarity = estimate_delay(
-            input_audio, candidate, sample_rate, args.max_lag
+            input_audio, candidate, sample_rate, args.max_lag,
+            alignment_start, alignment_duration
         )
         delays[f"Factory {factory}"] = {
             "delay_samples": lag,
             "delay_ms": lag * 1000.0 / sample_rate,
             "normalized_correlation_magnitude": confidence,
             "correlation_polarity": polarity,
+            "analysis_start_seconds": alignment_start,
+            "analysis_duration_seconds": alignment_duration,
         }
         common_lags.append((len(candidate), lag))
 
@@ -711,6 +755,9 @@ def analyze(args: argparse.Namespace) -> dict:
         "source_duration_seconds": len(input_audio) / sample_rate,
         "segment_start_seconds": args.segment_start,
         "segment_duration_seconds": args.segment_duration,
+        "alignment_analysis_window_seconds": [
+            alignment_start, alignment_start + alignment_duration
+        ],
         "alignment": delays,
         "common_input_timeline_samples": [common_start, common_end],
         "common_preview_safety_gain_db": common_gain_db,
@@ -761,6 +808,7 @@ def analyze(args: argparse.Namespace) -> dict:
         "Open index.html locally in a browser. The page embeds every 15-second "
         "24-bit FLAC and uses synchronized playback for switching.\n\n"
         f"- Segment: {args.segment_start:.3f}–{args.segment_start + args.segment_duration:.3f} s\n"
+        f"- Delay analysis window: {alignment_start:.3f}–{alignment_start + alignment_duration:.3f} s (same-take excerpt by default).\n"
         f"- Sample rate: {sample_rate} Hz; channels: {input_audio.shape[1]}\n"
         f"- Shared safety attenuation: {common_gain_db:.3f} dB in both modes.\n"
         f"- Level-matched mode attenuates to {level_match_target_lufs:.2f} LUFS; no track is boosted.\n"
@@ -781,6 +829,7 @@ def analyze(args: argparse.Namespace) -> dict:
         "out_dir": str(out_dir),
         "zip": str(zip_path),
         "segment": [args.segment_start, args.segment_start + args.segment_duration],
+        "alignment_window": [alignment_start, alignment_start + alignment_duration],
         "target_delay_samples": target_lag,
         "candidate_delays": {
             key: value["delay_samples"]
@@ -826,6 +875,14 @@ def main() -> None:
     run.add_argument("--archive-branch", default="unknown")
     run.add_argument("--segment-start", type=float, default=SEGMENT_START_DEFAULT)
     run.add_argument("--segment-duration", type=float, default=SEGMENT_DURATION_DEFAULT)
+    run.add_argument(
+        "--alignment-start", type=float, default=None,
+        help="Delay-analysis start in seconds (defaults to the audition segment start)"
+    )
+    run.add_argument(
+        "--alignment-duration", type=float, default=None,
+        help="Delay-analysis duration in seconds (defaults to the audition segment duration)"
+    )
     run.add_argument("--max-lag", type=int, default=1024)
     run.add_argument("--expected-target-delay", type=int, default=EXPECTED_TARGET_DELAY_DEFAULT)
     run.add_argument("--max-expected-delay-delta", type=int, default=128)

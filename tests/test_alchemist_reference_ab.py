@@ -52,6 +52,39 @@ class AlchemistReferenceABTests(unittest.TestCase):
         self.assertGreater(confidence, 0.9)
         self.assertEqual(polarity, 1)
 
+    def test_delay_estimator_uses_the_requested_audition_window(self):
+        # A deliberately time-varying synthetic offset proves the selected
+        # 19–34s audition passage is measured directly, not via the earlier
+        # default 0.8–18.5s window.
+        output = np.zeros_like(self.source)
+        first_end = round(18.5 * self.sample_rate)
+        second_start = round(19.0 * self.sample_rate)
+        second_end = round(34.0 * self.sample_rate)
+        first_lag = 89
+        second_lag = 40
+        output[first_lag:first_end + first_lag] = self.source[:first_end]
+        output[second_start + second_lag:second_end + second_lag] = self.source[second_start:second_end]
+
+        full_recording = ab.estimate_delay(
+            self.source, output, self.sample_rate, 512
+        )
+        audition_window = ab.estimate_delay(
+            self.source, output, self.sample_rate, 512, 19.0, 15.0
+        )
+        self.assertEqual(full_recording[0], first_lag)
+        self.assertEqual(audition_window[0], second_lag)
+        self.assertGreater(audition_window[1], 0.9)
+
+    def test_delay_estimator_rejects_partial_or_out_of_range_windows(self):
+        with self.assertRaisesRegex(ValueError, "supplied together"):
+            ab.estimate_delay(
+                self.source, self.source, self.sample_rate, 512, 19.0, None
+            )
+        with self.assertRaisesRegex(ValueError, "outside"):
+            ab.estimate_delay(
+                self.source, self.source, self.sample_rate, 512, 35.0, 2.0
+            )
+
     def test_alignment_keeps_same_input_timeline(self):
         target_lag = 55
         candidate_lag = 288
@@ -249,9 +282,10 @@ class AlchemistReferenceABTests(unittest.TestCase):
             }],
             -1.0,
             -16.0,
-            {"test": "sync"},
+            {"test": "sync", "alignment_analysis_window_seconds": [19.0, 34.0]},
         )
         page = (out_dir / "index.html").read_text(encoding="utf-8")
+        self.assertIn("19.000–34.000 s", page)
         self.assertIn("const syncToleranceSeconds = 0.010;", page)
         self.assertIn("requestAnimationFrame(syncFrame)", page)
         self.assertIn("cancelAnimationFrame(syncAnimationFrame)", page)
