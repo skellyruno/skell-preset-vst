@@ -72,6 +72,107 @@ double estimateFourPhasePeak(const std::vector<float>& samples) {
     return peak;
 }
 
+int nativeStageCountForFactory(int factory) {
+    if(factory==skellpreset::alchemist::factoryIndex)
+        return (int)skellpreset::alchemist::stages.size();
+    if(factory==skellpreset::deuce::factoryIndex)
+        return (int)skellpreset::deuce::stages.size();
+    if(factory==skellpreset::alchemist_trial::factoryIndex)
+        return (int)skellpreset::alchemist_trial::stages.size();
+    if(factory==skellpreset::deuce_v25::factoryIndex)
+        return (int)skellpreset::deuce_v25::stages.size();
+    if(factory==skellpreset::alchemist_peak_guard_trial::factoryIndex)
+        return (int)skellpreset::alchemist_peak_guard_trial::stages.size();
+    if(factory==skellpreset::alchemist_tone_match_trial::factoryIndex)
+        return (int)skellpreset::alchemist_tone_match_trial::stages.size();
+    if(factory==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex)
+        return (int)skellpreset::alchemist_lighter_dynamics_trial::stages.size();
+    if(factory==skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex)
+        return (int)skellpreset::alchemist_fast_compressor_blend_trial::stages.size();
+    if(factory==skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex)
+        return (int)skellpreset::alchemist_smooth_compressor_blend_trial::stages.size();
+    if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex)
+        return (int)skellpreset::alchemist_serial_dynamics_trial::stages.size();
+    if(factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex)
+        return (int)skellpreset::alchemist_low_end_contour_trial::stages.size();
+    return 0;
+}
+
+bool setProcessorParameter(SkellPresetAudioProcessor& processor,
+                           const juce::String& id,float value) {
+    auto* parameter=processor.state.getParameter(id);
+    if(!parameter)return false;
+    parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+    return true;
+}
+
+// Deliberately dirty every serialized physical slot before a factory recall.
+// This catches stale values that remain hidden until a user expands the rack
+// or inserts Studio EQ into a formerly inactive row.
+bool dirtySerializedSlotControls(SkellPresetAudioProcessor& processor) {
+    for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot) {
+        const auto prefix="s"+juce::String(slot+1)+"_";
+        if(!setProcessorParameter(processor,prefix+"type",
+                                  (float)SkellPresetAudioProcessor::EQ) ||
+           !setProcessorParameter(processor,prefix+"on",1.f) ||
+           !setProcessorParameter(processor,prefix+"wet",.25f) ||
+           !setProcessorParameter(processor,prefix+"eqLowCut",.75f) ||
+           !setProcessorParameter(processor,prefix+"eqHighCut",.85f))
+            return false;
+        for(int k=1;k<=16;++k)
+            if(!setProcessorParameter(processor,prefix+"p"+juce::String(k),
+                                      .17f+.01f*(float)(k-1)))return false;
+        for(int band=1;band<=8;++band) {
+            const auto suffix=juce::String(band);
+            if(!setProcessorParameter(processor,prefix+"eqQ"+suffix,
+                                      .13f+.02f*(float)band) ||
+               !setProcessorParameter(processor,prefix+"studioEqKind"+suffix,2.f) ||
+               !setProcessorParameter(processor,prefix+"studioEqOn"+suffix,0.f))
+                return false;
+        }
+    }
+    return true;
+}
+
+int checkNativeFactorySlotDefaults(SkellPresetAudioProcessor& processor,
+                                   int stageCount) {
+    if(stageCount<=0 || stageCount>SkellPresetAudioProcessor::slotCount)return 249;
+    for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot) {
+        const auto prefix="s"+juce::String(slot+1)+"_";
+        const auto* low=processor.state.getRawParameterValue(prefix+"eqLowCut");
+        const auto* high=processor.state.getRawParameterValue(prefix+"eqHighCut");
+        if(!low || !high || std::abs(low->load())>1.e-6f ||
+           std::abs(high->load())>1.e-6f)return 250;
+        for(int band=1;band<=8;++band) {
+            const auto suffix=juce::String(band);
+            const auto* kind=processor.state.getRawParameterValue(
+                prefix+"studioEqKind"+suffix);
+            const auto* enabled=processor.state.getRawParameterValue(
+                prefix+"studioEqOn"+suffix);
+            const float expectedKind=(float)(band==1?3:(band==7?4:0));
+            const float expectedEnabled=band<=7?1.f:0.f;
+            if(!kind || !enabled ||
+               std::abs(kind->load()-expectedKind)>.001f ||
+               std::abs(enabled->load()-expectedEnabled)>.001f)return 251;
+        }
+        if(slot>=stageCount) {
+            const auto* enabled=processor.state.getRawParameterValue(prefix+"on");
+            const auto* wet=processor.state.getRawParameterValue(prefix+"wet");
+            if(processor.slotType(slot)!=SkellPresetAudioProcessor::Empty ||
+               !enabled || enabled->load()>.001f ||
+               !wet || std::abs(wet->load()-1.f)>.001f)return 252;
+            for(int k=0;k<16;++k)
+                if(std::abs(processor.getSlotParam(slot,k)-.5f)>.001f)return 253;
+            for(int band=1;band<=8;++band) {
+                const auto* q=processor.state.getRawParameterValue(
+                    prefix+"eqQ"+juce::String(band));
+                if(!q || std::abs(q->load()-.5f)>.001f)return 254;
+            }
+        }
+    }
+    return 0;
+}
+
 // Newly added instances must start without an effect or hidden lookahead.
 // A restored FL Studio state must still recall its former preset/latency.
 int blankSmoke() {
@@ -112,10 +213,73 @@ int blankSmoke() {
         if(!parameter)return 46;
         parameter->setValueNotifyingHost(.13f+.09f*(float)k);
     }
+    if(!dirtySerializedSlotControls(*plugin))return 48;
     plugin->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    if(const int resetResult=checkNativeFactorySlotDefaults(
+           *plugin,(int)skellpreset::alchemist::stages.size());resetResult!=0)
+        return resetResult;
     for(int k=0;k<8;++k) {
         auto* macro=plugin->state.getRawParameterValue("macro"+juce::String(k+1));
         if(!macro || std::abs(macro->load()-.5f)>1.e-6f)return 47;
+    }
+
+    // The native Alchemist factory must export/import the clean hidden rows,
+    // all eight Q values, and Studio EQ shape/enable/low/high-cut state.
+    {
+        const auto packageFile=juce::File::getSpecialLocation(
+            juce::File::tempDirectory).getNonexistentChildFile(
+                "skell-native-stage-neutral",".skellpreset",false);
+        if(plugin->exportPreset(packageFile).failed())return 55;
+        skellpreset::package::Document document;
+        if(skellpreset::package::read(packageFile,document).failed() ||
+           document.activeSlotCount!=SkellPresetAudioProcessor::defaultSlotCount)
+            return 56;
+        for(int slot=(int)skellpreset::alchemist::stages.size();
+            slot<SkellPresetAudioProcessor::slotCount;++slot) {
+            const auto& saved=document.slots[(size_t)slot];
+            if(saved.slotId!=slot || saved.type!=SkellPresetAudioProcessor::Empty ||
+               saved.enabled || std::abs(saved.wet-1.f)>.001f ||
+               std::abs(saved.eqLowCut)>.001f || std::abs(saved.eqHighCut)>.001f)
+                return 57;
+            for(float value:saved.params)if(std::abs(value-.5f)>.001f)return 58;
+            for(float value:saved.eqQ)if(std::abs(value-.5f)>.001f)return 59;
+            for(int band=0;band<8;++band) {
+                const int expectedKind=band==0?3:(band==6?4:0);
+                const bool expectedOn=band<7;
+                if(saved.studioEqKind[(size_t)band]!=expectedKind ||
+                   saved.studioEqOn[(size_t)band]!=expectedOn)return 60;
+            }
+        }
+        for(int band=0;band<8;++band) {
+            const float expected=std::round(
+                skellpreset::alchemist::stages[1].q[(size_t)band]*1000.f)/1000.f;
+            if(std::abs(document.slots[1].eqQ[(size_t)band]-expected)>.001f)
+                return 61;
+        }
+
+        auto imported=std::make_unique<SkellPresetAudioProcessor>();
+        if(imported->importPreset(packageFile).failed() ||
+           imported->loadedFactoryPresetIndex()!=-1 ||
+           checkNativeFactorySlotDefaults(*imported,
+               (int)skellpreset::alchemist::stages.size())!=0)
+            return 62;
+        imported->releaseResources();
+        packageFile.deleteFile();
+    }
+    // Host-state save/reload must retain the same neutral hidden slots.
+    {
+        juce::MemoryBlock nativeState;
+        plugin->getStateInformation(nativeState);
+        auto nativeRestored=std::make_unique<SkellPresetAudioProcessor>();
+        nativeRestored->setStateInformation(nativeState.getData(),
+                                             (int)nativeState.getSize());
+        nativeRestored->prepareToPlay(48000.,128);
+        if(nativeRestored->loadedFactoryPresetIndex()!=
+               skellpreset::alchemist::factoryIndex ||
+           checkNativeFactorySlotDefaults(*nativeRestored,
+               (int)skellpreset::alchemist::stages.size())!=0)
+            return 63;
+        nativeRestored->releaseResources();
     }
 
     // Test actual state save/restore, not just loading a factory preset.
@@ -865,11 +1029,15 @@ int nativeTrialsSmoke() {
                      skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
                      skellpreset::alchemist_low_end_contour_trial::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+        const int stageCount=nativeStageCountForFactory(factory);
+        if(stageCount<=0 || !dirtySerializedSlotControls(*plugin))return 200;
         // Recall comparison must use the SAME prepare/order for both
         // instances. Preparing the source before loading its program while
         // preparing the restored copy after recall compared different
         // smoothed initial DSP states, not actual serialization fidelity.
         plugin->loadFactoryPreset(factory);
+        if(const int resetResult=checkNativeFactorySlotDefaults(*plugin,stageCount);
+           resetResult!=0)return resetResult;
         plugin->prepareToPlay(48000.,256);
         const int expectedCount=factory==skellpreset::deuce_v25::factoryIndex?13:
             factory==skellpreset::deuce::factoryIndex?12:10;
