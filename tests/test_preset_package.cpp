@@ -26,9 +26,12 @@ int main(){
     skellpreset::package::Document empty;
     bool neutralDefaults=true;
     for(float value:empty.macros)neutralDefaults=neutralDefaults && value==.5f;
-    for(const auto& slot:empty.slots)
+    for(int i=0;i<skellpreset::package::slotCount;++i) {
+        const auto& slot=empty.slots[static_cast<std::size_t>(i)];
+        neutralDefaults=neutralDefaults && slot.slotId==i;
         for(float value:slot.params)neutralDefaults=neutralDefaults && value==.5f;
-    check(neutralDefaults,"Blank package macros and all 16x16 slot parameters default to 50%");
+    }
+    check(neutralDefaults,"Blank package has stable 0..15 slot IDs, 50% macros and 16x16 neutral parameters");
     const auto emptyPath=testFile(dir,"blank-neutral");
     check(skellpreset::package::write(emptyPath,empty).wasOk(),
           "Export blank neutral package");
@@ -86,6 +89,23 @@ int main(){
                 for(float value:restored.macros)neutral=neutral && value==.5f;
                 check(result.wasOk() && neutral,"Missing schema-v2 macros restore neutral defaults");
             }
+
+            auto noEqQ=juce::JSON::parse(jsonText);
+            auto* noEqRoot=noEqQ.getDynamicObject();
+            auto* noEqChain=noEqRoot?noEqRoot->getProperty("chain").getArray():nullptr;
+            auto* noEqSlot=(noEqChain && noEqChain->size()>0)
+                ?(*noEqChain)[0].getDynamicObject():nullptr;
+            if(noEqSlot) {
+                noEqSlot->removeProperty("eqQ");
+                const auto noEqFile=testFile(dir,"schema-v2-no-eq-q");
+                createArchive(noEqFile,"preset.json",juce::JSON::toString(noEqQ).toStdString());
+                skellpreset::package::Document restored;
+                const auto result=skellpreset::package::read(noEqFile,restored);
+                bool neutralQ=true;
+                for(float value:restored.slots[0].eqQ)neutralQ=neutralQ && value==.5f;
+                check(result.wasOk(),"Import schema-v2 archive without optional EQ-Q extension");
+                check(result.wasOk() && neutralQ,"Missing EQ-Q extension restores neutral Q defaults");
+            } else check(false,"Schema-v2 EQ-Q slot exists for omission fixture");
 
             auto malformed=juce::JSON::parse(jsonText);
             auto* malformedRoot=malformed.getDynamicObject();
