@@ -17,6 +17,11 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: skell-preset-${{ github.workflow }}-${{ github.ref }}
+  # Keep main, production, release and manually dispatched builds alive.
+  cancel-in-progress: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'main' && github.event.pull_request.base.ref != 'production' && github.event.pull_request.base.ref != 'release') || (github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/production' && github.ref != 'refs/heads/release') }}
+
 jobs:
   portable-tests:
     runs-on: ubuntu-latest
@@ -50,17 +55,59 @@ jobs:
           if (-not $fixture -or -not $runner) { throw 'Nested host fixture or probe executable missing' }
           & $runner.FullName $fixture.FullName
           if ($LASTEXITCODE -ne 0) { throw "Nested VST3 host regression failed: $LASTEXITCODE" }
-      - name: Bundle VST3
+      - name: Normalize and validate VST3 metadata
         shell: pwsh
         run: |
-          # Do not accidentally package the SkellHostFixture.vst3 regression
-          # plugin now present in the same build tree.
+          python tools/normalize_vst3_moduleinfo.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'VST3 metadata normalizer self-test failed' }
           $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
-          if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
-          Compress-Archive -LiteralPath $vst.FullName -DestinationPath Skell-Preset-Windows-VST3.zip -Force
+          if (-not $vst) { throw 'Skell-Preset VST3 bundle missing before metadata validation' }
+          $metadata = Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json'
+          if (-not (Test-Path $metadata)) { throw 'VST3 moduleinfo.json missing' }
+          python tools/normalize_vst3_moduleinfo.py "$metadata" --expected-name 'Skell-Preset' --expected-vendor 'Skell Audio' --expected-version '0.6.0'
+          if ($LASTEXITCODE -ne 0) { throw 'Skell-Preset VST3 metadata validation failed' }
+      - name: Stage flat VST3 bundle and build manifest
+        shell: pwsh
+        run: |
+          # Stage the actual plugin only; never include the nested host fixture.
+          $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $vst) { throw 'Skell-Preset VST3 bundle missing' }
+          $stage = Join-Path $PWD 'Skell-Preset-Windows-VST3'
+          if (Test-Path $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item -LiteralPath $vst.FullName -Destination $stage -Recurse
+          $bundle = Join-Path $stage 'Skell-Preset.vst3'
+          $binary = Join-Path $bundle 'Contents/x86_64-win/Skell-Preset.vst3'
+          $metadata = Join-Path $bundle 'Contents/Resources/moduleinfo.json'
+          if (-not (Test-Path $binary)) { throw 'Windows x64 VST3 binary missing from staged bundle' }
+          $info = Get-Content -LiteralPath $metadata -Raw | ConvertFrom-Json
+          $buildInfo = [ordered]@{
+            sourceCommit = (git rev-parse HEAD).Trim()
+            workflowRun = $env:GITHUB_RUN_ID
+            pluginName = $info.Name
+            pluginVersion = $info.Version
+            vendor = $info.'Factory Info'.Vendor
+            architecture = 'x86_64-win'
+            configuration = 'Release'
+            binarySha256 = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+            moduleInfoSha256 = (Get-FileHash -LiteralPath $metadata -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          $buildInfo | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stage 'build-info.json') -Encoding utf8
+          $hashLines = Get-ChildItem -LiteralPath $bundle -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $relative = $_.FullName.Substring($stage.Length + 1).Replace('\','/')
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $relative"
+          }
+          $hashLines | Set-Content -LiteralPath (Join-Path $stage 'SHA256SUMS.txt') -Encoding utf8
+      - name: Validate exact staged VST3 with pluginval
+        uses: Tracktion/pluginval/validate@v2.0.0-beta3
+        with:
+          plugins: Skell-Preset-Windows-VST3/Skell-Preset.vst3
+          strictness-level: 5
+          pluginval-version: v2.0.0-beta3
       - uses: actions/upload-artifact@v5
         with:
           name: Skell-Preset-Windows-VST3
-          path: Skell-Preset-Windows-VST3.zip
+          path: Skell-Preset-Windows-VST3
           if-no-files-found: error
           retention-days: 30
