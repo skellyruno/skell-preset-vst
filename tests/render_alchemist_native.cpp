@@ -323,6 +323,123 @@ int blankSmoke() {
     if(!checkProgramIdentity(true,juce::var("0"),0))return 43;
     if(!checkProgramIdentity(true,juce::var(-1),-1))return 44;
     if(!checkProgramIdentity(true,juce::var(0.5),-1))return 45;
+
+    // Host XML is untrusted: NaN/Inf can survive JUCE's range clamp and poison
+    // APVTS atomics. Verify malformed values default, finite extremes clamp,
+    // valid continuous automation remains unquantized, and the repaired state
+    // survives a second save/reload and real DSP block.
+    {
+        auto corruptSource=std::make_unique<SkellPresetAudioProcessor>();
+        corruptSource->loadFactoryPreset(0);
+        juce::MemoryBlock baseline;
+        corruptSource->getStateInformation(baseline);
+        auto corruptXml=juce::AudioProcessor::getXmlFromBinary(
+            baseline.getData(),(int)baseline.getSize());
+        if(!corruptXml)return 64;
+        auto corruptTree=juce::ValueTree::fromXml(*corruptXml);
+        if(!corruptTree.isValid())return 65;
+        const auto setParameterText=[&](const juce::String& id,
+                                        const juce::String& value)->bool {
+            for(int i=0;i<corruptTree.getNumChildren();++i) {
+                auto child=corruptTree.getChild(i);
+                if(child.getProperty("id").toString()==id) {
+                    child.setProperty("value",value,nullptr);
+                    return true;
+                }
+            }
+            return false;
+        };
+        if(!setParameterText("input","nan") ||
+           !setParameterText("mix","inf") ||
+           !setParameterText("output","-inf") ||
+           !setParameterText("macro1","not-a-number") ||
+           !setParameterText("s1_wet","999") ||
+           !setParameterText("s1_p1","-999") ||
+           !setParameterText("s1_p2","0.37123"))return 66;
+        auto corruptedXml=corruptTree.createXml();
+        if(!corruptedXml)return 67;
+        juce::MemoryBlock corruptedState;
+        juce::AudioProcessor::copyXmlToBinary(*corruptedXml,corruptedState);
+
+        auto sanitized=std::make_unique<SkellPresetAudioProcessor>();
+        sanitized->setStateInformation(corruptedState.getData(),
+                                        (int)corruptedState.getSize());
+        const auto matchesDefault=[](SkellPresetAudioProcessor& processor,
+                                     const juce::String& id)->bool {
+            auto* parameter=processor.state.getParameter(id);
+            auto* raw=processor.state.getRawParameterValue(id);
+            if(!parameter || !raw)return false;
+            const auto range=parameter->getNormalisableRange();
+            const float expected=range.convertFrom0to1(parameter->getDefaultValue());
+            return std::isfinite(raw->load()) &&
+                   std::abs(raw->load()-expected)<1.e-4f;
+        };
+        const auto matchesValue=[](SkellPresetAudioProcessor& processor,
+                                   const juce::String& id,float expected)->bool {
+            const auto* raw=processor.state.getRawParameterValue(id);
+            return raw && std::isfinite(raw->load()) &&
+                   std::abs(raw->load()-expected)<1.e-5f;
+        };
+        const auto allFiniteAndInRange=[](SkellPresetAudioProcessor& processor)->bool {
+            for(int i=0;i<processor.state.state.getNumChildren();++i) {
+                const auto child=processor.state.state.getChild(i);
+                const auto id=child.getProperty("id").toString();
+                auto* parameter=processor.state.getParameter(id);
+                const auto* raw=processor.state.getRawParameterValue(id);
+                if(!parameter || !raw)continue;
+                const auto range=parameter->getNormalisableRange();
+                const float value=raw->load();
+                if(!std::isfinite(value) || value<range.start-1.e-5f ||
+                   value>range.end+1.e-5f)return false;
+            }
+            return true;
+        };
+        if(sanitized->loadedFactoryPresetIndex()!=0 ||
+           sanitized->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
+           sanitized->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount)
+            return 68;
+        if(!matchesDefault(*sanitized,"input") ||
+           !matchesDefault(*sanitized,"mix") ||
+           !matchesDefault(*sanitized,"output") ||
+           !matchesDefault(*sanitized,"macro1"))return 69;
+        if(!matchesValue(*sanitized,"s1_wet",1.f) ||
+           !matchesValue(*sanitized,"s1_p1",0.f) ||
+           !matchesValue(*sanitized,"s1_p2",.37123f) ||
+           !allFiniteAndInRange(*sanitized))return 70;
+
+        juce::MemoryBlock repairedState;
+        sanitized->getStateInformation(repairedState);
+        auto roundtrip=std::make_unique<SkellPresetAudioProcessor>();
+        roundtrip->setStateInformation(repairedState.getData(),
+                                        (int)repairedState.getSize());
+        if(!allFiniteAndInRange(*roundtrip) ||
+           !matchesDefault(*roundtrip,"input") ||
+           !matchesDefault(*roundtrip,"mix") ||
+           !matchesDefault(*roundtrip,"output") ||
+           !matchesDefault(*roundtrip,"macro1") ||
+           !matchesValue(*roundtrip,"s1_p2",.37123f))return 71;
+
+        roundtrip->prepareToPlay(44100.,blockSize);
+        juce::AudioBuffer<float> audio(2,blockSize);
+        juce::MidiBuffer midi;
+        for(int n=0;n<blockSize;++n) {
+            const float sample=.10f*std::sin(
+                (float)(2.*juce::MathConstants<double>::pi*211.*n/44100.));
+            audio.setSample(0,n,sample);
+            audio.setSample(1,n,-.83f*sample);
+        }
+        roundtrip->processBlock(audio,midi);
+        float peak=0.f;
+        for(int channel=0;channel<2;++channel)
+            for(int n=0;n<blockSize;++n) {
+                const float sample=audio.getSample(channel,n);
+                if(!std::isfinite(sample))return 72;
+                if(std::abs(sample)>peak)peak=std::abs(sample);
+            }
+        if(peak>8.f)return 73;
+        roundtrip->releaseResources();
+        std::puts("PASS: corrupt host parameter values default/clamp; valid automation and DSP remain finite");
+    }
     restored->releaseResources();
     plugin->releaseResources();
     std::puts("PASS: blank rack 0-PDC identity and legacy FL Studio preset-state restore");
