@@ -1,5 +1,9 @@
 name: Skell-Preset | Windows VST3
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   push:
     branches: [main]
@@ -40,6 +44,26 @@ jobs:
         run: cmake -S . -B build -A x64
       - name: Compile Windows VST3 and regression fixtures
         run: cmake --build build --config Release --parallel 2
+      # JUCE emits permissive moduleinfo JSON with trailing commas. Normalize
+      # only the shipping plugin, then fail closed on identity and class IDs.
+      - name: Normalize and validate shipping VST3 metadata as strict JSON
+        shell: pwsh
+        run: |
+          $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $vst) { throw 'Shipping Skell-Preset VST3 bundle missing' }
+          $moduleinfo = Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json'
+          if (-not (Test-Path -LiteralPath $moduleinfo -PathType Leaf)) { throw 'Shipping VST3 moduleinfo.json missing' }
+          & python tools/normalize_vst3_moduleinfo.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'VST3 metadata normalizer self-test failed' }
+          & python tools/normalize_vst3_moduleinfo.py $moduleinfo
+          if ($LASTEXITCODE -ne 0) { throw 'VST3 metadata normalization failed' }
+          $manifest = Get-Content -LiteralPath $moduleinfo -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($manifest.Name -ne 'Skell-Preset' -or $manifest.Version -ne '0.6.0') {
+            throw 'Unexpected Skell-Preset identity or version in VST3 moduleinfo'
+          }
+          if (@($manifest.Classes).Count -ne 2) { throw 'Expected exactly two VST3 classes' }
+          $ids = @($manifest.Classes | ForEach-Object { $_.CID })
+          if (($ids | Select-Object -Unique).Count -ne 2) { throw 'Duplicate VST3 class IDs' }
       - name: Validate native preset ZIP import/export and security
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Prove external VST3 load and audio with owned test fixture
@@ -50,17 +74,25 @@ jobs:
           if (-not $fixture -or -not $runner) { throw 'Nested host fixture or probe executable missing' }
           & $runner.FullName $fixture.FullName
           if ($LASTEXITCODE -ne 0) { throw "Nested VST3 host regression failed: $LASTEXITCODE" }
-      - name: Bundle VST3
+      - name: Stage single-extraction VST3 package
         shell: pwsh
         run: |
-          # Do not accidentally package the SkellHostFixture.vst3 regression
-          # plugin now present in the same build tree.
+          # Keep the installable bundle at the artifact root. Uploading a ZIP
+          # inside an Actions artifact ZIP previously required two extractions.
           $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
           if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
-          Compress-Archive -LiteralPath $vst.FullName -DestinationPath Skell-Preset-Windows-VST3.zip -Force
+          $package = Join-Path $env:GITHUB_WORKSPACE 'package'
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item -LiteralPath $vst.FullName -Destination $package -Recurse
+          @(
+            'Product: Skell-Preset'
+            'Version: 0.6.0'
+            "Source commit: $env:GITHUB_SHA"
+            "Workflow run: $env:GITHUB_RUN_ID"
+          ) | Set-Content -LiteralPath (Join-Path $package 'BUILD-INFO.txt') -Encoding utf8
       - uses: actions/upload-artifact@v5
         with:
           name: Skell-Preset-Windows-VST3
-          path: Skell-Preset-Windows-VST3.zip
+          path: package/*
           if-no-files-found: error
           retention-days: 30
