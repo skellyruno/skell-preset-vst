@@ -862,7 +862,8 @@ int nativeTrialsSmoke() {
                      skellpreset::alchemist_lighter_dynamics_trial::factoryIndex,
                      skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex,
                      skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex,
-                     skellpreset::alchemist_serial_dynamics_trial::factoryIndex}) {
+                     skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
+                     skellpreset::alchemist_low_end_contour_trial::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
         // Recall comparison must use the SAME prepare/order for both
         // instances. Preparing the source before loading its program while
@@ -930,7 +931,19 @@ int nativeTrialsSmoke() {
             std::abs(plugin->getSlotParam(2,3)-.15f)>.001f ||
             plugin->getLatencySamples()<48 || plugin->getLatencySamples()>1024))
             return 235;
-        if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex) {
+        if(factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex &&
+           (plugin->slotType(0)!=skellpreset::alchemist_low_end_contour_trial::stages[0].module ||
+            plugin->slotType(1)!=skellpreset::alchemist_low_end_contour_trial::stages[1].module ||
+            plugin->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+            plugin->slotType(3)!=SkellPresetAudioProcessor::SkelldizerFX ||
+            plugin->slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+            plugin->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
+            std::abs(plugin->getSlotParam(0,3)-.04f)>.001f ||
+            std::abs(plugin->getSlotParam(1,1)-.5f)>.001f ||
+            plugin->getLatencySamples()!=144))
+            return 241;
+        if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
+           factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex) {
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> audio(2,256);
             double energy=0.;
@@ -1009,7 +1022,8 @@ int nativeTrialsSmoke() {
         // Runtime DSP history is not serialized into DAW/plugin state, so reset the
         // source after capturing parameters and before comparing it with a freshly
         // prepared restored instance. This tests preset/state recall, not envelope cloning.
-        if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex)
+        if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
+           factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex)
             plugin->prepareToPlay(48000.,256);
         auto recalled=std::make_unique<SkellPresetAudioProcessor>();
         recalled->setStateInformation(state.getData(),(int)state.getSize());
@@ -1059,6 +1073,17 @@ int nativeTrialsSmoke() {
             std::abs(recalled->getSlotParam(2,3)-.15f)>.001f ||
             recalled->getLatencySamples()!=plugin->getLatencySamples()))
             return 236;
+        if(factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex &&
+           (recalled->slotType(0)!=skellpreset::alchemist_low_end_contour_trial::stages[0].module ||
+            recalled->slotType(1)!=skellpreset::alchemist_low_end_contour_trial::stages[1].module ||
+            recalled->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+            recalled->slotType(3)!=SkellPresetAudioProcessor::SkelldizerFX ||
+            recalled->slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+            recalled->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
+            std::abs(recalled->getSlotParam(0,3)-.04f)>.001f ||
+            std::abs(recalled->getSlotParam(1,1)-.5f)>.001f ||
+            recalled->getLatencySamples()!=plugin->getLatencySamples()))
+            return 242;
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=recalled->state.getRawParameterValue("s13_eqQ7");
             const auto* output=recalled->state.getRawParameterValue("output");
@@ -1315,13 +1340,13 @@ int main(int argc,char** argv) {
                            juce::File(juce::String::fromUTF8(argv[3])));
     if(argc==5 && juce::String(argv[1])=="--factory") {
         const auto requested=juce::String(argv[2]);
-        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51" && requested!="52")return 7;
+        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51" && requested!="52" && requested!="53")return 7;
         return render(juce::File(juce::String::fromUTF8(argv[3])),
                       juce::File(juce::String::fromUTF8(argv[4])),
                       requested.getIntValue());
     }
     if(argc!=3) {
-        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52 INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
     }
