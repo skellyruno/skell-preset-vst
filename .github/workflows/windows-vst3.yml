@@ -84,11 +84,25 @@ jobs:
           $package = Join-Path $env:GITHUB_WORKSPACE 'package'
           New-Item -ItemType Directory -Force -Path $package | Out-Null
           Copy-Item -LiteralPath $vst.FullName -Destination $package -Recurse
+          $binary = Get-ChildItem -LiteralPath (Join-Path $package 'Skell-Preset.vst3') -Recurse -File -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $binary) { throw 'Shipping VST3 binary missing after staging' }
+          $stagedModuleInfo = Join-Path $package 'Skell-Preset.vst3/Contents/Resources/moduleinfo.json'
+          if (-not (Test-Path -LiteralPath $stagedModuleInfo -PathType Leaf)) { throw 'Staged moduleinfo.json missing' }
+          $binaryHash = (Get-FileHash -LiteralPath $binary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $moduleInfoHash = (Get-FileHash -LiteralPath $stagedModuleInfo -Algorithm SHA256).Hash.ToLowerInvariant()
+          $branch = if ($env:GITHUB_HEAD_REF) { $env:GITHUB_HEAD_REF } else { $env:GITHUB_REF_NAME }
+          $relativeBinary = $binary.FullName.Substring((Join-Path $package 'Skell-Preset.vst3').Length + 1)
           @(
             'Product: Skell-Preset'
             'Version: 0.6.0'
+            "Source branch: $branch"
             "Source commit: $env:GITHUB_SHA"
             "Workflow run: $env:GITHUB_RUN_ID"
+            'Bundle: Skell-Preset.vst3'
+            "Binary path: $relativeBinary"
+            "Binary SHA256: $binaryHash"
+            "moduleinfo.json SHA256: $moduleInfoHash"
+            'Installed-copy identity: not verified; host fixture validates the build artifact only'
           ) | Set-Content -LiteralPath (Join-Path $package 'BUILD-INFO.txt') -Encoding utf8
       - uses: actions/upload-artifact@v5
         with:
