@@ -51,8 +51,10 @@ jobs:
         run: |
           $renderer = Get-ChildItem build -Recurse -File -Filter 'SkellPresetUIRenderer.exe' | Select-Object -First 1
           if (-not $renderer) { throw 'Quick4 real-editor renderer executable missing' }
-          & $renderer.FullName --quick4 --output ui-screenshots
-          if ($LASTEXITCODE -ne 0) { throw "Quick4 real-editor screenshot/layout checks failed: $LASTEXITCODE" }
+          New-Item -ItemType Directory -Force ui-screenshots | Out-Null
+          & $renderer.FullName --quick4 --output ui-screenshots *> (Join-Path 'ui-screenshots' 'quick4.log')
+          $rendererExit = $LASTEXITCODE
+          if ($rendererExit -ne 0) { throw "Quick4 real-editor screenshot/layout checks failed: $rendererExit" }
           $expected = @('obsidian-simple-100.png','obsidian-advanced-100.png','obsidian-module-picker-70.png','obsidian-mic-panel-70.png','contact-sheet.png')
           foreach ($name in $expected) {
             $path = Join-Path 'ui-screenshots' $name
@@ -60,10 +62,11 @@ jobs:
           }
           Get-ChildItem ui-screenshots -File -Filter '*.png' | Select-Object Name,Length | Format-Table -AutoSize
       - uses: actions/upload-artifact@v5
+        if: always()
         with:
           name: Skell-Preset-Quick4-Screenshots
-          path: ui-screenshots/*.png
-          if-no-files-found: error
+          path: ui-screenshots/*
+          if-no-files-found: warn
           retention-days: 30
       # JUCE's manifest writer emits permissive JSON with trailing commas.
       # The VST3 bundle is user-installable only after strict normalization;

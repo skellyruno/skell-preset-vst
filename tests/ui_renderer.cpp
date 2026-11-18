@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <memory>
 
 namespace {
 struct View {
@@ -36,8 +37,12 @@ int main(int argc, char** argv) {
     const juce::String argument = argc >= 3 && juce::String(argv[1]) == "--output"
         ? juce::String::fromUTF8(argv[2]) : juce::String("ui-screenshots");
     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
+    std::fprintf(stderr,"[Quick4] main entered; processor=%zu bytes editor=%zu bytes\\n",
+                 sizeof(SkellPresetAudioProcessor),sizeof(SkellPresetAudioProcessorEditor));
     juce::ScopedJuceInitialiser_GUI gui;
-    SkellPresetAudioProcessor processor;
+    auto processorStorage=std::make_unique<SkellPresetAudioProcessor>();
+    auto& processor=*processorStorage;
+    std::fprintf(stderr,"[Quick4] processor allocated\\n");
     processor.prepareToPlay(48000.0, 512);
     int failures = 0;
     // Verify filesystem-only VST3 browsing independently of installed plugin
@@ -256,7 +261,10 @@ int main(int argc, char** argv) {
     processor.prepareToPlay(48000.,512);
     processor.loadFactoryPreset(0);
     {
-        SkellPresetAudioProcessorEditor editor(processor);
+        std::fprintf(stderr,"[Quick4] creating real editor\\n");
+        auto editorStorage=std::make_unique<SkellPresetAudioProcessorEditor>(processor);
+        auto& editor=*editorStorage;
+        std::fprintf(stderr,"[Quick4] real editor created\\n");
         if(processor.preparedAudioRate()!=48000.) {
             std::fprintf(stderr,"Processor sample rate was not prepared\n");
             ++failures;
@@ -273,6 +281,7 @@ int main(int argc, char** argv) {
         }
         processor.loadFactoryPreset(0);
         editor.dismissGuidedTourForScreenshot(); // no first-launch overlay in normal UI baselines
+        std::fprintf(stderr,"[Quick4] running real-editor interaction checks\\n");
         for (const auto& issue : editor.runScreenshotInteractionTests()) {
             std::fprintf(stderr, "UI interaction: %s\n", issue.toRawUTF8());
             ++failures;
@@ -581,7 +590,9 @@ int main(int argc, char** argv) {
                 {"obsidian-advanced-100","obsidian-mic-panel-70"}
             };
         }
+        std::fprintf(stderr,"[Quick4] rendering %zu real-editor scenes\\n",options.scenes.size());
         const auto report = skellcore::ui::headless::render(editor, folder, options);
+        std::fprintf(stderr,"[Quick4] render returned; captured=%d errors=%zu\\n",report.captured,report.errors.size());
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;

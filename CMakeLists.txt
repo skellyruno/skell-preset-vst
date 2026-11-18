@@ -162,6 +162,11 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
         target_compile_definitions(SkellPresetUIRenderer PRIVATE JUCE_PLUGINHOST_VST3=1)
     endif()
     target_compile_features(SkellPresetUIRenderer PRIVATE cxx_std_17)
+    if(MSVC)
+        # The real JUCE editor and rack processor are large; keep the test-only
+        # screenshot harness off the 1 MiB default Windows executable stack.
+        target_link_options(SkellPresetUIRenderer PRIVATE /STACK:8388608)
+    endif()
 endif()
 
 # Optional cross-platform diagnostic: run the exact compiled Skell-Preset factory
