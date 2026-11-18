@@ -57,6 +57,7 @@ void sanitizeParameterStateValues(juce::ValueTree& loaded,
         child.setProperty("value",restored,nullptr);
     }
 }
+}
 
 SkellPresetAudioProcessor::SkellPresetAudioProcessor()
 : AudioProcessor(BusesProperties().withInput("Input",juce::AudioChannelSet::stereo(),true)
