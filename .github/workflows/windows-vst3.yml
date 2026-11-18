@@ -96,7 +96,8 @@ jobs:
             'Product: Skell-Preset'
             'Version: 0.6.0'
             "Source branch: $branch"
-            "Source commit: $env:GITHUB_SHA"
+            "Workflow checkout commit: $env:GITHUB_SHA"
+            "PR head commit: ${{ github.event.pull_request.head.sha || github.sha }}"
             "Workflow run: $env:GITHUB_RUN_ID"
             'Bundle: Skell-Preset.vst3'
             "Binary path: $relativeBinary"
@@ -105,11 +106,20 @@ jobs:
             'Installed-copy identity: not verified; host fixture validates the build artifact only'
           ) | Set-Content -LiteralPath (Join-Path $package 'BUILD-INFO.txt') -Encoding utf8
           $hashLines = Get-ChildItem -LiteralPath (Join-Path $package 'Skell-Preset.vst3') -Recurse -File | Sort-Object FullName | ForEach-Object {
-            $relative = $_.FullName.Substring($package.Length + 1).Replace('\\','/')
+            $relative = [System.IO.Path]::GetRelativePath($package, $_.FullName).Replace('\','/')
             $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $relative"
           }
-          $hashLines | Set-Content -LiteralPath (Join-Path $package 'SHA256SUMS.txt') -Encoding utf8
+          $manifestPath = Join-Path $package 'SHA256SUMS.txt'
+          $hashLines | Set-Content -LiteralPath $manifestPath -Encoding utf8
+          foreach ($line in Get-Content -LiteralPath $manifestPath) {
+            $parts = $line -split '  ', 2
+            if ($parts.Count -ne 2) { throw "Malformed SHA256 manifest line: $line" }
+            $manifestFile = Join-Path $package $parts[1].Replace('/','\')
+            if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) { throw "SHA256 manifest path missing: $($parts[1])" }
+            $actualHash = (Get-FileHash -LiteralPath $manifestFile -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $parts[0]) { throw "SHA256 manifest mismatch: $($parts[1])" }
+          }
       - name: Validate exact staged VST3 with pluginval
         uses: Tracktion/pluginval/validate@v2.0.0-beta3
         with:
