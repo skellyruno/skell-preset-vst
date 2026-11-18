@@ -35,6 +35,21 @@ SEGMENT_DURATION_DEFAULT = 15.0
 EXPECTED_TARGET_DELAY_DEFAULT = 55
 SYNC_TOLERANCE_SECONDS = 0.010
 
+# Compare the three compressor wet-blend variants that already have native
+# factory/state/PDC smoke coverage. Keep all existing Alchemist candidates.
+CANDIDATE_FACTORY_IDS = (43, 45, 47, 48, 49, 50, 51, 52, 53)
+CANDIDATE_FACTORY_NAMES = {
+    43: "Alchemist (Native Preview)",
+    45: "Alchemist Refined (Trial)",
+    47: "Alchemist Peak Guard (Trial)",
+    48: "Alchemist Tone Match (Trial)",
+    49: "Alchemist Lighter Dynamics (Trial)",
+    50: "Alchemist Fast Compressor Blend (Trial)",
+    51: "Alchemist Smooth Compressor Blend (Trial)",
+    52: "Alchemist Serial Dynamics (Trial)",
+    53: "Alchemist Low-End Contour (Trial)",
+}
+
 
 def sha256(path: pathlib.Path) -> str:
     digest = hashlib.sha256()
@@ -494,12 +509,8 @@ def analyze(args: argparse.Namespace) -> dict:
         raise ValueError("Alchemist source and target sample counts differ")
 
     candidate_paths = {
-        43: pathlib.Path(args.factory43),
-        45: pathlib.Path(args.factory45),
-        47: pathlib.Path(args.factory47),
-        48: pathlib.Path(args.factory48),
-        52: pathlib.Path(args.factory52),
-        53: pathlib.Path(args.factory53),
+        factory: pathlib.Path(getattr(args, f"factory{factory}"))
+        for factory in CANDIDATE_FACTORY_IDS
     }
     renderer_path = pathlib.Path(args.renderer)
     if not renderer_path.is_file():
@@ -608,7 +619,7 @@ def analyze(args: argparse.Namespace) -> dict:
         ("reference", "FL target", reference_segment),
         *[
             (f"factory{factory}", f"Factory {factory}", candidate_segments[factory])
-            for factory in (43, 45, 47, 48, 52, 53)
+            for factory in CANDIDATE_FACTORY_IDS
         ],
     ]
     lufs_by_track = {
@@ -699,12 +710,7 @@ def analyze(args: argparse.Namespace) -> dict:
         },
         "renderer_binary": renderer_identity,
         "factory_names": {
-            "43": "Alchemist (Native Preview)",
-            "45": "Alchemist Refined (Trial)",
-            "47": "Alchemist Peak Guard (Trial)",
-            "48": "Alchemist Tone Match (Trial)",
-            "52": "Alchemist Serial Dynamics (Trial)",
-            "53": "Alchemist Low-End Contour (Trial)",
+            str(factory): name for factory, name in CANDIDATE_FACTORY_NAMES.items()
         },
         "candidate_renders": candidate_identities,
         "limitations": [
@@ -736,7 +742,7 @@ def analyze(args: argparse.Namespace) -> dict:
         f"- Shared safety attenuation: {common_gain_db:.3f} dB in both modes.\n"
         f"- Level-matched mode attenuates to {level_match_target_lufs:.2f} LUFS; no track is boosted.\n"
         "- Source: printed recording input and FL Studio main-chain wet print.\n"
-        "- Native candidates: factory 43, 45, 47, 48, 52 and 53.\n"
+        f"- Native candidates: factories {', '.join(str(factory) for factory in CANDIDATE_FACTORY_IDS)}.\n"
         "- Original-level and attenuation-only level-matched previews are both included.\n"
         "- Render: compiled SkellPresetAudioProcessor::processBlock; not a hosted VST3 or FL Studio run.\n"
         "- Metrics and SHA-256 provenance: metrics.json.\n"
@@ -779,6 +785,9 @@ def main() -> None:
     run.add_argument("--factory45", required=True)
     run.add_argument("--factory47", required=True)
     run.add_argument("--factory48", required=True)
+    run.add_argument("--factory49", required=True)
+    run.add_argument("--factory50", required=True)
+    run.add_argument("--factory51", required=True)
     run.add_argument("--factory52", required=True)
     run.add_argument("--factory53", required=True)
     run.add_argument("--renderer", required=True)

@@ -159,6 +159,22 @@ class AlchemistReferenceABTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ab.polarity_normalized_correlation(raw_signed, 0)
 
+    def test_candidate_factory_registry_includes_dynamics_blends(self):
+        self.assertEqual(ab.CANDIDATE_FACTORY_IDS, (43, 45, 47, 48, 49, 50, 51, 52, 53))
+        self.assertEqual(
+            ab.CANDIDATE_FACTORY_NAMES[49], "Alchemist Lighter Dynamics (Trial)"
+        )
+        self.assertEqual(
+            ab.CANDIDATE_FACTORY_NAMES[50], "Alchemist Fast Compressor Blend (Trial)"
+        )
+        self.assertEqual(
+            ab.CANDIDATE_FACTORY_NAMES[51], "Alchemist Smooth Compressor Blend (Trial)"
+        )
+        self.assertEqual(
+            len(set(ab.CANDIDATE_FACTORY_NAMES.values())),
+            len(ab.CANDIDATE_FACTORY_NAMES),
+        )
+
     def test_audition_html_uses_tight_animation_frame_sync(self):
         self.assertAlmostEqual(ab.SYNC_TOLERANCE_SECONDS, 0.010)
         out_dir = self.root / "audition"
