@@ -55,10 +55,10 @@ jobs:
           if (-not (Test-Path -LiteralPath $moduleinfo -PathType Leaf)) { throw 'Shipping VST3 moduleinfo.json missing' }
           & python tools/normalize_vst3_moduleinfo.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'VST3 metadata normalizer self-test failed' }
-          & python tools/normalize_vst3_moduleinfo.py $moduleinfo
+          & python tools/normalize_vst3_moduleinfo.py $moduleinfo --expected-name 'Skell-Preset' --expected-vendor 'Skell Audio' --expected-version '0.6.0'
           if ($LASTEXITCODE -ne 0) { throw 'VST3 metadata normalization failed' }
           $manifest = Get-Content -LiteralPath $moduleinfo -Raw | ConvertFrom-Json -ErrorAction Stop
-          if ($manifest.Name -ne 'Skell-Preset' -or $manifest.Version -ne '0.6.0') {
+          if ($manifest.Name -ne 'Skell-Preset' -or $manifest.Version -ne '0.6.0' -or $manifest.'Factory Info'.Vendor -ne 'Skell Audio') {
             throw 'Unexpected Skell-Preset identity or version in VST3 moduleinfo'
           }
           if (@($manifest.Classes).Count -ne 2) { throw 'Expected exactly two VST3 classes' }
@@ -104,6 +104,18 @@ jobs:
             "moduleinfo.json SHA256: $moduleInfoHash"
             'Installed-copy identity: not verified; host fixture validates the build artifact only'
           ) | Set-Content -LiteralPath (Join-Path $package 'BUILD-INFO.txt') -Encoding utf8
+          $hashLines = Get-ChildItem -LiteralPath (Join-Path $package 'Skell-Preset.vst3') -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $relative = $_.FullName.Substring($package.Length + 1).Replace('\\','/')
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $relative"
+          }
+          $hashLines | Set-Content -LiteralPath (Join-Path $package 'SHA256SUMS.txt') -Encoding utf8
+      - name: Validate exact staged VST3 with pluginval
+        uses: Tracktion/pluginval/validate@v2.0.0-beta3
+        with:
+          plugins: package/Skell-Preset.vst3
+          strictness-level: 5
+          pluginval-version: v2.0.0-beta3
       - uses: actions/upload-artifact@v5
         with:
           name: Skell-Preset-Windows-VST3
