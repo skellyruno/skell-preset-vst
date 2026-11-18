@@ -19,7 +19,7 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==53,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==54,"Append only; preserve prior programs");
     static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
                   "Alchemist lighter-dynamics candidate must remain at index 49");
     static_assert(factoryPresets[50].name==std::string_view("Alchemist Fast Compressor Blend (Trial)"),
@@ -28,6 +28,8 @@ int main() {
                   "Smooth-compressor blend trial must append at index 51");
     static_assert(factoryPresets[52].name==std::string_view("Alchemist Serial Dynamics (Trial)"),
                   "Serial FET/RMS trial must append at index 52");
+    static_assert(factoryPresets[53].name==std::string_view("Alchemist Low-End Contour (Trial)"),
+                  "Measured low-end trial must append at index 53");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
@@ -72,6 +74,21 @@ int main() {
     assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[1]-.5f)<1.e-6f);
     assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[2]-.35f)<1.e-6f);
     assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[3]-.15f)<1.e-6f);
+    assert(std::strcmp(factoryPresets[53].name,alchemist_low_end_contour_trial::name)==0);
+    assert(std::strcmp(factoryPresets[53].bank,"Main Vocals")==0);
+    assert(alchemist_low_end_contour_trial::stages.size()==7);
+    assert(alchemist_low_end_contour_trial::stages[0].module==1);
+    assert(std::abs(alchemist_low_end_contour_trial::stages[0].p[3]-.04f)<1.e-7f);
+    assert(alchemist_low_end_contour_trial::stages[1].module==26);
+    assert(std::abs(alchemist_low_end_contour_trial::stages[1].p[1]-.5f)<1.e-7f);
+    for(std::size_t i=0;i<alchemist_serial_dynamics_trial::stages.size();++i) {
+        auto expected=alchemist_serial_dynamics_trial::stages[i];
+        if(i==0)expected.p[3]=.04f;
+        if(i==1)expected.p[1]=.5f;
+        const auto& actual=alchemist_low_end_contour_trial::stages[i];
+        assert(actual.module==expected.module && actual.wet==expected.wet);
+        assert(actual.p==expected.p && actual.q==expected.q);
+    }
     for(const auto& stage:alchemist_serial_dynamics_trial::stages) {
         assert(stage.module>=1 && stage.module<38);
         assert(stage.wet>=0.f && stage.wet<=1.f);

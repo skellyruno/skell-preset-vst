@@ -273,3 +273,27 @@ static_assert(stages[2].wet==.70f && stages[2].p[0]==.428571f &&
               stages[2].p[3]==.15f,
     "Serial-dynamics trial controls must remain explicit and bounded");
 }
+
+
+// Measured low-end contour experiment for the same REC-printed input / MAIN wet target.
+// Factory 52 is preserved; this append-only candidate changes only the first
+// high-pass from 65 Hz to 30 Hz and the 70 Hz bell from +3.39 dB to 0 dB.
+// The exact proprietary Fruity Parametric EQ 2 values remain unverified.
+namespace skellpreset::alchemist_low_end_contour_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_serial_dynamics_trial::stages;
+    result[0].p[3]=.04f; // Classic EQ: 20 + 250 * .04 = 30 Hz high-pass.
+    result[1].p[1]=.5f;  // 8-band EQ: (0.5 - 0.5) * 30 = 0 dB at 70 Hz.
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=53;
+inline constexpr const char* name="Alchemist Low-End Contour (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==7 && stages[0].module==1 && stages[1].module==26 &&
+              stages[2].module==27 && stages[3].module==33 &&
+              stages[5].module==31 && stages[6].module==3,
+    "Low-end contour trial must preserve serial chain and final peak guard");
+static_assert(stages[0].p[3]==.04f && stages[1].p[1]==.5f,
+    "Low-end trial must use 30 Hz high-pass and neutral 70 Hz bell");
+}

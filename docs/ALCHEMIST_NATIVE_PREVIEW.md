@@ -130,3 +130,22 @@ corrections were estimated from the rendered output bands; they must be
 verified by rendering factory 48 from the current source against the same
 target and comparing LUFS, 4x peak, band error and 20/50/200/400 ms envelope.
 Factories 43, 45 and 47 remain available unchanged for A/B rollback.
+
+
+## Optional factory 53 — Alchemist Low-End Contour (Trial)
+
+Factory 53 is an append-only experiment based on the 19–34 s same-take
+comparison. Factory 52 was 8.419 dB low at 20–60 Hz and 4.212 dB high at
+60–120 Hz relative to the MAIN wet target. The current native contour uses a
+65 Hz high-pass and a 70 Hz / +3.39 dB / Q 1.40 bell. Factory 53 retains
+Factory 52's serial FET/RMS dynamics, Skelldizer, saturation, Match Finish and
+final peak guard, but changes only the first high-pass to 30 Hz and the 70 Hz
+bell to 0 dB.
+
+This is a measured corrective hypothesis, not a recovered proprietary EQ2
+setting. The archived FST chain inventory has an EQ2-count discrepancy and
+its numeric EQ2 controls are not decoded. The same-take A/B workflow must
+measure the new candidate's low-band deltas, multiresolution spectral error,
+envelope, LUFS, sample peak and 4x true-peak estimate. No makeup gain is
+applied to force loudness equality, no existing factory is overwritten, and
+Factory 53 is not promoted without owner listening acceptance.

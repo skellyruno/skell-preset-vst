@@ -477,6 +477,7 @@ def analyze(args: argparse.Namespace) -> dict:
         47: pathlib.Path(args.factory47),
         48: pathlib.Path(args.factory48),
         52: pathlib.Path(args.factory52),
+        53: pathlib.Path(args.factory53),
     }
     renderer_path = pathlib.Path(args.renderer)
     if not renderer_path.is_file():
@@ -585,7 +586,7 @@ def analyze(args: argparse.Namespace) -> dict:
         ("reference", "FL target", reference_segment),
         *[
             (f"factory{factory}", f"Factory {factory}", candidate_segments[factory])
-            for factory in (43, 45, 47, 48, 52)
+            for factory in (43, 45, 47, 48, 52, 53)
         ],
     ]
     lufs_by_track = {
@@ -681,6 +682,7 @@ def analyze(args: argparse.Namespace) -> dict:
             "47": "Alchemist Peak Guard (Trial)",
             "48": "Alchemist Tone Match (Trial)",
             "52": "Alchemist Serial Dynamics (Trial)",
+            "53": "Alchemist Low-End Contour (Trial)",
         },
         "candidate_renders": candidate_identities,
         "limitations": [
@@ -712,7 +714,7 @@ def analyze(args: argparse.Namespace) -> dict:
         f"- Shared safety attenuation: {common_gain_db:.3f} dB in both modes.\n"
         f"- Level-matched mode attenuates to {level_match_target_lufs:.2f} LUFS; no track is boosted.\n"
         "- Source: printed recording input and FL Studio main-chain wet print.\n"
-        "- Native candidates: factory 43, 45, 47, 48 and 52.\n"
+        "- Native candidates: factory 43, 45, 47, 48, 52 and 53.\n"
         "- Original-level and attenuation-only level-matched previews are both included.\n"
         "- Render: compiled SkellPresetAudioProcessor::processBlock; not a hosted VST3 or FL Studio run.\n"
         "- Metrics and SHA-256 provenance: metrics.json.\n"
@@ -756,6 +758,7 @@ def main() -> None:
     run.add_argument("--factory47", required=True)
     run.add_argument("--factory48", required=True)
     run.add_argument("--factory52", required=True)
+    run.add_argument("--factory53", required=True)
     run.add_argument("--renderer", required=True)
     run.add_argument("--fst", required=True)
     run.add_argument("--fst-report", required=True)

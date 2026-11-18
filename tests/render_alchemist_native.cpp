@@ -410,11 +410,13 @@ int stress() {
     for(const double sr:rates) {
         // Check actual host-facing processor PDC, not a helper's estimate.
         for(const int preset:{skellpreset::alchemist::factoryIndex,
-                                skellpreset::alchemist_serial_dynamics_trial::factoryIndex,25,0}) {
+                                skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
+                                skellpreset::alchemist_low_end_contour_trial::factoryIndex,25,0}) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
             p->loadFactoryPreset(preset);
             p->prepareToPlay(sr,64);
-            const int expected=(preset==0 || preset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex)
+            const int expected=(preset==0 || preset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
+                                preset==skellpreset::alchemist_low_end_contour_trial::factoryIndex)
                 ?std::max(48,(int)(sr*.003)):0;
             if(p->getLatencySamples()!=expected) {
                 std::fprintf(stderr,
@@ -425,7 +427,8 @@ int stress() {
             p->releaseResources();
         }
         for(const int rackPreset:{skellpreset::alchemist::factoryIndex,
-                                  skellpreset::alchemist_serial_dynamics_trial::factoryIndex}) {
+                                  skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
+                                  skellpreset::alchemist_low_end_contour_trial::factoryIndex}) {
           for(const int frames:buffers) {
             for(const int count:instances) {
                 // Construct/prepare and allocate audio buffers outside timing.
@@ -437,7 +440,8 @@ int stress() {
                     auto p=std::make_unique<SkellPresetAudioProcessor>();
                     p->loadFactoryPreset(rackPreset);
                     p->prepareToPlay(sr,frames);
-                    const int expectedLatency=rackPreset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex
+                    const int expectedLatency=(rackPreset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
+                                               rackPreset==skellpreset::alchemist_low_end_contour_trial::factoryIndex)
                         ?std::max(48,(int)(sr*.003)):0;
                     if(p->getLatencySamples()!=expectedLatency)return 10;
                     plugins.push_back(std::move(p));
@@ -563,8 +567,9 @@ int render(const juce::File& source, const juce::File& destination,
        factoryIndex!=skellpreset::alchemist_lighter_dynamics_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex &&
-       factoryIndex!=skellpreset::alchemist_serial_dynamics_trial::factoryIndex) {
-        std::fprintf(stderr,"ERROR: factory selection must be 43 through 52\n");
+       factoryIndex!=skellpreset::alchemist_serial_dynamics_trial::factoryIndex &&
+       factoryIndex!=skellpreset::alchemist_low_end_contour_trial::factoryIndex) {
+        std::fprintf(stderr,"ERROR: factory selection must be 43 through 53\n");
         return 7;
     }
     plugin->loadFactoryPreset(factoryIndex);
@@ -573,7 +578,8 @@ int render(const juce::File& source, const juce::File& destination,
     const bool deuceCountValid=factoryIndex==skellpreset::deuce::factoryIndex
         ?plugin->activeSlotCount()==12
         :plugin->activeSlotCount()==13;
-    const bool serialDynamicsFactory=factoryIndex==skellpreset::alchemist_serial_dynamics_trial::factoryIndex;
+    const bool serialDynamicsFactory=factoryIndex==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
+                                     factoryIndex==skellpreset::alchemist_low_end_contour_trial::factoryIndex;
     const bool peakGuardFactory=factoryIndex==skellpreset::alchemist_peak_guard_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_tone_match_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex ||
