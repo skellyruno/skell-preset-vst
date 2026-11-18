@@ -7,10 +7,12 @@
 #include "../Source/host/InstalledVST3Index.h"
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <set>
 
 namespace {
 struct View {
@@ -646,41 +648,59 @@ int main(int argc, char** argv) {
         // Quick4 captures exactly the 4 current-source real editor scenes.
         // Full audits keep the old six-view overview.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
-        juce::Image overview(juce::Image::RGB,2*thumbnailWidth,
+        juce::Image overview(juce::Image::ARGB,2*thumbnailWidth,
                              (quick4?2:3)*thumbnailHeight,true);
-        juce::Graphics g(overview);
-        if(quick4) {
-            // Use the exact four previously saved PNGs. Re-rendering the
-            // editor for contact-sheet thumbnails used to reset Alchemist
-            // to Clean Lead and made the sheet disagree with each scene.
-            for(int i=0;i<4;++i) {
-                const auto& scene=options.scenes[(size_t)i];
-                const auto saved=juce::ImageFileFormat::loadFrom(
-                    folder.getChildFile(scene.id+".png"));
-                if(!saved.isValid() || saved.getWidth()<100 || saved.getHeight()<100) {
-                    std::fprintf(stderr,"Quick4 saved PNG missing or invalid\n");
-                    ++failures;
-                } else {
-                    g.drawImageWithin(saved,(i%2)*thumbnailWidth,
-                        (i/2)*thumbnailHeight,thumbnailWidth,thumbnailHeight,
-                        juce::RectanglePlacement::stretchToFit);
-                }
-            }
-        } else {
-            for(int theme=0;theme<(int)themes.size();++theme)
-                for(int column=0;column<2;++column) {
-                    editor.configureForScreenshot(theme,views[(size_t)column].mode,
-                                                  views[(size_t)column].browser);
-                    const auto capture=skellcore::ui::headless::capture(
-                        editor,thumbnailWidth,thumbnailHeight);
-                    if(!capture.image.isValid() || capture.distinctColours<12) {
-                        std::fprintf(stderr,"Contact sheet scene failed\n");
+        {
+            // Finish all drawing before PNG serialization. Keep an opaque
+            // dark canvas so alpha from editor snapshots cannot turn the
+            // contact sheet into a black/transparent artifact in viewers.
+            juce::Graphics g(overview);
+            g.fillAll(juce::Colour::fromRGB(12,12,14));
+            if(quick4) {
+                // Use the exact four previously saved PNGs. Re-rendering the
+                // editor for contact-sheet thumbnails used to reset Alchemist
+                // to Clean Lead and made the sheet disagree with each scene.
+                for(int i=0;i<4;++i) {
+                    const auto& scene=options.scenes[(size_t)i];
+                    const auto saved=juce::ImageFileFormat::loadFrom(
+                        folder.getChildFile(scene.id+".png"));
+                    if(!saved.isValid() || saved.getWidth()<100 || saved.getHeight()<100) {
+                        std::fprintf(stderr,"Quick4 saved PNG missing or invalid\\n");
                         ++failures;
                     } else {
-                        g.drawImageAt(capture.image,column*thumbnailWidth,
-                                     theme*thumbnailHeight);
+                        g.drawImageWithin(saved,(i%2)*thumbnailWidth,
+                            (i/2)*thumbnailHeight,thumbnailWidth,thumbnailHeight,
+                            juce::RectanglePlacement::stretchToFit);
                     }
                 }
+            } else {
+                for(int theme=0;theme<(int)themes.size();++theme)
+                    for(int column=0;column<2;++column) {
+                        editor.configureForScreenshot(theme,views[(size_t)column].mode,
+                                                      views[(size_t)column].browser);
+                        const auto capture=skellcore::ui::headless::capture(
+                            editor,thumbnailWidth,thumbnailHeight);
+                        if(!capture.image.isValid() || capture.distinctColours<12) {
+                            std::fprintf(stderr,"Contact sheet scene failed\\n");
+                            ++failures;
+                        } else {
+                            g.drawImageAt(capture.image,column*thumbnailWidth,
+                                         theme*thumbnailHeight);
+                        }
+                    }
+            }
+        }
+        // A successful PNG write is not enough: reject a blank contact sheet
+        // just as individual editor captures reject flat/empty images.
+        std::set<juce::uint32> overviewColours;
+        const int sampleDx=std::max(5,overview.getWidth()/72);
+        const int sampleDy=std::max(5,overview.getHeight()/56);
+        for(int y=2;y<overview.getHeight();y+=sampleDy)
+            for(int x=2;x<overview.getWidth();x+=sampleDx)
+                overviewColours.insert(overview.getPixelAt(x,y).getARGB());
+        if(overviewColours.size()<12) {
+            std::fprintf(stderr,"Contact sheet is unexpectedly blank or flat\\n");
+            ++failures;
         }
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
