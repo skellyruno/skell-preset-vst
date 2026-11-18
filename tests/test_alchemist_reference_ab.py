@@ -282,9 +282,10 @@ class AlchemistReferenceABTests(unittest.TestCase):
             }],
             -1.0,
             -16.0,
-            {"test": "sync"},
+            {"test": "sync", "alignment_analysis_window_seconds": [19.0, 34.0]},
         )
         page = (out_dir / "index.html").read_text(encoding="utf-8")
+        self.assertIn("19.000–34.000 s", page)
         self.assertIn("const syncToleranceSeconds = 0.010;", page)
         self.assertIn("requestAnimationFrame(syncFrame)", page)
         self.assertIn("cancelAnimationFrame(syncAnimationFrame)", page)
