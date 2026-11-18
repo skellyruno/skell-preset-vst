@@ -33,7 +33,13 @@ struct Document {
     int activeSlotCount = legacySlotCount;
     float inputDb = 0, mix = 1, outputDb = 0;
     std::array<float, 8> macros {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
-    std::array<Slot, slotCount> slots {};
+    // New blank documents must have unique, stable physical slot identities.
+    std::array<Slot, slotCount> slots = [] {
+        std::array<Slot, slotCount> result {};
+        for (int i=0;i<slotCount;++i)
+            result[static_cast<size_t>(i)].slotId=i;
+        return result;
+    }();
 };
 
 // Runs on the message thread only. ZIP reading has strict size and entry limits,
