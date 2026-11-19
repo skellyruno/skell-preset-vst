@@ -85,6 +85,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Studio rack audio/PDC/state regression failed: $LASTEXITCODE" }
           & $renderer.FullName --native-trials-smoke
           if ($LASTEXITCODE -ne 0) { throw "Native factory recall/audio/PDC/state regression failed: $LASTEXITCODE" }
+          & $renderer.FullName --lowend-override-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Factory 54 low-end override regression failed: $LASTEXITCODE" }
       - name: Bundle VST3
         shell: pwsh
         run: |
@@ -172,7 +174,11 @@ jobs:
           python soundmatch/scripts/materialize_archive.py --restore --repo-root soundmatch --output soundmatch/local_sound_archive
           if ($LASTEXITCODE -ne 0) { throw 'Owner archive restoration failed' }
       - name: Run Alchemist A/B tooling regressions
-        run: python -m unittest discover -s tests -p test_alchemist_reference_ab.py -v
+        run: |
+          python -m unittest discover -s tests -p test_alchemist_reference_ab.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests -p test_alchemist_lowend_sweep.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/download-artifact@v5
         with:
           name: Skell-Preset-Alchemist-Renderer-Windows
@@ -191,6 +197,16 @@ jobs:
             $output = "build/alchemist-factory-$factory.wav"
             & $renderer.FullName --factory $factory build/alchemist-input.wav $output
             if ($LASTEXITCODE -ne 0) { throw "Native factory $factory render failed: $LASTEXITCODE" }
+          }
+          $variants = @(
+            @{ Id = 'hpf20'; Hpf = '0.0'; Band = '0.5' },
+            @{ Id = 'hpf20-70minus1'; Hpf = '0.0'; Band = '0.4666667' },
+            @{ Id = 'hpf20-70minus2'; Hpf = '0.0'; Band = '0.4333333' }
+          )
+          foreach ($variant in $variants) {
+            $output = "build/alchemist-$($variant.Id).wav"
+            & $renderer.FullName --factory-override 54 $variant.Hpf $variant.Band build/alchemist-input.wav $output
+            if ($LASTEXITCODE -ne 0) { throw "Alchemist low-end override $($variant.Id) failed: $LASTEXITCODE" }
           }
       - name: Align measured delays, compare 19–34 s, and package 24-bit FLAC audition
         shell: pwsh
@@ -225,6 +241,39 @@ jobs:
           )
           python @analysisArgs
           if ($LASTEXITCODE -ne 0) { throw "Alchemist same-take analysis failed: $LASTEXITCODE" }
+      - name: Analyze and package Factory 54 low-end sweep
+        shell: pwsh
+        run: |
+          $renderer = Get-ChildItem renderer -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Native Alchemist renderer missing for low-end sweep' }
+          $archiveCommit = (git -C soundmatch rev-parse HEAD).Trim()
+          $sweepArgs = @(
+            "tools/alchemist_lowend_sweep.py",
+            "--input-flac", "soundmatch/local_sound_archive/data/alchemist/audio/input_rec_printed.flac",
+            "--reference-flac", "soundmatch/local_sound_archive/data/alchemist/audio/main_effects.flac",
+            "--factory54", "build/alchemist-factory-54.wav",
+            "--hpf20", "build/alchemist-hpf20.wav",
+            "--hpf20-70minus1", "build/alchemist-hpf20-70minus1.wav",
+            "--hpf20-70minus2", "build/alchemist-hpf20-70minus2.wav",
+            "--renderer", $renderer.FullName,
+            "--fst", "soundmatch/local_sound_archive/data/alchemist/presets/MAIN.fst",
+            "--fst-report", "soundmatch/local_sound_archive/data/alchemist/research_reports/MAIN_FST_Structure.json",
+            "--fst-chain-manifest", "tests/fixtures/alchemist_main_fst_chain.json",
+            "--manifest", "soundmatch/archive/manifest.json",
+            "--archive-root", "soundmatch/local_sound_archive",
+            "--out-dir", "build/alchemist-lowend-sweep",
+            "--plugin-commit", $env:GITHUB_SHA,
+            "--archive-commit", $archiveCommit,
+            "--archive-branch", "feature/deuce-v25-listening-approved-20261115"
+          )
+          python @sweepArgs
+          if ($LASTEXITCODE -ne 0) { throw "Alchemist low-end sweep failed: $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Alchemist-LowEnd-Sweep
+          path: build/alchemist-lowend-sweep.zip
+          if-no-files-found: error
+          retention-days: 30
       - uses: actions/upload-artifact@v5
         with:
           name: Alchemist-Native-SameTake-AB
