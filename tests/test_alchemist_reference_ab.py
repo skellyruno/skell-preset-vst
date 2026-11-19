@@ -258,6 +258,30 @@ class AlchemistReferenceABTests(unittest.TestCase):
             len(ab.CANDIDATE_FACTORY_NAMES),
         )
 
+    def test_generated_readme_reports_exact_hash_bound_fst_chain(self):
+        readme = ab.build_readme(
+            19.0,
+            15.0,
+            19.0,
+            15.0,
+            44100,
+            2,
+            -1.025,
+            -16.611,
+            list(ab.EXPECTED_MAIN_FST_CHAIN),
+        )
+        expected = (
+            "MAIN.fst chain: 7 hash-bound owner-manifest slots — "
+            "Fruity Parametric EQ 2 → Fruity Parametric EQ 2 → "
+            "Fruity Limiter → Waves CLA-76 Stereo → Waves CLA-2A Stereo → "
+            "Soundgoodizer → Fruity Limiter."
+        )
+        self.assertIn(expected, readme)
+        self.assertNotIn("six hash-bound", readme)
+        self.assertNotIn("one EQ2", readme)
+        with self.assertRaisesRegex(ValueError, "readable slot names"):
+            ab.build_readme(19.0, 15.0, 19.0, 15.0, 44100, 2, -1.0, -16.0, [])
+
     def test_audition_html_uses_tight_animation_frame_sync(self):
         self.assertAlmostEqual(ab.SYNC_TOLERANCE_SECONDS, 0.010)
         out_dir = self.root / "audition"

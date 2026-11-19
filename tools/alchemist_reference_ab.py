@@ -60,6 +60,43 @@ CANDIDATE_FACTORY_NAMES = {
     54: "Alchemist Serial Dynamics Blend (Trial)",
 }
 
+def build_readme(
+    segment_start: float,
+    segment_duration: float,
+    alignment_start: float,
+    alignment_duration: float,
+    sample_rate: int,
+    channels: int,
+    common_gain_db: float,
+    level_match_target_lufs: float,
+    fst_chain: list[str],
+) -> str:
+    """Describe the exact hash-bound FST chain used by this A/B render."""
+    if not fst_chain or any(
+        not isinstance(name, str) or not name.strip() for name in fst_chain
+    ):
+        raise ValueError("MAIN.fst chain must contain readable slot names")
+    chain_text = " → ".join(fst_chain)
+    return (
+        "# Alchemist native same-take A/B\n\n"
+        "Open index.html locally in a browser. The page embeds every 15-second "
+        "24-bit FLAC and uses synchronized playback for switching.\n\n"
+        f"- Segment: {segment_start:.3f}–{segment_start + segment_duration:.3f} s\n"
+        f"- Delay analysis window: {alignment_start:.3f}–{alignment_start + alignment_duration:.3f} s (same-take excerpt by default).\n"
+        f"- Sample rate: {sample_rate} Hz; channels: {channels}\n"
+        f"- Shared safety attenuation: {common_gain_db:.3f} dB in both modes.\n"
+        f"- Level-matched mode attenuates to {level_match_target_lufs:.2f} LUFS; no track is boosted.\n"
+        "- Source: printed recording input and FL Studio main-chain wet print.\n"
+        f"- MAIN.fst chain: {len(fst_chain)} hash-bound owner-manifest slots — {chain_text}.\n"
+        "- Stored slot state does not prove every effect is audible; host bypass, wet/dry and mixer routing still require FL Studio validation.\n"
+        f"- Native candidates: factories {', '.join(str(factory) for factory in CANDIDATE_FACTORY_IDS)}.\n"
+        "- Original-level and attenuation-only level-matched previews are both included.\n"
+        "- Render: compiled SkellPresetAudioProcessor::processBlock; not a hosted VST3 or FL Studio run.\n"
+        "- Metrics and SHA-256 provenance: metrics.json.\n"
+        "- Listening approval and factory promotion remain manual.\n"
+    )
+
+
 
 def sha256(path: pathlib.Path) -> str:
     digest = hashlib.sha256()
@@ -821,22 +858,16 @@ def analyze(args: argparse.Namespace) -> dict:
         json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8"
     )
     _make_html(out_dir, rows, common_gain_db, level_match_target_lufs, provenance)
-    readme = (
-        "# Alchemist native same-take A/B\n\n"
-        "Open index.html locally in a browser. The page embeds every 15-second "
-        "24-bit FLAC and uses synchronized playback for switching.\n\n"
-        f"- Segment: {args.segment_start:.3f}–{args.segment_start + args.segment_duration:.3f} s\n"
-        f"- Delay analysis window: {alignment_start:.3f}–{alignment_start + alignment_duration:.3f} s (same-take excerpt by default).\n"
-        f"- Sample rate: {sample_rate} Hz; channels: {input_audio.shape[1]}\n"
-        f"- Shared safety attenuation: {common_gain_db:.3f} dB in both modes.\n"
-        f"- Level-matched mode attenuates to {level_match_target_lufs:.2f} LUFS; no track is boosted.\n"
-        "- Source: printed recording input and FL Studio main-chain wet print.\n"
-        "- MAIN.fst chain: six hash-bound owner-manifest slots (one EQ2, two Fruity Limiters).\n"
-        f"- Native candidates: factories {', '.join(str(factory) for factory in CANDIDATE_FACTORY_IDS)}.\n"
-        "- Original-level and attenuation-only level-matched previews are both included.\n"
-        "- Render: compiled SkellPresetAudioProcessor::processBlock; not a hosted VST3 or FL Studio run.\n"
-        "- Metrics and SHA-256 provenance: metrics.json.\n"
-        "- Listening approval and factory promotion remain manual.\n"
+    readme = build_readme(
+        args.segment_start,
+        args.segment_duration,
+        alignment_start,
+        alignment_duration,
+        sample_rate,
+        input_audio.shape[1],
+        common_gain_db,
+        level_match_target_lufs,
+        fst_chain,
     )
     (out_dir / "README.md").write_text(readme, encoding="utf-8")
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
