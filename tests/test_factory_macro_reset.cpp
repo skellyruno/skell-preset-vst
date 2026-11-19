@@ -76,6 +76,7 @@ bool hostStateSanitizerRoundtrip() {
     };
     if(!setText("input","nan") || !setText("mix","inf") ||
        !setText("output","-inf") || !setText("macro1","not-a-number") ||
+       !setText("macro2","0.371") ||
        !setText("s1_wet","999") || !setText("s1_p1","-999") ||
        !setText("s1_p2","0.371") || !setText("s1_eqQ1","nan") ||
        !setText("s1_eqQ2","0.371") || !setText("mode","2.4") ||
