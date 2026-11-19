@@ -734,8 +734,9 @@ int render(const juce::File& source, const juce::File& destination,
        factoryIndex!=skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_serial_dynamics_trial::factoryIndex &&
-       factoryIndex!=skellpreset::alchemist_low_end_contour_trial::factoryIndex) {
-        std::fprintf(stderr,"ERROR: factory selection must be 43 through 53\n");
+       factoryIndex!=skellpreset::alchemist_low_end_contour_trial::factoryIndex &&
+       factoryIndex!=skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex) {
+        std::fprintf(stderr,"ERROR: factory selection must be 43 through 54\n");
         return 7;
     }
     plugin->loadFactoryPreset(factoryIndex);
