@@ -383,6 +383,16 @@ def _make_html(out_dir: pathlib.Path, track_rows: list[dict],
             f'{html.escape(row["label"])}</button>'
         )
 
+    def format_cell(value: object) -> str:
+        if value is None:
+            return "—"
+        if isinstance(value, (int, np.integer)):
+            return str(int(value))
+        if isinstance(value, (float, np.floating)):
+            numeric = float(value)
+            return f"{numeric:.3f}" if math.isfinite(numeric) else "—"
+        return str(value)
+
     table_rows = []
     for row in track_rows:
         metrics = row.get("metrics") or {}
@@ -390,15 +400,15 @@ def _make_html(out_dir: pathlib.Path, track_rows: list[dict],
         table_rows.append(
             "<tr>"
             f"<th>{html.escape(row['label'])}</th>"
-            f"<td>{html.escape(str(row.get('lufs_raw')))}</td>"
-            f"<td>{html.escape(str(row.get('level_matched_attenuation_db')))}</td>"
-            f"<td>{html.escape(str(row.get('lufs_level_matched')))}</td>"
-            f"<td>{html.escape(str(row.get('true_peak_dbtp_4x_estimate')))}</td>"
-            f"<td>{html.escape(str(raw.get('multires_spectral_mae_db', '—')))}</td>"
-            f"<td>{html.escape(str(raw.get('envelope_20ms_mae_db', '—')))}</td>"
-            f"<td>{html.escape(str(raw.get('waveform_correlation_signed', '—')))}</td>"
-            f"<td>{html.escape(str(metrics.get('relative_alignment_polarity', '—')))}</td>"
-            f"<td>{html.escape(str(metrics.get('waveform_correlation_polarity_normalized', '—')))}</td>"
+            f"<td>{html.escape(format_cell(row.get('lufs_raw')))}</td>"
+            f"<td>{html.escape(format_cell(row.get('level_matched_attenuation_db')))}</td>"
+            f"<td>{html.escape(format_cell(row.get('lufs_level_matched')))}</td>"
+            f"<td>{html.escape(format_cell(row.get('true_peak_dbtp_4x_estimate')))}</td>"
+            f"<td>{html.escape(format_cell(raw.get('multires_spectral_mae_db')))}</td>"
+            f"<td>{html.escape(format_cell(raw.get('envelope_20ms_mae_db')))}</td>"
+            f"<td>{html.escape(format_cell(raw.get('waveform_correlation_signed')))}</td>"
+            f"<td>{html.escape(format_cell(metrics.get('relative_alignment_polarity')))}</td>"
+            f"<td>{html.escape(format_cell(metrics.get('waveform_correlation_polarity_normalized')))}</td>"
             "</tr>"
         )
 
@@ -417,8 +427,11 @@ h1{{font-size:1.5rem}}p{{line-height:1.5;color:#b8c5bb}}
 button{{background:#1d2b23;color:#eaffed;border:1px solid #45634d;border-radius:8px;padding:.65rem .9rem;cursor:pointer}}
 button[aria-pressed="true"]{{background:#2e5839;border-color:#8bd69a}}
 input[type=range]{{width:min(100%,700px)}}
-table{{width:100%;border-collapse:collapse;font-size:.88rem;margin:1rem 0}}
-th,td{{padding:.5rem;border-bottom:1px solid #344139;text-align:left}}
+.table-scroll{{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;border:1px solid #344139;border-radius:8px}}
+table{{width:100%;min-width:1280px;border-collapse:collapse;font-size:.82rem;margin:0;font-variant-numeric:tabular-nums}}
+th,td{{padding:.5rem .6rem;border-bottom:1px solid #344139;text-align:left;white-space:nowrap}}
+tbody th:first-child{{position:sticky;left:0;background:#101312;z-index:1}}
+.table-hint{{font-size:.85rem;color:#91a196;margin:.35rem 0 .5rem}}
 pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#171e1a;padding:1rem;border-radius:8px;color:#aebcb2}}
 .note{{border-left:3px solid #7caa84;padding:.6rem 1rem;background:#151d18}}
 </style>
@@ -446,10 +459,13 @@ pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#171e1a;padding:1rem
 </div>
 {''.join(audio_tags)}
 <h2>Measured source and output metrics</h2>
+<div class="table-scroll" role="region" aria-label="Measured source and output metrics" tabindex="0">
 <table>
 <thead><tr><th>Track</th><th>Raw LUFS</th><th>Attenuation-only gain dB</th><th>Matched LUFS</th><th>Raw 4× peak estimate dBTP</th><th>Spectral MAE dB</th><th>20 ms envelope MAE dB</th><th>Raw signed corr.</th><th>Relative polarity</th><th>Polarity-normalized corr.</th></tr></thead>
 <tbody>{''.join(table_rows)}</tbody>
 </table>
+</div>
+<p class="table-hint">Scroll horizontally to see all metrics. Values are rounded to 3 decimals here; full precision remains in metrics.json.</p>
 <p>Raw spectral and envelope metrics compare each native render against the FL Studio wet print. RMS-level-matched metrics are recorded separately in metrics.json for diagnostics only; they are not used to create either audition mode. The raw signed correlation is preserved. The polarity-normalized correlation removes only the measured global alignment-polarity sign from that scalar; it does not invert any preview audio. The 4× peak is an estimate, not a certified true-peak measurement.</p>
 <p>Render source: SkellPresetAudioProcessor::processBlock. This is not an external VST3-host render, FL Studio session test, or user listening approval. No candidate is automatically promoted.</p>
 <h2>Provenance</h2>

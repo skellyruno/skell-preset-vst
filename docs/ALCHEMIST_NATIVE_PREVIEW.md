@@ -6,12 +6,12 @@
 
 A complete, editable Skell Preset factory chain built from six existing rack processors plus one new **causal match-finishing native DSP module**. Added at program index **43** (44th program), appended after the existing 43 programs. Search **Alchemist** in the Main Vocals bank. Each stage remains independently automatable, bypassable and reorderable; the original plugin manufacturer/code is unchanged.
 
-The matching work in the owner-provided `Skelly_Sound_Matching_v0_7_Complete.zip` is **offline**, includes a noncausal phase-matching ancestry, and is **not** an implementation of real-time CLA-76, CLA-2A, Fruity Parametric EQ 2 or Soundgoodizer. That toolkit remains untouched. Its measured 0.9790 waveform correlation on a held-out timeline section of one Alchemist take **must not** be attributed to this native chain. The native chain has not yet been A/B measured against that recording.
+The matching work in the owner-provided `Skelly_Sound_Matching_v0_7_Complete.zip` is **offline**, includes a noncausal phase-matching ancestry, and is **not** an implementation of real-time CLA-76, CLA-2A, Fruity Parametric EQ 2 or Soundgoodizer. That toolkit remains untouched. Its measured 0.9790 waveform correlation on a held-out timeline section of one Alchemist take **must not** be attributed to this native chain. A native same-take A/B was completed on 2026-11-18 using the compiled processor renderer: the REC-processed input was compared with the MAIN-effects print over 19–34 s of the same 42.602 s performance. This is not an external VST3-host or FL Studio session render, and it does not establish a sonic match or owner listening approval. See [the dated same-take report](ALCHEMIST_SAME_TAKE_AB_2026-11-18.md).
 
 ## Evidence used
 
 - `MAIN.fst` identifies CLA-76 preset **In Your Face Vocal** and CLA-2A preset **Vox**, without exposing trustworthy mappings to every plug-in parameter.
-- Independent screenshots show Fruity Parametric EQ 2 response curves, Waves dynamics and Soundgoodizer **Mode A**. The two EQ screenshots might be views of one EQ: exact number of instances and exact mixer order remain unverified.
+- The owner-maintained slot manifest bound to `MAIN.fst` SHA-256 `66077b7a4e1695ab8817b6cbe74be7f098afa1fe8fee52ac4fa3e90065359424` lists one Fruity Parametric EQ 2 → Fruity Limiter → Waves CLA-76 Stereo (In Your Face Vocal, SETUP_A) → Waves CLA-2A Stereo (Vox, SETUP_A) → Soundgoodizer Mode A (raw amount 169) → Fruity Limiter. This is a hash-bound owner slot inventory, not a claim that raw plugin-name strings were parsed as independent slots. The embedded report confirms the two Waves preset names and non-bypassed stored state, but their raw vectors are not reliably mapped to physical controls; stored state does not prove every effect was audible.
 - The v0.5 offline envelope fitting study estimated fast threshold **-34.76 dBFS**, approximate ratio **7:1**, slower threshold **-19.46 dBFS** and ratio **1.196:1**. These are fitting hypotheses, not readings of Waves hardware/software knobs.
 - A final Fruity Limiter ON/OFF test gave an extremely small difference for the specific reference take (correlation ~0.9999999997; RMS difference about -111 dBFS). This native preview intentionally omits the final limiter, avoiding unnecessary lookahead latency. Other source recordings might engage limiting.
 - The v0.7 offline trial used post-processing of a prior render, not a ready-to-port VST3 processing graph. The protected v0.3 champion and every newer experiment are unchanged.
@@ -48,11 +48,11 @@ The current causal math was independently simulated on the previously processed 
 | Spectral-band MAE, dB | 0.379 | 0.379 | 0.378 |
 
 The model was evaluated on the same archival performance used during development; it is **not** independently validated on other vocals, and the first six VST3 processors have not recreated the v0.6B input to this finishing stage. These figures cannot be marketed as the current plugin's match score. Match Finish source and tests are included, and native VST3/FL Studio tests must still pass.
- No original reference WAV, screenshot, commercial plugin data or proprietary state is bundled into the distributable.
+ No original reference WAV, screenshot, commercial plugin data or proprietary state is bundled into the VST3 distributable. The separate CI audition artifact contains only the 15-second comparison excerpts.
 
 ## Measured same-take tonal mismatch and experimental revision v0.3
 
-The user's **actual dry** Alchemist vocal (`alchemist test vocals no main effects.wav`) and **actual Waves / FL-processed reference** (`alchemist test main effects on .wav`) were compared in 44.1 kHz stereo as power-spectrum density ratios. These *source-relative* differences are not normalized EQ presets:
+The user's **REC-processed Alchemist input with MAIN effects off** (`alchemist test vocals no main effects.wav`; not untreated dry vocal) and **MAIN-effects print** (`alchemist test main effects on .wav`) were compared in 44.1 kHz stereo as power-spectrum density ratios. These *source-relative* differences are not normalized EQ presets:
 
 | Frequency band | Original processed vs dry, power dB |
 |---|---:|
@@ -81,17 +81,17 @@ The first native Skell preset incorrectly attenuated the high bands, making it e
 
 ## Regression and listening gates
 
-1. Portable `SkellPresetAlchemistNativeTest` checks append-only factory IDs, exact stage order, bounded parameters and representative processing at 44.1/48/96 kHz. **Source test added; inspect CI results before claiming a pass.**
-2. Full Windows VST3 compile and plugin host fixture must pass.
-3. Open the preset in FL Studio; verify slot order, bypass, wet controls, safe project save/reopen, no unexpected extra limiter, mono/stereo consistency and maximum peak.
-4. Render supplied **dry** Alchemist vocal through this exact VST3 chain and compare to the original **main effects** reference, not the level-matched v0.7 candidate alone. Measure aligned waveform correlation, spectral error, 20ms/200ms envelope error and true peak. Equalize audition loudness and keep the protected v0.3/v0.7 files unchanged.
-5. Refine only from real A/B measurements, not from visually inferred proprietary knob settings.
+1. Windows Release CTest on merge commit `c4bf5f79733309b571f2c20cda36af2381614ce3` passed **41/41**; the compiled 5/10/20-instance real-rack stress test passed **1/1**.
+2. The owner-archive A/B workflow passed its **15/15** Python tooling tests, verified the input/target/FST hashes, and rendered factories 43, 45 and 47–53. The Windows VST3 host probe and native factory recall/audio/PDC/state smoke checks passed.
+3. The A/B renderer calls the compiled `SkellPresetAudioProcessor::processBlock`; it is not a hosted-VST3 or FL Studio render. The Windows VST3 artifact and renderer are separate build outputs.
+4. FL Studio open/save/reopen, project automation recall and owner listening approval remain outstanding. No factory has been promoted.
+5. Refine only from same-input measurements and actual listening; do not infer proprietary Waves knob positions from raw vectors.
 
 ## Integration constraints
 
 - Do not change factory program indices 0–42, module type IDs or existing APVTS parameter IDs.
 - No Skell Studio process, Python, external vendor VST3 or reference-audio file is needed at runtime.
-- Use an explicitly **preview** identity and leave the shipped factory preset intact until native-audio A/B is measured.
+- Use an explicitly **preview** identity and leave the shipped factory preset intact until FL Studio session validation and owner listening acceptance; measured A/B alone is not approval.
 - A separate `.skellpreset` package can be imported into existing Skell Preset versions supporting all seven module IDs, including new ID 31, and schema v2, even before the built-in preset ships.
 
 
@@ -109,27 +109,26 @@ This variant does **not** replace factory 43 or 45, does not alter the default
 empty rack, and does not claim BS.1770-certified true-peak compliance. It is
 a safety-oriented listening candidate, not a proven closer sound match. The
 factory recall test checks the appended module, ceiling, state roundtrip and
-PDC restoration when switching back to the original Alchemist. The original
-dry/processed same-take WAV comparison and FL Studio session check are still
-required before promotion.
+PDC restoration when switching back to the original Alchemist. The same-take WAV comparison has now been rendered; the FL Studio session check and owner listening acceptance remain required before promotion.
 
 
 ## Optional factory 48 — Alchemist Tone Match (Trial)
 
 Factory 48 is a measured, append-only tonal correction on top of factory 47.
-The same-take native factory 43/45 renders were aligned and LUFS-matched to
-the hash-verified MAIN effects target. Across the full 42.602-second print,
-both candidates were about 1.0 dB low from 1.5–3.5 kHz and about 0.6 dB /
-1.1 dB high from 3.5–7.5 / 7.5–12 kHz. Factory 48 therefore changes only
-three existing eight-band EQ gains: 2.93 kHz +1.0 dB, 5.10 kHz -0.6 dB,
-and 12.0 kHz -1.1 dB. It retains the factory 47 final interpolated-peak
-limiter and its approximately 3 ms PDC.
+The 2026-11-18 same-take render uses the 19–34 s audition window, not the full
+42.602 s. Factory 48 changes three existing eight-band EQ gains: 2.93 kHz
++1.0 dB, 5.10 kHz -0.6 dB and 12.0 kHz -1.1 dB. It retains the factory 47
+final interpolated-peak limiter and its approximately 3 ms PDC. See the dated
+same-take report for measured spectral and envelope results.
 
-This is a **new test candidate**, not an approved sound champion. The
-corrections were estimated from the rendered output bands; they must be
-verified by rendering factory 48 from the current source against the same
-target and comparing LUFS, 4x peak, band error and 20/50/200/400 ms envelope.
-Factories 43, 45 and 47 remain available unchanged for A/B rollback.
+This remains a **test candidate**, not an approved sound champion. In the
+2026-11-18 19–34 s render, factory 48 measured 4.155 dB raw multiresolution
+spectral MAE versus 4.338 dB for factory 43, the best raw spectral score among
+factories 43, 45 and 47–51. Its 20 ms envelope MAE (2.399 dB) and 200 ms
+envelope MAE (1.411 dB) were both worse than factory 43 (2.185 / 1.362 dB),
+and its loudness was 0.508 LU below the FL target. It is not an overall winner;
+factories 43, 45 and 47 remain unchanged for rollback. See
+[the complete same-take report](ALCHEMIST_SAME_TAKE_AB_2026-11-18.md).
 
 
 ## Optional factory 53 — Alchemist Low-End Contour (Trial)
@@ -143,9 +142,18 @@ final peak guard, but changes only the first high-pass to 30 Hz and the 70 Hz
 bell to 0 dB.
 
 This is a measured corrective hypothesis, not a recovered proprietary EQ2
-setting. The archived FST chain inventory has an EQ2-count discrepancy and
-its numeric EQ2 controls are not decoded. The same-take A/B workflow must
-measure the new candidate's low-band deltas, multiresolution spectral error,
-envelope, LUFS, sample peak and 4x true-peak estimate. No makeup gain is
-applied to force loudness equality, no existing factory is overwritten, and
-Factory 53 is not promoted without owner listening acceptance.
+setting. The hash-bound owner slot manifest identifies one EQ2 and two Fruity
+Limiters; numeric EQ2 controls are still not decoded. The 2026-11-18 render
+measured factory 53 at -16.611 LUFS, 4.211 dB raw spectral MAE, 3.255 dB
+20 ms envelope MAE and 2.558 dB 200 ms envelope MAE. Factory 52 measured
+-16.610 LUFS, 4.225 / 3.224 / 2.540 dB respectively. The low-end contour
+reduces the sub-50 Hz deficit versus factory 52 but does not resolve the
+63–100 Hz mismatch. RMS-level matching would require +2.332 dB and estimates
++1.220 dBTP; that gain is diagnostic only and is not applied to the preview.
+No existing factory is overwritten, and factory 53 is not promoted. See
+[the complete same-take report](ALCHEMIST_SAME_TAKE_AB_2026-11-18.md).
+
+
+## Same-take A/B evidence — 2026-11-18
+
+The exact source identities, hash-bound MAIN.fst slot inventory, nine factory measurements, headroom analysis, CI results and outstanding FL Studio/listening gates are recorded in [ALCHEMIST_SAME_TAKE_AB_2026-11-18.md](ALCHEMIST_SAME_TAKE_AB_2026-11-18.md). The native same-take renderer uses the compiled processor's `processBlock`; it is not a hosted VST3 or FL Studio render.
