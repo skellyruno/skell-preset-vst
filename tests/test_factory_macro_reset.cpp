@@ -52,6 +52,136 @@ bool dirtyMacros(SkellPresetAudioProcessor& processor) {
     return true;
 }
 
+bool hostStateSanitizerRoundtrip() {
+    auto source=std::make_unique<SkellPresetAudioProcessor>();
+    juce::MemoryBlock baseline;
+    source->getStateInformation(baseline);
+    auto xml=juce::AudioProcessor::getXmlFromBinary(
+        baseline.getData(),static_cast<int>(baseline.getSize()));
+    if(!xml)return false;
+    auto tree=juce::ValueTree::fromXml(*xml);
+    if(!tree.isValid())return false;
+
+    const auto setText=[&](const juce::String& id,const juce::String& value)->bool {
+        for(int i=0;i<tree.getNumChildren();++i) {
+            auto child=tree.getChild(i);
+            if(child.getProperty("id").toString()==id) {
+                child.setProperty("value",value,nullptr);
+                return true;
+            }
+        }
+        return false;
+    };
+    if(!setText("input","nan") || !setText("mix","inf") ||
+       !setText("output","-inf") || !setText("macro1","not-a-number") ||
+       !setText("s1_wet","999") || !setText("s1_p1","-999") ||
+       !setText("s1_p2","0.371") || !setText("s1_eqQ1","nan") ||
+       !setText("s1_eqQ2","0.371") || !setText("s1_eqLowCut","999") ||
+       !setText("s1_eqHighCut","-999") || !setText("mode","2.4") ||
+       !setText("s1_type","999") || !setText("s2_type","not-a-number"))
+        return false;
+
+    auto corruptedXml=tree.createXml();
+    if(!corruptedXml)return false;
+    juce::MemoryBlock corrupted;
+    juce::AudioProcessor::copyXmlToBinary(*corruptedXml,corrupted);
+
+    auto restored=std::make_unique<SkellPresetAudioProcessor>();
+    restored->setStateInformation(corrupted.getData(),static_cast<int>(corrupted.getSize()));
+
+    const auto matchesDefault=[](SkellPresetAudioProcessor& processor,
+                                 const juce::String& id)->bool {
+        auto* parameter=processor.state.getParameter(id);
+        auto* raw=processor.state.getRawParameterValue(id);
+        if(!parameter||!raw)return false;
+        const auto& range=parameter->getNormalisableRange();
+        float expected=range.convertFrom0to1(parameter->getDefaultValue());
+        if(!std::isfinite(expected))expected=range.start;
+        expected=juce::jlimit(range.start,range.end,expected);
+        if(parameter->isDiscrete())expected=range.snapToLegalValue(expected);
+        return std::isfinite(raw->load())&&std::abs(raw->load()-expected)<1.e-4f;
+    };
+    const auto matchesLegal=[](SkellPresetAudioProcessor& processor,
+                               const juce::String& id,float requested)->bool {
+        auto* parameter=processor.state.getParameter(id);
+        auto* raw=processor.state.getRawParameterValue(id);
+        if(!parameter||!raw)return false;
+        const auto& range=parameter->getNormalisableRange();
+        const float bounded=juce::jlimit(range.start,range.end,requested);
+        const float expected=parameter->isDiscrete()?range.snapToLegalValue(bounded):bounded;
+        return std::isfinite(raw->load())&&std::abs(raw->load()-expected)<1.e-4f;
+    };
+    const auto matchesValue=[](SkellPresetAudioProcessor& processor,
+                               const juce::String& id,float expected)->bool {
+        const auto* raw=processor.state.getRawParameterValue(id);
+        return raw&&std::isfinite(raw->load())&&std::abs(raw->load()-expected)<1.e-5f;
+    };
+    const auto allFiniteAndInRange=[](SkellPresetAudioProcessor& processor)->bool {
+        for(int i=0;i<processor.state.state.getNumChildren();++i) {
+            const auto child=processor.state.state.getChild(i);
+            const auto id=child.getProperty("id").toString();
+            auto* parameter=processor.state.getParameter(id);
+            auto* raw=processor.state.getRawParameterValue(id);
+            if(!parameter||!raw)continue;
+            const auto& range=parameter->getNormalisableRange();
+            const float value=raw->load();
+            if(!std::isfinite(value)||value<range.start-1.e-4f||value>range.end+1.e-4f)
+                return false;
+        }
+        return true;
+    };
+
+    if(!matchesDefault(*restored,"input") ||
+       !matchesDefault(*restored,"mix") ||
+       !matchesDefault(*restored,"output") ||
+       !matchesDefault(*restored,"macro1") ||
+       !matchesDefault(*restored,"s1_eqQ1") ||
+       !matchesDefault(*restored,"s2_type") ||
+       !matchesLegal(*restored,"s1_wet",999.0f) ||
+       !matchesLegal(*restored,"s1_p1",-999.0f) ||
+       !matchesLegal(*restored,"s1_eqLowCut",999.0f) ||
+       !matchesLegal(*restored,"s1_eqHighCut",-999.0f) ||
+       !matchesLegal(*restored,"mode",2.4f) ||
+       !matchesLegal(*restored,"s1_type",999.0f) ||
+       !matchesValue(*restored,"macro2",0.371f) ||
+       !matchesValue(*restored,"s1_p2",0.371f) ||
+       !matchesValue(*restored,"s1_eqQ2",0.371f) ||
+       !allFiniteAndInRange(*restored))
+        return false;
+
+    // A second host save/reload must preserve the repaired values, not reintroduce
+    // the malformed XML or quantize valid continuous automation.
+    juce::MemoryBlock repaired;
+    restored->getStateInformation(repaired);
+    auto roundtrip=std::make_unique<SkellPresetAudioProcessor>();
+    roundtrip->setStateInformation(repaired.getData(),static_cast<int>(repaired.getSize()));
+    if(!allFiniteAndInRange(*roundtrip) ||
+       !matchesDefault(*roundtrip,"input") ||
+       !matchesDefault(*roundtrip,"macro1") ||
+       !matchesValue(*roundtrip,"macro2",0.371f) ||
+       !matchesValue(*roundtrip,"s1_p2",0.371f) ||
+       !matchesValue(*roundtrip,"s1_eqQ2",0.371f))
+        return false;
+
+    // Exercise a real audio block after corrupt-state recovery.
+    if(auto* mode=roundtrip->state.getParameter("mode"))
+        mode->setValueNotifyingHost(mode->getDefaultValue());
+    roundtrip->prepareToPlay(44100.0,256);
+    juce::AudioBuffer<float> audio(2,256);
+    for(int i=0;i<audio.getNumSamples();++i) {
+        const float sample=0.25f*std::sin(2.0f*juce::MathConstants<double>::pi
+                                          *997.0*i/44100.0);
+        audio.setSample(0,i,sample);
+        audio.setSample(1,i,sample*0.73f);
+    }
+    juce::MidiBuffer midi;
+    roundtrip->processBlock(audio,midi);
+    for(int ch=0;ch<audio.getNumChannels();++ch)
+        for(int i=0;i<audio.getNumSamples();++i)
+            if(!std::isfinite(audio.getSample(ch,i)))return false;
+    return true;
+}
+
 bool macrosMatchDirty(SkellPresetAudioProcessor& processor) {
     for (int i=1;i<=8;++i) {
         const auto id="macro"+juce::String(i);
@@ -97,6 +227,12 @@ int main() {
         return 3;
     }
     std::cerr << "STEP 3: host state roundtrip verified\n" << std::flush;
+
+    if(!hostStateSanitizerRoundtrip()) {
+        std::cerr << "FAIL: corrupt host-state NaN/Inf recovery, range clamp, automation preservation, or real DSP block\\n";
+        return 12;
+    }
+    std::cerr << "STEP 3A: corrupt host-state sanitizer and repaired reload verified\\n" << std::flush;
 
     // Factory switching must clear stale values in all eight serialized
     // macro controls, including hidden compatibility slots 5..8.
