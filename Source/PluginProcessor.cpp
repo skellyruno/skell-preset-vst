@@ -24,7 +24,7 @@ juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
 // normalisation, but comparisons with NaN are false, so a NaN value can pass
 // through unchanged into an APVTS parameter. Sanitize only during state restore:
 // malformed/non-finite values fall back to the parameter default, finite values
-// are clamped, and continuous in-range values retain their full automation value.
+// are clamped, and continuous in-range values retain their declared parameter resolution; discrete values snap to legal values.
 void sanitizeParameterStateValues(juce::ValueTree& loaded,
                                   juce::AudioProcessorValueTreeState& parameters) {
     for(int childIndex=0;childIndex<loaded.getNumChildren();++childIndex) {

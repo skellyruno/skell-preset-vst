@@ -359,7 +359,7 @@ int blankSmoke() {
            !setParameterText("macro1","not-a-number") ||
            !setParameterText("s1_wet","999") ||
            !setParameterText("s1_p1","-999") ||
-           !setParameterText("s1_p2","0.37123"))return fail(66,"test parameter ID missing");
+           !setParameterText("s1_p2","0.371"))return fail(66,"test parameter ID missing");
         auto corruptedXml=corruptTree.createXml();
         if(!corruptedXml)return fail(67,"corrupt XML missing");
         juce::MemoryBlock corruptedState;
@@ -408,8 +408,8 @@ int blankSmoke() {
            !matchesDefault(*sanitized,"macro1"))return fail(69,"nonfinite defaults not restored");
         if(!matchesValue(*sanitized,"s1_wet",1.f) ||
            !matchesValue(*sanitized,"s1_p1",0.f) ||
-           !matchesValue(*sanitized,"s1_p2",.37123f) ||
-           !allFiniteAndInRange(*sanitized))return fail(70,"clamp or continuous automation mismatch");
+           !matchesValue(*sanitized,"s1_p2",.371f) ||
+           !allFiniteAndInRange(*sanitized))return fail(70,"clamp or declared-step automation mismatch");
 
         juce::MemoryBlock repairedState;
         sanitized->getStateInformation(repairedState);
@@ -421,7 +421,7 @@ int blankSmoke() {
            !matchesDefault(*roundtrip,"mix") ||
            !matchesDefault(*roundtrip,"output") ||
            !matchesDefault(*roundtrip,"macro1") ||
-           !matchesValue(*roundtrip,"s1_p2",.37123f))return fail(71,"second save/reload mismatch");
+           !matchesValue(*roundtrip,"s1_p2",.371f))return fail(71,"second save/reload mismatch");
 
         roundtrip->prepareToPlay(44100.,blockSize);
         juce::AudioBuffer<float> audio(2,blockSize);
