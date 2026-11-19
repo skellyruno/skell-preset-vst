@@ -329,15 +329,19 @@ int blankSmoke() {
     // valid continuous automation remains unquantized, and the repaired state
     // survives a second save/reload and real DSP block.
     {
+        const auto fail=[](int code,const char* reason){
+            std::fprintf(stderr,"FAIL: host-state sanitizer %s (%d)\\n",reason,code);
+            return code;
+        };
         auto corruptSource=std::make_unique<SkellPresetAudioProcessor>();
         corruptSource->loadFactoryPreset(0);
         juce::MemoryBlock baseline;
         corruptSource->getStateInformation(baseline);
         auto corruptXml=juce::AudioProcessor::getXmlFromBinary(
             baseline.getData(),(int)baseline.getSize());
-        if(!corruptXml)return 64;
+        if(!corruptXml)return fail(64,"baseline XML missing");
         auto corruptTree=juce::ValueTree::fromXml(*corruptXml);
-        if(!corruptTree.isValid())return 65;
+        if(!corruptTree.isValid())return fail(65,"baseline ValueTree invalid");
         const auto setParameterText=[&](const juce::String& id,
                                         const juce::String& value)->bool {
             for(int i=0;i<corruptTree.getNumChildren();++i) {
@@ -355,9 +359,9 @@ int blankSmoke() {
            !setParameterText("macro1","not-a-number") ||
            !setParameterText("s1_wet","999") ||
            !setParameterText("s1_p1","-999") ||
-           !setParameterText("s1_p2","0.37123"))return 66;
+           !setParameterText("s1_p2","0.37123"))return fail(66,"test parameter ID missing");
         auto corruptedXml=corruptTree.createXml();
-        if(!corruptedXml)return 67;
+        if(!corruptedXml)return fail(67,"corrupt XML missing");
         juce::MemoryBlock corruptedState;
         juce::AudioProcessor::copyXmlToBinary(*corruptedXml,corruptedState);
 
@@ -397,15 +401,15 @@ int blankSmoke() {
         if(sanitized->loadedFactoryPresetIndex()!=0 ||
            sanitized->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
            sanitized->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount)
-            return 68;
+            return fail(68,"factory identity/slot/rack count changed");
         if(!matchesDefault(*sanitized,"input") ||
            !matchesDefault(*sanitized,"mix") ||
            !matchesDefault(*sanitized,"output") ||
-           !matchesDefault(*sanitized,"macro1"))return 69;
+           !matchesDefault(*sanitized,"macro1"))return fail(69,"nonfinite defaults not restored");
         if(!matchesValue(*sanitized,"s1_wet",1.f) ||
            !matchesValue(*sanitized,"s1_p1",0.f) ||
            !matchesValue(*sanitized,"s1_p2",.37123f) ||
-           !allFiniteAndInRange(*sanitized))return 70;
+           !allFiniteAndInRange(*sanitized))return fail(70,"clamp or continuous automation mismatch");
 
         juce::MemoryBlock repairedState;
         sanitized->getStateInformation(repairedState);
@@ -417,7 +421,7 @@ int blankSmoke() {
            !matchesDefault(*roundtrip,"mix") ||
            !matchesDefault(*roundtrip,"output") ||
            !matchesDefault(*roundtrip,"macro1") ||
-           !matchesValue(*roundtrip,"s1_p2",.37123f))return 71;
+           !matchesValue(*roundtrip,"s1_p2",.37123f))return fail(71,"second save/reload mismatch");
 
         roundtrip->prepareToPlay(44100.,blockSize);
         juce::AudioBuffer<float> audio(2,blockSize);
@@ -433,10 +437,10 @@ int blankSmoke() {
         for(int channel=0;channel<2;++channel)
             for(int n=0;n<blockSize;++n) {
                 const float sample=audio.getSample(channel,n);
-                if(!std::isfinite(sample))return 72;
+                if(!std::isfinite(sample))return fail(72,"nonfinite DSP output");
                 if(std::abs(sample)>peak)peak=std::abs(sample);
             }
-        if(peak>8.f)return 73;
+        if(peak>8.f)return fail(73,"excessive DSP peak");
         roundtrip->releaseResources();
         std::puts("PASS: corrupt host parameter values default/clamp; valid automation and DSP remain finite");
     }
