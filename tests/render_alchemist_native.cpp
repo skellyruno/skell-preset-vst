@@ -577,12 +577,14 @@ int stress() {
         // Check actual host-facing processor PDC, not a helper's estimate.
         for(const int preset:{skellpreset::alchemist::factoryIndex,
                                 skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
-                                skellpreset::alchemist_low_end_contour_trial::factoryIndex,25,0}) {
+                                skellpreset::alchemist_low_end_contour_trial::factoryIndex,
+                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,25,0}) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
             p->loadFactoryPreset(preset);
             p->prepareToPlay(sr,64);
             const int expected=(preset==0 || preset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
-                                preset==skellpreset::alchemist_low_end_contour_trial::factoryIndex)
+                                preset==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
+                                preset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
                 ?std::max(48,(int)(sr*.003)):0;
             if(p->getLatencySamples()!=expected) {
                 std::fprintf(stderr,
@@ -594,7 +596,8 @@ int stress() {
         }
         for(const int rackPreset:{skellpreset::alchemist::factoryIndex,
                                   skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
-                                  skellpreset::alchemist_low_end_contour_trial::factoryIndex}) {
+                                  skellpreset::alchemist_low_end_contour_trial::factoryIndex,
+                                  skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex}) {
           for(const int frames:buffers) {
             for(const int count:instances) {
                 // Construct/prepare and allocate audio buffers outside timing.
@@ -607,7 +610,8 @@ int stress() {
                     p->loadFactoryPreset(rackPreset);
                     p->prepareToPlay(sr,frames);
                     const int expectedLatency=(rackPreset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
-                                               rackPreset==skellpreset::alchemist_low_end_contour_trial::factoryIndex)
+                                               rackPreset==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
+                                               rackPreset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
                         ?std::max(48,(int)(sr*.003)):0;
                     if(p->getLatencySamples()!=expectedLatency)return 10;
                     plugins.push_back(std::move(p));
@@ -679,7 +683,7 @@ int stress() {
           }
         }
     }
-    std::puts("PASS compiled 5/10/20-instance Alchemist baseline + serial-trial finite-output and latency stress");
+    std::puts("PASS compiled 5/10/20-instance Alchemist baseline + serial-trial variant finite-output and latency stress");
     return 0;
 }
 
