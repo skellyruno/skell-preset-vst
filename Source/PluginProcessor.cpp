@@ -5,6 +5,9 @@
 #include "chain/NativeSoundMatchTrials.h"
 #include "chain/RackRealtimePolicy.h"
 #include <cmath>
+#include <charconv>
+#include <string>
+#include <system_error>
 
 using namespace skellpreset;
 using namespace skellpreset::dsp;
@@ -16,6 +19,44 @@ const juce::StringArray types=[] {
 }();
 static_assert(skellpreset::registry::count()==SkellPresetAudioProcessor::NumberOfModules);
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
+
+// Host XML is external input. JUCE's NormalisableRange uses jlimit for its
+// normalisation, but comparisons with NaN are false, so a NaN value can pass
+// through unchanged into an APVTS parameter. Sanitize only during state restore:
+// malformed/non-finite values fall back to the parameter default, finite values
+// are clamped, and continuous in-range values retain their declared parameter resolution; discrete values snap to legal values.
+void sanitizeParameterStateValues(juce::ValueTree& loaded,
+                                  juce::AudioProcessorValueTreeState& parameters) {
+    for(int childIndex=0;childIndex<loaded.getNumChildren();++childIndex) {
+        auto child=loaded.getChild(childIndex);
+        if(!child.hasProperty("id") || !child.hasProperty("value"))continue;
+        auto* parameter=parameters.getParameter(child.getProperty("id").toString());
+        if(parameter==nullptr)continue;
+
+        const auto& range=parameter->getNormalisableRange();
+        float fallback=range.convertFrom0to1(parameter->getDefaultValue());
+        if(!std::isfinite(fallback))fallback=range.start;
+        fallback=juce::jlimit(range.start,range.end,fallback);
+        if(parameter->isDiscrete())fallback=range.snapToLegalValue(fallback);
+        if(!std::isfinite(fallback))fallback=range.start;
+
+        const auto text=child.getProperty("value").toString().trim().toStdString();
+        double parsed=0.0;
+        const auto result=std::from_chars(text.data(),text.data()+text.size(),
+                                          parsed,std::chars_format::general);
+        const bool valid=!text.empty() && result.ec==std::errc{}
+            && result.ptr==text.data()+text.size() && std::isfinite(parsed);
+        float restored=fallback;
+        if(valid) {
+            const float bounded=juce::jlimit(range.start,range.end,
+                                              static_cast<float>(parsed));
+            const float legal=parameter->isDiscrete()
+                ? range.snapToLegalValue(bounded) : bounded;
+            if(std::isfinite(legal))restored=legal;
+        }
+        child.setProperty("value",restored,nullptr);
+    }
+}
 }
 
 SkellPresetAudioProcessor::SkellPresetAudioProcessor()
@@ -1560,6 +1601,8 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             }
             if(validProgram)selectedProgram=parsedProgram;
         }
+        // Repair untrusted APVTS values before JUCE copies them into parameter atomics.
+        sanitizeParameterStateValues(loaded,state);
         state.replaceState(loaded);
         updateHostLatency();
         // Don't instantiate external code in setStateInformation(): hosts may
