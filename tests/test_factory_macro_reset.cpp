@@ -11,7 +11,7 @@ float dirtyMacroValue(int index) {
     return .07f * static_cast<float>(index);
 }
 
-bool macroParameterContractIsStable(const SkellPresetAudioProcessor& processor) {
+bool macroParameterContractIsStable(SkellPresetAudioProcessor& processor) {
     // These IDs are the published automation contract. They must remain
     // discoverable, normalized 0..1 host parameters after state restoration.
     for (int i=1;i<=8;++i) {
@@ -52,7 +52,7 @@ bool dirtyMacros(SkellPresetAudioProcessor& processor) {
     return true;
 }
 
-bool macrosMatchDirty(const SkellPresetAudioProcessor& processor) {
+bool macrosMatchDirty(SkellPresetAudioProcessor& processor) {
     for (int i=1;i<=8;++i) {
         const auto id="macro"+juce::String(i);
         const auto* parameter=processor.state.getParameter(id);
