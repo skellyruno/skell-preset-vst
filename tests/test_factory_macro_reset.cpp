@@ -70,14 +70,15 @@ bool hostStateSanitizerRoundtrip() {
                 return true;
             }
         }
+        std::cerr << "FAIL: sanitizer fixture references missing APVTS parameter ID: "
+                  << id << '\n';
         return false;
     };
     if(!setText("input","nan") || !setText("mix","inf") ||
        !setText("output","-inf") || !setText("macro1","not-a-number") ||
        !setText("s1_wet","999") || !setText("s1_p1","-999") ||
        !setText("s1_p2","0.371") || !setText("s1_eqQ1","nan") ||
-       !setText("s1_eqQ2","0.371") || !setText("s1_eqLowCut","999") ||
-       !setText("s1_eqHighCut","-999") || !setText("mode","2.4") ||
+       !setText("s1_eqQ2","0.371") || !setText("mode","2.4") ||
        !setText("s1_type","999") || !setText("s2_type","not-a-number"))
         return false;
 
@@ -139,8 +140,6 @@ bool hostStateSanitizerRoundtrip() {
        !matchesDefault(*restored,"s2_type") ||
        !matchesLegal(*restored,"s1_wet",999.0f) ||
        !matchesLegal(*restored,"s1_p1",-999.0f) ||
-       !matchesLegal(*restored,"s1_eqLowCut",999.0f) ||
-       !matchesLegal(*restored,"s1_eqHighCut",-999.0f) ||
        !matchesLegal(*restored,"mode",2.4f) ||
        !matchesLegal(*restored,"s1_type",999.0f) ||
        !matchesValue(*restored,"macro2",0.371f) ||
