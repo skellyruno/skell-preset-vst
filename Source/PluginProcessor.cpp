@@ -1600,6 +1600,8 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             if(validProgram)selectedProgram=parsedProgram;
         }
         sanitizeParameterStateValues(loaded,state);
+        // Repair untrusted APVTS values before JUCE copies them into parameter atomics.
+        sanitizeParameterStateValues(loaded,state);
         state.replaceState(loaded);
         updateHostLatency();
         // Don't instantiate external code in setStateInformation(): hosts may
