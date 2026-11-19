@@ -15,6 +15,7 @@
 #include <memory>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <vector>
 
@@ -688,7 +689,9 @@ int stress() {
 }
 
 int render(const juce::File& source, const juce::File& destination,
-           int factoryIndex=skellpreset::alchemist::factoryIndex) {
+           int factoryIndex=skellpreset::alchemist::factoryIndex,
+           float highpassNormalizedOverride=-1.f,
+           float band70GainNormalizedOverride=-1.f) {
     if (!source.existsAsFile() || source == destination) {
         std::fprintf(stderr,"ERROR: source missing or output equals input\n");
         return 2;
@@ -744,6 +747,27 @@ int render(const juce::File& source, const juce::File& destination,
         return 7;
     }
     plugin->loadFactoryPreset(factoryIndex);
+    const bool hasLowEndOverride=highpassNormalizedOverride>=0.f ||
+                                 band70GainNormalizedOverride>=0.f;
+    if(hasLowEndOverride) {
+        if(factoryIndex!=skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+           !std::isfinite(highpassNormalizedOverride) ||
+           !std::isfinite(band70GainNormalizedOverride) ||
+           highpassNormalizedOverride<0.f || highpassNormalizedOverride>1.f ||
+           band70GainNormalizedOverride<0.f || band70GainNormalizedOverride>1.f) {
+            std::fprintf(stderr,"ERROR: low-end overrides require Factory 54 and normalized values in [0,1]\n");
+            return 7;
+        }
+        // Diagnostic-only overrides: slot 0 classic EQ HPF and slot 1 70 Hz
+        // bell. They never modify a factory definition or saved preset bank.
+        plugin->setSlotParam(0,3,highpassNormalizedOverride);
+        plugin->setSlotParam(1,1,band70GainNormalizedOverride);
+        if(std::abs(plugin->getSlotParam(0,3)-highpassNormalizedOverride)>.0011f ||
+           std::abs(plugin->getSlotParam(1,1)-band70GainNormalizedOverride)>.0011f) {
+            std::fprintf(stderr,"ERROR: low-end override did not reach APVTS state\n");
+            return 7;
+        }
+    }
     const bool deuceFactory=factoryIndex==skellpreset::deuce::factoryIndex ||
                              factoryIndex==skellpreset::deuce_v25::factoryIndex;
     const bool deuceCountValid=factoryIndex==skellpreset::deuce::factoryIndex
@@ -794,6 +818,11 @@ int render(const juce::File& source, const juce::File& destination,
         destination.deleteFile();
         std::fprintf(stderr,"ERROR: native render aborted; partial WAV removed\n");
         return 8;
+    }
+    if(hasLowEndOverride) {
+        std::printf("Diagnostic override: HPF %.1f Hz, 70 Hz bell %.2f dB\n",
+                    20.f+250.f*highpassNormalizedOverride,
+                    30.f*(band70GainNormalizedOverride-.5f));
     }
     std::printf("Rendered native factory %d: %lld samples, %.0f Hz, peak %.5f, RMS %.5f\n",
                 factoryIndex,
@@ -1537,6 +1566,48 @@ int nativeTrialsSmoke() {
     return 0;
 }
 
+int lowEndOverrideSmoke() {
+    auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+    plugin->loadFactoryPreset(skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex);
+    if(plugin->getSlotParam(0,3)<.039f || plugin->getSlotParam(0,3)>.041f ||
+       std::abs(plugin->getSlotParam(1,1)-.5f)>.001f)return 250;
+    plugin->setSlotParam(0,3,0.f);          // 20 Hz HPF
+    plugin->setSlotParam(1,1,.4666667f);    // -1 dB at 70 Hz
+    if(std::abs(plugin->getSlotParam(0,3))>.001f ||
+       std::abs(plugin->getSlotParam(1,1)-.4666667f)>.0011f)return 251;
+    plugin->prepareToPlay(44100.,256);
+    if(plugin->getLatencySamples()!=132)return 252;
+    juce::AudioBuffer<float> block(2,256);
+    juce::MidiBuffer midi;
+    double peak=0.;
+    for(int b=0;b<96;++b) {
+        for(int n=0;n<256;++n) {
+            const double t=double(b*256+n)/44100.;
+            const float x=.045f*std::sin(2.*juce::MathConstants<double>::pi*31.5*t)
+                         +.040f*std::sin(2.*juce::MathConstants<double>::pi*40.*t)
+                         +.030f*std::sin(2.*juce::MathConstants<double>::pi*50.*t)
+                         +.025f*std::sin(2.*juce::MathConstants<double>::pi*63.*t)
+                         +.020f*std::sin(2.*juce::MathConstants<double>::pi*80.*t)
+                         +.015f*std::sin(2.*juce::MathConstants<double>::pi*100.*t);
+            block.setSample(0,n,x);
+            block.setSample(1,n,x);
+        }
+        plugin->processBlock(block,midi);
+        for(int n=0;n<256;++n)for(int ch=0;ch<2;++ch) {
+            const float value=block.getSample(ch,n);
+            if(!std::isfinite(value))return 253;
+            peak=std::max(peak,double(std::abs(value)));
+        }
+    }
+    plugin->releaseResources();
+    if(!std::isfinite(peak)||peak>=1.0)return 254;
+    plugin->loadFactoryPreset(skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex);
+    if(std::abs(plugin->getSlotParam(0,3)-.04f)>.001f ||
+       std::abs(plugin->getSlotParam(1,1)-.5f)>.001f)return 255;
+    std::puts("PASS Factory 54 diagnostic low-end overrides: APVTS recall, 3ms PDC, finite unclipped output, factory reset");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc,char** argv) {
@@ -1547,9 +1618,21 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
     if(argc==2 && juce::String(argv[1])=="--studio-smoke")return studioSmoke();
     if(argc==2 && juce::String(argv[1])=="--native-trials-smoke")return nativeTrialsSmoke();
+    if(argc==2 && juce::String(argv[1])=="--lowend-override-smoke")return lowEndOverrideSmoke();
     if(argc==2 && juce::String(argv[1])=="--percent-smoke")return percentDisplaySmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
+    if(argc==7 && juce::String(argv[1])=="--factory-override") {
+        const int factory=juce::String(argv[2]).getIntValue();
+        const float hpf=std::strtof(argv[3],nullptr);
+        const float band70=std::strtof(argv[4],nullptr);
+        if(factory!=skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+           !std::isfinite(hpf)||!std::isfinite(band70)||
+           hpf<0.f||hpf>1.f||band70<0.f||band70>1.f)return 7;
+        return render(juce::File(juce::String::fromUTF8(argv[5])),
+                      juce::File(juce::String::fromUTF8(argv[6])),
+                      factory,hpf,band70);
+    }
     if(argc==4 && juce::String(argv[1])=="--compare")
         return compareWavs(juce::File(juce::String::fromUTF8(argv[2])),
                            juce::File(juce::String::fromUTF8(argv[3])));
@@ -1562,6 +1645,8 @@ int main(int argc,char** argv) {
     }
     if(argc!=3) {
         std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53|54 INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --factory-override 54 HPF_NORMALIZED BAND70_GAIN_NORMALIZED INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --lowend-override-smoke\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
     }
