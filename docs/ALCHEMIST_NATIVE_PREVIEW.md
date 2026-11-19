@@ -154,6 +154,24 @@ No existing factory is overwritten, and factory 53 is not promoted. See
 [the complete same-take report](ALCHEMIST_SAME_TAKE_AB_2026-11-18.md).
 
 
+## Optional factory 54 — Alchemist Serial Dynamics Blend (Trial)
+
+Factory 54 is an append-only dynamics experiment copied from Factory 53.
+It preserves the 30 Hz high-pass, neutral 70 Hz contour, 7:1 ratio, FET
+attack/release, parallel density, Skelldizer, saturation, Match Finish and
+final interpolated-peak guard. It changes only the serial FET/RMS stage:
+threshold -30 dB to -27 dB (normalized p0 0.428571 to 0.5) and stage wet
+70% to 45%. No output makeup gain is added.
+
+This is a **diagnostic trial**, not a replacement for Factory 43 or an
+approved sound champion. Factory IDs 0–53, automation/APVTS IDs, module IDs,
+and the default empty rack remain unchanged. The same-take renderer includes
+Factory 54 as a separate candidate; keep it unapproved until its measured
+19–34 s results, FL Studio session/automation recall, and owner listening are
+reviewed together. Do not compensate for dynamics changes with post-limiter
+makeup gain or promote based on spectral score alone.
+
+
 ## Same-take A/B evidence — 2026-11-18
 
 The exact source identities, hash-bound MAIN.fst slot inventory, nine factory measurements, headroom analysis, CI results and outstanding FL Studio/listening gates are recorded in [ALCHEMIST_SAME_TAKE_AB_2026-11-18.md](ALCHEMIST_SAME_TAKE_AB_2026-11-18.md). The native same-take renderer uses the compiled processor's `processBlock`; it is not a hosted VST3 or FL Studio render.
