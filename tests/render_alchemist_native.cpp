@@ -1213,7 +1213,8 @@ int nativeTrialsSmoke() {
         // source after capturing parameters and before comparing it with a freshly
         // prepared restored instance. This tests preset/state recall, not envelope cloning.
         if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
-           factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex)
+           factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
+           factory==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
             plugin->prepareToPlay(48000.,256);
         auto recalled=std::make_unique<SkellPresetAudioProcessor>();
         recalled->setStateInformation(state.getData(),(int)state.getSize());
@@ -1274,6 +1275,24 @@ int nativeTrialsSmoke() {
             std::abs(recalled->getSlotParam(1,1)-.5f)>.001f ||
             recalled->getLatencySamples()!=plugin->getLatencySamples()))
             return 242;
+        if(factory==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex) {
+            const auto* wet=recalled->state.getRawParameterValue("s3_wet");
+            if(recalled->slotType(0)!=SkellPresetAudioProcessor::EQ ||
+               recalled->slotType(1)!=SkellPresetAudioProcessor::EightBandToneFX ||
+               recalled->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+               recalled->slotType(3)!=SkellPresetAudioProcessor::SkelldizerFX ||
+               recalled->slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+               recalled->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
+               std::abs(recalled->getSlotParam(0,3)-.04f)>.001f ||
+               std::abs(recalled->getSlotParam(1,1)-.5f)>.001f ||
+               std::abs(recalled->getSlotParam(2,0)-.5f)>.001f ||
+               std::abs(recalled->getSlotParam(2,1)-.5f)>.001f ||
+               std::abs(recalled->getSlotParam(2,2)-.35f)>.001f ||
+               std::abs(recalled->getSlotParam(2,3)-.15f)>.001f ||
+               !wet || std::abs(wet->load()-.45f)>.001f ||
+               recalled->getLatencySamples()!=plugin->getLatencySamples())
+                return 243;
+        }
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=recalled->state.getRawParameterValue("s13_eqQ7");
             const auto* output=recalled->state.getRawParameterValue("output");
