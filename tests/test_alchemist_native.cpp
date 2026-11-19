@@ -91,6 +91,12 @@ int main() {
         assert(actual.module==expected.module && actual.wet==expected.wet);
         assert(actual.p==expected.p && actual.q==expected.q);
     }
+    for(const auto& stage:alchemist_serial_dynamics_trial::stages) {
+        assert(stage.module>=1 && stage.module<38);
+        assert(stage.wet>=0.f && stage.wet<=1.f);
+        for(float v:stage.p)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
+        for(float v:stage.q)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
+    }
     assert(std::strcmp(factoryPresets[54].name,alchemist_serial_dynamics_blend_trial::name)==0);
     assert(std::strcmp(factoryPresets[54].bank,"Main Vocals")==0);
     assert(alchemist_serial_dynamics_blend_trial::stages.size()==7);
