@@ -594,7 +594,7 @@ int main(int argc, char** argv) {
         }
         std::fprintf(stderr,"[Quick4] rendering %zu real-editor scenes\\n",options.scenes.size());
         const auto report = skellcore::ui::headless::render(editor, folder, options);
-        std::fprintf(stderr,"[Quick4] render returned; captured=%d errors=%zu\\n",report.captured,report.errors.size());
+        std::fprintf(stderr,"[Quick4] render returned; captured=%d errors=%d\\n",report.captured,report.errors.size());
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
