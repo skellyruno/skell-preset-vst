@@ -34,7 +34,7 @@ The hash-verified FST contains **seven** stored stages, including two distinct n
 - Windows CI merge/build commit: `c4bf5f79733309b571f2c20cda36af2381614ce3`.
 - Renderer: `SkellPresetAlchemistRender.exe`, SHA-256 `4846e5895e36ec22138188d556c19d4428cb6dfa88aa930f6fe5299ffc4ed756`.
 - The renderer called the compiled `SkellPresetAudioProcessor::processBlock` on the same full input for factories 43, 45, 47, 48, 49, 50, 51, 52 and 53. This is not an external VST3-host or FL Studio render.
-- Delay analysis and the 15-second audition both use the same 19.000–34.000 s window. The target delay measured 49 samples (1.111 ms), six samples from the previous 55-sample estimate. Candidate delays were measured individually and aligned to the same input timeline.
+- Delay analysis and the 15-second audition both use the same 19.000–34.000 s window. The target delay measured 49 samples (1.111 ms). The command-line expected-delay default is now 49 samples for this exact 19–34 s owner passage; 55 samples remains only a synthetic unit-test offset and is not the measured target delay. Candidate delays were measured individually and aligned to the same input timeline.
 - Every audition file is 44.1 kHz stereo, 15 seconds, PCM 24-bit FLAC. Original-level mode applies one shared safety attenuation of -1.025 dB. Level-matched mode attenuates all tracks to the quietest track (-16.611 LUFS); no track is boosted.
 - The 4× interpolated peak is an estimate, not a certified BS.1770 true-peak measurement.
 
