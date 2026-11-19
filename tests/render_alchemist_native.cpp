@@ -362,6 +362,10 @@ int blankSmoke() {
            !setParameterText("s1_wet","999") ||
            !setParameterText("s1_p1","-999") ||
            !setParameterText("s1_p2","0.371") ||
+           !setParameterText("s1_eqQ1","nan") ||
+           !setParameterText("s1_eqQ2","0.371") ||
+           !setParameterText("s1_eqLowCut","999") ||
+           !setParameterText("s1_eqHighCut","-999") ||
            !setParameterText("mode","2.4") ||
            !setParameterText("s1_type","999") ||
            !setParameterText("s2_type","not-a-number"))return fail(66,"test parameter ID missing");
@@ -414,10 +418,14 @@ int blankSmoke() {
         if(!matchesValue(*sanitized,"s1_wet",1.f) ||
            !matchesValue(*sanitized,"s1_p1",0.f) ||
            !matchesValue(*sanitized,"s1_p2",.371f) ||
+           !matchesDefault(*sanitized,"s1_eqQ1") ||
+           !matchesValue(*sanitized,"s1_eqQ2",.371f) ||
+           !matchesValue(*sanitized,"s1_eqLowCut",1.f) ||
+           !matchesValue(*sanitized,"s1_eqHighCut",0.f) ||
            !matchesValue(*sanitized,"mode",2.f) ||
            !matchesValue(*sanitized,"s1_type",22.f) ||
            !matchesDefault(*sanitized,"s2_type") ||
-           !allFiniteAndInRange(*sanitized))return fail(70,"clamp, discrete snap or declared-step automation mismatch");
+           !allFiniteAndInRange(*sanitized))return fail(70,"clamp, EQ Q/cut, discrete snap or automation mismatch");
 
         juce::MemoryBlock repairedState;
         sanitized->getStateInformation(repairedState);
@@ -430,6 +438,10 @@ int blankSmoke() {
            !matchesDefault(*roundtrip,"output") ||
            !matchesDefault(*roundtrip,"macro1") ||
            !matchesValue(*roundtrip,"s1_p2",.371f) ||
+           !matchesDefault(*roundtrip,"s1_eqQ1") ||
+           !matchesValue(*roundtrip,"s1_eqQ2",.371f) ||
+           !matchesValue(*roundtrip,"s1_eqLowCut",1.f) ||
+           !matchesValue(*roundtrip,"s1_eqHighCut",0.f) ||
            !matchesValue(*roundtrip,"mode",2.f) ||
            !matchesValue(*roundtrip,"s1_type",22.f) ||
            !matchesDefault(*roundtrip,"s2_type"))return fail(71,"second save/reload mismatch");
