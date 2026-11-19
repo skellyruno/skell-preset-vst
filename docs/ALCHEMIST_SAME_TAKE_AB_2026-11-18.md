@@ -19,13 +19,14 @@ The input is a **REC-processed vocal print with MAIN effects off**. It is not an
 The owner-maintained slot manifest, bound to the exact MAIN.fst SHA above, records:
 
 1. Fruity Parametric EQ 2
-2. Fruity Limiter
-3. Waves CLA-76 Stereo — preset **In Your Face Vocal**, SETUP_A
-4. Waves CLA-2A Stereo — preset **Vox**, SETUP_A
-5. Soundgoodizer — Mode A, raw amount 169
-6. Fruity Limiter
+2. Fruity Parametric EQ 2
+3. Fruity Limiter
+4. Waves CLA-76 Stereo — preset **In Your Face Vocal**, SETUP_A
+5. Waves CLA-2A Stereo — preset **Vox**, SETUP_A
+6. Soundgoodizer — Mode A, raw amount 169
+7. Fruity Limiter
 
-This is a hash-bound owner slot inventory; it is not a claim that scanning embedded plugin-name strings can reconstruct slot order. The embedded structure report confirms the two Waves preset names and stored non-bypassed state, but raw Waves vectors are not mapped reliably to physical knob values. Stored state does not prove that every effect was audible.
+The hash-verified FST contains **seven** stored stages, including two distinct native Fruity Parametric EQ 2 instances and two Fruity Limiters. The embedded structure report enumerates the two Waves chunks and confirms their preset names and stored non-bypassed state; native Fruity slots are visible in the FST's plugin sequence. Raw Waves vectors are not mapped reliably to physical knob values. Stored state does not prove that every effect was audible. The previous six-slot manifest omitted the second EQ2; this follow-up corrects the manifest, expected chain constant and regression test.
 
 ## Render method
 
@@ -73,6 +74,29 @@ Target: **-14.261 LUFS**, sample peak **-0.025 dBFS**, 4× peak estimate **+0.02
 - The existing player loaded all 22 embedded audio elements in Chromium; synchronized play, track switching and level-mode switching worked without console errors. This PR also fixes the metrics table's horizontal overflow and rounds displayed cells to three decimals; full precision remains in metrics.json.
 
 **Not verified:** FL Studio runtime/session save-reload, automation recall in a real FL Studio project, owner listening acceptance, and a truly untreated dry Alchemist vocal. No exact match claim is made.
+
+
+## Factory 54 exact-head follow-up — 2026-11-19
+
+The exact-head workflow run [#44459852840](https://github.com/skellyruno/skell-preset-vst/actions/runs/44459852840) rendered ten candidates (43, 45, 47–54) against the same 19–34 s owner passage. The run passed portable CTest **32/32** plus four WAV-inspector Python tests, Windows CTest **41/41**, compiled full-rack stress **1/1**, nested external VST3 load/transport/stereo/PDC/state, native factory recall/audio/PDC/state, and the same-take A/B tooling/render steps.
+
+| Factory | Candidate | Raw LUFS | Delta vs target | 4× peak estimate dBTP | Spectral MAE dB | 20 ms envelope MAE dB | 200 ms envelope MAE dB |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 43 | Alchemist Native Preview | -13.569 | +0.693 LU | -0.008 | 4.338 | 2.185 | 1.362 |
+| 48 | Alchemist Tone Match | -14.769 | -0.508 LU | -0.960 | **4.155** | 2.399 | 1.411 |
+| 53 | Alchemist Low-End Contour | -16.611 | -2.350 LU | -1.112 | 4.211 | 3.255 | 2.558 |
+| 54 | Alchemist Serial Dynamics Blend | -14.591 | -0.330 LU | -0.944 | 4.213 | 2.318 | **1.336** |
+
+Factory 54 improves the 20/200 ms envelope errors over Factory 48 by about 0.081/0.076 dB, but its spectral MAE is 0.058 dB worse. It remains 0.330 LU quieter than the target. It is a trade-off, not an overall winner; no makeup gain was added and no factory was promoted. Factory 43 remains the protected baseline and Factory 48 the best measured spectral candidate.
+
+The audition package uses a shared **-1.025 dB** safety attenuation and level-matches to the quietest candidate (**-16.611 LUFS**) by attenuation only. Factory 54's 4× peak estimate is -0.944 dBTP before the shared attenuation. These 4× values are estimates, not certified BS.1770 true peaks.
+
+- Windows VST3 artifact: [#14500336411](https://github.com/skellyruno/skell-preset-vst/actions/runs/44459852840/artifacts/14500336411)
+- Same-take A/B artifact: [#14500551533](https://github.com/skellyruno/skell-preset-vst/actions/runs/44459852840/artifacts/14500551533)
+
+**Artifact caveat:** the audio renders and measurements are valid, but the A/B artifact's chain metadata still used the old six-slot fixture and omitted the second EQ2. This PR fixes that reporting/validation defect; the regenerated exact-head A/B run must supersede the old chain metadata. The A/B renderer calls the native processor's processBlock; the separate Windows job proves external VST3 loading and audio, but neither is an FL Studio session render.
+
+Owner listening, FL Studio project/session save-reload and real automation validation remain outstanding. Factory 54 is not approved.
 
 ## Next priority
 
