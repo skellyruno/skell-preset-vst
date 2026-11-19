@@ -330,7 +330,7 @@ int blankSmoke() {
     // survives a second save/reload and real DSP block.
     {
         const auto fail=[](int code,const char* reason){
-            std::fprintf(stderr,"FAIL: host-state sanitizer %s (%d)\\n",reason,code);
+            std::fprintf(stderr,"FAIL: host-state sanitizer %s (%d)\n",reason,code);
             return code;
         };
         auto corruptSource=std::make_unique<SkellPresetAudioProcessor>();
