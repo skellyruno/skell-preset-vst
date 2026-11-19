@@ -172,13 +172,15 @@ class AlchemistReferenceABTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "FL Studio FLhd"):
             ab.parse_fst_chain(fst, manifest)
 
-    def test_owner_alchemist_chain_fixture_has_one_eq2_and_two_limiters(self):
+    def test_owner_alchemist_chain_fixture_has_two_eq2_and_two_limiters(self):
         fixture = ROOT / "tests" / "fixtures" / "alchemist_main_fst_chain.json"
         manifest = json.loads(fixture.read_text(encoding="utf-8"))
         slots = manifest["slots"]
         names = [item.get("chain_name") or item["name"] for item in slots]
         self.assertEqual(names, list(ab.EXPECTED_MAIN_FST_CHAIN))
-        self.assertEqual(names.count("Fruity Parametric EQ 2"), 1)
+        self.assertEqual(len(slots), 7)
+        self.assertEqual([item["slot"] for item in slots], list(range(3, 10)))
+        self.assertEqual(names.count("Fruity Parametric EQ 2"), 2)
         self.assertEqual(names.count("Fruity Limiter"), 2)
         soundgoodizer = next(item for item in slots if item.get("name") == "Soundgoodizer")
         self.assertEqual(soundgoodizer["native_state"]["mode_index"], 0)

@@ -36,6 +36,7 @@ EXPECTED_TARGET_DELAY_DEFAULT = 55
 SYNC_TOLERANCE_SECONDS = 0.010
 EXPECTED_MAIN_FST_CHAIN = (
     "Fruity Parametric EQ 2",
+    "Fruity Parametric EQ 2",
     "Fruity Limiter",
     "Waves CLA-76 Stereo",
     "Waves CLA-2A Stereo",

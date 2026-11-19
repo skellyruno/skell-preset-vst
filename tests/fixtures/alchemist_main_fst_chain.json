@@ -12,24 +12,28 @@
     },
     {
       "slot": 4,
-      "name": "Fruity Limiter"
+      "name": "Fruity Parametric EQ 2"
     },
     {
       "slot": 5,
+      "name": "Fruity Limiter"
+    },
+    {
+      "slot": 6,
       "name": "CLA-76 Stereo",
       "chain_name": "Waves CLA-76 Stereo",
       "waves_plugin": "CLA-76",
       "active_setup": "SETUP_A"
     },
     {
-      "slot": 6,
+      "slot": 7,
       "name": "CLA-2A Stereo",
       "chain_name": "Waves CLA-2A Stereo",
       "waves_plugin": "CLA-2A",
       "active_setup": "SETUP_A"
     },
     {
-      "slot": 7,
+      "slot": 8,
       "name": "Soundgoodizer",
       "native_state": {
         "state_version": 3,
@@ -39,13 +43,13 @@
       }
     },
     {
-      "slot": 8,
+      "slot": 9,
       "name": "Fruity Limiter"
     }
   ],
   "limitations": [
     "Stored slot state does not prove the slot is audible; host bypass, wet/dry and mixer routing still require FL Studio validation.",
     "Waves numeric vectors are preserved as raw state and are not mapped to physical controls.",
-    "The single original Parametric EQ 2 is split into two native EQ modules in the Skell Preset approximation; this does not mean MAIN.fst contains two EQ2 instances."
+    "MAIN.fst contains two separate Fruity Parametric EQ 2 slots in stored chain order. Both slots are recorded here; their complete native per-band parameter mappings are not decoded by this manifest."
   ]
 }
