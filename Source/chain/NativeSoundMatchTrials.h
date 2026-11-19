@@ -297,3 +297,28 @@ static_assert(stages.size()==7 && stages[0].module==1 && stages[1].module==26 &&
 static_assert(stages[0].p[3]==.04f && stages[1].p[1]==.5f,
     "Low-end trial must use 30 Hz high-pass and neutral 70 Hz bell");
 }
+
+// Append-only dynamics blend trial. Factory 53's low-end correction is kept
+// unchanged; only the serial FET/RMS stage is made less aggressive before the
+// existing final peak guard. No post-limiter makeup gain is added.
+namespace skellpreset::alchemist_serial_dynamics_blend_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_low_end_contour_trial::stages;
+    result[2].wet=.45f; // Serial stage: 70% -> 45% wet.
+    result[2].p[0]=.5f;  // Threshold: -30 dB -> -27 dB; retain 7:1 ratio.
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=54;
+inline constexpr const char* name="Alchemist Serial Dynamics Blend (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==7 && stages[0].module==1 && stages[1].module==26 &&
+              stages[2].module==27 && stages[3].module==33 &&
+              stages[5].module==31 && stages[6].module==3,
+    "Serial blend trial must preserve the low-end contour and final peak guard");
+static_assert(stages[0].p[3]==.04f && stages[1].p[1]==.5f &&
+              stages[2].wet==.45f && stages[2].p[0]==.5f &&
+              stages[2].p[1]==.5f && stages[2].p[2]==.35f &&
+              stages[2].p[3]==.15f,
+    "Serial blend trial must use -27 dB threshold, 45% wet and no makeup");
+}
