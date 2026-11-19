@@ -43,6 +43,14 @@ class AlchemistReferenceABTests(unittest.TestCase):
             output[:lag] = self.source[-lag:] * gain
         return output
 
+    def test_default_target_delay_matches_measured_owner_audition_window(self):
+        # The owner MAIN-effects target measured 49 samples on the exact
+        # 19–34 s audition window. Keep the CLI default tied to that measurement;
+        # 55 samples remains only a synthetic delay-estimator fixture below.
+        self.assertEqual(ab.SEGMENT_START_DEFAULT, 19.0)
+        self.assertEqual(ab.SEGMENT_DURATION_DEFAULT, 15.0)
+        self.assertEqual(ab.EXPECTED_TARGET_DELAY_DEFAULT, 49)
+
     def test_delay_estimator_sign_and_precision(self):
         delayed = self._delayed(55, 0.83)
         lag, confidence, polarity = ab.estimate_delay(
