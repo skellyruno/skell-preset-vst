@@ -100,7 +100,13 @@ bool hostStateSanitizerRoundtrip() {
         if(!std::isfinite(expected))expected=range.start;
         expected=juce::jlimit(range.start,range.end,expected);
         if(parameter->isDiscrete())expected=range.snapToLegalValue(expected);
-        return std::isfinite(raw->load())&&std::abs(raw->load()-expected)<1.e-4f;
+        const float actual=raw->load();
+        const bool ok=std::isfinite(actual)&&std::abs(actual-expected)<1.e-4f;
+        if(!ok)
+            std::cerr << "DIAG: default id=" << id << " actual=" << actual
+                      << " expected=" << expected << " range=[" << range.start
+                      << "," << range.end << "] discrete=" << parameter->isDiscrete() << '\\n';
+        return ok;
     };
     const auto matchesLegal=[](SkellPresetAudioProcessor& processor,
                                const juce::String& id,float requested)->bool {
@@ -110,12 +116,24 @@ bool hostStateSanitizerRoundtrip() {
         const auto& range=parameter->getNormalisableRange();
         const float bounded=juce::jlimit(range.start,range.end,requested);
         const float expected=parameter->isDiscrete()?range.snapToLegalValue(bounded):bounded;
-        return std::isfinite(raw->load())&&std::abs(raw->load()-expected)<1.e-4f;
+        const float actual=raw->load();
+        const bool ok=std::isfinite(actual)&&std::abs(actual-expected)<1.e-4f;
+        if(!ok)
+            std::cerr << "DIAG: legal id=" << id << " requested=" << requested
+                      << " actual=" << actual << " expected=" << expected
+                      << " range=[" << range.start << "," << range.end
+                      << "] discrete=" << parameter->isDiscrete() << '\\n';
+        return ok;
     };
     const auto matchesValue=[](SkellPresetAudioProcessor& processor,
                                const juce::String& id,float expected)->bool {
         const auto* raw=processor.state.getRawParameterValue(id);
-        return raw&&std::isfinite(raw->load())&&std::abs(raw->load()-expected)<1.e-5f;
+        const float actual=raw?raw->load():std::numeric_limits<float>::quiet_NaN();
+        const bool ok=raw&&std::isfinite(actual)&&std::abs(actual-expected)<1.e-5f;
+        if(!ok)
+            std::cerr << "DIAG: preserved value id=" << id << " actual=" << actual
+                      << " expected=" << expected << '\\n';
+        return ok;
     };
     const auto allFiniteAndInRange=[](SkellPresetAudioProcessor& processor)->bool {
         for(int i=0;i<processor.state.state.getNumChildren();++i) {
@@ -126,8 +144,11 @@ bool hostStateSanitizerRoundtrip() {
             if(!parameter||!raw)continue;
             const auto& range=parameter->getNormalisableRange();
             const float value=raw->load();
-            if(!std::isfinite(value)||value<range.start-1.e-4f||value>range.end+1.e-4f)
+            if(!std::isfinite(value)||value<range.start-1.e-4f||value>range.end+1.e-4f) {
+                std::cerr << "DIAG: out-of-range id=" << id << " value=" << value
+                          << " range=[" << range.start << "," << range.end << "]\\n";
                 return false;
+            }
         }
         return true;
     };
@@ -177,7 +198,11 @@ bool hostStateSanitizerRoundtrip() {
     roundtrip->processBlock(audio,midi);
     for(int ch=0;ch<audio.getNumChannels();++ch)
         for(int i=0;i<audio.getNumSamples();++i)
-            if(!std::isfinite(audio.getSample(ch,i)))return false;
+            if(!std::isfinite(audio.getSample(ch,i))) {
+                std::cerr << "DIAG: non-finite DSP sample channel=" << ch
+                          << " index=" << i << " value=" << audio.getSample(ch,i) << '\\n';
+                return false;
+            }
     return true;
 }
 
