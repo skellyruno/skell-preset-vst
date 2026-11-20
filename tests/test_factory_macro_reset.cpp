@@ -54,12 +54,28 @@ bool dirtyMacros(SkellPresetAudioProcessor& processor) {
 
 bool emptyRackDefaultAndLegacyRestore() {
     auto empty=std::make_unique<SkellPresetAudioProcessor>();
-    if(empty->loadedFactoryPresetIndex()!=-1 || empty->presetName()!="Empty Rack" ||
-       empty->getCurrentProgram()!=0 ||
+    const int emptyProgram=SkellPresetAudioProcessor::emptyRackProgramIndex;
+    if(emptyProgram!=static_cast<int>(skellpreset::factoryPresets.size()) ||
+       empty->getNumPrograms()!=emptyProgram+1 ||
+       empty->getCurrentProgram()!=emptyProgram ||
+       empty->getProgramName(emptyProgram)!="Empty Rack" ||
+       empty->getProgramName(0)!="Clean Lead" ||
+       empty->loadedFactoryPresetIndex()!=-1 || empty->presetName()!="Empty Rack" ||
        empty->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount) {
         std::cerr << "DIAG: new instance is not an unselected empty rack\\n";
         return false;
     }
+
+    // The host program list must identify the empty state without lying that
+    // factory program 0 (Clean Lead) is active. All published indices stay put.
+    empty->setCurrentProgram(0);
+    if(empty->loadedFactoryPresetIndex()!=0 || empty->getCurrentProgram()!=0 ||
+       empty->presetName()!="Clean Lead") return false;
+    empty->setCurrentProgram(emptyProgram);
+    if(empty->loadedFactoryPresetIndex()!=-1 ||
+       empty->getCurrentProgram()!=emptyProgram ||
+       empty->presetName()!="Empty Rack") return false;
+
     for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot) {
         if(empty->slotType(slot)!=SkellPresetAudioProcessor::Empty) {
             std::cerr << "DIAG: default slot is not Empty: " << slot << '\\n';
@@ -102,6 +118,8 @@ bool emptyRackDefaultAndLegacyRestore() {
     auto emptyRestored=std::make_unique<SkellPresetAudioProcessor>();
     emptyRestored->setStateInformation(emptyState.getData(),static_cast<int>(emptyState.getSize()));
     if(emptyRestored->loadedFactoryPresetIndex()!=-1 ||
+       emptyRestored->getCurrentProgram()!=emptyProgram ||
+       emptyRestored->getProgramName(emptyRestored->getCurrentProgram())!="Empty Rack" ||
        emptyRestored->presetName()!="Empty Rack" ||
        emptyRestored->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount)
         return false;
@@ -152,6 +170,8 @@ bool emptyRackDefaultAndLegacyRestore() {
     legacyRestored->setStateInformation(legacyState.getData(),static_cast<int>(legacyState.getSize()));
     const auto* legacyOn=legacyRestored->state.getRawParameterValue("s1_on");
     if(legacyRestored->loadedFactoryPresetIndex()!=0 ||
+       legacyRestored->getCurrentProgram()!=0 ||
+       legacyRestored->getProgramName(legacyRestored->getCurrentProgram())!="Clean Lead" ||
        legacyRestored->presetName()!="Clean Lead" ||
        legacyRestored->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount ||
        legacyRestored->slotType(0)!=SkellPresetAudioProcessor::EQ ||
