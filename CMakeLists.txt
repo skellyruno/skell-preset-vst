@@ -55,15 +55,6 @@ FetchContent_Declare(SkellWorldPresenceHeaders
     SOURCE_SUBDIR _world_presence_headers_only)
 FetchContent_MakeAvailable(SkellWorldPresenceHeaders)
 
-# Optional SkellWorld presence uses a separately pinned headers-only SkellCore
-# snapshot. It adds no audio target, APVTS parameter, or audio-thread work.
-FetchContent_Declare(SkellWorldPresenceHeaders
-    GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
-    GIT_TAG c4ae09c896fa84279d3cc42f19925f97a7e5c124
-    GIT_SHALLOW FALSE
-    SOURCE_SUBDIR _world_presence_headers_only)
-FetchContent_MakeAvailable(SkellWorldPresenceHeaders)
-
 juce_add_plugin(SkellPreset
     COMPANY_NAME "Skell Audio"
     BUNDLE_ID "audio.skell.preset"
@@ -122,7 +113,6 @@ target_link_libraries(SkellPreset PRIVATE
     SkellPresetAssets SkellCore::DSP SkellCore::UI
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
 target_include_directories(SkellPreset PRIVATE "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include")
-target_include_directories(SkellPreset PRIVATE "${skellworldpresenceheaders_SOURCE_DIR}/SkellCore/include")
 target_include_directories(SkellPreset PRIVATE "${skellworldpresenceheaders_SOURCE_DIR}/SkellCore/include")
 target_compile_features(SkellPreset PRIVATE cxx_std_17)
 
