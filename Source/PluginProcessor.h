@@ -70,6 +70,11 @@ public:
     int activeSlotCount() const noexcept {return activeSlots.load(std::memory_order_acquire);}
     int slotIdAt(int position) const noexcept {return (int)((packedOrder.load(std::memory_order_acquire) >> (4*juce::jlimit(0,slotCount-1,position)))&0x0fU);}
     juce::String presetName() const {
+        if(selectedProgram>=0 && selectedProgram<(int)skellpreset::factoryPresets.size()) {
+            const juce::String factoryName(skellpreset::factoryPresets[(size_t)selectedProgram].name);
+            if(factoryName=="Alchemist (Native Preview)")return "Alchemist";
+            if(factoryName=="Deuce v2.5 (Native Trial)")return "Deuce";
+        }
         return selectedProgram==-2 && !emptyRackIdentity.load(std::memory_order_acquire)
             ? juce::String("Custom Rack") : name;
     }
