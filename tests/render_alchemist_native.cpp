@@ -187,9 +187,9 @@ int blankSmoke() {
        || plugin->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex
        || plugin->getProgramName(SkellPresetAudioProcessor::emptyRackProgramIndex)!="Empty Rack"
        || plugin->getProgramName(SkellPresetAudioProcessor::customRackProgramIndex)!="Custom Rack"
-       || plugin->getProgramName(43)!="Alchemist (Native Preview)"
+       || plugin->getProgramName(43)!="Alchemist"
        || plugin->getProgramName(44)!="Deuce D/Max (Native Trial)"
-       || plugin->getProgramName(46)!="Deuce v2.5 (Native Trial)"
+       || plugin->getProgramName(46)!="Deuce"
        || plugin->getProgramName(54)!="Alchemist Serial Dynamics Blend (Trial)")
         return 31;
     for(int s=0;s<SkellPresetAudioProcessor::slotCount;++s) {
