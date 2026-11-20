@@ -1,7 +1,13 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "chain/EffectRegistry.h"
+#include "chain/AlchemistNativePreset.h"
+#include "chain/NativeSoundMatchTrials.h"
+#include "chain/RackRealtimePolicy.h"
+#include <charconv>
 #include <cmath>
+#include <string>
+#include <system_error>
 
 using namespace skellpreset;
 using namespace skellpreset::dsp;
@@ -13,6 +19,52 @@ const juce::StringArray types=[] {
 }();
 static_assert(skellpreset::registry::count()==SkellPresetAudioProcessor::NumberOfModules);
 juce::String slotPrefix(int i) {return "s"+juce::String(i+1)+"_";}
+
+// Host state is external input. JUCE's normalisable-range clamp relies on
+// comparisons, so NaN can survive and poison APVTS atomics. Repair values
+// before replaceState(): malformed/non-finite values use the declared
+// parameter default, finite values clamp, and discrete controls snap legally.
+void sanitizeParameterStateValues(
+    juce::ValueTree& loaded,
+    juce::AudioProcessorValueTreeState& parameters) {
+    for (int childIndex = 0; childIndex < loaded.getNumChildren(); ++childIndex) {
+        auto child = loaded.getChild(childIndex);
+        if (!child.hasProperty("id") || !child.hasProperty("value"))
+            continue;
+
+        auto* parameter = parameters.getParameter(child.getProperty("id").toString());
+        if (parameter == nullptr)
+            continue;
+
+        const auto& range = parameter->getNormalisableRange();
+        float fallback = range.convertFrom0to1(parameter->getDefaultValue());
+        if (!std::isfinite(fallback))
+            fallback = range.start;
+        fallback = juce::jlimit(range.start, range.end, fallback);
+        if (parameter->isDiscrete())
+            fallback = range.snapToLegalValue(fallback);
+        if (!std::isfinite(fallback))
+            fallback = range.start;
+
+        const auto text = child.getProperty("value").toString().trim().toStdString();
+        double parsed = 0.0;
+        const auto result = std::from_chars(
+            text.data(), text.data() + text.size(), parsed, std::chars_format::general);
+        const bool valid = !text.empty() && result.ec == std::errc{}
+            && result.ptr == text.data() + text.size() && std::isfinite(parsed);
+
+        float restored = fallback;
+        if (valid) {
+            const float bounded = juce::jlimit(
+                range.start, range.end, static_cast<float>(parsed));
+            const float legal = parameter->isDiscrete()
+                ? range.snapToLegalValue(bounded) : bounded;
+            if (std::isfinite(legal))
+                restored = legal;
+        }
+        child.setProperty("value", restored, nullptr);
+    }
+}
 }
 
 SkellPresetAudioProcessor::SkellPresetAudioProcessor()
@@ -28,12 +80,27 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension=state.getRawParameterValue(prefix+"fxExt");
         r.extension2=state.getRawParameterValue(prefix+"fxExt2");
         r.extension3=state.getRawParameterValue(prefix+"fxExt3");
+        r.extension4=state.getRawParameterValue(prefix+"fxExt4");
+        r.extension5=state.getRawParameterValue(prefix+"fxExt5");
+        r.extension6=state.getRawParameterValue(prefix+"fxExt6");
+        r.extension7=state.getRawParameterValue(prefix+"fxExt7");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
+        r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
+        r.eqHighCut=state.getRawParameterValue(prefix+"eqHighCut");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
-        for(int k=0;k<8;++k)r.q[(size_t)k]=state.getRawParameterValue(prefix+"eqQ"+juce::String(k+1));
+        for(int k=0;k<8;++k){
+            r.q[(size_t)k]=state.getRawParameterValue(prefix+"eqQ"+juce::String(k+1));
+            r.studioEqKind[(size_t)k]=state.getRawParameterValue(prefix+"studioEqKind"+juce::String(k+1));
+            r.studioEqOn[(size_t)k]=state.getRawParameterValue(prefix+"studioEqOn"+juce::String(k+1));
+        }
     }
     packedOrder.store(initialOrder);
+    rawMic.on=state.getRawParameterValue("micPreOn");
+    rawMic.input=state.getRawParameterValue("micPreInput");
+    rawMic.target=state.getRawParameterValue("micPreTarget");
+    rawMic.amount=state.getRawParameterValue("micPreAmount");
+    rawMic.trim=state.getRawParameterValue("micPreTrim");
     rawGlobal.mode=state.getRawParameterValue("mode");
     rawGlobal.input=state.getRawParameterValue("input");
     rawGlobal.mix=state.getRawParameterValue("mix");
@@ -42,8 +109,13 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawGlobal.threshold=state.getRawParameterValue("gateThreshold");
     rawGlobal.delta=state.getRawParameterValue("delta");
     for(int k=0;k<4;k++)rawGlobal.macros[(size_t)k]=state.getRawParameterValue("macro"+juce::String(k+1));
-    // Factory initialization is separate from state restoration; no DSP is allocated here.
-    loadFactoryPreset(0);
+    addProgramIdentityListeners();
+    // New instances start with a clean, latency-free rack. APVTS slot type
+    // and bypass defaults are already Empty/OFF (all 16 slots).
+    selectedProgram=-2;
+    emptyRackIdentity.store(true,std::memory_order_release);
+    name="Empty Rack";
+    state.state.setProperty("presetName",name,nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::createParameterLayout() {
@@ -51,17 +123,32 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     auto fl=[&](juce::String id,juce::String label,float low,float high,float initial,float step=0.001f){
         p.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{id,1},label,juce::NormalisableRange<float>(low,high,step),initial));
     };
+    auto percent=[&](juce::String id,juce::String label,float low,float high,float initial,float step=0.001f){
+        // Host-side string formatting only: preserve numerical range, value,
+        // ID and automation normalization. Native host displays 0..100%.
+        const auto factory=juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction([low,high](float value,int){
+                return juce::String(juce::roundToInt(100.f*
+                    (value-low)/(high-low)))+"%";
+            })
+            .withValueFromStringFunction([low,high](const juce::String& text){
+                return low+(high-low)*juce::jlimit(0.f,100.f,
+                    text.getFloatValue())*.01f;
+            }); // getText() already includes '%'; avoid duplicate host suffixes
+        p.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{id,1},label,juce::NormalisableRange<float>(low,high,step),initial,factory));
+    };
     auto bl=[&](juce::String id,juce::String label,bool initial){
         p.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID{id,1},label,initial));
     };
     p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"mode",1},"Mode",juce::StringArray{"Simple","Advanced","Vocoding","Bypass"},1));
-    fl("input","Input",-24,24,0);fl("mix","Mix",0,1,1);
-    fl("output","Output",-24,24,0);
+    percent("input","Input",-24,24,0);percent("mix","Mix",0,1,1);
+    percent("output","Output",-24,24,0);
     bl("autoGain","Auto gain (reserved)",false);bl("delta","Delta",false);
     bl("adapt","Adapt (reserved)",false);fl("adaptAmount","Adapt amount (reserved)",0,1,0);
     bl("globalGate","Legacy global gate (inactive; use rack Gate)",false);fl("gateThreshold","Gate threshold",-80,0,-50);
     p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"laneMode",1},"Lane mode (reserved)",juce::StringArray{"Series","Parallel"},0));
-    for(int k=1;k<=8;k++) fl("macro"+juce::String(k),"Macro "+juce::String(k),0,1,.5f);
+    for(int k=1;k<=8;k++) percent("macro"+juce::String(k),"Macro "+juce::String(k),0,1,.5f);
     // Preserve the original 0..22 choice count (and host normalization).
     auto legacyTypes=types;
     while(legacyTypes.size()>RingModFX+1)
@@ -70,7 +157,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         const auto id="s"+juce::String(s)+"_";
         p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{id+"type",1},"Slot "+juce::String(s)+" type",legacyTypes,0));
         bl(id+"on","Slot "+juce::String(s)+" active",false);
-        fl(id+"wet","Slot "+juce::String(s)+" wet",0,1,1);
+        percent(id+"wet","Slot "+juce::String(s)+" wet",0,1,1);
         p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{id+"lane",1},"Slot "+juce::String(s)+" lane (reserved)",juce::StringArray{"A","B","C"},0));
         for(int k=1;k<=16;k++)fl(id+"p"+juce::String(k),"Slot "+juce::String(s)+" Parameter "+juce::String(k),0,1,.5f);
     }
@@ -110,6 +197,69 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(s)+"_fxExt3",1},
             "Slot "+juce::String(s)+" studio pitch effect",
             juce::StringArray{"None","Studio Pitch + Formant"},0));
+    // New IDs append after every published parameter. Zero = OFF, so all
+    // imported projects and prior factory banks retain their exact sound.
+    for(int slot=1;slot<=slotCount;++slot) {
+        const auto prefix="s"+juce::String(slot)+"_";
+        fl(prefix+"eqLowCut","Slot "+juce::String(slot)+" Parametric EQ low cut",0,1,0);
+        fl(prefix+"eqHighCut","Slot "+juce::String(slot)+" Parametric EQ high cut",0,1,0);
+    }
+    // Append a new generation; never expand fxExt3 choices because changing
+    // choice normalization would corrupt old Studio Pitch automation.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt4",1},
+            "Slot "+juce::String(slot)+" Alchemist matching effect",
+            juce::StringArray{"None","Alchemist Match Finish"},0));
+    // New generation is essential: extending fxExt4 would renormalize the
+    // published Alchemist choice and change existing FL Studio sessions.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt5",1},
+            "Slot "+juce::String(slot)+" Mic Modeling effect",
+            juce::StringArray{"None","Mic Modeling"},0));
+    // All five front-end parameters are APPENDED after fxExt5. Old slot,
+    // Alchemist and FL Studio automation IDs keep their original positions.
+    bl("micPreOn","Mic Modeling front-end active",false);
+    p.add(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"micPreInput",1},"Recorded microphone type",
+        juce::StringArray{"Neutral","Condenser","Dynamic","Ribbon"},0));
+    p.add(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"micPreTarget",1},"Simulated microphone character",
+        juce::StringArray{"Flat","Warm","Focus","Air"},0));
+    fl("micPreAmount","Mic Modeling front-end amount",0,1,1);
+    fl("micPreTrim","Mic Modeling front-end trim",-0.f,1.f,.5f);
+    // New generation is append-only. Never renormalize fxExt5 or earlier IDs.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt6",1},
+            "Slot "+juce::String(slot)+" Skelldizer effect",
+            juce::StringArray{"None","Skelldizer"},0));
+    // Append this new choice generation only after all existing host parameters.
+    // No legacy choice's normalization, position, or saved ID is modified.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt7",1},
+            "Slot "+juce::String(slot)+" Studio native DSP effect",
+            juce::StringArray{"None","Studio Parametric EQ (Plain)","Studio Limiter Hybrid",
+                              "Studio Compressor","Studio Fast Dist"},0));
+    // Appended after all established host parameters: no old choice
+    // normalization or automation ID changes.
+    for(int slot=1;slot<=slotCount;++slot){
+        const auto pre="s"+juce::String(slot)+"_";
+        const int initialKinds[]{3,0,0,0,0,0,4,0};
+        for(int band=1;band<=8;++band){
+            const auto suffix=juce::String(band);
+            p.add(std::make_unique<juce::AudioParameterChoice>(
+                juce::ParameterID{pre+"studioEqKind"+suffix,1},
+                "Slot "+juce::String(slot)+" Studio EQ B"+suffix+" type",
+                juce::StringArray{"Peak","High Pass","Low Pass","Low Shelf","High Shelf"},
+                initialKinds[band-1]));
+            bl(pre+"studioEqOn"+suffix,
+               "Slot "+juce::String(slot)+" Studio EQ B"+suffix+" enabled",
+               band<=7);
+        }
+    }
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -119,8 +269,12 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
     voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
     chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
+    studioEq.prepare(sampleRate);studioComp.prepare(sampleRate);
+    studioLimiterComp.prepare(sampleRate);studioGate.prepare(sampleRate);
+    studioDist.prepare(sampleRate);
     rider.prepare(sampleRate);duckingDelay.prepare(sampleRate);vibrato.prepare(sampleRate);
-    eightBand.prepare(sampleRate);serialDynamics.prepare(sampleRate);
+    eightBand.prepare(sampleRate);serialDynamics.prepare(sampleRate);matchFinish.prepare(sampleRate);
+    micModel.prepare(sampleRate);skelldizer.prepare(sampleRate);
     harshness.prepare(sampleRate);noiseControl.prepare(sampleRate);
     studioPitch.prepare(sampleRate);
     pitchDry.prepare(skellpreset::dsp::SpectralPitchFormant::latencySamples);
@@ -171,9 +325,10 @@ void SkellPresetAudioProcessor::updateHostLatency() {
         const int id=(int)((order >> (4*position)) & 0x0fU);
         if(id<0 || id>=slotCount || !rawSlots[(size_t)id].type)continue;
         const int type=slotType(id);
-        if(type==Limiter) total+=latency;
-        else if(type==ExternalVST3) total+=hosted.getLatency(id);
-        else if(type==StudioPitchFormantFX)total+=skellpreset::dsp::SpectralPitchFormant::latencySamples;
+        total+=skellpreset::realtime::stageLatency(
+            (type==StudioLimiterFX?Limiter:type),Limiter,ExternalVST3,StudioPitchFormantFX,latency,
+            type==ExternalVST3?hosted.getLatency(id):0,
+            skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
     if(total!=currentReportedLatency){currentReportedLatency=total;setLatencySamples(total);}
 }
@@ -198,6 +353,9 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     dryWork.setSize(2,hostChunkCapacity,false,true);
     bypassWork.setSize(2,hostChunkCapacity,false,true);
     for(auto& e:engines)e.prepare(rate);
+    micFrontEnd.prepare(rate);
+    micFrontWet.reset(rate,.020);
+    micFrontWet.setCurrentAndTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     hosted.prepare(rate,hostChunkCapacity);
     const auto lookahead=engines[0].limiter.latencySamples();
     limiterLookahead.store(lookahead,std::memory_order_release);
@@ -230,6 +388,10 @@ float SkellPresetAudioProcessor::value(const juce::String& id) const noexcept {
     return 0;
 }
 void SkellPresetAudioProcessor::setReal(const juce::String& id,float v) {
+    if(id!="mode" && selectedProgram==-2 && emptyRackIdentity.exchange(false,std::memory_order_acq_rel)) {
+        name="Custom Rack";
+        state.state.setProperty("presetName",name,nullptr);
+    }
     if(auto* p=state.getParameter(id))p->setValueNotifyingHost(p->convertTo0to1(v));
 }
 float SkellPresetAudioProcessor::getSlotParam(int slot,int param) const noexcept {
@@ -244,7 +406,15 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int extra=raw.extension?juce::jlimit(0,3,(int)raw.extension->load()):0;
     const int advanced=raw.extension2?juce::jlimit(0,4,(int)raw.extension2->load()):0;
     const int studio=raw.extension3?juce::jlimit(0,1,(int)raw.extension3->load()):0;
+    const int match=raw.extension4?juce::jlimit(0,1,(int)raw.extension4->load()):0;
+    const int mic=raw.extension5?juce::jlimit(0,1,(int)raw.extension5->load()):0;
+    const int dizer=raw.extension6?juce::jlimit(0,1,(int)raw.extension6->load()):0;
+    const int studioNative=raw.extension7?juce::jlimit(0,4,(int)raw.extension7->load()):0;
     if(oldType!=Empty)return oldType;
+    if(studioNative>0)return (int)SkelldizerFX+studioNative;
+    if(dizer>0)return (int)MicModelFX+dizer;
+    if(mic>0)return (int)AlchemistMatchFinishFX+mic;
+    if(match>0)return (int)StudioPitchFormantFX+match;
     if(studio>0)return (int)AdaptiveNoiseFX+studio;
     if(advanced>0)return (int)VocalVibratoFX+advanced;
     return extra>0 ? (int)RingModFX+extra : (int)Empty;
@@ -253,22 +423,96 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(slot<0 || slot>=slotCount)return;
     const auto id=slotPrefix(slot);
     const int chosen=juce::jlimit(0,NumberOfModules-1,type);
-    if(chosen>AdaptiveNoiseFX) {
+    const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
+    const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
+    const bool newStudio=chosen>SkelldizerFX && slotType(slot)!=chosen;
+    if(chosen<=SkelldizerFX)setReal(id+"fxExt7",0.f);
+    if(chosen<=MicModelFX)setReal(id+"fxExt6",0.f);
+    if(chosen>SkelldizerFX) {
+        setReal(id+"type",(float)Empty);
+        for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5","fxExt6"})
+            setReal(id+choice,0.f);
+        setReal(id+"fxExt7",(float)(chosen-SkelldizerFX));
+    } else if(chosen>MicModelFX) {
+        setReal(id+"type",(float)Empty);
+        setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
+        setReal(id+"fxExt3",0.f);setReal(id+"fxExt4",0.f);
+        setReal(id+"fxExt5",0.f);
+        setReal(id+"fxExt6",(float)(chosen-MicModelFX));
+    } else if(chosen>AlchemistMatchFinishFX) {
+        setReal(id+"type",(float)Empty);
+        setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
+        setReal(id+"fxExt3",0.f);setReal(id+"fxExt4",0.f);
+        setReal(id+"fxExt5",(float)(chosen-AlchemistMatchFinishFX));
+    } else if(chosen>StudioPitchFormantFX) {
+        setReal(id+"fxExt5",0.f);
+        setReal(id+"type",(float)Empty);
+        setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
+        setReal(id+"fxExt3",0.f);
+        setReal(id+"fxExt4",(float)(chosen-StudioPitchFormantFX));
+    } else if(chosen>AdaptiveNoiseFX) {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt2",0.f);
         setReal(id+"fxExt3",(float)(chosen-AdaptiveNoiseFX));
+        setReal(id+"fxExt4",0.f);
     } else if(chosen>VocalVibratoFX) {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt",0.f);setReal(id+"fxExt3",0.f);
         setReal(id+"fxExt2",(float)(chosen-VocalVibratoFX));
+        setReal(id+"fxExt4",0.f);
     } else if(chosen>RingModFX) {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"type",(float)Empty);
         setReal(id+"fxExt2",0.f);setReal(id+"fxExt3",0.f);
         setReal(id+"fxExt",(float)(chosen-RingModFX));
+        setReal(id+"fxExt4",0.f);
     } else {
+        setReal(id+"fxExt5",0.f);
         setReal(id+"fxExt3",0.f);setReal(id+"fxExt2",0.f);
-        setReal(id+"fxExt",0.f);
+        setReal(id+"fxExt",0.f);setReal(id+"fxExt4",0.f);
         setReal(id+"type",(float)chosen);
+    }
+    if(newDizer) {
+        setSlotParam(slot,0,.35f); // default Amount
+        setSlotParam(slot,1,0.f); // Punch
+        setSlotParam(slot,2,.5f); // 0 dB output trim
+        setSlotParam(slot,3,1.f); // auto-match input level
+    }
+    if(newMic) {
+        // First selection starts with a neutral input/target profile and
+        // zero output trim; package loading subsequently restores saved p1–p4.
+        setSlotParam(slot,0,0.f);
+        setSlotParam(slot,1,0.f);
+        setSlotParam(slot,2,1.f);
+        setSlotParam(slot,3,.5f);
+    }
+    if(newStudio) {
+        // First selection only; imported preset parameters restore afterward.
+        for(int k=0;k<16;++k)setSlotParam(slot,k,.5f);
+        if(chosen==StudioEQFX) {
+            // Separate nodes on the x-axis instead of stacking 7 identical
+            // green dots at 632 Hz when selecting a fresh EQ.
+            const float frequencies[]{.12f,.27f,.39f,.50f,.61f,.72f,.86f,.94f};
+            for(int k=0;k<8;++k){
+                setSlotParam(slot,k*2,frequencies[k]);
+                setReal(id+"studioEqOn"+juce::String(k+1),k<7?1.f:0.f);
+                setReal(id+"studioEqKind"+juce::String(k+1),
+                        (float)(k==0?3:(k==6?4:0)));
+            }
+        }
+        if(chosen==StudioLimiterFX) {
+            setSlotParam(slot,0,.89f); // approximately -1 dBFS final ceiling
+            setSlotParam(slot,1,0.f);  // no added drive
+            setSlotParam(slot,2,1.f);  // optional compressor off
+            setSlotParam(slot,3,0.f);
+            setSlotParam(slot,4,0.f);  // optional gate off
+            setSlotParam(slot,8,0.f);
+        } else if(chosen==StudioFastDistFX) {
+            setSlotParam(slot,1,1.f);setSlotParam(slot,2,0.f);
+            setSlotParam(slot,3,1.f);setSlotParam(slot,4,1.f);
+        }
     }
     updateHostLatency();
 }
@@ -347,21 +591,46 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     outputSmooth.setTargetValue(dbToGain(rawGlobal.output->load()));
     mixSmooth.setTargetValue(juce::jlimit(0.f,1.f,rawGlobal.mix->load()));
     bypassSmooth.setTargetValue(mode==3?0.f:1.f);
+    // The dedicated MIC panel runs before rack slot 1, not as another
+    // inserted effect. Read all automation once per host callback.
+    micFrontEnd.set(juce::jlimit(0.f,3.f,rawMic.input->load())/3.f,
+                    juce::jlimit(0.f,3.f,rawMic.target->load())/3.f,
+                    juce::jlimit(0.f,1.f,rawMic.amount->load()),
+                    juce::jlimit(0.f,1.f,rawMic.trim->load()));
+    micFrontWet.setTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     const bool delta=rawGlobal.delta->load()>.5f;
     const float macroTone=rawGlobal.macros[0]->load();
     const float macroPunch=rawGlobal.macros[1]->load();
     const float macroSpace=rawGlobal.macros[2]->load();
     const float macroGrit=rawGlobal.macros[3]->load();
-    // Read all host automation once per callback. Native algorithms share
-    // one preallocated engine per physical slot; no allocation or lock here.
+    // One consistent rack topology snapshot for the entire callback. Only
+    // ACTIVE rack slots need coefficient updates, which can involve pow/exp.
+    // Inactive expanded slots are configured on their first active callback;
+    // no preset parameters, automation IDs or engine states are discarded.
+    const int chainCount=activeSlotCount();
+    const auto packed=packedOrder.load(std::memory_order_acquire);
+    const std::uint32_t activeMask=skellpreset::realtime::activeSlotMask(packed,chainCount,slotCount);
+    // Native algorithms share one preallocated engine per physical slot;
+    // no allocation, file access or locks in this path.
     for(int s=0;s<slotCount;++s) {
+        if((activeMask&(std::uint32_t{1}<<s))==0) {
+            controlCache[(size_t)s].type=Empty;
+            continue;
+        }
         auto& c=controlCache[(size_t)s];
         const auto& raw=rawSlots[(size_t)s];
         c.type=slotType(s);
         c.on=raw.on->load()>.5f;
         c.wet=juce::jlimit(0.f,1.f,raw.wet->load());
+        c.eqLowCut=raw.eqLowCut->load();
+        c.eqHighCut=raw.eqHighCut->load();
         for(int k=0;k<16;++k)c.p[(size_t)k]=raw.p[(size_t)k]->load();
         for(int k=0;k<8;++k)c.q[(size_t)k]=raw.q[(size_t)k]->load();
+        if(c.type==StudioEQFX)for(int k=0;k<8;++k){
+            c.studioEqKinds[(size_t)k]=juce::jlimit(0,4,
+                (int)raw.studioEqKind[(size_t)k]->load());
+            c.studioEqEnabled[(size_t)k]=raw.studioEqOn[(size_t)k]->load()>.5f;
+        }
         auto& e=engines[(size_t)s];
         switch(c.type) {
             case EQ:
@@ -430,11 +699,38 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case VocalVibratoFX:
                 e.vibrato.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
+            case StudioEQFX:
+                e.studioEq.set(c.p,c.q,c.studioEqKinds,c.studioEqEnabled);
+                break;
+            case StudioCompressorFX:
+                e.studioComp.set(c.p[0],c.p[1],c.p[2],c.p[3],c.p[4]);
+                break;
+            case StudioLimiterFX:
+                e.studioLimiterComp.set(c.p[2],c.p[3],c.p[6],c.p[5],c.p[7]);
+                e.studioGate.set(c.p[4],c.p[8],c.p[5]);
+                e.limiter.setCeilingDb(gainToDb(.12f+c.p[0]*.87f));
+                break;
+            case StudioFastDistFX:
+                e.studioDist.set(c.p[0],c.p[1],c.p[2],c.p[3],c.p[4]);
+                break;
             case EightBandToneFX:
                 e.eightBand.set(rate,c.p,c.q);
+                e.eightBand.setCuts(rate,c.eqLowCut,c.eqHighCut);
                 break;
             case SerialDynamicsFX:
                 e.serialDynamics.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
+            case AlchemistMatchFinishFX:
+                e.matchFinish.set(c.p[0],c.p[1],c.p[2],c.p[3],
+                                  c.p[4],c.p[5],c.p[6],c.p[7],
+                                  c.p[8],c.p[9],c.p[10],c.p[11],
+                                  c.p[12],c.p[13],c.p[14],c.p[15]);
+                break;
+            case MicModelFX:
+                e.micModel.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
+            case SkelldizerFX:
+                e.skelldizer.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case DynamicHarshnessFX:
                 e.harshness.set(c.p[0],c.p[1],c.p[2],c.p[3]);
@@ -468,9 +764,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         slotWetSmooth[(size_t)s].setTargetValue(juce::jlimit(0.f,1.f,c.wet*fx)
             *(c.on?1.f:0.f));
     }
-    const int chainCount=activeSlotCount();
     std::array<int,slotCount> sequence{};
-    const auto packed=packedOrder.load(std::memory_order_acquire);
     for(int i=0;i<slotCount;++i)
         sequence[(size_t)i]=(int)((packed>>(4*i)) & 0x0fU);
     const int lookahead=limiterLookahead.load(std::memory_order_acquire);
@@ -479,9 +773,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         const int id=sequence[(size_t)position];
         if(id<0 || id>=slotCount)continue;
         const auto type=controlCache[(size_t)id].type;
-        if(type==Limiter)blockLatency+=lookahead;
-        else if(type==ExternalVST3)blockLatency+=hosted.getLatency(id);
-        else if(type==StudioPitchFormantFX)blockLatency+=skellpreset::dsp::SpectralPitchFormant::latencySamples;
+        blockLatency+=skellpreset::realtime::stageLatency(
+            (type==StudioLimiterFX?Limiter:type),Limiter,ExternalVST3,StudioPitchFormantFX,lookahead,
+            type==ExternalVST3?hosted.getLatency(id):0,
+            skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
     blockLatency=juce::jlimit(0,slotCount*(lookahead+skellpreset::dsp::SpectralPitchFormant::latencySamples)+
         skellpreset::host::HostedVST3::maxTotalLatency,blockLatency);
@@ -505,9 +800,21 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
+            const float micWet=micFrontWet.getNextValue();
+            float frontL=preL,frontR=preR;
+            // Default OFF should be CPU-neutral for legacy FL Studio racks.
+            // Process the input model only while active or during its 20ms
+            // bypass crossfade; no allocations or latency are introduced.
+            if(micWet>1.e-6f) {
+                const auto colored=micFrontEnd.process(preL,preR);
+                frontL=preL+(colored[0]-preL)*micWet;
+                frontR=preR+(colored[1]-preR)*micWet;
+            }
             const auto original=bypassPdc.process(l,r,blockLatency);
-            const auto dry=dryPdc.process(preL,preR,blockLatency);
-            rackWork.setSample(0,n,preL);rackWork.setSample(1,n,preR);
+            // Front-end tone is upstream of the rack AND its wet/dry blend.
+            // Full bypass still returns the original DAW signal unchanged.
+            const auto dry=dryPdc.process(frontL,frontR,blockLatency);
+            rackWork.setSample(0,n,frontL);rackWork.setSample(1,n,frontR);
             dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
             bypassWork.setSample(0,n,original[0]);
             bypassWork.setSample(1,n,original[1]);
@@ -546,7 +853,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 }
                 continue;
             }
-            const bool keepTail=c.type==Limiter || c.type==Delay ||
+            const bool keepTail=c.type==Limiter || c.type==StudioLimiterFX || c.type==Delay ||
                 c.type==Reverb || c.type==VoxRackRoom ||
                 c.type==VocalChorusFX || c.type==VocalFlangerFX ||
                 c.type==AdlibThrow || c.type==AdlibDoubler ||
@@ -554,6 +861,15 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 c.type==StudioPitchFormantFX;
             if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f)continue;
+            // These controls are constant for the callback. In particular,
+            // dbToGain() involves pow(): never call it on every audio sample.
+            const float limiterDrive=(c.type==Limiter || c.type==StudioLimiterFX)
+                ?dbToGain(c.p[1]*18.f):1.f;
+            const float saturatorDrive=c.type==Saturator
+                ?dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f)):1.f;
+            const float saturatorBlend=.5f+c.p[1];
+            const float saturatorDenom=std::max(.5f,saturatorDrive*.6f);
+            const float exciterDrive=1.f+10.f*c.p[0];
             for(int n=0;n<frames;++n) {
                 float l=rackWork.getSample(0,n);
                 float r=rackWork.getSample(1,n);
@@ -568,9 +884,39 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         const float g=e.comp.gain(std::max(std::abs(l),std::abs(r)));
                         wetL=l*g;wetR=r*g;break;
                     }
+                    case StudioLimiterFX: {
+                        const auto& wetSmoother=slotWetSmooth[(size_t)s];
+                        if(!skellpreset::realtime::needsLimiterWetRender(
+                               wetSmoother.getCurrentValue(),wetSmoother.getTargetValue()))
+                            break;
+                        const auto compressed=e.studioLimiterComp.process(l*limiterDrive,r*limiterDrive);
+                        const float gateGain=e.studioGate.processGain(compressed[0],compressed[1]);
+                        const float input[2]{compressed[0]*gateGain,compressed[1]*gateGain};
+                        float output[2]{};
+                        // Final SkellCore true-peak stage is never bypassed on wet audio.
+                        e.limiter.processFrame(input,output,2);
+                        wetL=output[0];wetR=output[1];break;
+                    }
+                    case StudioCompressorFX: {
+                        const auto y=e.studioComp.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case StudioEQFX: {
+                        const auto y=e.studioEq.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case StudioFastDistFX: {
+                        const auto y=e.studioDist.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
                     case Limiter: {
-                        const float drive=dbToGain(c.p[1]*18.f);
-                        const float input[2]{l*drive,r*drive};
+                        // Preserve historical limiter PDC, but don't spend
+                        // detector CPU when the wet fade is completely dry.
+                        const auto& wetSmoother=slotWetSmooth[(size_t)s];
+                        if(!skellpreset::realtime::needsLimiterWetRender(
+                               wetSmoother.getCurrentValue(),wetSmoother.getTargetValue()))
+                            break;
+                        const float input[2]{l*limiterDrive,r*limiterDrive};
                         float output[2]{};
                         e.limiter.processFrame(input,output,2);
                         wetL=output[0];wetR=output[1];break;
@@ -645,6 +991,18 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         const auto y=e.serialDynamics.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
+                    case AlchemistMatchFinishFX: {
+                        const auto y=e.matchFinish.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case MicModelFX: {
+                        const auto y=e.micModel.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case SkelldizerFX: {
+                        const auto y=e.skelldizer.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
                     case DynamicHarshnessFX: {
                         const auto y=e.harshness.process(l,r);
                         wetL=y[0];wetR=y[1];break;
@@ -658,16 +1016,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Saturator: {
-                        const float drive=dbToGain(c.p[0]*24.f+10.f*(macroGrit-.5f));
-                        const float blend=.5f+c.p[1];
-                        wetL=std::tanh(l*drive*blend)/std::max(.5f,drive*.6f);
-                        wetR=std::tanh(r*drive*blend)/std::max(.5f,drive*.6f);
+                        wetL=std::tanh(l*saturatorDrive*saturatorBlend)/saturatorDenom;
+                        wetR=std::tanh(r*saturatorDrive*saturatorBlend)/saturatorDenom;
                         break;
                     }
                     case Exciter: {
-                        const float drive=1.f+10.f*c.p[0];
-                        wetL=(std::tanh(l*drive)-std::tanh(l*drive*.55f))*.4f+l;
-                        wetR=(std::tanh(r*drive)-std::tanh(r*drive*.55f))*.4f+r;
+                        wetL=(std::tanh(l*exciterDrive)-std::tanh(l*exciterDrive*.55f))*.4f+l;
+                        wetR=(std::tanh(r*exciterDrive)-std::tanh(r*exciterDrive*.55f))*.4f+r;
                         break;
                     }
                     case Delay: {
@@ -688,7 +1043,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     default:break;
                 }
                 // Sample-align a bypassed limiter as it still contributes PDC.
-                if(c.type==Limiter) {
+                if(c.type==Limiter || c.type==StudioLimiterFX) {
                     const auto delayed=e.limiterDry.process(l,r,lookahead);
                     l=delayed[0];r=delayed[1];
                 } else if(c.type==StudioPitchFormantFX) {
@@ -747,15 +1102,45 @@ int SkellPresetAudioProcessor::appendRackSlot() {
     updateHostLatency();
     return slotIdAt(count);
 }
+
+void SkellPresetAudioProcessor::clearRackToEmpty() {
+    suppressProgramIdentityUpdates.store(true,std::memory_order_release);
+    emptyRackIdentity.store(false,std::memory_order_release);
+    selectedProgram=-1;
+    for(auto* parameter:getParameters())
+        if(parameter)parameter->setValueNotifyingHost(parameter->getDefaultValue());
+    activeSlots.store(defaultSlotCount,std::memory_order_release);
+    state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
+    std::uint64_t identityOrder=0;
+    for(int position=0;position<slotCount;++position)
+        identityOrder|=static_cast<std::uint64_t>(position) << (4*position);
+    packedOrder.store(identityOrder,std::memory_order_release);
+    name="Empty Rack";
+    selectedProgram=-2;
+    emptyRackIdentity.store(true,std::memory_order_release);
+    suppressProgramIdentityUpdates.store(false,std::memory_order_release);
+    state.state.setProperty("presetName",name,nullptr);
+    state.state.setProperty("presetBank","My Presets",nullptr);
+    updateHostLatency();
+}
+
 void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     if(index<0||index>=(int)factoryPresets.size())return;
+    emptyRackIdentity.store(false,std::memory_order_release);
     selectedProgram=index;const auto& preset=factoryPresets[(size_t)index];name=preset.name;
     activeSlots.store(defaultSlotCount,std::memory_order_release);
     state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
     for(int s=0;s<slotCount;s++){
         setSlotType(s,Empty);setSlotOn(s,false);setReal(slotPrefix(s)+"wet",1);
         for(int k=0;k<16;k++)setSlotParam(s,k,.5f);
-        for(int band=1;band<=8;++band)setReal(slotPrefix(s)+"eqQ"+juce::String(band),.5f);
+        for(int band=1;band<=8;++band){
+            setReal(slotPrefix(s)+"eqQ"+juce::String(band),.5f);
+            setReal(slotPrefix(s)+"studioEqKind"+juce::String(band),
+                    (float)(band==1?3:(band==7?4:0)));
+            setReal(slotPrefix(s)+"studioEqOn"+juce::String(band),band<=7?1.f:0.f);
+        }
+        setReal(slotPrefix(s)+"eqLowCut",0.f);
+        setReal(slotPrefix(s)+"eqHighCut",0.f);
         
     }
     std::uint64_t seqReset=0;
@@ -960,8 +1345,86 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
             compactOrder|=(std::uint64_t)ids[position] << (4*position);
         packedOrder.store(compactOrder,std::memory_order_release);
     }
+    // Preserve factory indices. Append-only native sound-match trials
+    // share the same serialized 16-slot APVTS structure and cannot overwrite
+    // the protected factory index 43 or any previously saved FL Studio state.
+    auto loadNativeStages=[this](const auto& nativeStages) {
+        for(int physical=0;physical<slotCount;++physical) {
+            // Native factory recalls must have the same clean physical-slot
+            // baseline as the legacy factory bank. Hidden/inactive rows are
+            // still serialized and can become visible when the rack expands.
+            setSlotOn(physical,false);
+            setSlotType(physical,Empty);
+            const auto prefix=slotPrefix(physical);
+            setReal(prefix+"wet",1.f);
+            for(int k=0;k<16;++k)setSlotParam(physical,k,.5f);
+            for(int band=1;band<=8;++band) {
+                const auto suffix=juce::String(band);
+                setReal(prefix+"eqQ"+suffix,.5f);
+                setReal(prefix+"studioEqKind"+suffix,
+                        (float)(band==1?3:(band==7?4:0)));
+                setReal(prefix+"studioEqOn"+suffix,band<=7?1.f:0.f);
+            }
+            setReal(prefix+"eqLowCut",0.f);
+            setReal(prefix+"eqHighCut",0.f);
+        }
+        for(int position=0;position<(int)nativeStages.size();++position) {
+            const auto& stage=nativeStages[(size_t)position];
+            setSlotType(position,stage.module);
+            setSlotOn(position,true);
+            setReal(slotPrefix(position)+"wet",stage.wet);
+            for(int k=0;k<16;++k)setSlotParam(position,k,stage.p[(size_t)k]);
+            for(int k=0;k<8;++k)
+                setReal(slotPrefix(position)+"eqQ"+juce::String(k+1),
+                        stage.q[(size_t)k]);
+        }
+        // A 12-slot Deuce study must actually be scrollable/accessible;
+        // historical ten-slot presets retain ten visible physical rows.
+        const int count=juce::jlimit(defaultSlotCount,slotCount,
+                                    (int)nativeStages.size());
+        activeSlots.store(count,std::memory_order_release);
+        state.state.setProperty("rackSlots",count,nullptr);
+        std::uint64_t identityOrder=0;
+        for(int position=0;position<slotCount;++position)
+            identityOrder|=(std::uint64_t)position << (4*position);
+        packedOrder.store(identityOrder,std::memory_order_release);
+    };
+    if(index==skellpreset::alchemist::factoryIndex)
+        loadNativeStages(skellpreset::alchemist::stages);
+    else if(index==skellpreset::deuce::factoryIndex)
+        loadNativeStages(skellpreset::deuce::stages);
+    else if(index==skellpreset::alchemist_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_trial::stages);
+    else if(index==skellpreset::deuce_v25::factoryIndex)
+        loadNativeStages(skellpreset::deuce_v25::stages);
+    else if(index==skellpreset::alchemist_peak_guard_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_peak_guard_trial::stages);
+    else if(index==skellpreset::alchemist_tone_match_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_tone_match_trial::stages);
+    else if(index==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_lighter_dynamics_trial::stages);
+    else if(index==skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_fast_compressor_blend_trial::stages);
+    else if(index==skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_smooth_compressor_blend_trial::stages);
+    else if(index==skellpreset::alchemist_serial_dynamics_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_serial_dynamics_trial::stages);
+    else if(index==skellpreset::alchemist_low_end_contour_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_low_end_contour_trial::stages);
+    else if(index==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
+        loadNativeStages(skellpreset::alchemist_serial_dynamics_blend_trial::stages);
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
-    setReal("macro1",.5f);setReal("macro2",.5f);setReal("macro3",.5f);setReal("macro4",.5f);
+    // Calibrated against protected 15s OFFLINE v2.5 (~-20.0 LUFS,
+    // -4.03 dBTP), not the ~6.8dB louder original FL recording chain.
+    // This is factory-specific; existing user and Alchemist programs
+    // retain their prior master gain and automation identities.
+    if(index==skellpreset::deuce_v25::factoryIndex)
+        setReal("output",5.17f);
+    setReal("micPreOn",0);setReal("micPreInput",0);
+    setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
+    // Factory switches must reset all serialized macro values, including the
+    // currently hidden compatibility slots 5..8, so imported state cannot leak.
+    for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",preset.bank,nullptr);
     updateHostLatency();
@@ -973,6 +1436,11 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
     doc.bank=state.state.getProperty("presetBank","My Presets").toString();
     doc.mode=juce::jlimit(0,3,(int)value("mode"));
     doc.inputDb=value("input");doc.mix=value("mix");doc.outputDb=value("output");
+    doc.micPreOn=value("micPreOn")>.5f;
+    doc.micPreInput=juce::jlimit(0,3,(int)value("micPreInput"));
+    doc.micPreTarget=juce::jlimit(0,3,(int)value("micPreTarget"));
+    doc.micPreAmount=juce::jlimit(0.f,1.f,value("micPreAmount"));
+    doc.micPreTrim=juce::jlimit(0.f,1.f,value("micPreTrim"));
     for(int i=0;i<8;++i)doc.macros[(size_t)i]=value("macro"+juce::String(i+1));
     for(int position=0;position<slotCount;++position){
         auto& dst=doc.slots[(size_t)position];
@@ -984,7 +1452,14 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         dst.enabled=value(prefix+"on")>.5f;
         dst.wet=value(prefix+"wet");
         for(int k=0;k<16;++k)dst.params[(size_t)k]=getSlotParam(dst.slotId,k);
-        for(int band=0;band<8;++band)dst.eqQ[(size_t)band]=value(prefix+"eqQ"+juce::String(band+1));
+        for(int band=0;band<8;++band){
+            const auto n=juce::String(band+1);
+            dst.eqQ[(size_t)band]=value(prefix+"eqQ"+n);
+            dst.studioEqKind[(size_t)band]=juce::jlimit(0,4,(int)value(prefix+"studioEqKind"+n));
+            dst.studioEqOn[(size_t)band]=value(prefix+"studioEqOn"+n)>.5f;
+        }
+        dst.eqLowCut=value(prefix+"eqLowCut");
+        dst.eqHighCut=value(prefix+"eqHighCut");
     }
     return skellpreset::package::write(file,doc);
 }
@@ -998,7 +1473,14 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
         setSlotType(slot.slotId,slot.type);
         setReal(prefix+"wet",slot.wet);
         for(int k=0;k<16;++k)setSlotParam(slot.slotId,k,slot.params[(size_t)k]);
-        for(int band=0;band<8;++band)setReal(prefix+"eqQ"+juce::String(band+1),slot.eqQ[(size_t)band]);
+        for(int band=0;band<8;++band){
+            const auto n=juce::String(band+1);
+            setReal(prefix+"eqQ"+n,slot.eqQ[(size_t)band]);
+            setReal(prefix+"studioEqKind"+n,(float)slot.studioEqKind[(size_t)band]);
+            setReal(prefix+"studioEqOn"+n,slot.studioEqOn[(size_t)band]?1.f:0.f);
+        }
+        setReal(prefix+"eqLowCut",slot.eqLowCut);
+        setReal(prefix+"eqHighCut",slot.eqHighCut);
     }
     std::uint64_t next=0;
     for(int position=0;position<slotCount;++position){
@@ -1011,8 +1493,14 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     state.state.setProperty("rackSlots",doc.activeSlotCount,nullptr);
     setReal("input",doc.inputDb);setReal("mix",doc.mix);setReal("output",doc.outputDb);
     setReal("mode",(float)doc.mode);
+    setReal("micPreOn",doc.micPreOn?1.f:0.f);
+    setReal("micPreInput",(float)doc.micPreInput);
+    setReal("micPreTarget",(float)doc.micPreTarget);
+    setReal("micPreAmount",doc.micPreAmount);
+    setReal("micPreTrim",doc.micPreTrim);
     for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
     name=doc.name;
+    emptyRackIdentity.store(false,std::memory_order_release);
     selectedProgram=-1; // Imported sound is not a factory preset.
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",doc.bank,nullptr);
@@ -1034,9 +1522,34 @@ void SkellPresetAudioProcessor::reorderSlot(int from,int to) {
     for(int i=0;i<slotCount;i++)next|=(std::uint64_t)seq[(size_t)i] << (4*i);
     packedOrder.store(next,std::memory_order_release);
 }
-void SkellPresetAudioProcessor::setCurrentProgram(int index) {loadFactoryPreset(index);}
+bool SkellPresetAudioProcessor::removeRackSlot(int visualPosition) {
+    // Deleting an extra row must NOT shift the APVTS physical IDs or destroy
+    // hosted processors on the audio thread. Move its stable ID into the
+    // inactive tail, clear its type/power and atomically reduce active count.
+    const int count=activeSlotCount();
+    if(count<=defaultSlotCount || visualPosition<0 || visualPosition>=count)
+        return false;
+    const int physical=slotIdAt(visualPosition);
+    reorderSlot(visualPosition,count-1);
+    setSlotOn(physical,false);
+    setSlotType(physical,Empty);
+    activeSlots.store(count-1,std::memory_order_release);
+    state.state.setProperty("rackSlots",count-1,nullptr);
+    updateHostLatency();
+    return true;
+}
+void SkellPresetAudioProcessor::setCurrentProgram(int index) {
+    if(index==emptyRackProgramIndex) {clearRackToEmpty();return;}
+    if(index==customRackProgramIndex)return;
+    loadFactoryPreset(index);
+}
 const juce::String SkellPresetAudioProcessor::getProgramName(int index) {
-    return index>=0&&index<(int)factoryPresets.size()?factoryPresets[(size_t)index].name:juce::String{};
+    if(index==emptyRackProgramIndex)return "Empty Rack";
+    if(index==customRackProgramIndex)return "Custom Rack";
+    if(index==skellpreset::alchemist::factoryIndex)return "Alchemist";
+    if(index==skellpreset::deuce_v25::factoryIndex)return "Deuce";
+    return index>=0&&index<(int)factoryPresets.size()
+        ? factoryPresets[(size_t)index].name : juce::String{};
 }
 void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     auto snapshot=state.copyState();
@@ -1044,8 +1557,10 @@ void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     for(int i=0;i<slotCount;i++)sequence+=juce::String(slotIdAt(i))+(i==slotCount-1?"":",");
     snapshot.setProperty("slotOrder",sequence,nullptr);
     snapshot.setProperty("rackSlots",activeSlotCount(),nullptr);
-    snapshot.setProperty("presetName",name,nullptr);
-    snapshot.setProperty("program",selectedProgram,nullptr);
+    snapshot.setProperty("presetName",presetName(),nullptr);
+    const int savedProgram=selectedProgram==-2 &&
+        !emptyRackIdentity.load(std::memory_order_acquire) ? -1 : selectedProgram;
+    snapshot.setProperty("program",savedProgram,nullptr);
     for(int s=0;s<slotCount;++s) {
         const auto index=juce::String(s+1);
         snapshot.removeProperty("hostPath"+index,nullptr);
@@ -1068,13 +1583,24 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         juce::StringArray items;items.addTokens(sequence,",","");
         // Stage 8 states had ten positions; append six default identities when
         // reading them. A malformed order leaves the current permutation intact.
-        if(items.size()==defaultSlotCount || items.size()==slotCount) {
+        // JUCE addTokens omits empty tokens and getIntValue silently maps
+        // malformed text to zero. Only an exact decimal permutation can
+        // reorder an already-open FL Studio session. Preserve the existing
+        // rack order if commas, signs or nonnumeric tokens are malformed.
+        const bool exactFields=(sequence.length()-
+            sequence.removeCharacters(",").length())==items.size()-1;
+        if(exactFields && (items.size()==defaultSlotCount || items.size()==slotCount)) {
             std::array<bool,slotCount> seen{};
             std::array<int,slotCount> proposed{};
             bool valid=true;
             const int oldCount=items.size();
             for(int i=0;i<oldCount;++i) {
-                const int v=items[i].getIntValue();
+                const auto token=items[i].trim();
+                if(token.isEmpty() || token.length()>2 ||
+                    !token.containsOnly("0123456789")) {
+                    valid=false;break;
+                }
+                const int v=token.getIntValue();
                 if(v<0 || v>=oldCount || seen[(size_t)v]){valid=false;break;}
                 seen[(size_t)v]=true;proposed[(size_t)i]=v;
             }
@@ -1090,8 +1616,54 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             (int)loaded.getProperty("rackSlots",defaultSlotCount));
         activeSlots.store(restoredCount,std::memory_order_release);
         name=loaded.getProperty("presetName","Custom").toString();
-        selectedProgram=juce::jlimit(-1,(int)factoryPresets.size()-1,(int)loaded.getProperty("program",0));
+        // Legacy/custom host states may not contain a trustworthy factory ID.
+        // Never silently turn a missing or malformed identity into factory 0 or
+        // clamp an invalid positive ID onto the last factory preset.
+        selectedProgram=-1;
+        if(loaded.hasProperty("program")) {
+            const auto storedProgram=loaded.getProperty("program");
+            bool validProgram=false;
+            int parsedProgram=-1;
+            if(storedProgram.isInt() || storedProgram.isInt64() || storedProgram.isDouble()) {
+                const double numeric=static_cast<double>(storedProgram);
+                if(std::isfinite(numeric) && numeric==std::floor(numeric)
+                    && numeric>=-2.0 && numeric<(double)factoryPresets.size()) {
+                    parsedProgram=(int)numeric;
+                    validProgram=true;
+                }
+            } else if(storedProgram.isString()) {
+                // JUCE XML can surface an integer attribute as text. Accept
+                // only a canonical decimal token; getIntValue alone accepts
+                // malformed strings such as "oops" as zero.
+                const auto token=storedProgram.toString().trim();
+                if(token.isNotEmpty() && token.length()<=3
+                    && token.containsOnly("0123456789-")) {
+                    const int numeric=token.getIntValue();
+                    if(juce::String(numeric)==token && numeric>=-2
+                        && numeric<(int)factoryPresets.size()) {
+                        parsedProgram=numeric;
+                        validProgram=true;
+                    }
+                }
+            }
+            if(validProgram)selectedProgram=parsedProgram;
+        }
+        // Repair untrusted host XML before JUCE copies it into APVTS atomics.
+        sanitizeParameterStateValues(loaded, state);
         state.replaceState(loaded);
+        bool slotsEmpty=true;
+        for(int slot=0;slot<slotCount;++slot) {
+            const auto* enabled=state.getRawParameterValue(slotPrefix(slot)+"on");
+            if(slotType(slot)!=Empty || (enabled && enabled->load()>0.5f)) {
+                slotsEmpty=false;
+                break;
+            }
+        }
+        if(selectedProgram==-1 && name=="Empty Rack" && slotsEmpty)
+            selectedProgram=-2;
+        if(selectedProgram==-2 && !slotsEmpty)
+            selectedProgram=-1;
+        emptyRackIdentity.store(selectedProgram==-2,std::memory_order_release);
         updateHostLatency();
         // Don't instantiate external code in setStateInformation(): hosts may
         // call this from threads that cannot safely load a plugin DLL.
@@ -1100,5 +1672,47 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             if(loaded.hasProperty("hostPath"+juce::String(s+1))) {restore=true;break;}
         if(restore)triggerAsyncUpdate();
     }
+}
+void SkellPresetAudioProcessor::addProgramIdentityListeners() {
+    auto add=[this](const juce::String& id) {
+        if(state.getParameter(id)==nullptr)return;
+        state.addParameterListener(id,this);
+        programIdentityListenerIds.add(id);
+    };
+    for(const auto* id:{"input","mix","output","autoGain","delta",
+                        "adapt","adaptAmount","globalGate","gateThreshold","laneMode",
+                        "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim"})
+        add(id);
+    for(int macro=1;macro<=8;++macro)add("macro"+juce::String(macro));
+    for(const auto* lane:{"A","B","C"}) {
+        const auto prefix="lane"+juce::String(lane);
+        add(prefix+"_level");add(prefix+"_pan");add(prefix+"_mute");
+    }
+    for(int slot=0;slot<slotCount;++slot) {
+        const auto prefix=slotPrefix(slot);
+        for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
+                                "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
+                                "eqLowCut","eqHighCut"})add(prefix+suffix);
+        for(int parameter=1;parameter<=16;++parameter)
+            add(prefix+"p"+juce::String(parameter));
+        for(int band=1;band<=8;++band) {
+            const auto suffix=juce::String(band);
+            add(prefix+"eqQ"+suffix);
+            add(prefix+"studioEqKind"+suffix);
+            add(prefix+"studioEqOn"+suffix);
+        }
+    }
+}
+void SkellPresetAudioProcessor::removeProgramIdentityListeners() noexcept {
+    for(const auto& id:programIdentityListenerIds)
+        state.removeParameterListener(id,this);
+    programIdentityListenerIds.clear();
+}
+void SkellPresetAudioProcessor::parameterChanged(const juce::String&,float) {
+    if(!suppressProgramIdentityUpdates.load(std::memory_order_acquire))
+        emptyRackIdentity.store(false,std::memory_order_release);
+}
+SkellPresetAudioProcessor::~SkellPresetAudioProcessor() {
+    removeProgramIdentityListeners();
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {return new SkellPresetAudioProcessor();}

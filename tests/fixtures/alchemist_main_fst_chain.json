@@ -1,0 +1,55 @@
+{
+  "schema": "skell.fst.slot-chain-manifest",
+  "version": 1,
+  "file": "MAIN.fst",
+  "sha256": "66077b7a4e1695ab8817b6cbe74be7f098afa1fe8fee52ac4fa3e90065359424",
+  "fl_studio_version": "26.1.6.5639",
+  "source_manifest": "Skelly_Vocal_FST_Reference_Manifest_2026-11-15.json",
+  "slots": [
+    {
+      "slot": 3,
+      "name": "Fruity Parametric EQ 2"
+    },
+    {
+      "slot": 4,
+      "name": "Fruity Parametric EQ 2"
+    },
+    {
+      "slot": 5,
+      "name": "Fruity Limiter"
+    },
+    {
+      "slot": 6,
+      "name": "CLA-76 Stereo",
+      "chain_name": "Waves CLA-76 Stereo",
+      "waves_plugin": "CLA-76",
+      "active_setup": "SETUP_A"
+    },
+    {
+      "slot": 7,
+      "name": "CLA-2A Stereo",
+      "chain_name": "Waves CLA-2A Stereo",
+      "waves_plugin": "CLA-2A",
+      "active_setup": "SETUP_A"
+    },
+    {
+      "slot": 8,
+      "name": "Soundgoodizer",
+      "native_state": {
+        "state_version": 3,
+        "mode_index": 0,
+        "mode_letter": "A",
+        "amount_raw_integer": 169
+      }
+    },
+    {
+      "slot": 9,
+      "name": "Fruity Limiter"
+    }
+  ],
+  "limitations": [
+    "Stored slot state does not prove the slot is audible; host bypass, wet/dry and mixer routing still require FL Studio validation.",
+    "Waves numeric vectors are preserved as raw state and are not mapped to physical controls.",
+    "MAIN.fst contains two separate Fruity Parametric EQ 2 slots in stored chain order. Both slots are recorded here; their complete native per-band parameter mappings are not decoded by this manifest."
+  ]
+}

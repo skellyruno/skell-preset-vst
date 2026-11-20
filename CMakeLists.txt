@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SkellPreset VERSION 0.6.0 LANGUAGES C CXX)
+project(SkellPreset VERSION 0.7.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -36,18 +36,18 @@ else()
 endif()
 
 
-# GuidedTour is a shared JUCE UI header from the verified, immutable SkellCore
+# GuidedTour and HardwareIconButton come from the same pinned SkellCore
 # revision. Fetch headers only: the existing bundled SkellCore targets are
 # preserved so duplicate CMake targets and DSP changes are impossible.
 FetchContent_Declare(SkellGuidedTourHeaders
-    GIT_REPOSITORY https://github.com/skellyruno/skell-vst-template.git
-    GIT_TAG eb56702153c4373799a4e8e2663e0f158c0115a6
+    GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
+    GIT_TAG 6a2077b3275819dcc1166f8c5a4a04a5f3558caf
     GIT_SHALLOW FALSE
     SOURCE_SUBDIR _guided_tour_headers_only)
 FetchContent_MakeAvailable(SkellGuidedTourHeaders)
 
-# WorldLink and its companion protocol headers come from one pinned
-# SkellCore revision. Headers-only: no new SkellCore targets or DSP changes.
+# Optional SkellWorld presence uses a separately pinned headers-only SkellCore
+# snapshot. It adds no audio target, APVTS parameter, or audio-thread work.
 FetchContent_Declare(SkellWorldPresenceHeaders
     GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
     GIT_TAG c4ae09c896fa84279d3cc42f19925f97a7e5c124
@@ -95,7 +95,7 @@ juce_add_binary_data(SkellPresetAssets
 target_sources(SkellPreset PRIVATE
     Source/PluginProcessor.h Source/PluginProcessor.cpp
     Source/PluginEditor.h Source/PluginEditor.cpp
-    Source/chain/BasicDSP.h Source/chain/ModulationFX.h Source/chain/ImportedVocalFX.h Source/chain/AdvancedVocalDSP.h Source/chain/SpectralPitchFormant.h Source/chain/EffectRegistry.h Source/chain/LiveAudioScope.h Source/chain/ClipRecorder.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h
+    Source/chain/BasicDSP.h Source/chain/StudioChorusDSP.h Source/chain/StudioNativeDSP.h Source/chain/ModulationFX.h Source/chain/ImportedVocalFX.h Source/chain/AdvancedVocalDSP.h Source/chain/SpectralPitchFormant.h Source/chain/EffectRegistry.h Source/chain/LiveAudioScope.h Source/chain/ClipRecorder.h Source/chain/VocalEffects.h Source/chain/VoxRackFX.h Source/chain/FactoryPresets.h Source/chain/AlchemistNativePreset.h Source/chain/AlchemistMatchDSP.h Source/chain/AlchemistReferenceContour.h Source/chain/MicModelDSP.h
     Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
     Source/host/HostedVST3.h
     Source/ui/Theme.h Source/ui/ModulePicker.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
@@ -172,6 +172,52 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
         target_compile_definitions(SkellPresetUIRenderer PRIVATE JUCE_PLUGINHOST_VST3=1)
     endif()
     target_compile_features(SkellPresetUIRenderer PRIVATE cxx_std_17)
+    if(MSVC)
+        # The real JUCE editor and rack processor are large; keep the test-only
+        # screenshot harness off the 1 MiB default Windows executable stack.
+        target_link_options(SkellPresetUIRenderer PRIVATE /STACK:8388608)
+    endif()
+endif()
+
+# Optional cross-platform diagnostic: run the exact compiled Skell-Preset factory
+# processBlock against a local owner-provided dry WAV, never embed that audio.
+# This exercises the plugin DSP directly; VST3 wrapper/FL Studio checks remain
+# separate and must not be treated as passing by this tool alone.
+option(SKELL_PRESET_ALCHEMIST_RENDERER "Build same-take Alchemist native WAV renderer" OFF)
+if(SKELL_PRESET_ALCHEMIST_RENDERER)
+    add_executable(SkellPresetAlchemistRender tests/render_alchemist_native.cpp)
+    target_include_directories(SkellPresetAlchemistRender PRIVATE
+        "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include"
+        "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
+    target_compile_definitions(SkellPresetAlchemistRender PRIVATE
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    if(WIN32)
+        target_compile_definitions(SkellPresetAlchemistRender PRIVATE JUCE_PLUGINHOST_VST3=1)
+    endif()
+    target_link_libraries(SkellPresetAlchemistRender PRIVATE SkellPreset
+        SkellPresetAssets SkellCore::DSP SkellCore::UI
+        juce::juce_audio_formats juce::juce_audio_utils juce::juce_gui_extra)
+    target_compile_features(SkellPresetAlchemistRender PRIVATE cxx_std_17)
+    add_test(NAME SkellPresetAlchemistNativeRenderSmoke
+        COMMAND SkellPresetAlchemistRender --smoke)
+    add_test(NAME SkellPresetBlankStartupStateRestore
+        COMMAND SkellPresetAlchemistRender --smoke-blank)
+    add_test(NAME SkellPresetStrictSlotOrderRestore
+        COMMAND SkellPresetAlchemistRender --smoke-slot-order)
+    add_test(NAME SkellPresetHostPercentageReadout
+        COMMAND SkellPresetAlchemistRender --percent-smoke)
+    # Real JUCE editor interaction/layout probe, no images or screenshot workflow.
+    add_test(NAME SkellPresetWindowsUIInteractionSmoke
+        COMMAND SkellPresetAlchemistRender --ui-smoke)
+    add_test(NAME SkellPresetAlchemistMonoWavRenderSmoke
+        COMMAND SkellPresetAlchemistRender --smoke-mono)
+    add_test(NAME SkellPresetNativeSoundMatchTrialSmoke
+        COMMAND SkellPresetAlchemistRender --native-trials-smoke)
+    # Serial 5/10/20-instance workload of the real native processor with
+    # finite/peak checks and host-PDC assertions (not DAW CPU certification).
+    add_test(NAME SkellPresetRealRackStress
+        COMMAND SkellPresetAlchemistRender --stress)
+    set_tests_properties(SkellPresetRealRackStress PROPERTIES TIMEOUT 240)
 endif()
 
 # Windows-only in-process hosting integration fixture. It proves that an

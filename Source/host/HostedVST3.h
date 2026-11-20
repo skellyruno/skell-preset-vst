@@ -100,7 +100,13 @@ public:
             return juce::Result::fail("Combined hosted latency exceeds the safe PDC budget");
         auto* pointer=instance.get();
         owned[(size_t)slot].push_back(std::move(instance));
-        names[(size_t)slot]=chosen->descriptiveName;
+        // Prefer the actual plugin product name. Some VST3s (including
+        // third-party air/exciter effects) report an empty descriptiveName;
+        // never show the generic VST3 INSERT label when loaded successfully.
+        const auto display=chosen->descriptiveName.trim();
+        names[(size_t)slot]=display.isNotEmpty()?display:
+                            (chosen->name.isNotEmpty()?chosen->name:
+                             path.getFileNameWithoutExtension());
         locations[(size_t)slot]=path;
         latencies[(size_t)slot].store(latency,std::memory_order_release);
         active[(size_t)slot].store(pointer,std::memory_order_release);

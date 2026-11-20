@@ -45,6 +45,7 @@ public:
 
     std::function<void(const juce::File&)> onLoad;
     std::function<void()> onBrowseFile;
+    std::function<void()> onDismiss;
 
     void open() {
         search.setText({},juce::dontSendNotification);
@@ -56,7 +57,9 @@ public:
     }
     void hide() {
         stopTimer();
+        const bool wasVisible=isVisible();
         setVisible(false);
+        if(wasVisible && onDismiss)onDismiss();
     }
     void applyTheme() {
         Theme::selectFor(processor.state);
