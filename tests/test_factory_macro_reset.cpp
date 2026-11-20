@@ -52,6 +52,34 @@ bool dirtyMacros(SkellPresetAudioProcessor& processor) {
     return true;
 }
 
+bool dirtyAllParameters(SkellPresetAudioProcessor& processor) {
+    for(auto* parameter : processor.getParameters()) {
+        if(parameter==nullptr)return false;
+        const float defaultValue=parameter->getDefaultValue();
+        if(!std::isfinite(defaultValue))return false;
+        const float dirtyValue=defaultValue<0.5f?1.f:0.f;
+        if(std::abs(dirtyValue-defaultValue)<=tolerance)return false;
+        parameter->setValueNotifyingHost(dirtyValue);
+    }
+    return true;
+}
+
+bool allParametersAtDefault(const SkellPresetAudioProcessor& processor,
+                            const char* context) {
+    const auto& parameters=processor.getParameters();
+    for(int index=0;index<parameters.size();++index) {
+        const auto* parameter=parameters.getUnchecked(index);
+        if(parameter==nullptr || !std::isfinite(parameter->getValue()) ||
+           std::abs(parameter->getValue()-parameter->getDefaultValue())>tolerance) {
+            std::cerr << "DIAG: " << context
+                      << " retained non-default APVTS parameter at index "
+                      << index << '\\n';
+            return false;
+        }
+    }
+    return true;
+}
+
 bool emptyRackDefaultAndLegacyRestore() {
     auto empty=std::make_unique<SkellPresetAudioProcessor>();
     const int emptyProgram=SkellPresetAudioProcessor::emptyRackProgramIndex;
@@ -68,13 +96,19 @@ bool emptyRackDefaultAndLegacyRestore() {
 
     // The host program list must identify the empty state without lying that
     // factory program 0 (Clean Lead) is active. All published indices stay put.
+    if(!allParametersAtDefault(*empty,"new instance"))return false;
     empty->setCurrentProgram(0);
     if(empty->loadedFactoryPresetIndex()!=0 || empty->getCurrentProgram()!=0 ||
        empty->presetName()!="Clean Lead") return false;
+
+    // Dirty every published APVTS parameter, including currently reserved IDs.
+    // Switching to Empty Rack must restore the complete declared default state.
+    if(!dirtyAllParameters(*empty))return false;
     empty->setCurrentProgram(emptyProgram);
     if(empty->loadedFactoryPresetIndex()!=-1 ||
        empty->getCurrentProgram()!=emptyProgram ||
-       empty->presetName()!="Empty Rack") return false;
+       empty->presetName()!="Empty Rack" ||
+       !allParametersAtDefault(*empty,"Empty Rack program switch")) return false;
 
     for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot) {
         if(empty->slotType(slot)!=SkellPresetAudioProcessor::Empty) {
@@ -123,6 +157,7 @@ bool emptyRackDefaultAndLegacyRestore() {
        emptyRestored->presetName()!="Empty Rack" ||
        emptyRestored->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount)
         return false;
+    if(!allParametersAtDefault(*emptyRestored,"Empty Rack host-state reload"))return false;
     for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot) {
         const auto onId="s"+juce::String(slot+1)+"_on";
         const auto* on=emptyRestored->state.getRawParameterValue(onId);
