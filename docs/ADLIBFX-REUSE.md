@@ -1,20 +1,36 @@
-# Shared SkellCore AdlibFX in Skell Preset
+# Shared SkellCore AdlibFX proposal for Skell Preset
 
-Four native rack effects are appended to the module type enumeration:
-Adlib CHOP, Adlib MOTION, Adlib FILTER, and Adlib SATURATE.
-Existing type values and per-slot automation IDs remain unchanged.
+**Status: not included in the current consolidated production candidate.**
+PR #8 remains open as a separate feature review. The current integration
+retains the existing rack modules and IDs; it does not yet append the four
+AdlibFX modules described below. This document preserves the proposal and
+its original technical constraints without claiming those effects ship.
 
-The engines are sourced from the exact tested SkellCore commit
-cf2d182a1c4b1b45f97253f5e1b17dd91343aeaa, the same version
-used by Skell AdlibLab 0.10. Each physical slot has its own processor,
-prepared off the realtime callback. Existing slot wet/bypass smoothing
-continues to apply; no nested VST3 dependency is required.
+## Proposed effects
 
-Slot controls 1–4: Amount, Rate, Tone, Mix. Host tempo drives CHOP.
-Original factory presets and module numeric IDs are preserved.
-Windows VST3 is the only plugin release format.
+- Adlib CHOP
+- Adlib MOTION
+- Adlib FILTER
+- Adlib SATURATE
 
-The historical feature PR reported portable effect tests at five sample
-rates. Re-run the current repository's full Windows VST3 and DSP gates on
-the consolidated commit; do not treat this historical report as current
-validation.
+The original PR proposed sourcing these engines from the pinned SkellCore
+revision cf2d182a1c4b1b45f97253f5e1b17dd91343aeaa using the headers-only
+AdlibFX component. The intended implementation has one processor per physical
+rack slot, prepared off the realtime callback, and retains the plugin's
+existing slot wet/bypass smoothing.
+
+Proposed controls 1–4: Amount, Rate, Tone, Mix. CHOP would use valid host tempo
+with a safe fallback. No nested VST3 dependency is intended.
+
+## Integration gates before merging PR #8
+
+1. Append module IDs only; never renumber existing module types or automation IDs.
+2. Verify independent per-slot DSP state and no allocation/locking in processBlock.
+3. Run portable DSP tests at supported sample rates and Windows x64 VST3 CI.
+4. Measure CPU, latency, denormals, clipping and stereo stability.
+5. Verify all four real editor controls and scaling with local Quick4 screenshots.
+6. Keep Windows VST3 as the supported release format.
+
+The original PR's historical test report is not current validation. Do not
+close PR #8 or describe these effects as shipped until the implementation is
+reviewed and the current gates pass.
