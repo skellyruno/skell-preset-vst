@@ -9,13 +9,27 @@
 class SkellSettingsPanel final : public juce::Component {
 public:
     std::function<void(int)> onSizeChange;
+    std::function<void()> onWorldLinkToggle;
     std::function<void()> onClose;
+
     void select(int index) { selected=juce::jlimit(0,3,index);repaint(); }
     void open(int index) {
         select(index);
         setVisible(true);toFront(true);
     }
     void close() {setVisible(false);if(onClose)onClose();}
+
+    void setWorldLinkState(bool requested,bool localOnline,bool hubOnline) {
+        if(!requested) worldLinkLabel="JOIN SKELLWORLD  |  PRESENCE ONLY";
+        else if(hubOnline) worldLinkLabel="LEAVE SKELLWORLD  |  HUB CONNECTED";
+        else if(localOnline) worldLinkLabel="LEAVE SKELLWORLD  |  LOCAL ONLY";
+        else worldLinkLabel="LEAVE SKELLWORLD  |  CONNECTING";
+        repaint();
+    }
+    bool hasWorldLinkControlForTest() const noexcept {
+        return worldLinkLabel.isNotEmpty() && (bool)onWorldLinkToggle;
+    }
+
     void paint(juce::Graphics& g) override {
         Theme::panelBox(g,getLocalBounds().toFloat(),12.f);
         g.setColour(Theme::green);
@@ -41,8 +55,20 @@ public:
                         active?Theme::green:Theme::white,true);
             if(active)Theme::text(g,"●",{x+138,y+8,16,23},12,Theme::green);
         }
-        Theme::text(g,"MORE SETTINGS WILL APPEAR HERE",
-                    {25,getHeight()-33,getWidth()-50,18},9.2f,Theme::muted);
+        Theme::text(g,"SKELLWORLD  /  OPTIONAL LOCAL PRESENCE",
+                    {25,214,getWidth()-50,18},10,Theme::green,true);
+        const auto linkButton=juce::Rectangle<float>(25.f,239.f,
+                                                       (float)getWidth()-50.f,39.f);
+        g.setColour(Theme::panelAlt);
+        g.fillRoundedRectangle(linkButton,7.f);
+        g.setColour(worldLinkLabel.startsWith("LEAVE")
+                    ?Theme::green:Theme::stroke);
+        g.drawRoundedRectangle(linkButton.reduced(.5f),7.f,1.15f);
+        Theme::text(g,worldLinkLabel,
+                    {34,247,getWidth()-68,22},11.2f,Theme::white,true,
+                    juce::Justification::centred);
+        Theme::text(g,"PRESENCE ONLY  ·  NO AUDIO, PRESETS OR CHAIN DATA",
+                    {25,291,getWidth()-50,18},8.8f,Theme::muted);
     }
     void mouseDown(const juce::MouseEvent& e) override {
         if(e.x>=getWidth()-47 && e.y<50) {close();return;}
@@ -55,7 +81,12 @@ public:
                 return;
             }
         }
+        if(juce::Rectangle<int>(25,239,getWidth()-50,39).contains(e.getPosition())) {
+            if(onWorldLinkToggle)onWorldLinkToggle();
+            return;
+        }
     }
 private:
     int selected=0;
+    juce::String worldLinkLabel{"JOIN SKELLWORLD  |  PRESENCE ONLY"};
 };

@@ -73,6 +73,8 @@ See [322 DAW comparison and recording limitations](docs/322_DAW_SKELL_INTEGRATIO
 
 ## Presets and compatibility
 
+**Main Vocals is intentionally a two-preset browser bank: Alchemist and Deuce only.** The other historical and experimental factory definitions remain in the internal 55-ID compatibility registry so older host sessions and automation can still resolve their original program indices; they are not shown as additional Main Vocals choices. User-imported or saved `.skellpreset` files are listed separately under **My Presets**.
+
 The factory catalog preserves original program IDs 0–42, including **Wide Choir Adlib**, **Phantom Sweep**, **Alien Ring**, **VoxRack Velvet**, and **VoxRack Chamber**. The append-only catalog now contains 55 programs; Alchemist remains at index 43, and Deuce/Alchemist sound-match trials occupy appended indices 44–54. No historical index is shifted. Factory 53, **Alchemist Low-End Contour (Trial)**, and Factory 54, **Alchemist Serial Dynamics Blend (Trial)**, are unapproved experiments; the original Alchemist preset and earlier trials remain available unchanged. Factory 54 changes only the serial FET/RMS stage of Factory 53 (-27 dB threshold, 45% wet, no makeup gain). Unfinished Vocoding items remain hidden. Import and export native **.skellpreset** archives. The **My Presets** bank lists locally saved/imported native preset packages for quick auditions without closing the menu. Schema-v2 archives retain all sixteen physical slots and the active chain length; schema-v1 ten-slot packages remain readable. Existing DAW state and original 10-slot parameter IDs are preserved.
 
 **FL Studio .fst / third-party preset formats are not directly compatible.** To rebuild your particular main vocal and adlib chains, supply same-performance dry/wet WAV pairs, optional FX-only prints, the FL chain screenshots, BPM/key and plugin settings. See [Reference WAV workflow](docs/REFERENCE_WAV_WORKFLOW.md). Full WAV-driven multi-effect matching remains unfinished.
@@ -187,3 +189,9 @@ machined panel highlights. Simple-mode Tone/Punch/Space/Grit remain in the
 approved positions, Advanced still omits the macro strip, and the footer
 master knobs and MIC widget keep their existing interactions. Renderer/build,
 real Windows FL Studio use, CPU, and side-by-side sound A/B are separate gates.
+
+## Optional SkellWorld presence
+
+The Settings panel includes an explicit **Join SkellWorld (presence only)** control. It is off by default; leaving Settings or closing the editor does not silently opt the user in, and closing the editor disconnects an active session. The worker is editor-scoped and never runs from `processBlock()`.
+
+This feature shares only the product ID, display name and ephemeral instance identity. It does not transmit audio, preset names, effect-chain settings, filenames or automation data. It adds no APVTS parameter, factory program, DSP processing stage or audio-thread operation. The plugin works normally when SkellWorld is not running.

@@ -14,6 +14,7 @@
 #include "chain/AlchemistNativePreset.h"
 #include "chain/NativeSoundMatchTrials.h"
 #include <SkellCore/UI.h>
+#include <SkellCore/WorldLink.h>
 #include <array>
 #include <memory>
 
@@ -212,14 +213,22 @@ public:
         addAndMakeVisible(sizeSelect);
         sizeSelect.setVisible(false); // Internal compatibility adapter only.
         // Use the recessed, engraved settings switch from Skell Silence.
-        settings.setTooltip("Settings  /  Interface Size");
+        settings.setTooltip("Settings / Interface Size / Optional SkellWorld Presence");
         style(settings);
         addAndMakeVisible(settings);
         settings.onClick=[this] {
             browser.setVisible(false);
             micPanel.setVisible(false);
             if(settingsPanel.isVisible())settingsPanel.close();
-            else settingsPanel.open(sizeSelect.getSelectedId()-1);
+            else {
+                refreshWorldLinkStatus();
+                settingsPanel.open(sizeSelect.getSelectedId()-1);
+            }
+        };
+        settingsPanel.onWorldLinkToggle=[this] {
+            if(worldLink.requested())worldLink.leave();
+            else worldLink.join();
+            refreshWorldLinkStatus();
         };
         settingsPanel.onSizeChange=[this](int choice){
             if(choice>=1 && choice<=4)
@@ -305,15 +314,15 @@ public:
             "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
         steps.emplace_back(&mix,"BLEND YOUR SOUND",
             "The three bottom-right knobs control Input, dry/wet Mix, and Output.");
-        steps.emplace_back(&settings,"INTERFACE SIZE",
-            "Resize the interface here. Click the skull to cycle themes or ? to replay this tour.");
+        steps.emplace_back(&settings,"SETTINGS / SKELLWORLD",
+            "Resize the interface or optionally join SkellWorld presence. This sends no audio, preset, chain or automation data.");
         return steps;
     }
     skellcore::ui::GuidedTourPalette tourPalette() const {
         return {Theme::green,Theme::panel,Theme::white,Theme::muted,
                 juce::Colour(0xd9000000)};
     }
-    ~Canvas()override {stopTimer();setLookAndFeel(nullptr);}
+    ~Canvas()override {worldLink.leave();stopTimer();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
             g.setColour(Theme::bg.withAlpha(.57f));g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
@@ -352,6 +361,10 @@ public:
         chain.repaint();slot.applyTheme();browser.applyTheme();
         idle.repaint();settingsPanel.repaint();
         refresh();
+    }
+    void refreshWorldLinkStatus() {
+        settingsPanel.setWorldLinkState(
+            worldLink.requested(),worldLink.online(),worldLink.hubOnline());
     }
     void dockRack(bool right) {
         if(rackOnRight==right)return;
@@ -567,6 +580,8 @@ public:
         settings.onClick();
         if(!settingsPanel.isVisible())
             issues.add("Settings button did not open its themed overlay");
+        if(!settingsPanel.hasWorldLinkControlForTest())
+            issues.add("Optional SkellWorld presence control is missing from themed Settings");
         settings.onClick();
         if(settingsPanel.isVisible())
             issues.add("Settings button did not close its themed overlay");
@@ -1012,7 +1027,7 @@ public:
         output.setBounds(1050,650,39,33);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1110,28,36,36);
-        settingsPanel.setBounds(743,78,388,258);
+        settingsPanel.setBounds(743,78,388,326);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
         // Keep the rack unobstructed when the user docks it on the right.
@@ -1064,6 +1079,7 @@ public:
     }
     void timerCallback() override{
         processor.refreshHostedLatency();
+        if(settingsPanel.isVisible())refreshWorldLinkStatus();
         if(micPanel.isVisible())micPanel.refreshIfChanged();
         const bool micActive=micPanel.on();
         if(micActive!=lastMicOn) {
@@ -1144,6 +1160,7 @@ private:
     ChainPanel chain;SlotEditor slot;SkellIdleDeck idle;
     PresetBrowser browser;SkellMicModelPanel micPanel;
     SkellSettingsPanel settingsPanel;
+    skellcore::world::WorldLink worldLink{"skell.preset","Skell Preset"};
     SkullThemeButton themeButton;
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
