@@ -44,8 +44,8 @@ EXPECTED_MAIN_FST_CHAIN = (
     "Fruity Limiter",
 )
 
-# Keep every prior Alchemist candidate and append the lighter serial-dynamics
-# threshold/wet-blend experiment for the same-input comparison.
+# Keep every prior Alchemist candidate and append a controlled pre-limiter
+# parallel-density experiment for the same-input comparison.
 CANDIDATE_FACTORY_IDS = (43, 45, 47, 48, 49, 50, 51, 52, 53, 54, 55)
 CANDIDATE_FACTORY_NAMES = {
     43: "Alchemist (Native Preview)",
