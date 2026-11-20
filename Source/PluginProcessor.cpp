@@ -798,34 +798,19 @@ void SkellPresetAudioProcessor::clearRackToEmpty() {
     activeSlots.store(defaultSlotCount,std::memory_order_release);
     state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
 
-    // Reset every physical slot, including hidden rows and both generations
-    // of extended effect selectors, to the same neutral state as construction.
-    for(int slot=0;slot<slotCount;++slot) {
-        const auto prefix=slotPrefix(slot);
-        setReal(prefix+"type",static_cast<float>(Empty));
-        setReal(prefix+"fxExt",0.f);
-        setReal(prefix+"fxExt2",0.f);
-        setReal(prefix+"fxExt3",0.f);
-        setSlotOn(slot,false);
-        setReal(prefix+"wet",1.f);
-        setReal(prefix+"lane",0.f);
-        for(int parameter=0;parameter<16;++parameter)
-            setSlotParam(slot,parameter,.5f);
-        for(int band=1;band<=8;++band)
-            setReal(prefix+"eqQ"+juce::String(band),.5f);
+    // Reset every APVTS parameter to its declared default. This includes all
+    // physical slots and reserved/hidden controls (legacy gate, lane controls,
+    // adapt/auto-gain, and future automation IDs), so stale values cannot leak
+    // into a saved Empty Rack state or become audible when a module is added.
+    for(auto* parameter : getParameters()) {
+        if(parameter != nullptr)
+            parameter->setValueNotifyingHost(parameter->getDefaultValue());
     }
 
     std::uint64_t identityOrder=0;
     for(int position=0;position<slotCount;++position)
         identityOrder|=static_cast<std::uint64_t>(position) << (4*position);
     packedOrder.store(identityOrder,std::memory_order_release);
-
-    setReal("mode",1.f);
-    setReal("mix",1.f);
-    setReal("input",0.f);
-    setReal("output",0.f);
-    for(int macro=1;macro<=8;++macro)
-        setReal("macro"+juce::String(macro),.5f);
 
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank","My Presets",nullptr);
