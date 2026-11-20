@@ -526,8 +526,8 @@ public:
         if(!browser.testMainVocalsPresetFilterForTest())
             issues.add("Main Vocals whitelist or separate My Presets bank regressed");
         if(processor.presetName()!="Alchemist" ||
-           processor.getProgramName(alchemistIndex)!="Alchemist" ||
-           processor.getProgramName(deuceIndex)!="Deuce")
+           processor.getProgramName(skellpreset::alchemist::factoryIndex)!="Alchemist" ||
+           processor.getProgramName(skellpreset::deuce_v25::factoryIndex)!="Deuce")
             issues.add("The two visible factory presets must use the requested names");
         preset.onClick();
         if(browser.isVisible())issues.add("Preset selector did not close browser");
