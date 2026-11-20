@@ -10,7 +10,7 @@
 - Shared launcher: skellcore-vst-template/quick4.ps1 (Windows) or quick4.sh
   (Linux), feeding the persistent Quick4 workspace. See
   docs/LOCAL_UI_SCREENSHOTS.md and docs/UI_RENDERER.md.
-- Use --quick4 for four real scenes; preserve full 110-scene deep audit.
+- The renderer's default invocation captures the four Quick4 scenes; use `--output <folder>` to choose the destination and `--full` only for the complete deep visual audit. Do not pass an unsupported `--quick4` switch.
 - Preserve Simple mode Tone/Punch/Space/Grit and remove them ONLY from
   Advanced. No UI code may rename any automation parameter, factory ID,
   VST3 ID, or saved FL Studio state.
