@@ -82,8 +82,13 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawGlobal.threshold=state.getRawParameterValue("gateThreshold");
     rawGlobal.delta=state.getRawParameterValue("delta");
     for(int k=0;k<4;k++)rawGlobal.macros[(size_t)k]=state.getRawParameterValue("macro"+juce::String(k+1));
-    // Factory initialization is separate from state restoration; no DSP is allocated here.
-    loadFactoryPreset(0);
+    // New instances start with an empty, latency-free rack. APVTS slot type/on
+    // defaults are already Empty/OFF; do not auto-load Clean Lead or Alchemist.
+    // Saved host states still restore their previous factory/custom program via
+    // setStateInformation(), so existing sessions keep their exact sound.
+    selectedProgram=-1;
+    name="Empty Rack";
+    state.state.setProperty("presetName",name,nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::createParameterLayout() {

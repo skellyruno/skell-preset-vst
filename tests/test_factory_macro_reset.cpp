@@ -52,6 +52,84 @@ bool dirtyMacros(SkellPresetAudioProcessor& processor) {
     return true;
 }
 
+bool emptyRackDefaultAndLegacyRestore() {
+    auto empty=std::make_unique<SkellPresetAudioProcessor>();
+    if(empty->loadedFactoryPresetIndex()!=-1 || empty->presetName()!="Empty Rack" ||
+       empty->getCurrentProgram()!=0 ||
+       empty->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount) {
+        std::cerr << "DIAG: new instance is not an unselected empty rack\\n";
+        return false;
+    }
+    for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot) {
+        if(empty->slotType(slot)!=SkellPresetAudioProcessor::Empty) {
+            std::cerr << "DIAG: default slot is not Empty: " << slot << '\\n';
+            return false;
+        }
+        const auto onId="s"+juce::String(slot+1)+"_on";
+        const auto* on=empty->state.getRawParameterValue(onId);
+        if(!on || std::abs(on->load())>tolerance) {
+            std::cerr << "DIAG: default slot is not OFF: " << slot << '\\n';
+            return false;
+        }
+        if(empty->slotIdAt(slot)!=slot) return false;
+    }
+
+    empty->prepareToPlay(44100.0,256);
+    if(empty->getLatencySamples()!=0) {
+        std::cerr << "DIAG: empty rack added host latency\\n";
+        return false;
+    }
+    juce::AudioBuffer<float> audio(2,256);
+    for(int i=0;i<audio.getNumSamples();++i) {
+        const float sample=0.25f*std::sin(2.0f*juce::MathConstants<double>::pi*997.0*i/44100.0);
+        audio.setSample(0,i,sample);
+        audio.setSample(1,i,sample*0.73f);
+    }
+    juce::MidiBuffer midi;
+    empty->processBlock(audio,midi);
+    for(int i=0;i<audio.getNumSamples();++i) {
+        const float expected=0.25f*std::sin(2.0f*juce::MathConstants<double>::pi*997.0*i/44100.0);
+        if(!std::isfinite(audio.getSample(0,i)) || !std::isfinite(audio.getSample(1,i)) ||
+           std::abs(audio.getSample(0,i)-expected)>1.0e-5f ||
+           std::abs(audio.getSample(1,i)-expected*0.73f)>1.0e-5f) {
+            std::cerr << "DIAG: empty rack was not finite identity DSP\\n";
+            return false;
+        }
+    }
+
+    juce::MemoryBlock emptyState;
+    empty->getStateInformation(emptyState);
+    auto emptyRestored=std::make_unique<SkellPresetAudioProcessor>();
+    emptyRestored->setStateInformation(emptyState.getData(),static_cast<int>(emptyState.getSize()));
+    if(emptyRestored->loadedFactoryPresetIndex()!=-1 ||
+       emptyRestored->presetName()!="Empty Rack" ||
+       emptyRestored->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount)
+        return false;
+    for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot)
+        if(emptyRestored->slotType(slot)!=SkellPresetAudioProcessor::Empty)
+            return false;
+
+    // Existing projects saved with factory program 0 must still reopen as Clean Lead.
+    auto legacy=std::make_unique<SkellPresetAudioProcessor>();
+    legacy->loadFactoryPreset(0);
+    if(legacy->loadedFactoryPresetIndex()!=0 || legacy->presetName()!="Clean Lead")
+        return false;
+    juce::MemoryBlock legacyState;
+    legacy->getStateInformation(legacyState);
+    auto legacyRestored=std::make_unique<SkellPresetAudioProcessor>();
+    legacyRestored->setStateInformation(legacyState.getData(),static_cast<int>(legacyState.getSize()));
+    const auto* legacyOn=legacyRestored->state.getRawParameterValue("s1_on");
+    if(legacyRestored->loadedFactoryPresetIndex()!=0 ||
+       legacyRestored->presetName()!="Clean Lead" ||
+       legacyRestored->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount ||
+       legacyRestored->slotType(0)!=SkellPresetAudioProcessor::EQ ||
+       !legacyOn || legacyOn->load()<0.5f) {
+        std::cerr << "DIAG: legacy factory session did not restore its original active chain\\n";
+        return false;
+    }
+    return true;
+}
+
 bool hostStateSanitizerRoundtrip() {
     auto source=std::make_unique<SkellPresetAudioProcessor>();
     juce::MemoryBlock baseline;
@@ -227,6 +305,11 @@ int main() {
     // construct an editor or use message-loop services, so keep it headless.
     // The processor owns sixteen DSP engine slots; keep it off the small
     // default Windows test stack.
+    if(!emptyRackDefaultAndLegacyRestore()) {
+        std::cerr << "FAIL: empty new-instance default or legacy Clean Lead host-state restore\\n";
+        return 13;
+    }
+    std::cerr << "STEP 1: empty rack default, zero-latency identity and legacy session restore verified\\n" << std::flush;
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
     std::cerr << "STEP 2: processor constructed on heap\n" << std::flush;
 
