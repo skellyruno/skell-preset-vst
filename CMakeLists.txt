@@ -106,6 +106,25 @@ target_link_libraries(SkellPreset PRIVATE
 target_include_directories(SkellPreset PRIVATE "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include")
 target_compile_features(SkellPreset PRIVATE cxx_std_17)
 
+# Host-program state regression: keep the Empty Rack identity after all 55
+# experimental factory programs without renumbering any existing program.
+add_executable(SkellPresetFactoryStateTests tests/test_factory_macro_reset.cpp)
+target_include_directories(SkellPresetFactoryStateTests PRIVATE
+    Source
+    "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
+target_link_libraries(SkellPresetFactoryStateTests PRIVATE
+    SkellPreset SkellPresetAssets SkellCore::DSP SkellCore::UI
+    juce::juce_audio_utils juce::juce_gui_extra)
+target_compile_definitions(SkellPresetFactoryStateTests PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+if(WIN32)
+    target_compile_definitions(SkellPresetFactoryStateTests PRIVATE JUCE_PLUGINHOST_VST3=1)
+endif()
+target_compile_features(SkellPresetFactoryStateTests PRIVATE cxx_std_17)
+add_test(NAME SkellPresetFactoryStateTests COMMAND SkellPresetFactoryStateTests)
+
+
 if(MSVC)
     target_compile_options(SkellPreset PRIVATE /W4 /WX /permissive-)
 else()

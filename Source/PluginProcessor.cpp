@@ -1049,6 +1049,30 @@ int SkellPresetAudioProcessor::appendRackSlot() {
     updateHostLatency();
     return slotIdAt(count);
 }
+void SkellPresetAudioProcessor::clearRackToEmpty() {
+    selectedProgram=-1;
+    name="Empty Rack";
+    activeSlots.store(defaultSlotCount,std::memory_order_release);
+    state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
+
+    // Reset every APVTS parameter to its declared default, including all 16
+    // physical slots and reserved/hidden controls. This prevents stale values
+    // from leaking into an Empty Rack state or a later module insertion.
+    for(auto* parameter : getParameters()) {
+        if(parameter != nullptr)
+            parameter->setValueNotifyingHost(parameter->getDefaultValue());
+    }
+
+    std::uint64_t identityOrder=0;
+    for(int position=0;position<slotCount;++position)
+        identityOrder|=static_cast<std::uint64_t>(position) << (4*position);
+    packedOrder.store(identityOrder,std::memory_order_release);
+
+    state.state.setProperty("presetName",name,nullptr);
+    state.state.setProperty("presetBank","My Presets",nullptr);
+    updateHostLatency();
+}
+
 void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     if(index<0||index>=(int)factoryPresets.size())return;
     selectedProgram=index;const auto& preset=factoryPresets[(size_t)index];name=preset.name;
@@ -1461,8 +1485,15 @@ bool SkellPresetAudioProcessor::removeRackSlot(int visualPosition) {
     updateHostLatency();
     return true;
 }
-void SkellPresetAudioProcessor::setCurrentProgram(int index) {loadFactoryPreset(index);}
+void SkellPresetAudioProcessor::setCurrentProgram(int index) {
+    if(index==emptyRackProgramIndex) {
+        clearRackToEmpty();
+        return;
+    }
+    loadFactoryPreset(index);
+}
 const juce::String SkellPresetAudioProcessor::getProgramName(int index) {
+    if(index==emptyRackProgramIndex)return "Empty Rack";
     return index>=0&&index<(int)factoryPresets.size()?factoryPresets[(size_t)index].name:juce::String{};
 }
 void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
