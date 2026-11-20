@@ -187,3 +187,9 @@ machined panel highlights. Simple-mode Tone/Punch/Space/Grit remain in the
 approved positions, Advanced still omits the macro strip, and the footer
 master knobs and MIC widget keep their existing interactions. Renderer/build,
 real Windows FL Studio use, CPU, and side-by-side sound A/B are separate gates.
+
+## Optional SkellWorld presence
+
+The Settings panel includes an explicit **Join SkellWorld (presence only)** control. It is off by default; leaving Settings or closing the editor does not silently opt the user in, and closing the editor disconnects an active session. The worker is editor-scoped and never runs from `processBlock()`.
+
+This feature shares only the product ID, display name and ephemeral instance identity. It does not transmit audio, preset names, effect-chain settings, filenames or automation data. It adds no APVTS parameter, factory program, DSP processing stage or audio-thread operation. The plugin works normally when SkellWorld is not running.
