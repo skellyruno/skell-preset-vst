@@ -1,13 +1,15 @@
 #include "PresetBrowser.h"
 #include "Theme.h"
 #include "../chain/AlchemistNativePreset.h"
+#include "../chain/NativeSoundMatchTrials.h"
 #include <algorithm>
 #include <cmath>
 #include <array>
 
 namespace {
-const juce::StringArray banks{"All presets","Main Vocals","My Presets","Favorites"};
+const juce::StringArray banks{"Main Vocals","My Presets"};
 constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
+constexpr int deuceIndex=skellpreset::deuce_v25::factoryIndex;
 // Each factory sound has deterministic original cover art; no bitmap decoding
 // or file I/O during a repaint. User-selected images override this motif.
 void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
@@ -285,7 +287,7 @@ void PresetBrowser::loadFavorites() {
     for(auto key:juce::StringArray::fromLines(file.loadFileAsString())) {
         key=key.trim().toLowerCase();
         if(key.length()>0 && key.length()<260 &&
-           (key.startsWith("user:") || key=="factory:43") &&
+           (key.startsWith("user:") || key=="factory:43" || key=="factory:46") &&
            !key.containsChar('\r') && !favoriteKeys.contains(key,true))
             favoriteKeys.add(key);
         if(favoriteKeys.size()>=512)break;
@@ -315,61 +317,67 @@ void PresetBrowser::toggleFavorite(int entry) {
     scroll=juce::jlimit(0,std::max(0,(int)filtered().size()-6),scroll);
     repaint();
 }
-bool PresetBrowser::testFavoritesFilterForTest() {
-    const auto saved=favoriteKeys;
+bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const int previousBank=bank, previousScroll=scroll;
     const auto query=search.getText();
-    favoriteKeys.clear();
     search.setText({},juce::dontSendNotification);
-    bank=3;
-    const bool empty=filtered().empty();
-    favoriteKeys.add("factory:43");
-    const auto items=filtered();
-    const bool populated=items.size()==1 && items[0]==alchemistIndex;
-    favoriteKeys=saved;bank=previousBank;scroll=previousScroll;
+
+    bank=0; // Main Vocals
+    const auto mainVocals=filtered();
+    const bool exactMainVocals=mainVocals.size()==2
+        && mainVocals[0]==alchemistIndex
+        && mainVocals[1]==deuceIndex;
+
+    bank=1; // My Presets remains a separate user-owned library.
+    const auto personal=filtered();
+    const bool onlyUserPresets=std::all_of(personal.begin(),personal.end(),
+        [](int entry){return entry<0;});
+
+    bank=previousBank;
+    scroll=previousScroll;
     search.setText(query,juce::dontSendNotification);
-    return empty && populated;
+    return banks.size()==2 && exactMainVocals && onlyUserPresets;
 }
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
     const auto q=search.getText().toLowerCase().trim();
-    if(bank==0 || bank==1 || bank==3)for(int i=0;i<(int)skellpreset::factoryPresets.size();++i) {
-        const auto& item=skellpreset::factoryPresets[(size_t)i];
-        const juce::String name(item.name),b(item.bank),desc(item.description);
-        if(i!=alchemistIndex)continue; // Hide old factory sounds, preserve their host program IDs.
-        if(bank==1 && b!=banks[bank])continue;
-        if(bank==3 && !isFavorite(i))continue;
-        bool found=q.isEmpty() || name.containsIgnoreCase(q) ||
-                   b.containsIgnoreCase(q) || desc.containsIgnoreCase(q);
-        if(q.startsWith("bank:"))
-            found=b.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
-        if(q.startsWith("tag:"))
-            found=desc.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
-        if(q.startsWith("author:"))
-            found=juce::String("skell audio").containsIgnoreCase(
-                q.fromFirstOccurrenceOf(":",false,false).trim());
-        if(q.startsWith("fav:")) {
-            const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
-            found=isFavorite(i) && (term.isEmpty() || name.containsIgnoreCase(term));
+
+    if(bank==0) { // Main Vocals: only the two requested factory presets.
+        for(const int i:{alchemistIndex,deuceIndex}) {
+            if(i<0 || i>=(int)skellpreset::factoryPresets.size())continue;
+            const auto& item=skellpreset::factoryPresets[(size_t)i];
+            const juce::String name(item.name),b(item.bank),desc(item.description);
+            if(b!="Main Vocals")continue;
+            bool found=q.isEmpty() || name.containsIgnoreCase(q) ||
+                       b.containsIgnoreCase(q) || desc.containsIgnoreCase(q);
+            if(q.startsWith("bank:"))
+                found=b.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("tag:"))
+                found=desc.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("author:"))
+                found=juce::String("skell audio").containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("fav:")) {
+                const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
+                found=isFavorite(i) && (term.isEmpty() || name.containsIgnoreCase(term));
+            }
+            if(q.startsWith("match:"))found=false;
+            if(found)list.push_back(i);
         }
-        if(q.startsWith("match:"))found=false;
-        if(found)list.push_back(i);
     }
-    if(bank==0 || bank==2 || bank==3)for(int i=0;i<(int)userPresets.size();++i) {
-        const auto label=userPresets[(size_t)i].getFileNameWithoutExtension();
-        if(bank==3 && !isFavorite(-i-1))continue;
-        bool found=q.isEmpty() || label.containsIgnoreCase(q) ||
-                   juce::String("My Presets").containsIgnoreCase(q);
-        if(q.startsWith("bank:"))
-            found=juce::String("My Presets").containsIgnoreCase(
-                q.fromFirstOccurrenceOf(":",false,false).trim());
-        if(q.startsWith("fav:")) {
-            const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
-            found=isFavorite(-i-1) && (term.isEmpty() || label.containsIgnoreCase(term));
+
+    if(bank==1) { // Personal files are kept separate from the two factory sounds.
+        for(int i=0;i<(int)userPresets.size();++i) {
+            const auto label=userPresets[(size_t)i].getFileNameWithoutExtension();
+            bool found=q.isEmpty() || label.containsIgnoreCase(q) ||
+                       juce::String("My Presets").containsIgnoreCase(q);
+            if(q.startsWith("bank:"))
+                found=juce::String("My Presets").containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("author:")||q.startsWith("match:")||q.startsWith("tag:"))
+                found=false;
+            if(found)list.push_back(-i-1);
         }
-        if(q.startsWith("author:")||q.startsWith("match:")||q.startsWith("tag:"))
-            found=false;
-        if(found)list.push_back(-i-1);
     }
     return list;
 }
@@ -475,7 +483,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const bool custom=entry<0;
         const juce::String itemName=custom
             ?userPresets[(size_t)(-entry-1)].getFileNameWithoutExtension()
-            :juce::String(skellpreset::factoryPresets[(size_t)entry].name);
+            :(entry==alchemistIndex?juce::String("Alchemist")
+              :(entry==deuceIndex?juce::String("Deuce")
+                :juce::String(skellpreset::factoryPresets[(size_t)entry].name)));
         const juce::String itemBank=custom?"My Presets":
             juce::String(skellpreset::factoryPresets[(size_t)entry].bank);
         const int y=110+i*61;
