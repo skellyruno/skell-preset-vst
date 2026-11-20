@@ -42,7 +42,9 @@ public:
             if(results.empty())return;
             selectedRow=juce::jlimit(0,(int)results.size()-1,selectedRow+step);
             if(selectedRow<topItem)topItem=selectedRow;
-            if(selectedRow>=topItem+7)topItem=selectedRow-6;
+            if(selectedRow>=topItem+visibleRows())
+                topItem=selectedRow-visibleRows()+1;
+            topItem=juce::jlimit(0,std::max(0,(int)results.size()-visibleRows()),topItem);
             repaint();
         };
         search.onReturnKey=[this] {
@@ -55,7 +57,41 @@ public:
     }
 
     std::function<void(int)> onSelect;
+    // External VST3 belongs to a dedicated footer action, never the DSP list.
+    std::function<void()> onExternal;
     std::function<void()> onDismiss;
+    // The double-click effect library floats within the editor. Reopening
+    // preserves its last dragged position; editor resize clamps it onscreen.
+    bool wasMoved() const noexcept {return movedByUser;}
+    int visibleRows() const noexcept {
+        return juce::jlimit(4,10,(getHeight()-173)/37);
+    }
+    void positionWithin(juce::Rectangle<int> initial) {
+        if(!movedByUser) {setBounds(initial);return;}
+        if(auto* parent=getParentComponent()) {
+            const int w=juce::jlimit(340,juce::jmin(800,parent->getWidth()-12),getWidth());
+            const int h=juce::jlimit(345,juce::jmin(510,parent->getHeight()-12),getHeight());
+            const int x=juce::jlimit(0,juce::jmax(0,parent->getWidth()-w),getX());
+            const int y=juce::jlimit(0,juce::jmax(0,parent->getHeight()-h),getY());
+            setBounds(x,y,w,h);
+        }
+    }
+    bool testResizeKeepsSizeForTest() {
+        auto* parent=getParentComponent();
+        if(!parent)return false;
+        const auto oldBounds=getBounds();
+        const bool oldMoved=movedByUser;
+        movedByUser=true;
+        setSize(juce::jmin(800,oldBounds.getWidth()+16),
+                juce::jmin(510,oldBounds.getHeight()+16));
+        positionWithin({405,66,470,400});
+        const bool correct=getWidth()==oldBounds.getWidth()+16 &&
+             getHeight()==oldBounds.getHeight()+16 &&
+             parent->getLocalBounds().contains(getBounds());
+        movedByUser=oldMoved;
+        setBounds(oldBounds);
+        return correct;
+    }
 
     void applyTheme() {
         Theme::selectFor(processor.state);
@@ -77,7 +113,7 @@ public:
         for(int i=0;i<(int)results.size();++i)
             if(results[(size_t)i]==currentType){
                 selectedRow=i;
-                topItem=juce::jlimit(0,std::max(0,(int)results.size()-7),i-2);
+                topItem=juce::jlimit(0,std::max(0,(int)results.size()-visibleRows()),i-2);
                 break;
             }
         setVisible(true);
@@ -93,10 +129,22 @@ public:
         return matches(query,type);
     }
     int resultCountForTest() const noexcept {return (int)results.size();}
+    bool testVisibleKeyboardRow() {
+        const int count=visibleRows();
+        if(static_cast<int>(results.size())<=count)return true;
+        const int oldSelected=selectedRow,oldTop=topItem;
+        topItem=0;selectedRow=0;
+        for(int i=0;i<count;++i)if(search.onArrow)search.onArrow(1);
+        const bool correct=selectedRow==count && topItem==1 &&
+                           selectedRow>=topItem && selectedRow<topItem+visibleRows();
+        selectedRow=oldSelected;topItem=oldTop;repaint();
+        return correct;
+    }
     void chooseForTest(int type) {choose(type);}
 
     void resized() override {
         search.setBounds(17,49,getWidth()-34,35);
+        topItem=juce::jlimit(0,std::max(0,(int)results.size()-visibleRows()),topItem);
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
@@ -107,13 +155,16 @@ public:
         g.drawRoundedRectangle({1.f,1.f,W-2.f,H-2.f},9.f,1.2f);
         g.setColour(Theme::green);
         g.fillRoundedRectangle(juce::Rectangle<float>(18.f,14.f,3.f,22.f),1.f);
-        Theme::text(g,"EFFECT LIBRARY",{31,9,255,30},17,Theme::white,true);
+        Theme::text(g,"EFFECT LIBRARY",{31,9,155,30},17,Theme::white,true);
+        Theme::text(g,"DRAG / RESIZE",{183,15,getWidth()-227,16},9,Theme::muted,
+                    false,juce::Justification::centredRight);
         Theme::text(g,"X",{getWidth()-34,9,23,26},15,Theme::muted,true,
                     juce::Justification::centred);
-        Theme::text(g,"SEARCH / CLICK TO LOAD / SCROLL FOR MORE",
-                    {18,86,getWidth()-34,17},10,Theme::muted);
+        Theme::text(g,"SEARCH  •  CLICK TO LOAD  •  SCROLL EFFECTS",
+                    {18,86,getWidth()-34,17},11.4f,Theme::muted.brighter(.18f));
 
-        constexpr int visible=7,rowHeight=37,rowY=108;
+        const int visible=visibleRows();
+        constexpr int rowHeight=37,rowY=108;
         const int end=std::min((int)results.size(),topItem+visible);
         for(int i=topItem;i<end;++i){
             const int type=results[(size_t)i];
@@ -129,9 +180,10 @@ public:
                 g.drawRoundedRectangle(rect.reduced(.5f),5.f,1.1f);
             }
             const auto name=processor.moduleName(type);
-            Theme::text(g,name,{27,y+4,198,23},13,active?Theme::green:Theme::white,true);
+            Theme::fittedText(g,name,{27,y+4,203,23},14.0f,
+                              active?Theme::green:Theme::white,true);
             Theme::text(g,category(type).toUpperCase(),
-                        {getWidth()-130,y+7,100,17},9,
+                        {getWidth()-130,y+7,100,17},10.6f,
                         active?Theme::green:Theme::muted,false,
                         juce::Justification::centredRight);
         }
@@ -142,12 +194,24 @@ public:
                         juce::Justification::centred);
         g.setColour(Theme::stroke);
         g.drawLine(18.f,(float)(foot-7),W-18.f,(float)(foot-7),1.f);
-        Theme::text(g,"NATIVE DSP / HOST-SAFE BROWSING",{18,foot,300,17},
+        // Dedicated external-insert action, separated from native DSP results.
+        const auto externalRow=juce::Rectangle<float>(17.f,H-55.f,W-34.f,26.f);
+        g.setColour(Theme::green.withAlpha(.12f));
+        g.fillRoundedRectangle(externalRow,5.f);
+        g.setColour(Theme::green.withAlpha(.72f));
+        g.drawRoundedRectangle(externalRow.reduced(.6f),5.f,1.f);
+        Theme::text(g,"+ LOAD EXTERNAL VST3 PLUGIN",
+                    {28,getHeight()-52,getWidth()-58,21},12,Theme::green,true);
+        Theme::text(g,"NATIVE FX  /  VST3 BELOW",{18,foot,getWidth()-160,17},
                     9,Theme::muted);
+        g.setColour(Theme::green.withAlpha(.76f));
+        const float right=W-5.f,bottom=H-5.f;
+        for(int k=0;k<3;++k)
+            g.drawLine(right-9.f+4.f*k,bottom,right,bottom-9.f+4.f*k,1.1f);
         Theme::text(g,juce::String(results.size())+" EFFECTS",
                     {getWidth()-125,foot,105,17},9,Theme::green,false,
                     juce::Justification::centredRight);
-        if(results.size()>visible) {
+        if(static_cast<int>(results.size())>visible) {
             const float trackH=(float)(visible*rowHeight);
             const float gripH=trackH*visible/(float)results.size();
             const float progress=topItem/(float)std::max(1,(int)results.size()-visible);
@@ -159,8 +223,28 @@ public:
         }
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if(e.x>=getWidth()-23 && e.y>=getHeight()-23) {
+            resizing=true;
+            resizeStart=getBounds();
+            toFront(true);
+            setMouseCursor(juce::MouseCursor::BottomRightCornerResizeCursor);
+            return;
+        }
         if(e.y<42 && e.x>=getWidth()-43){hide();return;}
-        constexpr int rowY=108,rowHeight=37,visible=7;
+        if(e.y>=0 && e.y<42 && e.x>=0 && e.x<getWidth()-45) {
+            dragHeader=true;
+            dragOrigin=getPosition();
+            toFront(true);
+            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+            return;
+        }
+        if(e.y>=getHeight()-55 && e.y<getHeight()-29) {
+            hide();
+            if(onExternal)onExternal();
+            return;
+        }
+        constexpr int rowY=108,rowHeight=37;
+        const int visible=visibleRows();
         if(e.y<rowY||e.y>=rowY+visible*rowHeight)return;
         const int i=topItem+(e.y-rowY)/rowHeight;
         if(i>=0&&i<(int)results.size()){
@@ -168,8 +252,45 @@ public:
             choose(results[(size_t)i]);
         }
     }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if(resizing) {
+            if(auto* parent=getParentComponent()) {
+                const int w=juce::jlimit(340,juce::jmin(800,parent->getWidth()-12),
+                    resizeStart.getWidth()+e.getDistanceFromDragStartX());
+                const int h=juce::jlimit(345,juce::jmin(510,parent->getHeight()-12),
+                    resizeStart.getHeight()+e.getDistanceFromDragStartY());
+                const int x=juce::jlimit(0,parent->getWidth()-w,resizeStart.getX());
+                const int y=juce::jlimit(0,parent->getHeight()-h,resizeStart.getY());
+                movedByUser=true;
+                setBounds(x,y,w,h);
+            }
+            return;
+        }
+        if(!dragHeader)return;
+        if(auto* parent=getParentComponent()) {
+            const int x=juce::jlimit(0,juce::jmax(0,parent->getWidth()-getWidth()),
+                                    dragOrigin.x+e.getDistanceFromDragStartX());
+            const int y=juce::jlimit(0,juce::jmax(0,parent->getHeight()-getHeight()),
+                                    dragOrigin.y+e.getDistanceFromDragStartY());
+            if(x!=getX() || y!=getY()) {
+                movedByUser=true;
+                setTopLeftPosition(x,y);
+            }
+        }
+    }
+    void mouseUp(const juce::MouseEvent&) override {
+        dragHeader=false;
+        resizing=false;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
+    }
     void mouseMove(const juce::MouseEvent& e) override {
-        constexpr int rowY=108,rowHeight=37,visible=7;
+        if(e.x>=getWidth()-23 && e.y>=getHeight()-23)
+            setMouseCursor(juce::MouseCursor::BottomRightCornerResizeCursor);
+        else if(e.y>=0 && e.y<42 && e.x<getWidth()-45)
+            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+        else setMouseCursor(juce::MouseCursor::NormalCursor);
+        constexpr int rowY=108,rowHeight=37;
+        const int visible=visibleRows();
         if(e.y>=rowY&&e.y<rowY+visible*rowHeight){
             const int i=topItem+(e.y-rowY)/rowHeight;
             if(i<(int)results.size() && i!=selectedRow){
@@ -179,10 +300,18 @@ public:
     }
     void mouseWheelMove(const juce::MouseEvent&,
                         const juce::MouseWheelDetails& wheel) override {
-        const int next=juce::jlimit(0,std::max(0,(int)results.size()-7),
-            topItem+(wheel.deltaY<0?2:-2));
-        if(next!=topItem) {
-            topItem=next;selectedRow=next;repaint();
+        if(wheel.deltaY==0.f)return;
+        if(wheelCarry*wheel.deltaY<0.f)wheelCarry=0.f;
+        wheelCarry=juce::jlimit(-1.f,1.f,wheelCarry+wheel.deltaY);
+        if(std::abs(wheelCarry)<.38f)return;
+        const int step=wheelCarry<0.f?1:-1;
+        wheelCarry=0.f;
+        const int next=juce::jlimit(0,std::max(0,(int)results.size()-visibleRows()),topItem+step);
+        if(next!=topItem){
+            topItem=next;
+            selectedRow=juce::jlimit(topItem,
+                juce::jmin((int)results.size()-1,topItem+visibleRows()-1),selectedRow);
+            repaint();
         }
     }
 
@@ -239,7 +368,16 @@ private:
     void filter(){
         results.clear();
         for(int type=0;type<SkellPresetAudioProcessor::NumberOfModules;++type)
-            if(matches(search.getText(),type))results.push_back(type);
+            // New mic modeling is a dedicated pre-rack input panel.
+            // The old slot type 32 still loads and processes saved projects,
+            // but new racks cannot accidentally insert a second mic model.
+            if(type!=SkellPresetAudioProcessor::MicModelFX
+               && type!=SkellPresetAudioProcessor::ExternalVST3
+               // Keep legacy EQ IDs loadable for saved sessions, but offer
+               // just one modern Studio EQ to new users.
+               && type!=SkellPresetAudioProcessor::EQ
+               && type!=SkellPresetAudioProcessor::EightBandToneFX
+               && matches(search.getText(),type))results.push_back(type);
         // Stable sort within categories retains each existing module ID
         // and automation mapping, while giving users a predictable catalog.
         std::stable_sort(results.begin(),results.end(),[](int a,int b){
@@ -258,4 +396,8 @@ private:
     SearchBox search;
     std::vector<int> results;
     int currentType=0,selectedRow=0,topItem=0;
+    bool movedByUser=false,dragHeader=false,resizing=false;
+    juce::Rectangle<int> resizeStart{};
+    float wheelCarry=0.f;
+    juce::Point<int> dragOrigin{};
 };

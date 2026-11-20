@@ -8,10 +8,10 @@ namespace Theme {
 constexpr int width=1168, height=688;
 enum Variant { Obsidian=0, Cream=1, Crimson=2 };
 inline thread_local int current = Obsidian;
-inline thread_local juce::Colour bg       {0xff050607};
-inline thread_local juce::Colour panel    {0xff0c1112};
-inline thread_local juce::Colour panelAlt {0xff151c1d};
-inline thread_local juce::Colour stroke   {0xff293c36};
+inline thread_local juce::Colour bg       {0xff020404};
+inline thread_local juce::Colour panel    {0xff080d0d};
+inline thread_local juce::Colour panelAlt {0xff111919};
+inline thread_local juce::Colour stroke   {0xff385449};
 inline thread_local juce::Colour green    {0xff39ff3a};
 inline thread_local juce::Colour blue     {0xff77c7ae};
 inline thread_local juce::Colour pink     {0xffff638d};
@@ -19,7 +19,7 @@ inline thread_local juce::Colour white    {0xffeff7ef};
 inline thread_local juce::Colour muted    {0xff91a89a};
 inline thread_local juce::Colour amber    {0xffffbc62};
 inline thread_local juce::Colour red      {0xffff4a4a};
-inline thread_local juce::Colour plot     {0xff070b0c};
+inline thread_local juce::Colour plot     {0xff040707};
 
 inline int clampVariant(int v) noexcept { return v >= Obsidian && v <= Crimson ? v : Obsidian; }
 inline void select(int v) {
@@ -41,20 +41,38 @@ inline void select(int v) {
         muted=juce::Colour(0xffbc9ba5); amber=juce::Colour(0xffefb46b);
         red=juce::Colour(0xffff4458); plot=juce::Colour(0xff130d10);
     } else {
-        bg=juce::Colour(0xff050607); panel=juce::Colour(0xff0c1112);
-        panelAlt=juce::Colour(0xff151c1d); stroke=juce::Colour(0xff293c36);
+        bg=juce::Colour(0xff020404); panel=juce::Colour(0xff080d0d);
+        panelAlt=juce::Colour(0xff111919); stroke=juce::Colour(0xff385449);
         green=juce::Colour(0xff39ff3a); blue=juce::Colour(0xff77c7ae);
         pink=juce::Colour(0xffff638d); white=juce::Colour(0xffeff7ef);
         muted=juce::Colour(0xff91a89a); amber=juce::Colour(0xffffbc62);
-        red=juce::Colour(0xffff4a4a); plot=juce::Colour(0xff070b0c);
+        red=juce::Colour(0xffff4a4a); plot=juce::Colour(0xff040707);
     }
 }
 inline void selectFor(const juce::AudioProcessorValueTreeState& state) {
     select(clampVariant((int)state.state.getProperty("uiTheme",0)));
 }
 inline void panelBox(juce::Graphics& g,juce::Rectangle<float> box,float radius=10.f,bool active=false) {
-    g.setColour(panel);g.fillRoundedRectangle(box,radius);
-    g.setColour(active?green.withAlpha(.72f):stroke);g.drawRoundedRectangle(box,radius,1.f);
+    // Restrained anodized-metal depth shared across the rack, native editors
+    // and floating menus. No drop-shadow layers, image allocations or
+    // animation timers. This executes only inside UI paint(), never DSP.
+    g.setGradientFill(juce::ColourGradient(
+        panel.brighter(.075f),box.getTopLeft(),
+        panel.darker(.075f),box.getBottomRight(),false));
+    g.fillRoundedRectangle(box,radius);
+    g.setColour(bg.withAlpha(.45f));
+    g.drawRoundedRectangle(box.reduced(.25f),radius,1.f);
+    // Sharper brushed-metal separation on the near-black neon theme.
+    g.setColour(active?green.withAlpha(.78f):stroke.withAlpha(.96f));
+    g.drawRoundedRectangle(box.reduced(.7f),radius,current==Obsidian?1.35f:1.f);
+    if(box.getWidth()>35.f && box.getHeight()>22.f) {
+        const float inset=std::min(16.f,radius+5.f);
+        const float x0=box.getX()+inset,x1=box.getRight()-inset;
+        g.setColour(white.withAlpha(current==Cream?.085f:.048f));
+        g.drawLine(x0,box.getY()+1.4f,x1,box.getY()+1.4f,.7f);
+        g.setColour(bg.withAlpha(.31f));
+        g.drawLine(x0,box.getBottom()-1.1f,x1,box.getBottom()-1.1f,.7f);
+    }
 }
 inline juce::Font font(float size,bool bold=false) {
     return juce::Font(juce::FontOptions(size).withStyle(bold?"Bold":"Regular"));
@@ -63,5 +81,14 @@ inline void text(juce::Graphics& g,const juce::String& value,juce::Rectangle<int
                  float size=14,juce::Colour colour=white,bool bold=false,
                  juce::Justification justify=juce::Justification::centredLeft) {
     g.setColour(colour);g.setFont(font(size,bold));g.drawText(value,area,justify,true);
+}
+inline void fittedText(juce::Graphics& g,const juce::String& value,
+                       juce::Rectangle<int> area,float size,
+                       juce::Colour colour=white,bool bold=false,
+                       juce::Justification justify=juce::Justification::centredLeft) {
+    // Effect names, popup headings and long knobs must never clip at 70% UI.
+    // Leave font size intact whenever text fits; scale only as a last resort.
+    g.setColour(colour);g.setFont(font(size,bold));
+    g.drawFittedText(value,area,justify,1,.74f);
 }
 }

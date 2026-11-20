@@ -15,9 +15,9 @@ struct Effect {
     const char* terms;
     const char* reference322; // provenance/equivalent only, no Web Audio import
 };
-inline constexpr std::array<Effect,31> effects{{
+inline constexpr std::array<Effect,38> effects{{
     {0,"Empty","Utility","none clear empty bypass",""},
-    {1,"EQ","Tone","frequency bands low high shelf bell filter","322.EQ"},
+    {1,"EQ (Classic)","Tone","frequency bands low high shelf bell filter","322.EQ"},
     {2,"Compressor","Dynamics","compression level loud voice threshold knee","322.COMP"},
     {3,"Limiter","Dynamics","peak safety brickwall ceiling",""},
     {4,"Gate","Dynamics","noise threshold suppression silence hold",""},
@@ -36,19 +36,26 @@ inline constexpr std::array<Effect,31> effects{{
     {17,"Three-Band Dynamics","Dynamics","multiband compression loud voice",""},
     {18,"VoxRack Room","Space","room reverb ambience reflections",""},
     {19,"VoxRack Smooth Comp","Dynamics","compression loud voice opto",""},
-    {20,"Vocal Chorus","Motion","chorus modulated ensemble layers stereo","322.CHORUS"},
+    {20,"Studio Chorus","Motion","chorus modulated ensemble layers stereo","322.CHORUS"},
     {21,"Vocal Flanger","Motion","sweep wobble flange feedback",""},
     {22,"Ring Modulator","Motion","alien metallic voice modulation",""},
     {23,"Vocal Rider","Dynamics","auto gain phrase levelling vocal chain",""},
     {24,"Ducking Ping-Pong","Space","duck echo ping pong tempo synced delay stereo adlib",""},
     {25,"Vocal Vibrato","Motion","vibrato voice pitch wobble flutter stereo",""},
-    {26,"8-Band EQ","Tone","eight band parametric eq frequency gain bell q equalizer","322.EQ"},
+    {26,"Parametric EQ / 8-Band","Tone","eight band parametric eq frequency gain bell q equalizer","322.EQ"},
     {27,"FET + Opto","Dynamics","serial compressor peak rms parallel smash","322.COMP"},
     {28,"Harshness Tamer","Dynamics","dynamic resonances sibilance soothe harshness",""},
     {29,"Adaptive Noise Control","Dynamics","noise control gate suppress background floor",""},
-    {30,"Studio Pitch + Formant","Pitch","studio pitch shift formant spectral phase vocoder",""}
+    {30,"Studio Pitch + Formant","Pitch","studio pitch shift formant spectral phase vocoder",""},
+    {31,"Alchemist Match Finish","Dynamics","alchemist match harmonic cubic envelope learned vocal reference finishing",""},
+    {32,"Mic Modeling","Tone","microphone input simulation neutral condenser dynamic ribbon warm focus airy tone",""},
+    {33,"Skelldizer","Dynamics","original 3-band enhancer punch warm air grit loudness level match",""},
+    {34,"Studio Parametric EQ (Plain)","Tone","studio lemon seven band low shelf high shelf frequency gain width",""},
+    {35,"Studio Limiter Hybrid","Dynamics","studio compressor gate threshold SkellCore true peak ceiling",""},
+    {36,"Studio Compressor","Dynamics","studio lemon RMS compressor threshold ratio knee attack release",""},
+    {37,"Studio Fast Dist","Tone","studio lemon fast distortion waveshaper type a type b pre post",""}
 }};
-static_assert(effects.size()==31,"Keep registry in sync with ModuleType");
+static_assert(effects.size()==38,"Keep registry in sync with ModuleType");
 constexpr const Effect& at(int id) noexcept {
     return effects[static_cast<std::size_t>(id<0||id>=(int)effects.size()?0:id)];
 }

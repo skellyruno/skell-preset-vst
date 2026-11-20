@@ -1,21 +1,35 @@
-# Real JUCE headless UI renderer
+# Skell-Preset real-editor Quick4 (local, no screenshot workflows)
 
-This harness creates actual `SkellPresetAudioProcessor` and `SkellPresetAudioProcessorEditor`
-objects. The editor uses the same `Canvas`, rack, preset browser, knobs, fonts, and
-JUCE theme code as the VST3 build. Screenshots are JUCE `createComponentSnapshot()`
-images, **not** HTML mocks or synthetic redesigns.
+The shared SkellCore Quick4 launcher now opts into an explicit four-scene
+mode in this repo's real JUCE SkellPresetUIRenderer. The four outputs are:
+(1) Obsidian Simple with original Tone/Punch/Space/Grit rotary cards at 100%,
+(2) Obsidian Advanced effect editor at 100%,
+(3) effect library open at 70%, and (4) MIC widget open at 70%.
 
-It captures 48 PNGs: **Obsidian**, **Cream**, and **Crimson** × **Advanced**, **Preset Browser**, **Simple**, and **Bypass** × **70%, 85%, 100%, and 125%**. `contact-sheet.png`
-shows Advanced and Preset Browser at 70% for all three themes.
+The compiled editor and processor are real C++ JUCE components, not a
+mockup or screenshot from an older commit. Its existing full 110-scene
+deep audit remains intact when not passed --quick4.
 
-## View screenshots in GitHub Actions
+Preferred setup: check out SkellCore and use quick4.ps1 from Windows
+Developer PowerShell, or quick4.sh on Linux. Both call the persistent
+workspace runner, reuse JUCE and Ninja objects on disk, validate manifest
+and PNGs, and package a source-SHA-stamped portable ZIP. Full instructions:
+SkellCore/docs/QUICK4_PERSISTENT_WORKSPACE.md at the selected core revision.
 
-Open **Actions → Skell-Preset / Headless JUCE UI screenshots** on the repository,
-run **workflow_dispatch**, and download the **Skell-Preset-UI-Screenshots**
-artifact. A push changing the UI or renderer also triggers captures automatically.
-The build fails if controls overlap the top bar, exceed canvas bounds, the expected
-mode doesn't appear, the Bypass overlay is absent, a preset selector fails its
-open/close callback test, a PNG is blank, or any file has unexpected dimensions.
+Direct Linux invocation from a compiled source tree:
+
+    SkellPresetUIRenderer --output ./ui-quick4 --quick4
+
+Direct Windows invocation from Developer PowerShell:
+
+    .\SkellPresetUIRenderer.exe --output .\ui-quick4 --quick4
+
+There is NO automatic GitHub screenshot capture: its dedicated
+ui-screenshots.yml workflow is manual-only and must not be triggered
+for routine UI work. Windows VST3 CI may **compile** the renderer as a
+source-integrity check, but it must not run screenshot captures.
+The Quick4 ZIP can be uploaded into a new chat if that isolated session
+cannot mount the developer machine's persistent workspace.
 
 ## Local Linux setup
 
