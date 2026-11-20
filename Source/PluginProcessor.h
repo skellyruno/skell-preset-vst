@@ -22,6 +22,9 @@ public:
     enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
+    // Keep every published factory program at its existing index and append
+    // Empty Rack as a host-selectable program after the factory bank.
+    static constexpr int emptyRackProgramIndex=static_cast<int>(skellpreset::factoryPresets.size());
     SkellPresetAudioProcessor();
     ~SkellPresetAudioProcessor() override = default;
     void prepareToPlay(double sampleRate,int samplesPerBlock) override;
@@ -35,8 +38,8 @@ public:
     bool producesMidi() const override {return false;}
     bool isMidiEffect() const override {return false;}
     double getTailLengthSeconds() const override {return 8.0;}
-    int getNumPrograms() override {return (int)skellpreset::factoryPresets.size();}
-    int getCurrentProgram() override {return juce::jmax(0,selectedProgram);}
+    int getNumPrograms() override {return emptyRackProgramIndex+1;}
+    int getCurrentProgram() override {return selectedProgram>=0?selectedProgram:emptyRackProgramIndex;}
     void setCurrentProgram(int) override;
     const juce::String getProgramName(int) override;
     void changeProgramName(int,const juce::String&) override {}
@@ -88,6 +91,7 @@ public:
     float getOutputPeak() const noexcept {return outputPeak.load();}
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
 private:
+    void clearRackToEmpty();
     struct EngineSlot {
         skellpreset::dsp::SmoothedBiquad peak, highpass;
         skellpreset::dsp::Compressor comp;
