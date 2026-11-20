@@ -22,13 +22,15 @@
 #include <atomic>
 #include <cstdint>
 
-class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
+class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener {
 public:
     enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
+    static constexpr int emptyRackProgramIndex=static_cast<int>(skellpreset::factoryPresets.size());
+    static constexpr int customRackProgramIndex=emptyRackProgramIndex+1;
     SkellPresetAudioProcessor();
-    ~SkellPresetAudioProcessor() override = default;
+    ~SkellPresetAudioProcessor() override;
     void prepareToPlay(double sampleRate,int samplesPerBlock) override;
     void releaseResources() override;
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
@@ -40,8 +42,12 @@ public:
     bool producesMidi() const override {return false;}
     bool isMidiEffect() const override {return false;}
     double getTailLengthSeconds() const override {return 8.0;}
-    int getNumPrograms() override {return (int)skellpreset::factoryPresets.size();}
-    int getCurrentProgram() override {return juce::jmax(0,selectedProgram);}
+    int getNumPrograms() override {return customRackProgramIndex+1;}
+    int getCurrentProgram() override {
+        if(selectedProgram>=0)return selectedProgram;
+        return selectedProgram==-2 && emptyRackIdentity.load(std::memory_order_acquire)
+            ? emptyRackProgramIndex : customRackProgramIndex;
+    }
     void setCurrentProgram(int) override;
     const juce::String getProgramName(int) override;
     void changeProgramName(int,const juce::String&) override {}
@@ -50,6 +56,7 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState state;
     void loadFactoryPreset(int index);
+    void clearRackToEmpty();
     // Message-thread only, validated native .skellpreset ZIP packages.
     juce::Result exportPreset(const juce::File& file) const;
     juce::Result importPreset(const juce::File& file);
@@ -62,10 +69,13 @@ public:
     int appendRackSlot();
     int activeSlotCount() const noexcept {return activeSlots.load(std::memory_order_acquire);}
     int slotIdAt(int position) const noexcept {return (int)((packedOrder.load(std::memory_order_acquire) >> (4*juce::jlimit(0,slotCount-1,position)))&0x0fU);}
-    juce::String presetName() const {return name;}
-    // -1 denotes an imported/custom chain; getCurrentProgram() is clamped for
-    // host API compatibility and must not drive the browser's ACTIVE indicator.
-    int loadedFactoryPresetIndex() const noexcept {return selectedProgram;}
+    juce::String presetName() const {
+        return selectedProgram==-2 && !emptyRackIdentity.load(std::memory_order_acquire)
+            ? juce::String("Custom Rack") : name;
+    }
+    // Negative identities are not factory presets; the host program index is
+    // mapped separately to Empty Rack or Custom Rack without shifting factories.
+    int loadedFactoryPresetIndex() const noexcept {return selectedProgram>=0?selectedProgram:-1;}
     juce::String moduleName(int type) const;
     void setSlotType(int slot,int type);
     // Decodes the backward-compatible legacy type + optional extended effect.
@@ -201,8 +211,11 @@ private:
     skellpreset::capture::ClipRecorder capture;
     double rate=48000;
     std::atomic<double> displayedRate{48000.}; // message-thread PDC readout
-    int selectedProgram=0;
-    juce::String name="Clean Lead";
+    int selectedProgram=-2; // -2 empty rack, -1 imported/edited custom chain, >=0 factory
+    std::atomic<bool> emptyRackIdentity{true};
+    std::atomic<bool> suppressProgramIdentityUpdates{false};
+    juce::StringArray programIdentityListenerIds;
+    juce::String name="Empty Rack";
     skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc;
     std::atomic<int> limiterLookahead{0};
     int currentReportedLatency=0;
@@ -212,6 +225,9 @@ private:
     // Continuous per-slot wet/bypass fades; all memory is owned by processor.
     std::array<juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear>,slotCount> slotWetSmooth;
     void setReal(const juce::String& id,float value);
+    void addProgramIdentityListeners();
+    void removeProgramIdentityListeners() noexcept;
+    void parameterChanged(const juce::String&,float) override;
     float value(const juce::String& id) const noexcept;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellPresetAudioProcessor)
 };

@@ -60,11 +60,11 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawGlobal.threshold=state.getRawParameterValue("gateThreshold");
     rawGlobal.delta=state.getRawParameterValue("delta");
     for(int k=0;k<4;k++)rawGlobal.macros[(size_t)k]=state.getRawParameterValue("macro"+juce::String(k+1));
+    addProgramIdentityListeners();
     // New instances start with a clean, latency-free rack. APVTS slot type
-    // and bypass defaults are already Empty/OFF (all 16 slots); do not
-    // call a factory preset here or modify its legacy program index.
-    // setStateInformation() restores existing FL Studio projects unchanged.
-    selectedProgram=-1;
+    // and bypass defaults are already Empty/OFF (all 16 slots).
+    selectedProgram=-2;
+    emptyRackIdentity.store(true,std::memory_order_release);
     name="Empty Rack";
     state.state.setProperty("presetName",name,nullptr);
 }
@@ -339,6 +339,10 @@ float SkellPresetAudioProcessor::value(const juce::String& id) const noexcept {
     return 0;
 }
 void SkellPresetAudioProcessor::setReal(const juce::String& id,float v) {
+    if(id!="mode" && selectedProgram==-2 && emptyRackIdentity.exchange(false,std::memory_order_acq_rel)) {
+        name="Custom Rack";
+        state.state.setProperty("presetName",name,nullptr);
+    }
     if(auto* p=state.getParameter(id))p->setValueNotifyingHost(p->convertTo0to1(v));
 }
 float SkellPresetAudioProcessor::getSlotParam(int slot,int param) const noexcept {
@@ -1049,8 +1053,31 @@ int SkellPresetAudioProcessor::appendRackSlot() {
     updateHostLatency();
     return slotIdAt(count);
 }
+
+void SkellPresetAudioProcessor::clearRackToEmpty() {
+    suppressProgramIdentityUpdates.store(true,std::memory_order_release);
+    emptyRackIdentity.store(false,std::memory_order_release);
+    selectedProgram=-1;
+    for(auto* parameter:getParameters())
+        if(parameter)parameter->setValueNotifyingHost(parameter->getDefaultValue());
+    activeSlots.store(defaultSlotCount,std::memory_order_release);
+    state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
+    std::uint64_t identityOrder=0;
+    for(int position=0;position<slotCount;++position)
+        identityOrder|=static_cast<std::uint64_t>(position) << (4*position);
+    packedOrder.store(identityOrder,std::memory_order_release);
+    name="Empty Rack";
+    selectedProgram=-2;
+    emptyRackIdentity.store(true,std::memory_order_release);
+    suppressProgramIdentityUpdates.store(false,std::memory_order_release);
+    state.state.setProperty("presetName",name,nullptr);
+    state.state.setProperty("presetBank","My Presets",nullptr);
+    updateHostLatency();
+}
+
 void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     if(index<0||index>=(int)factoryPresets.size())return;
+    emptyRackIdentity.store(false,std::memory_order_release);
     selectedProgram=index;const auto& preset=factoryPresets[(size_t)index];name=preset.name;
     activeSlots.store(defaultSlotCount,std::memory_order_release);
     state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
@@ -1424,6 +1451,7 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     setReal("micPreTrim",doc.micPreTrim);
     for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
     name=doc.name;
+    emptyRackIdentity.store(false,std::memory_order_release);
     selectedProgram=-1; // Imported sound is not a factory preset.
     state.state.setProperty("presetName",name,nullptr);
     state.state.setProperty("presetBank",doc.bank,nullptr);
@@ -1461,9 +1489,16 @@ bool SkellPresetAudioProcessor::removeRackSlot(int visualPosition) {
     updateHostLatency();
     return true;
 }
-void SkellPresetAudioProcessor::setCurrentProgram(int index) {loadFactoryPreset(index);}
+void SkellPresetAudioProcessor::setCurrentProgram(int index) {
+    if(index==emptyRackProgramIndex) {clearRackToEmpty();return;}
+    if(index==customRackProgramIndex)return;
+    loadFactoryPreset(index);
+}
 const juce::String SkellPresetAudioProcessor::getProgramName(int index) {
-    return index>=0&&index<(int)factoryPresets.size()?factoryPresets[(size_t)index].name:juce::String{};
+    if(index==emptyRackProgramIndex)return "Empty Rack";
+    if(index==customRackProgramIndex)return "Custom Rack";
+    return index>=0&&index<(int)factoryPresets.size()
+        ? factoryPresets[(size_t)index].name : juce::String{};
 }
 void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     auto snapshot=state.copyState();
@@ -1471,8 +1506,10 @@ void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     for(int i=0;i<slotCount;i++)sequence+=juce::String(slotIdAt(i))+(i==slotCount-1?"":",");
     snapshot.setProperty("slotOrder",sequence,nullptr);
     snapshot.setProperty("rackSlots",activeSlotCount(),nullptr);
-    snapshot.setProperty("presetName",name,nullptr);
-    snapshot.setProperty("program",selectedProgram,nullptr);
+    snapshot.setProperty("presetName",presetName(),nullptr);
+    const int savedProgram=selectedProgram==-2 &&
+        !emptyRackIdentity.load(std::memory_order_acquire) ? -1 : selectedProgram;
+    snapshot.setProperty("program",savedProgram,nullptr);
     for(int s=0;s<slotCount;++s) {
         const auto index=juce::String(s+1);
         snapshot.removeProperty("hostPath"+index,nullptr);
@@ -1539,7 +1576,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             if(storedProgram.isInt() || storedProgram.isInt64() || storedProgram.isDouble()) {
                 const double numeric=static_cast<double>(storedProgram);
                 if(std::isfinite(numeric) && numeric==std::floor(numeric)
-                    && numeric>=-1.0 && numeric<(double)factoryPresets.size()) {
+                    && numeric>=-2.0 && numeric<(double)factoryPresets.size()) {
                     parsedProgram=(int)numeric;
                     validProgram=true;
                 }
@@ -1551,7 +1588,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
                 if(token.isNotEmpty() && token.length()<=3
                     && token.containsOnly("0123456789-")) {
                     const int numeric=token.getIntValue();
-                    if(juce::String(numeric)==token && numeric>=-1
+                    if(juce::String(numeric)==token && numeric>=-2
                         && numeric<(int)factoryPresets.size()) {
                         parsedProgram=numeric;
                         validProgram=true;
@@ -1561,6 +1598,19 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             if(validProgram)selectedProgram=parsedProgram;
         }
         state.replaceState(loaded);
+        bool slotsEmpty=true;
+        for(int slot=0;slot<slotCount;++slot) {
+            const auto* enabled=state.getRawParameterValue(slotPrefix(slot)+"on");
+            if(slotType(slot)!=Empty || (enabled && enabled->load()>0.5f)) {
+                slotsEmpty=false;
+                break;
+            }
+        }
+        if(selectedProgram==-1 && name=="Empty Rack" && slotsEmpty)
+            selectedProgram=-2;
+        if(selectedProgram==-2 && !slotsEmpty)
+            selectedProgram=-1;
+        emptyRackIdentity.store(selectedProgram==-2,std::memory_order_release);
         updateHostLatency();
         // Don't instantiate external code in setStateInformation(): hosts may
         // call this from threads that cannot safely load a plugin DLL.
@@ -1569,5 +1619,47 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             if(loaded.hasProperty("hostPath"+juce::String(s+1))) {restore=true;break;}
         if(restore)triggerAsyncUpdate();
     }
+}
+void SkellPresetAudioProcessor::addProgramIdentityListeners() {
+    auto add=[this](const juce::String& id) {
+        if(state.getParameter(id)==nullptr)return;
+        state.addParameterListener(id,this);
+        programIdentityListenerIds.add(id);
+    };
+    for(const auto* id:{"input","mix","output","autoGain","delta",
+                        "adapt","adaptAmount","globalGate","gateThreshold","laneMode",
+                        "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim"})
+        add(id);
+    for(int macro=1;macro<=8;++macro)add("macro"+juce::String(macro));
+    for(const auto* lane:{"A","B","C"}) {
+        const auto prefix="lane"+juce::String(lane);
+        add(prefix+"_level");add(prefix+"_pan");add(prefix+"_mute");
+    }
+    for(int slot=0;slot<slotCount;++slot) {
+        const auto prefix=slotPrefix(slot);
+        for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
+                                "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
+                                "eqLowCut","eqHighCut"})add(prefix+suffix);
+        for(int parameter=1;parameter<=16;++parameter)
+            add(prefix+"p"+juce::String(parameter));
+        for(int band=1;band<=8;++band) {
+            const auto suffix=juce::String(band);
+            add(prefix+"eqQ"+suffix);
+            add(prefix+"studioEqKind"+suffix);
+            add(prefix+"studioEqOn"+suffix);
+        }
+    }
+}
+void SkellPresetAudioProcessor::removeProgramIdentityListeners() noexcept {
+    for(const auto& id:programIdentityListenerIds)
+        state.removeParameterListener(id,this);
+    programIdentityListenerIds.clear();
+}
+void SkellPresetAudioProcessor::parameterChanged(const juce::String&,float) {
+    if(!suppressProgramIdentityUpdates.load(std::memory_order_acquire))
+        emptyRackIdentity.store(false,std::memory_order_release);
+}
+SkellPresetAudioProcessor::~SkellPresetAudioProcessor() {
+    removeProgramIdentityListeners();
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {return new SkellPresetAudioProcessor();}

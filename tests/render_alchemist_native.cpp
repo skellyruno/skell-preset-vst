@@ -182,7 +182,15 @@ int blankSmoke() {
     auto plugin=std::make_unique<SkellPresetAudioProcessor>();
     if(plugin->loadedFactoryPresetIndex()!=-1
        || plugin->presetName()!="Empty Rack"
-       || plugin->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount)
+       || plugin->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount
+       || plugin->getNumPrograms()!=SkellPresetAudioProcessor::customRackProgramIndex+1
+       || plugin->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex
+       || plugin->getProgramName(SkellPresetAudioProcessor::emptyRackProgramIndex)!="Empty Rack"
+       || plugin->getProgramName(SkellPresetAudioProcessor::customRackProgramIndex)!="Custom Rack"
+       || plugin->getProgramName(43)!="Alchemist (Native Preview)"
+       || plugin->getProgramName(44)!="Deuce D/Max (Native Trial)"
+       || plugin->getProgramName(46)!="Deuce v2.5 (Native Trial)"
+       || plugin->getProgramName(54)!="Alchemist Serial Dynamics Blend (Trial)")
         return 31;
     for(int s=0;s<SkellPresetAudioProcessor::slotCount;++s) {
         const auto* active=plugin->state.getRawParameterValue(
@@ -318,7 +326,9 @@ int blankSmoke() {
         juce::AudioProcessor::copyXmlToBinary(*xml,encoded);
         auto candidate=std::make_unique<SkellPresetAudioProcessor>();
         candidate->setStateInformation(encoded.getData(),(int)encoded.getSize());
-        return candidate->loadedFactoryPresetIndex()==expected;
+        const int expectedHost=expected>=0?expected:SkellPresetAudioProcessor::customRackProgramIndex;
+        return candidate->loadedFactoryPresetIndex()==expected
+            && candidate->getCurrentProgram()==expectedHost;
     };
     if(!checkProgramIdentity(false,juce::var(),-1))return 40;
     if(!checkProgramIdentity(true,juce::var("not-a-number"),-1))return 41;
@@ -326,6 +336,52 @@ int blankSmoke() {
     if(!checkProgramIdentity(true,juce::var("0"),0))return 43;
     if(!checkProgramIdentity(true,juce::var(-1),-1))return 44;
     if(!checkProgramIdentity(true,juce::var(0.5),-1))return 45;
+    if(!checkProgramIdentity(true,juce::var(-2),-1))return 49;
+
+    auto modeOnly=std::make_unique<SkellPresetAudioProcessor>();
+    auto* modeParameter=modeOnly->state.getParameter("mode");
+    if(!modeParameter)return 72;
+    modeParameter->setValueNotifyingHost(modeParameter->convertTo0to1(0.f));
+    if(modeOnly->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+        return 73;
+
+    auto custom=std::make_unique<SkellPresetAudioProcessor>();
+    auto* macro=custom->state.getParameter("macro1");
+    if(!macro)return 64;
+    macro->setValueNotifyingHost(.73f);
+    if(custom->getCurrentProgram()!=SkellPresetAudioProcessor::customRackProgramIndex
+       || custom->presetName()!="Custom Rack")return 65;
+    juce::MemoryBlock customState;
+    custom->getStateInformation(customState);
+    auto customRestored=std::make_unique<SkellPresetAudioProcessor>();
+    customRestored->setStateInformation(customState.getData(),(int)customState.getSize());
+    if(customRestored->getCurrentProgram()!=SkellPresetAudioProcessor::customRackProgramIndex
+       || customRestored->loadedFactoryPresetIndex()!=-1)return 66;
+
+    auto legacyEmpty=std::make_unique<SkellPresetAudioProcessor>();
+    juce::MemoryBlock legacyEmptyState;
+    legacyEmpty->getStateInformation(legacyEmptyState);
+    auto legacyXml=juce::AudioProcessor::getXmlFromBinary(
+        legacyEmptyState.getData(),(int)legacyEmptyState.getSize());
+    if(!legacyXml)return 67;
+    auto legacyTree=juce::ValueTree::fromXml(*legacyXml);
+    legacyTree.setProperty("program",-1,nullptr);
+    legacyTree.setProperty("presetName","Empty Rack",nullptr);
+    auto legacyEncodedXml=legacyTree.createXml();
+    if(!legacyEncodedXml)return 68;
+    juce::MemoryBlock legacyEncoded;
+    juce::AudioProcessor::copyXmlToBinary(*legacyEncodedXml,legacyEncoded);
+    auto legacyEmptyRestored=std::make_unique<SkellPresetAudioProcessor>();
+    legacyEmptyRestored->setStateInformation(legacyEncoded.getData(),(int)legacyEncoded.getSize());
+    if(legacyEmptyRestored->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex
+       || legacyEmptyRestored->presetName()!="Empty Rack")return 69;
+
+    customRestored->setCurrentProgram(SkellPresetAudioProcessor::emptyRackProgramIndex);
+    if(customRestored->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex
+       || customRestored->presetName()!="Empty Rack")return 70;
+    for(auto* parameter:customRestored->getParameters())
+        if(parameter && std::abs(parameter->getValue()-parameter->getDefaultValue())>1.e-5f)
+            return 71;
     restored->releaseResources();
     plugin->releaseResources();
     std::puts("PASS: blank rack 0-PDC identity and legacy FL Studio preset-state restore");
