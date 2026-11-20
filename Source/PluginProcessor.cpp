@@ -792,6 +792,46 @@ int SkellPresetAudioProcessor::appendRackSlot() {
     updateHostLatency();
     return slotIdAt(count);
 }
+void SkellPresetAudioProcessor::clearRackToEmpty() {
+    selectedProgram=-1;
+    name="Empty Rack";
+    activeSlots.store(defaultSlotCount,std::memory_order_release);
+    state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
+
+    // Reset every physical slot, including hidden rows and both generations
+    // of extended effect selectors, to the same neutral state as construction.
+    for(int slot=0;slot<slotCount;++slot) {
+        const auto prefix=slotPrefix(slot);
+        setReal(prefix+"type",static_cast<float>(Empty));
+        setReal(prefix+"fxExt",0.f);
+        setReal(prefix+"fxExt2",0.f);
+        setReal(prefix+"fxExt3",0.f);
+        setSlotOn(slot,false);
+        setReal(prefix+"wet",1.f);
+        setReal(prefix+"lane",0.f);
+        for(int parameter=0;parameter<16;++parameter)
+            setSlotParam(slot,parameter,.5f);
+        for(int band=1;band<=8;++band)
+            setReal(prefix+"eqQ"+juce::String(band),.5f);
+    }
+
+    std::uint64_t identityOrder=0;
+    for(int position=0;position<slotCount;++position)
+        identityOrder|=static_cast<std::uint64_t>(position) << (4*position);
+    packedOrder.store(identityOrder,std::memory_order_release);
+
+    setReal("mode",1.f);
+    setReal("mix",1.f);
+    setReal("input",0.f);
+    setReal("output",0.f);
+    for(int macro=1;macro<=8;++macro)
+        setReal("macro"+juce::String(macro),.5f);
+
+    state.state.setProperty("presetName",name,nullptr);
+    state.state.setProperty("presetBank","My Presets",nullptr);
+    updateHostLatency();
+}
+
 void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     if(index<0||index>=(int)factoryPresets.size())return;
     selectedProgram=index;const auto& preset=factoryPresets[(size_t)index];name=preset.name;
@@ -1081,8 +1121,15 @@ void SkellPresetAudioProcessor::reorderSlot(int from,int to) {
     for(int i=0;i<slotCount;i++)next|=(std::uint64_t)seq[(size_t)i] << (4*i);
     packedOrder.store(next,std::memory_order_release);
 }
-void SkellPresetAudioProcessor::setCurrentProgram(int index) {loadFactoryPreset(index);}
+void SkellPresetAudioProcessor::setCurrentProgram(int index) {
+    if(index==emptyRackProgramIndex) {
+        clearRackToEmpty();
+        return;
+    }
+    loadFactoryPreset(index);
+}
 const juce::String SkellPresetAudioProcessor::getProgramName(int index) {
+    if(index==emptyRackProgramIndex)return "Empty Rack";
     return index>=0&&index<(int)factoryPresets.size()?factoryPresets[(size_t)index].name:juce::String{};
 }
 void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
