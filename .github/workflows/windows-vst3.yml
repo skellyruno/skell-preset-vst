@@ -188,12 +188,12 @@ jobs:
         run: |
           python tools/alchemist_reference_ab.py prepare --input-flac soundmatch/local_sound_archive/data/alchemist/audio/input_rec_printed.flac --output-wav build/alchemist-input.wav
           if ($LASTEXITCODE -ne 0) { throw 'Alchemist input conversion failed' }
-      - name: Render factory 43, 45, 47, 48, 49, 50, 51, 52, 53 and 54 on the identical full input
+      - name: Render factory 43, 45, 47, 48, 49, 50, 51, 52, 53, 54 and 55 on the identical full input
         shell: pwsh
         run: |
           $renderer = Get-ChildItem renderer -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
           if (-not $renderer) { throw 'Downloaded native Alchemist renderer missing' }
-          foreach ($factory in @(43,45,47,48,49,50,51,52,53,54)) {
+          foreach ($factory in @(43,45,47,48,49,50,51,52,53,54,55)) {
             $output = "build/alchemist-factory-$factory.wav"
             & $renderer.FullName --factory $factory build/alchemist-input.wav $output
             if ($LASTEXITCODE -ne 0) { throw "Native factory $factory render failed: $LASTEXITCODE" }
@@ -228,6 +228,7 @@ jobs:
             "--factory52", "build/alchemist-factory-52.wav",
             "--factory53", "build/alchemist-factory-53.wav",
             "--factory54", "build/alchemist-factory-54.wav",
+            "--factory55", "build/alchemist-factory-55.wav",
             "--renderer", $renderer.FullName,
             "--fst", "soundmatch/local_sound_archive/data/alchemist/presets/MAIN.fst",
             "--fst-report", "soundmatch/local_sound_archive/data/alchemist/research_reports/MAIN_FST_Structure.json",

@@ -248,7 +248,7 @@ class AlchemistReferenceABTests(unittest.TestCase):
             ab.polarity_normalized_correlation(raw_signed, 0)
 
     def test_candidate_factory_registry_includes_dynamics_blends(self):
-        self.assertEqual(ab.CANDIDATE_FACTORY_IDS, (43, 45, 47, 48, 49, 50, 51, 52, 53, 54))
+        self.assertEqual(ab.CANDIDATE_FACTORY_IDS, (43, 45, 47, 48, 49, 50, 51, 52, 53, 54, 55))
         self.assertEqual(
             ab.CANDIDATE_FACTORY_NAMES[49], "Alchemist Lighter Dynamics (Trial)"
         )
@@ -260,6 +260,9 @@ class AlchemistReferenceABTests(unittest.TestCase):
         )
         self.assertEqual(
             ab.CANDIDATE_FACTORY_NAMES[54], "Alchemist Serial Dynamics Blend (Trial)"
+        )
+        self.assertEqual(
+            ab.CANDIDATE_FACTORY_NAMES[55], "Alchemist Controlled Density (Trial)"
         )
         self.assertEqual(
             len(set(ab.CANDIDATE_FACTORY_NAMES.values())),
