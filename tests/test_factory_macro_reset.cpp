@@ -105,9 +105,41 @@ bool emptyRackDefaultAndLegacyRestore() {
        emptyRestored->presetName()!="Empty Rack" ||
        emptyRestored->activeSlotCount()!=SkellPresetAudioProcessor::defaultSlotCount)
         return false;
-    for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot)
-        if(emptyRestored->slotType(slot)!=SkellPresetAudioProcessor::Empty)
+    for(int slot=0;slot<SkellPresetAudioProcessor::slotCount;++slot) {
+        const auto onId="s"+juce::String(slot+1)+"_on";
+        const auto* on=emptyRestored->state.getRawParameterValue(onId);
+        if(emptyRestored->slotType(slot)!=SkellPresetAudioProcessor::Empty ||
+           !on || std::abs(on->load())>tolerance ||
+           emptyRestored->slotIdAt(slot)!=slot) {
+            std::cerr << "DIAG: empty host-state reload changed slot type, enable state, or order\\n";
             return false;
+        }
+    }
+
+    // Re-run the real DSP identity and PDC checks after the host-state roundtrip.
+    emptyRestored->prepareToPlay(44100.0,256);
+    if(emptyRestored->getLatencySamples()!=0) {
+        std::cerr << "DIAG: restored empty rack added host latency\\n";
+        return false;
+    }
+    juce::AudioBuffer<float> restoredAudio(2,256);
+    for(int i=0;i<restoredAudio.getNumSamples();++i) {
+        const float sample=0.25f*std::sin(2.0f*juce::MathConstants<double>::pi*997.0*i/44100.0);
+        restoredAudio.setSample(0,i,sample);
+        restoredAudio.setSample(1,i,sample*0.73f);
+    }
+    juce::MidiBuffer restoredMidi;
+    emptyRestored->processBlock(restoredAudio,restoredMidi);
+    for(int i=0;i<restoredAudio.getNumSamples();++i) {
+        const float expected=0.25f*std::sin(2.0f*juce::MathConstants<double>::pi*997.0*i/44100.0);
+        if(!std::isfinite(restoredAudio.getSample(0,i)) ||
+           !std::isfinite(restoredAudio.getSample(1,i)) ||
+           std::abs(restoredAudio.getSample(0,i)-expected)>1.0e-5f ||
+           std::abs(restoredAudio.getSample(1,i)-expected*0.73f)>1.0e-5f) {
+            std::cerr << "DIAG: restored empty rack was not finite identity DSP\\n";
+            return false;
+        }
+    }
 
     // Existing projects saved with factory program 0 must still reopen as Clean Lead.
     auto legacy=std::make_unique<SkellPresetAudioProcessor>();
