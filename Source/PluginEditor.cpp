@@ -750,7 +750,7 @@ public:
         // The append-only catalog now contains 55 programs. Preserve the
         // original Alchemist index and assert every later sound-match trial
         // stays at its documented factory ID as new candidates are appended.
-        if(processor.getNumPrograms()!=55 ||
+        if(processor.getNumPrograms()!=SkellPresetAudioProcessor::customRackProgramIndex+1 ||
            processor.getProgramName(43)!="Alchemist" ||
            processor.getProgramName(44)!="Deuce D/Max (Native Trial)" ||
            processor.getProgramName(45)!="Alchemist Refined (Trial)" ||
