@@ -751,10 +751,10 @@ public:
         // original Alchemist index and assert every later sound-match trial
         // stays at its documented factory ID as new candidates are appended.
         if(processor.getNumPrograms()!=55 ||
-           processor.getProgramName(43)!="Alchemist (Native Preview)" ||
+           processor.getProgramName(43)!="Alchemist" ||
            processor.getProgramName(44)!="Deuce D/Max (Native Trial)" ||
            processor.getProgramName(45)!="Alchemist Refined (Trial)" ||
-           processor.getProgramName(46)!="Deuce v2.5 (Native Trial)" ||
+           processor.getProgramName(46)!="Deuce" ||
            processor.getProgramName(47)!="Alchemist Peak Guard (Trial)" ||
            processor.getProgramName(48)!="Alchemist Tone Match (Trial)" ||
            processor.getProgramName(49)!="Alchemist Lighter Dynamics (Trial)" ||
