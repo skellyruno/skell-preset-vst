@@ -797,13 +797,15 @@ int stress() {
         for(const int preset:{skellpreset::alchemist::factoryIndex,
                                 skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
                                 skellpreset::alchemist_low_end_contour_trial::factoryIndex,
-                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,25,0}) {
+                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,
+                                skellpreset::alchemist_controlled_density_trial::factoryIndex,25,0}) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
             p->loadFactoryPreset(preset);
             p->prepareToPlay(sr,64);
             const int expected=(preset==0 || preset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
                                 preset==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-                                preset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
+                                preset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+                                preset==skellpreset::alchemist_controlled_density_trial::factoryIndex)
                 ?std::max(48,(int)(sr*.003)):0;
             if(p->getLatencySamples()!=expected) {
                 std::fprintf(stderr,
@@ -831,7 +833,8 @@ int stress() {
                     p->prepareToPlay(sr,frames);
                     const int expectedLatency=(rackPreset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
                                                rackPreset==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-                                               rackPreset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
+                                               rackPreset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+                                               rackPreset==skellpreset::alchemist_controlled_density_trial::factoryIndex)
                         ?std::max(48,(int)(sr*.003)):0;
                     if(p->getLatencySamples()!=expectedLatency)return 10;
                     plugins.push_back(std::move(p));
