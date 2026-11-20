@@ -21,7 +21,7 @@ public:
     juce::Image selectedCover() const;
     int visibleFactoryPresetsForTest() const;
     bool canSetCoverForTest() const {return canEditCover();}
-    bool testFavoritesFilterForTest(); // in-memory, no user metadata written
+    bool testMainVocalsPresetFilterForTest(); // exact two-item factory whitelist
     std::function<void()> onClose;
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
