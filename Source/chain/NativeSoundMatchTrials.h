@@ -322,3 +322,28 @@ static_assert(stages[0].p[3]==.04f && stages[1].p[1]==.5f &&
               stages[2].p[3]==.15f,
     "Serial blend trial must use -27 dB threshold, 45% wet and no makeup");
 }
+
+
+// Controlled pre-limiter density trial. Preserve Factory 54's threshold,
+// wet blend, tone, low-end contour and final guard; raise only the parallel
+// saturation send from 5.4% to 7.92% of the internal unity-normalized path.
+// No post-limiter makeup is added. This is an opt-in measurement candidate.
+namespace skellpreset::alchemist_controlled_density_trial {
+constexpr auto makeStages() noexcept {
+    auto result=alchemist_serial_dynamics_blend_trial::stages;
+    result[2].p[3]=.22f; // Serial Dynamics parallel density: .15 -> .22
+    return result;
+}
+inline constexpr auto stages=makeStages();
+inline constexpr int factoryIndex=55;
+inline constexpr const char* name="Alchemist Controlled Density (Trial)";
+inline constexpr const char* bank="Main Vocals";
+static_assert(stages.size()==7 && stages[2].module==27 &&
+              stages[3].module==33 && stages[5].module==31 &&
+              stages[6].module==3,
+    "Controlled-density trial must preserve Factory 54's serial chain");
+static_assert(stages[2].p[0]==.5f && stages[2].p[1]==.5f &&
+              stages[2].p[2]==.35f && stages[2].p[3]==.22f &&
+              stages[2].wet==.45f,
+    "Factory 55 changes only the pre-limiter parallel-density amount");
+}

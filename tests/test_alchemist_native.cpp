@@ -19,7 +19,7 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==55,"Append only; preserve prior programs");
+    static_assert(factoryPresets.size()==56,"Append only; preserve prior programs");
     static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
                   "Alchemist lighter-dynamics candidate must remain at index 49");
     static_assert(factoryPresets[50].name==std::string_view("Alchemist Fast Compressor Blend (Trial)"),
@@ -32,6 +32,8 @@ int main() {
                   "Measured low-end trial must append at index 53");
     static_assert(factoryPresets[54].name==std::string_view("Alchemist Serial Dynamics Blend (Trial)"),
                   "Serial dynamics blend trial must append at index 54");
+    static_assert(factoryPresets[55].name==std::string_view("Alchemist Controlled Density (Trial)"),
+                  "Controlled-density trial must append at index 55");
     static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
     assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
@@ -99,6 +101,8 @@ int main() {
     }
     assert(std::strcmp(factoryPresets[54].name,alchemist_serial_dynamics_blend_trial::name)==0);
     assert(std::strcmp(factoryPresets[54].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[55].name,alchemist_controlled_density_trial::name)==0);
+    assert(std::strcmp(factoryPresets[55].bank,"Main Vocals")==0);
     assert(alchemist_serial_dynamics_blend_trial::stages.size()==7);
     assert(alchemist_serial_dynamics_blend_trial::stages[2].module==27);
     assert(alchemist_serial_dynamics_blend_trial::stages[2].wet==.45f);
@@ -106,6 +110,15 @@ int main() {
     assert(alchemist_serial_dynamics_blend_trial::stages[2].p[1]==.5f);
     assert(alchemist_serial_dynamics_blend_trial::stages[2].p[2]==.35f);
     assert(alchemist_serial_dynamics_blend_trial::stages[2].p[3]==.15f);
+    assert(alchemist_controlled_density_trial::stages.size()==7);
+    for(std::size_t i=0;i<alchemist_serial_dynamics_blend_trial::stages.size();++i) {
+        auto expected=alchemist_serial_dynamics_blend_trial::stages[i];
+        if(i==2)expected.p[3]=.22f;
+        const auto& actual=alchemist_controlled_density_trial::stages[i];
+        assert(actual.module==expected.module && actual.wet==expected.wet);
+        assert(actual.p==expected.p && actual.q==expected.q);
+    }
+    assert(alchemist_controlled_density_trial::stages[2].p[3]==.22f);
     for(std::size_t i=0;i<alchemist_low_end_contour_trial::stages.size();++i) {
         auto expected=alchemist_low_end_contour_trial::stages[i];
         if(i==2) { expected.wet=.45f; expected.p[0]=.5f; }

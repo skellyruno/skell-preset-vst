@@ -45,6 +45,13 @@ int main() {
                   skellpreset::alchemist_serial_dynamics_trial::stages[2].module==27 &&
                   skellpreset::alchemist_serial_dynamics_trial::stages[6].module==3,
                   "Factory 52 appends the serial FET/RMS trial without moving earlier IDs");
+    static_assert(skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex==54 &&
+                  skellpreset::alchemist_controlled_density_trial::factoryIndex==55,
+                  "Controlled-density trial appends after the preserved Factory 54");
+    static_assert(skellpreset::alchemist_controlled_density_trial::stages.size()==7 &&
+                  skellpreset::alchemist_controlled_density_trial::stages[2].p[3]==.22f &&
+                  skellpreset::alchemist_controlled_density_trial::stages[2].wet==.45f,
+                  "Factory 55 uses the higher pre-limiter density send without makeup");
     static_assert(atr::stages[6].p[12]==1.f,"new refinement trial opt-in");
     for(double sr:{8000.,44100.,48000.,96000.,192000.}) {
         AlchemistRefinedDSP fx;fx.prepare(sr);
@@ -148,6 +155,30 @@ int main() {
         for(float value:smooth[i].p)if(!std::isfinite(value)||value<0.f||value>1.f)return 18;
         for(float value:fast[i].q)if(!std::isfinite(value)||value<0.f||value>1.f)return 19;
         for(float value:smooth[i].q)if(!std::isfinite(value)||value<0.f||value>1.f)return 20;
+    }
+    // Factory 55 is a one-control append-only comparison against Factory 54.
+    // No prior module, parameter, wet blend, Q or automation identity changes.
+    const auto& densityBase=skellpreset::alchemist_serial_dynamics_blend_trial::stages;
+    const auto& densityTrial=skellpreset::alchemist_controlled_density_trial::stages;
+    for(std::size_t i=0;i<densityBase.size();++i) {
+        if(densityBase[i].module!=densityTrial[i].module ||
+           densityBase[i].q!=densityTrial[i].q ||
+           std::abs(densityBase[i].wet-densityTrial[i].wet)>1.e-7f)
+            return 21;
+        for(std::size_t k=0;k<densityBase[i].p.size();++k) {
+            const float expected=(i==2 && k==3)?.22f:densityBase[i].p[k];
+            if(std::abs(densityTrial[i].p[k]-expected)>1.e-7f)
+                return 22;
+        }
+    }
+    if(std::abs(densityBase[2].p[3]-.15f)>1.e-7f ||
+       std::abs(densityTrial[2].p[3]-.22f)>1.e-7f)
+        return 23;
+    for(const auto& stage:densityTrial) {
+        if(!std::isfinite(stage.wet)||stage.wet<0.f||stage.wet>1.f)
+            return 24;
+        for(float value:stage.p)
+            if(!std::isfinite(value)||value<0.f||value>1.f)return 25;
     }
     std::cout<<"Five opt-in causal refinements, untouched original preset, "
                 "12-slot Deuce candidate, independent Alchemist factories 50/51, 8–192 kHz: PASS\n";

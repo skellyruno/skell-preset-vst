@@ -98,6 +98,8 @@ int nativeStageCountForFactory(int factory) {
         return (int)skellpreset::alchemist_low_end_contour_trial::stages.size();
     if(factory==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
         return (int)skellpreset::alchemist_serial_dynamics_blend_trial::stages.size();
+    if(factory==skellpreset::alchemist_controlled_density_trial::factoryIndex)
+        return (int)skellpreset::alchemist_controlled_density_trial::stages.size();
     return 0;
 }
 
@@ -190,7 +192,8 @@ int blankSmoke() {
        || plugin->getProgramName(43)!="Alchemist"
        || plugin->getProgramName(44)!="Deuce D/Max (Native Trial)"
        || plugin->getProgramName(46)!="Deuce"
-       || plugin->getProgramName(54)!="Alchemist Serial Dynamics Blend (Trial)")
+       || plugin->getProgramName(54)!="Alchemist Serial Dynamics Blend (Trial)"
+       || plugin->getProgramName(55)!="Alchemist Controlled Density (Trial)")
         return 31;
     for(int s=0;s<SkellPresetAudioProcessor::slotCount;++s) {
         const auto* active=plugin->state.getRawParameterValue(
@@ -794,13 +797,15 @@ int stress() {
         for(const int preset:{skellpreset::alchemist::factoryIndex,
                                 skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
                                 skellpreset::alchemist_low_end_contour_trial::factoryIndex,
-                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,25,0}) {
+                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,
+                                skellpreset::alchemist_controlled_density_trial::factoryIndex,25,0}) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
             p->loadFactoryPreset(preset);
             p->prepareToPlay(sr,64);
             const int expected=(preset==0 || preset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
                                 preset==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-                                preset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
+                                preset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+                                preset==skellpreset::alchemist_controlled_density_trial::factoryIndex)
                 ?std::max(48,(int)(sr*.003)):0;
             if(p->getLatencySamples()!=expected) {
                 std::fprintf(stderr,
@@ -813,7 +818,8 @@ int stress() {
         for(const int rackPreset:{skellpreset::alchemist::factoryIndex,
                                   skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
                                   skellpreset::alchemist_low_end_contour_trial::factoryIndex,
-                                  skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex}) {
+                                  skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,
+                     skellpreset::alchemist_controlled_density_trial::factoryIndex}) {
           for(const int frames:buffers) {
             for(const int count:instances) {
                 // Construct/prepare and allocate audio buffers outside timing.
@@ -827,7 +833,8 @@ int stress() {
                     p->prepareToPlay(sr,frames);
                     const int expectedLatency=(rackPreset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
                                                rackPreset==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-                                               rackPreset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
+                                               rackPreset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+                                               rackPreset==skellpreset::alchemist_controlled_density_trial::factoryIndex)
                         ?std::max(48,(int)(sr*.003)):0;
                     if(p->getLatencySamples()!=expectedLatency)return 10;
                     plugins.push_back(std::move(p));
@@ -957,8 +964,9 @@ int render(const juce::File& source, const juce::File& destination,
        factoryIndex!=skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_serial_dynamics_trial::factoryIndex &&
        factoryIndex!=skellpreset::alchemist_low_end_contour_trial::factoryIndex &&
-       factoryIndex!=skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex) {
-        std::fprintf(stderr,"ERROR: factory selection must be 43 through 54\n");
+       factoryIndex!=skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex &&
+       factoryIndex!=skellpreset::alchemist_controlled_density_trial::factoryIndex) {
+        std::fprintf(stderr,"ERROR: factory selection must be 43 through 55\n");
         return 7;
     }
     plugin->loadFactoryPreset(factoryIndex);
@@ -990,7 +998,8 @@ int render(const juce::File& source, const juce::File& destination,
         :plugin->activeSlotCount()==13;
     const bool serialDynamicsFactory=factoryIndex==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
                                      factoryIndex==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-                                     factoryIndex==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex;
+                                     factoryIndex==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+                                     factoryIndex==skellpreset::alchemist_controlled_density_trial::factoryIndex;
     const bool peakGuardFactory=factoryIndex==skellpreset::alchemist_peak_guard_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_tone_match_trial::factoryIndex ||
                                  factoryIndex==skellpreset::alchemist_lighter_dynamics_trial::factoryIndex ||
@@ -1280,7 +1289,8 @@ int nativeTrialsSmoke() {
                      skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex,
                      skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
                      skellpreset::alchemist_low_end_contour_trial::factoryIndex,
-                     skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex}) {
+                     skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,
+                     skellpreset::alchemist_controlled_density_trial::factoryIndex}) {
         auto plugin=std::make_unique<SkellPresetAudioProcessor>();
         const int stageCount=nativeStageCountForFactory(factory);
         if(stageCount<=0 || !dirtySerializedSlotControls(*plugin))return 200;
@@ -1383,7 +1393,8 @@ int nativeTrialsSmoke() {
         }
         if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
            factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-           factory==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex) {
+           factory==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+           factory==skellpreset::alchemist_controlled_density_trial::factoryIndex) {
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> audio(2,256);
             double energy=0.;
@@ -1464,7 +1475,8 @@ int nativeTrialsSmoke() {
         // prepared restored instance. This tests preset/state recall, not envelope cloning.
         if(factory==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
            factory==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-           factory==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
+           factory==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
+           factory==skellpreset::alchemist_controlled_density_trial::factoryIndex)
             plugin->prepareToPlay(48000.,256);
         auto recalled=std::make_unique<SkellPresetAudioProcessor>();
         recalled->setStateInformation(state.getData(),(int)state.getSize());
@@ -1543,6 +1555,15 @@ int nativeTrialsSmoke() {
                recalled->getLatencySamples()!=plugin->getLatencySamples())
                 return 243;
         }
+        if(factory==skellpreset::alchemist_controlled_density_trial::factoryIndex &&
+           (recalled->slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+            recalled->slotType(6)!=SkellPresetAudioProcessor::Limiter ||
+            std::abs(recalled->getSlotParam(2,0)-.5f)>.001f ||
+            std::abs(recalled->getSlotParam(2,1)-.5f)>.001f ||
+            std::abs(recalled->getSlotParam(2,2)-.35f)>.001f ||
+            std::abs(recalled->getSlotParam(2,3)-.22f)>.001f ||
+            recalled->getLatencySamples()!=plugin->getLatencySamples()))
+            return 245;
         if(factory==skellpreset::deuce_v25::factoryIndex) {
             const auto* eqQ=recalled->state.getRawParameterValue("s13_eqQ7");
             const auto* output=recalled->state.getRawParameterValue("output");
@@ -1853,13 +1874,13 @@ int main(int argc,char** argv) {
                            juce::File(juce::String::fromUTF8(argv[3])));
     if(argc==5 && juce::String(argv[1])=="--factory") {
         const auto requested=juce::String(argv[2]);
-        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51" && requested!="52" && requested!="53" && requested!="54")return 7;
+        if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51" && requested!="52" && requested!="53" && requested!="54" && requested!="55")return 7;
         return render(juce::File(juce::String::fromUTF8(argv[3])),
                       juce::File(juce::String::fromUTF8(argv[4])),
                       requested.getIntValue());
     }
     if(argc!=3) {
-        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53|54 INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53|54|55 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --factory-override 54 HPF_NORMALIZED BAND70_GAIN_NORMALIZED INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --lowend-override-smoke\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
