@@ -451,7 +451,72 @@ int main(){
     createArchive(malformed,"preset.json","not json");
     check(skellpreset::package::read(malformed,second).failed(),"Reject malformed JSON");
     check(unchanged(),"Malformed JSON rejection keeps entire prior preset");
-    check(second.name==first.name || second.name=="Wide Ghost Vocal", "Bad input keeps previous successful document");
+
+    // Reject malformed optional EQ-Q arrays transactionally, including
+    // wrong bounds, short arrays, nonnumeric elements and explicit booleans.
+    {
+        juce::ZipFile archive(path);
+        std::unique_ptr<juce::InputStream> input(archive.createStreamForEntry(0));
+        check(input!=nullptr,"EQ-Q rejection fixture has valid source JSON");
+        if(input) {
+            const auto original=juce::JSON::parse(input->readEntireStreamAsString());
+            for(int variant=0;variant<5;++variant) {
+                auto json=original.clone();
+                auto* chain=json.getProperty("chain",{}).getArray();
+                if(!chain || chain->isEmpty()) {
+                    check(false,"EQ-Q rejection fixture contains chain entries");
+                    break;
+                }
+                auto* slot=(*chain)[0].getDynamicObject();
+                if(!slot) {
+                    check(false,"EQ-Q rejection fixture has a slot object");
+                    break;
+                }
+                juce::Array<juce::var> q;
+                for(int i=0;i<8;++i)q.add(0.5);
+                if(variant==0)q.set(0,-0.01);
+                if(variant==1)q.set(7,1.01);
+                if(variant==2)q.removeLast();
+                if(variant==3)q.set(0,juce::var("invalid"));
+                if(variant==4)q.set(7,juce::var(true));
+                slot->setProperty("eqQ",juce::var(q));
+                const auto bad=testFile(dir,"invalid-eq-q-"+juce::String(variant));
+                auto encoded=juce::JSON::toString(json);
+                if(variant==4) {
+                    // Preserve a literal JSON boolean through JUCE serialization.
+                    const auto marker=juce::String("\"eqQ\":");
+                    const auto key=encoded.indexOf(marker);
+                    if(key>=0) {
+                        const auto start=encoded.indexOf(key+marker.length(),"[");
+                        const auto end=start>=0?encoded.indexOf(start,"]"):-1;
+                        if(end>=0) {
+                            auto arrayText=encoded.substring(start,end+1);
+                            const auto comma=arrayText.lastIndexOfChar(',');
+                            if(comma>=0) {
+                                arrayText=arrayText.substring(0,comma+1)+"true]";
+                                encoded=encoded.substring(0,start)+arrayText+encoded.substring(end+1);
+                            }
+                        }
+                    }
+                }
+                const auto parsed=juce::JSON::parse(encoded);
+                const auto parsedChain=parsed.getProperty("chain",{});
+                const auto* parsedSlots=parsedChain.getArray();
+                const auto parsedQ=(parsedSlots && !parsedSlots->isEmpty())
+                    ?(*parsedSlots)[0].getProperty("eqQ",{}):juce::var();
+                const auto* parsedValues=parsedQ.getArray();
+                check(parsedValues!=nullptr &&
+                      parsedValues->size()==(variant==2?7:8) &&
+                      (variant!=4 || (*parsedValues)[7].isBool()),
+                      "Malformed EQ-Q fixture keeps expected array shape/type");
+                createArchive(bad,"preset.json",encoded.toStdString());
+                check(skellpreset::package::read(bad,second).failed(),
+                      "Reject invalid EQ-Q value or array");
+                check(unchanged(),"Invalid EQ-Q import preserves whole previous preset");
+            }
+        }
+    }
+    check(unchanged(),"All rejected imports preserve the complete previous preset");
     dir.deleteRecursively();
     if(failures)std::cerr<<failures<<" package tests failed\n";
     return failures?1:0;
