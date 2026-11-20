@@ -1497,6 +1497,8 @@ void SkellPresetAudioProcessor::setCurrentProgram(int index) {
 const juce::String SkellPresetAudioProcessor::getProgramName(int index) {
     if(index==emptyRackProgramIndex)return "Empty Rack";
     if(index==customRackProgramIndex)return "Custom Rack";
+    if(index==skellpreset::alchemist::factoryIndex)return "Alchemist";
+    if(index==skellpreset::deuce_v25::factoryIndex)return "Deuce";
     return index>=0&&index<(int)factoryPresets.size()
         ? factoryPresets[(size_t)index].name : juce::String{};
 }
