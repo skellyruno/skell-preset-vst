@@ -2,12 +2,15 @@
 // Linux: run under Xvfb. Never instantiate a mock editor or call the audio thread.
 #include "../Source/PluginEditor.h"
 #include "../Source/PluginProcessor.h"
+#include "../Source/chain/AlchemistNativePreset.h"
+#include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/host/InstalledVST3Index.h"
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <memory>
 
 namespace {
 struct View {
@@ -26,17 +29,20 @@ constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
 int main(int argc, char** argv) {
-    juce::String argument="ui-screenshots";
-    bool full=false;
+    bool quick4=false,extras=false;
     for(int i=1;i<argc;++i) {
-        const juce::String arg(argv[i]);
-        if(arg=="--full")full=true;
-        else if(arg=="--output" && i+1<argc)argument=argv[++i];
-        else {std::fprintf(stderr,"Unknown UI capture argument: %s\n",arg.toRawUTF8());return 2;}
+        if(juce::String(argv[i])=="--quick4")quick4=true;
+        if(juce::String(argv[i])=="--extras")extras=true;
     }
+    const juce::String argument = argc >= 3 && juce::String(argv[1]) == "--output"
+        ? juce::String::fromUTF8(argv[2]) : juce::String("ui-screenshots");
     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
+    std::fprintf(stderr,"[Quick4] main entered; processor=%zu bytes editor=%zu bytes\\n",
+                 sizeof(SkellPresetAudioProcessor),sizeof(SkellPresetAudioProcessorEditor));
     juce::ScopedJuceInitialiser_GUI gui;
-    SkellPresetAudioProcessor processor;
+    auto processorStorage=std::make_unique<SkellPresetAudioProcessor>();
+    auto& processor=*processorStorage;
+    std::fprintf(stderr,"[Quick4] processor allocated\\n");
     processor.prepareToPlay(48000.0, 512);
     int failures = 0;
     // Verify filesystem-only VST3 browsing independently of installed plugin
@@ -121,6 +127,59 @@ int main(int argc, char** argv) {
                 }
         }
     }
+    // End-to-end Alchemist regression: THIS tests the same compiled JUCE
+    // processor, seven serial factory stages and actual APVTS controls used
+    // by the shipped VST3. The separate contour-header smoke is insufficient.
+    // Synthetic audio only: owner's reference WAV never enters source control.
+    {
+        auto renderAlchemist=[&](bool withContour) {
+            processor.prepareToPlay(48000.,256);
+            processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+            if(!withContour)
+                processor.setSlotParam(6,8,.5f); // legacy neutral p9
+            const bool correctFactory=processor.slotType(6)==
+                    SkellPresetAudioProcessor::AlchemistMatchFinishFX
+                && processor.getSlotParam(6,8)==(withContour?1.f:.5f)
+                && processor.getLatencySamples()==0;
+            if(!correctFactory) {
+                std::fprintf(stderr,"Alchemist native contour is not wired into the real VST3 rack\\n");
+                ++failures;
+            }
+            double sumSquares=0.;
+            int used=0;
+            for(int block=0;block<150;++block) {
+                juce::AudioBuffer<float> audio(2,256);
+                for(int n=0;n<256;++n) {
+                    constexpr double pi=3.14159265358979323846;
+                    const double t=(block*256+n)/48000.;
+                    const float x=.026f*(float)std::sin(2.*pi*231.*t)
+                                 +.006f*(float)std::sin(2.*pi*3900.*t);
+                    audio.setSample(0,n,x);
+                    audio.setSample(1,n,x*.91f);
+                }
+                juce::MidiBuffer midi;
+                processor.processBlock(audio,midi);
+                for(int n=0;n<256;++n) {
+                    const float y=audio.getSample(0,n);
+                    if(!std::isfinite(y) || std::abs(y)>1.001f) {
+                        std::fprintf(stderr,"Alchemist full native rack produced NaN or clipping\\n");
+                        ++failures;
+                        return 0.;
+                    }
+                    if(block>=35) {sumSquares+=(double)y*y;++used;}
+                }
+            }
+            return used?std::sqrt(sumSquares/used):0.;
+        };
+        const double contourOn=renderAlchemist(true);
+        const double contourOff=renderAlchemist(false);
+        if(contourOff<=1.e-5 || contourOn<=contourOff*1.06) {
+            std::fprintf(stderr,"Alchemist factory contour has no real audible VST3 path:"
+                                " old RMS %.6f, reference RMS %.6f\\n",
+                                contourOff,contourOn);
+            ++failures;
+        }
+    }
     // Genuine processBlock regression for the new FL-style wet/bypass controls.
     // Use a constant, low-level real buffer so a discontinuity is not masked
     // by a waveform transient. The original per-slot APVTS parameters remain
@@ -202,7 +261,10 @@ int main(int argc, char** argv) {
     processor.prepareToPlay(48000.,512);
     processor.loadFactoryPreset(0);
     {
-        SkellPresetAudioProcessorEditor editor(processor);
+        std::fprintf(stderr,"[Quick4] creating real editor\\n");
+        auto editorStorage=std::make_unique<SkellPresetAudioProcessorEditor>(processor);
+        auto& editor=*editorStorage;
+        std::fprintf(stderr,"[Quick4] real editor created\\n");
         if(processor.preparedAudioRate()!=48000.) {
             std::fprintf(stderr,"Processor sample rate was not prepared\n");
             ++failures;
@@ -219,20 +281,13 @@ int main(int argc, char** argv) {
         }
         processor.loadFactoryPreset(0);
         editor.dismissGuidedTourForScreenshot(); // no first-launch overlay in normal UI baselines
+        std::fprintf(stderr,"[Quick4] running real-editor interaction checks\\n");
         for (const auto& issue : editor.runScreenshotInteractionTests()) {
             std::fprintf(stderr, "UI interaction: %s\n", issue.toRawUTF8());
             ++failures;
         }
         skellcore::ui::headless::Options options;
         options.project = "Skell-Preset actual JUCE AudioProcessorEditor";
-        if(!full) {
-            options.scenes = {
-                {"obsidian-advanced-70",818,482,0,1,false},
-                {"obsidian-preset-browser-70",818,482,0,1,true},
-                {"obsidian-live-70",818,482,0,1,false},
-                {"cream-advanced-70",818,482,1,1,false}
-            };
-        } else {
         for (int theme = 0; theme < static_cast<int>(themes.size()); ++theme)
             for (const auto& view : views)
                 for (auto scale : scales) {
@@ -247,6 +302,7 @@ int main(int argc, char** argv) {
                     options.scenes.push_back(scene);
                 }
         options.scenes.push_back({"obsidian-guided-tour-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-mic-panel-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
         options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
@@ -275,7 +331,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-formant-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,28> effectScenes {{
+        const std::array<std::pair<const char*,int>,31> effectScenes {{
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -303,13 +359,39 @@ int main(int argc, char** argv) {
             {"fet-opto",SkellPresetAudioProcessor::SerialDynamicsFX},
             {"harshness-tamer",SkellPresetAudioProcessor::DynamicHarshnessFX},
             {"adaptive-noise",SkellPresetAudioProcessor::AdaptiveNoiseFX},
-            {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX}
+            {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX},
+            {"alchemist-match-finish",SkellPresetAudioProcessor::AlchemistMatchFinishFX},
+            {"mic-modeling",SkellPresetAudioProcessor::MicModelFX},
+            {"skelldizer",SkellPresetAudioProcessor::SkelldizerFX}
         }};
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
                                       818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-chorus-orb-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
+                                  818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-alchemist-reference-70",
+                                  818,482,0,1,false});
+        if(quick4) {
+            // Opt-in four actual-editor views; the original full 110-scene
+            // matrix and its independent regressions remain available.
+            options.scenes={
+                {"obsidian-simple-100",1168,688,0,0,false},
+                {"obsidian-advanced-100",1168,688,0,1,false},
+                {"obsidian-module-picker-70",818,482,0,1,false},
+                {"obsidian-mic-panel-70",818,482,0,1,false}
+            };
         }
         options.configure = [&](const auto& scene) {
+            if(scene.id=="obsidian-mic-panel-70") {
+                processor.loadFactoryPreset(0);
+                if(auto* p=processor.state.getParameter("micPreOn"))
+                    p->setValueNotifyingHost(p->convertTo0to1(1.f));
+                if(auto* p=processor.state.getParameter("micPreInput"))
+                    p->setValueNotifyingHost(p->convertTo0to1(1.f));
+                if(auto* p=processor.state.getParameter("micPreTarget"))
+                    p->setValueNotifyingHost(p->convertTo0to1(3.f));
+            }
             if(scene.id=="obsidian-expanded-70") {
                 processor.loadFactoryPreset(0);
                 while(processor.activeSlotCount()<16)processor.appendRackSlot();
@@ -367,6 +449,27 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
+            } else if(scene.id=="obsidian-effect-chorus-orb-70") {
+                processor.loadFactoryPreset(0);
+                processor.setSlotType(0,SkellPresetAudioProcessor::VocalChorusFX);
+                processor.setSlotOn(0,true);
+                processor.setSlotParam(0,0,.48f);
+                processor.setSlotParam(0,1,.87f);
+            } else if(scene.id=="obsidian-effect-alchemist-calibration-70"
+                      || scene.id=="obsidian-effect-alchemist-match-finish-70"
+                      || scene.id=="obsidian-effect-alchemist-reference-70") {
+                // Both page captures must use the real Alchemist factory
+                // rack and saved match coefficients, not Clean Lead with
+                // generic fixture knob values.
+                processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+                // Preserve all seven stage types and calibrated controls.
+                // Match Finish is already slot 7 (physical index 6).
+                if(processor.slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX
+                    || processor.loadedFactoryPresetIndex()!=skellpreset::alchemist::factoryIndex
+                    || processor.getLatencySamples()!=0) {
+                    std::fprintf(stderr,"Alchemist factory stage 7 missing or unexpected latency in screenshot fixture\\n");
+                    ++failures;
+                }
             } else if(scene.id.startsWith("obsidian-effect-")) {
                 processor.loadFactoryPreset(0);
                 for(const auto& effect:effectScenes)
@@ -391,6 +494,10 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(15,6);
             else if(scene.id=="cream-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
+            else if(scene.id=="obsidian-effect-alchemist-match-finish-70"
+                    || scene.id=="obsidian-effect-alchemist-calibration-70"
+                    || scene.id=="obsidian-effect-alchemist-reference-70")
+                editor.selectRackSlotForScreenshot(6,0);
             else if(scene.id.startsWith("obsidian-effect-")
                     || scene.id=="obsidian-external-70"
                     || scene.id=="obsidian-installed-vst3-browser-70")
@@ -423,15 +530,15 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(8,0);
             if(scene.id=="obsidian-installed-vst3-browser-70")
                 editor.openInstalledVST3BrowserForScreenshot();
+            if(scene.id=="obsidian-effect-alchemist-calibration-70")
+                editor.setMatchPageForScreenshot(1);
+            if(scene.id=="obsidian-effect-alchemist-reference-70")
+                editor.setMatchPageForScreenshot(2);
+            editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-orb-70");
+            editor.setMicPanelForScreenshot(scene.id=="obsidian-mic-panel-70");
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
-        options.mustDiffer = !full
-            ? std::vector<std::pair<juce::String,juce::String>>{
-                {"obsidian-advanced-70","obsidian-preset-browser-70"},
-                {"obsidian-advanced-70","obsidian-live-70"},
-                {"obsidian-advanced-70","cream-advanced-70"}
-              }
-            : std::vector<std::pair<juce::String,juce::String>>{
+        options.mustDiffer = {
             {"obsidian-advanced-70", "obsidian-preset-browser-70"},
             {"obsidian-advanced-70", "obsidian-simple-70"},
             {"obsidian-advanced-70", "obsidian-bypass-70"},
@@ -466,16 +573,33 @@ int main(int argc, char** argv) {
             {"obsidian-effect-eight-band-eq-70", "obsidian-effect-fet-opto-70"},
             {"obsidian-effect-harshness-tamer-70", "obsidian-effect-adaptive-noise-70"},
             {"obsidian-factory-eightband-70", "obsidian-factory-opto-70"},
-            {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"}
+            {"obsidian-effect-studio-pitch-formant-70", "obsidian-effect-vocal-vibrato-70"},
+            {"obsidian-effect-alchemist-match-finish-70",
+             "obsidian-effect-alchemist-calibration-70"},
+            {"obsidian-effect-alchemist-calibration-70",
+             "obsidian-effect-alchemist-reference-70"},
+            {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
+            {"obsidian-effect-skelldizer-70","obsidian-effect-mic-modeling-70"},
+            {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-orb-70"},
+            {"obsidian-advanced-70","obsidian-mic-panel-70"}
         };
+        if(quick4) {
+            options.mustDiffer={
+                {"obsidian-simple-100","obsidian-advanced-100"},
+                {"obsidian-advanced-100","obsidian-module-picker-70"},
+                {"obsidian-advanced-100","obsidian-mic-panel-70"}
+            };
+        }
+        std::fprintf(stderr,"[Quick4] rendering %zu real-editor scenes\\n",options.scenes.size());
         const auto report = skellcore::ui::headless::render(editor, folder, options);
+        std::fprintf(stderr,"[Quick4] render returned; captured=%d errors=%d\\n",report.captured,report.errors.size());
         for (const auto& error : report.errors) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != static_cast<int>(options.scenes.size())) {
-            std::fprintf(stderr,"Expected %zu PNGs, captured %d\n",
-                         options.scenes.size(),report.captured);
+        if (report.captured != (quick4?4:110)) {
+            std::fprintf(stderr,"Expected %d PNGs, captured %d\n",
+                         quick4?4:110,report.captured);
             ++failures;
         }
 
@@ -518,43 +642,215 @@ int main(int argc, char** argv) {
             std::fprintf(stderr,"Radio graph title is hidden by the plot clip at 70%%\n");
             ++failures;
         }
-        processor.loadFactoryPreset(0); // Restore ten-slot baseline for contact sheet.
-        // Quick4 contact sheet uses ONLY four actual captured images.
-        if(!full) {
-            constexpr std::array<const char*,4> names{{
-                "obsidian-advanced-70","obsidian-preset-browser-70",
-                "obsidian-live-70","cream-advanced-70"}};
-            constexpr int w=818,h=482;
-            juce::Image overview(juce::Image::RGB,w*2,h*2,true);
-            juce::Graphics g(overview);
-            g.fillAll(juce::Colour(0xff080b0a));
-            for(size_t i=0;i<names.size();++i) {
-                const auto shot=juce::ImageFileFormat::loadFrom(
-                    folder.getChildFile(juce::String(names[i])+".png"));
-                if(!shot.isValid()) {++failures;continue;}
-                g.drawImageAt(shot,int(i%2)*w,int(i/2)*h);
-            }
-            if(!skellcore::ui::headless::writePng(overview,
-                 folder.getChildFile("contact-sheet.png")))++failures;
-        } else {
-        // One compact overview: Advanced and Browser at default 70% for each skin.
+        if(!quick4)processor.loadFactoryPreset(0); // Full-matrix legacy baseline only.
+        // Quick4 captures exactly the 4 current-source real editor scenes.
+        // Full audits keep the old six-view overview.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
-        juce::Image overview(juce::Image::RGB, 2 * thumbnailWidth, 3 * thumbnailHeight, true);
+        juce::Image overview(juce::Image::RGB,2*thumbnailWidth,
+                             (quick4?2:3)*thumbnailHeight,true);
         juce::Graphics g(overview);
-        for (int theme = 0; theme < static_cast<int>(themes.size()); ++theme)
-            for (int column = 0; column < 2; ++column) {
-                editor.configureForScreenshot(theme, views[(size_t)column].mode,
-                                              views[(size_t)column].browser);
-                const auto capture = skellcore::ui::headless::capture(editor, thumbnailWidth, thumbnailHeight);
-                if (!capture.image.isValid() || capture.distinctColours < 12) {
-                    std::fprintf(stderr, "Contact sheet scene failed\n");
+        if(quick4) {
+            // Use the exact four previously saved PNGs. Re-rendering the
+            // editor for contact-sheet thumbnails used to reset Alchemist
+            // to Clean Lead and made the sheet disagree with each scene.
+            for(int i=0;i<4;++i) {
+                const auto& scene=options.scenes[(size_t)i];
+                const auto saved=juce::ImageFileFormat::loadFrom(
+                    folder.getChildFile(scene.id+".png"));
+                if(!saved.isValid() || saved.getWidth()<100 || saved.getHeight()<100) {
+                    std::fprintf(stderr,"Quick4 saved PNG missing or invalid\n");
                     ++failures;
                 } else {
-                    g.drawImageAt(capture.image, column * thumbnailWidth, theme * thumbnailHeight);
+                    g.drawImageWithin(saved,(i%2)*thumbnailWidth,
+                        (i/2)*thumbnailHeight,thumbnailWidth,thumbnailHeight,
+                        juce::RectanglePlacement::stretchToFit);
                 }
             }
+        } else {
+            for(int theme=0;theme<(int)themes.size();++theme)
+                for(int column=0;column<2;++column) {
+                    editor.configureForScreenshot(theme,views[(size_t)column].mode,
+                                                  views[(size_t)column].browser);
+                    const auto capture=skellcore::ui::headless::capture(
+                        editor,thumbnailWidth,thumbnailHeight);
+                    if(!capture.image.isValid() || capture.distinctColours<12) {
+                        std::fprintf(stderr,"Contact sheet scene failed\n");
+                        ++failures;
+                    } else {
+                        g.drawImageAt(capture.image,column*thumbnailWidth,
+                                     theme*thumbnailHeight);
+                    }
+                }
+        }
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
+        if(quick4 && extras) {
+            // Two EXTRA real-editor scene PNGs. Quick4 remains four primary
+            // screenshots and the contact sheet is unchanged.
+            processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+            editor.configureForScreenshot(0,1,false);
+            editor.showHomeForScreenshot();
+            const auto home=skellcore::ui::headless::capture(editor,1168,688);
+            if(!home.image.isValid() || home.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(
+                   home.image,folder.getChildFile("obsidian-home-100.png"))) {
+                std::fprintf(stderr,"Actual animated home screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(0);
+            processor.setSlotType(0,SkellPresetAudioProcessor::StudioLimiterFX);
+            processor.setSlotOn(0,true);
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(0,0);
+            const auto limiter=skellcore::ui::headless::capture(editor,1168,688);
+            if(!limiter.image.isValid() || limiter.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(
+                   limiter.image,folder.getChildFile("obsidian-studio-limiter-100.png"))) {
+                std::fprintf(stderr,"Actual Studio limiter editor screenshot failed\n");
+                ++failures;
+            }
+            // User-requested native listening trials. These are screenshots
+            // of REAL plugin factory states, not renders of protected audio.
+            processor.loadFactoryPreset(skellpreset::deuce::factoryIndex);
+            if(processor.activeSlotCount()!=12 ||
+               processor.slotType(6)!=SkellPresetAudioProcessor::Compressor ||
+               processor.slotType(7)!=SkellPresetAudioProcessor::DeEsser) {
+                std::fprintf(stderr,"Deuce D/Max native 12-slot factory not loaded\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,0,false);
+            const auto deuceSimple=skellcore::ui::headless::capture(editor,1168,688);
+            if(!deuceSimple.image.isValid() || deuceSimple.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(deuceSimple.image,
+                   folder.getChildFile("obsidian-deuce-dmax-native-simple-100.png"))) {
+                std::fprintf(stderr,"Deuce D/Max native Simple screenshot failed\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(6,3);
+            const auto deuceRack=skellcore::ui::headless::capture(editor,1168,688);
+            if(!deuceRack.image.isValid() || deuceRack.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(deuceRack.image,
+                   folder.getChildFile("obsidian-deuce-dmax-native-rack-100.png"))) {
+                std::fprintf(stderr,"Deuce D/Max native rack screenshot failed\n");
+                ++failures;
+            }
+            // Latest *approved listening winner* v2.5 is a separate native
+            // 13-slot preview, not a 1:1 recreation of offline v2.3 DSP.
+            processor.loadFactoryPreset(skellpreset::deuce_v25::factoryIndex);
+            if(processor.activeSlotCount()!=13 ||
+               processor.slotType(12)!=SkellPresetAudioProcessor::EightBandToneFX)
+                ++failures;
+            editor.configureForScreenshot(0,0,false);
+            const auto v25Simple=skellcore::ui::headless::capture(editor,1168,688);
+            if(!v25Simple.image.isValid() || v25Simple.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(v25Simple.image,
+                   folder.getChildFile("obsidian-deuce-v25-native-simple-100.png"))) {
+                std::fprintf(stderr,"Deuce v2.5 native Simple screenshot failed\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(12,6);
+            const auto v25Rack=skellcore::ui::headless::capture(editor,1168,688);
+            if(!v25Rack.image.isValid() || v25Rack.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(v25Rack.image,
+                   folder.getChildFile("obsidian-deuce-v25-native-7khz-100.png"))) {
+                std::fprintf(stderr,"Deuce v2.5 presence EQ screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(skellpreset::alchemist_trial::factoryIndex);
+            if(processor.getSlotParam(6,12)<=.75f ||
+               processor.slotType(6)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
+                std::fprintf(stderr,"Alchemist refined opt-in factory not loaded\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(6,0);
+            const auto refined=skellcore::ui::headless::capture(editor,1168,688);
+            if(!refined.image.isValid() || refined.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(refined.image,
+                   folder.getChildFile("obsidian-alchemist-refined-trial-100.png"))) {
+                std::fprintf(stderr,"Alchemist refined factory screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(skellpreset::alchemist_lighter_dynamics_trial::factoryIndex);
+            if(processor.slotType(2)!=skellpreset::alchemist_lighter_dynamics_trial::stages[2].module ||
+               processor.slotType(3)!=skellpreset::alchemist_lighter_dynamics_trial::stages[3].module) {
+                std::fprintf(stderr,"Alchemist lighter-dynamics factory did not load\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(2,0);
+            const auto lighterDynamics=skellcore::ui::headless::capture(editor,1168,688);
+            if(!lighterDynamics.image.isValid() || lighterDynamics.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(lighterDynamics.image,
+                   folder.getChildFile("obsidian-alchemist-lighter-dynamics-100.png"))) {
+                std::fprintf(stderr,"Alchemist lighter-dynamics factory screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex);
+            if(processor.slotType(2)!=skellpreset::alchemist_fast_compressor_blend_trial::stages[2].module ||
+               processor.slotType(3)!=skellpreset::alchemist_fast_compressor_blend_trial::stages[3].module) {
+                std::fprintf(stderr,"Alchemist fast-compressor blend factory did not load\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(2,0);
+            const auto fastBlend=skellcore::ui::headless::capture(editor,1168,688);
+            if(!fastBlend.image.isValid() || fastBlend.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(fastBlend.image,
+                   folder.getChildFile("obsidian-alchemist-fast-compressor-blend-100.png"))) {
+                std::fprintf(stderr,"Alchemist fast-compressor blend screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex);
+            if(processor.slotType(2)!=skellpreset::alchemist_smooth_compressor_blend_trial::stages[2].module ||
+               processor.slotType(3)!=skellpreset::alchemist_smooth_compressor_blend_trial::stages[3].module) {
+                std::fprintf(stderr,"Alchemist smooth-compressor blend factory did not load\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(3,0);
+            const auto smoothBlend=skellcore::ui::headless::capture(editor,1168,688);
+            if(!smoothBlend.image.isValid() || smoothBlend.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(smoothBlend.image,
+                   folder.getChildFile("obsidian-alchemist-smooth-compressor-blend-100.png"))) {
+                std::fprintf(stderr,"Alchemist smooth-compressor blend screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(skellpreset::alchemist_serial_dynamics_trial::factoryIndex);
+            if(processor.slotType(2)!=SkellPresetAudioProcessor::SerialDynamicsFX ||
+               processor.slotType(5)!=SkellPresetAudioProcessor::AlchemistMatchFinishFX ||
+               processor.slotType(6)!=SkellPresetAudioProcessor::Limiter) {
+                std::fprintf(stderr,"Alchemist serial-dynamics trial factory did not load\n");
+                ++failures;
+            }
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(2,0);
+            const auto serialDynamics=skellcore::ui::headless::capture(editor,1168,688);
+            if(!serialDynamics.image.isValid() || serialDynamics.distinctColours<12 ||
+               !skellcore::ui::headless::writePng(
+                   serialDynamics.image,folder.getChildFile("obsidian-alchemist-serial-dynamics-100.png"))) {
+                std::fprintf(stderr,"Alchemist serial-dynamics factory screenshot failed\n");
+                ++failures;
+            }
+            processor.loadFactoryPreset(0);
+            editor.configureForScreenshot(0,1,false);
+            editor.selectRackSlotForScreenshot(0,0);
+            // The rack menu was previously never photographed, so clipped
+            // bottom actions could pass the 110-scene audit unnoticed.
+            if(!editor.openRackContextMenuForScreenshot(0)) {
+                std::fprintf(stderr,"Real rack context menu out of bounds\n");
+                ++failures;
+            } else {
+                const auto menu=skellcore::ui::headless::capture(editor,1168,688);
+                if(!menu.image.isValid() || menu.distinctColours<12 ||
+                   !skellcore::ui::headless::writePng(
+                       menu.image,folder.getChildFile("obsidian-rack-context-menu-100.png"))) {
+                    std::fprintf(stderr,"Real rack context menu screenshot failed\n");
+                    ++failures;
+                }
+            }
         }
         editor.configureForScreenshot(0, 1, false);
         std::printf("Skell-Preset shared SkellCore renderer: %d scenes, %d failures\n",

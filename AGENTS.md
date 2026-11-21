@@ -1,12 +1,18 @@
-# SKELLY JUCE UI SOURCE-OF-TRUTH — Quick4
+# Skell-Preset development agent rules
 
-**When asked “current UI,” “show UI,” or “screenshot”:** inspect THIS repository's newest actual `Source/PluginEditor` C++ implementation. Build the genuine JUCE editor with the native Linux development UI target and capture **4 screenshots locally**. Do not use ImageGen, a painted mockup, an audio WAV renderer, stale captures, or GitHub Actions screenshot jobs. If local source compilation is unavailable, say what is missing rather than substituting an invented screenshot.
-
-- Target: `SkellPresetUIRenderer`; CMake: `-DSKELL_PRESET_BUILD_UI_RENDERER=ON`; `--output <folder>` captures four real scenes by default, `--full` intentionally runs the deep visual audit.
-- Status: **wired, native check pending**. "Wired" is not tested; never claim a successful local compile without a real build and 4/4 PNG result.
-- Note: real preset browser, live mode, cream skin.
-- Shared router: `skellyruno/skellcore-vst-template/tools/quick4_projects.py`.
-- Shared policy and rollout: `skellyruno/skellcore-vst-template/docs/PLUGIN_QUICK4_ROLLOUT.md`.
-- Use original plugin source, pinned JUCE/SkellCore libraries, Xvfb, and a writable local build directory; use `--jobs 1` in low-RAM containers. Record commit SHA, output screenshots and build status.
-- UI screenshot verification is **separate** from Windows x64 VST3 compile, DSP/latency/CPU tests, actual FL Studio host validation, and release packaging. Do not remove release validation or infer VST3 success from screenshots.
-- Default is **four** frames: main, real controls/preset, real active state, real alternate supported skin/state. A selected ComboBox is not an open menu. Don't invent a new skin.
+- Follow ../SkellCore/AGENTS.md where available and the shared SkellWorld/AGENTS.md.
+- Real current UI means the actual JUCE SkellPresetAudioProcessorEditor
+  compiled from a named exact Git commit. No mockup images or prior commits
+  may be presented as current.
+- Routine screenshots use LOCAL Quick4 only; do not trigger screenshot
+  GitHub Actions. Windows VST3 CI may compile renderer source but must not
+  capture images.
+- Shared launcher: skellcore-vst-template/quick4.ps1 (Windows) or quick4.sh
+  (Linux), feeding the persistent Quick4 workspace. See
+  docs/LOCAL_UI_SCREENSHOTS.md and docs/UI_RENDERER.md.
+- The renderer's default invocation captures the four Quick4 scenes; use `--output <folder>` to choose the destination and `--full` only for the complete deep visual audit. Do not pass an unsupported `--quick4` switch.
+- Preserve Simple mode Tone/Punch/Space/Grit and remove them ONLY from
+  Advanced. No UI code may rename any automation parameter, factory ID,
+  VST3 ID, or saved FL Studio state.
+- Maintain Windows VST3, real DSP, low-latency, CPU and FL Studio gates
+  independently from visual capture. Keep PRs draft until verified.

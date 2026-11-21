@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 namespace skellpreset::dsp {
 
 // Eight independent peak bands. The sixteen existing rack parameters describe
@@ -15,9 +16,41 @@ namespace skellpreset::dsp {
 struct EightBandTone {
     static constexpr int bands=8;
     std::array<SmoothedBiquad,bands> bell{};
+    SmoothedBiquad lowCut, highCut;
+    // Native parameters are stable for the vast majority of 64/128-sample
+    // callbacks. Avoid recomputing 8x trig/pow-heavy biquad designs unless
+    // the host actually changes a control or sample rate. SmoothedBiquad
+    // still advances its existing 12ms transition per audio sample.
+    std::array<float,16> lastParameters{};
+    std::array<float,8> lastQ{};
+    double lastBandsRate=0.,lastCutsRate=0.;
+    float lastLowCut=0.f,lastHighCut=0.f;
+    bool bandsConfigured=false,cutsConfigured=false;
     static constexpr std::array<float,bands+1> edges{
         35.f,90.f,185.f,380.f,820.f,1700.f,3600.f,7500.f,17500.f};
-    void prepare(double sr) noexcept {for(auto& b:bell)b.prepare(sr);}
+    void prepare(double sr) noexcept {
+        for(auto& b:bell)b.prepare(sr);
+        lowCut.prepare(sr);highCut.prepare(sr);
+        bandsConfigured=false;cutsConfigured=false;
+    }
+    static float lowCutFrequency(float value) noexcept {
+        return 20.f*std::pow(20.f,std::clamp(value,0.f,1.f)); // 20–400 Hz
+    }
+    static float highCutFrequency(float value) noexcept {
+        return 20000.f*std::pow(.09f,std::clamp(value,0.f,1.f)); // 20k–1.8k
+    }
+    // A zero parameter is a flat, identity filter, preserving old projects.
+    void setCuts(double sr,float low,float high) noexcept {
+        const float lo=std::isfinite(low)?std::clamp(low,0.f,1.f):0.f;
+        const float hi=std::isfinite(high)?std::clamp(high,0.f,1.f):0.f;
+        if(cutsConfigured && lastCutsRate==sr &&
+           lastLowCut==lo && lastHighCut==hi)return;
+        lastCutsRate=sr;lastLowCut=lo;lastHighCut=hi;cutsConfigured=true;
+        if(lo<=.0001f)lowCut.aim(Biquad{});
+        else lowCut.setHighPass(sr,lowCutFrequency(lo));
+        if(hi<=.0001f)highCut.aim(Biquad{});
+        else highCut.setLowPass(sr,highCutFrequency(hi));
+    }
     static float qFromNormalized(float value) noexcept {
         const float x=std::isfinite(value)?std::clamp(value,0.f,1.f):.5f;
         return .4f*std::pow(20.f,x); // Q 0.4–8.0
@@ -29,6 +62,9 @@ struct EightBandTone {
     void set(double sr,const std::array<float,16>& p,
              const std::array<float,8>& q) noexcept {
         if(!std::isfinite(sr)||sr<8000.)sr=48000.;
+        if(bandsConfigured && lastBandsRate==sr &&
+           lastParameters==p && lastQ==q)return;
+        lastBandsRate=sr;lastParameters=p;lastQ=q;bandsConfigured=true;
         for(int i=0;i<bands;++i){
             const auto freqVal=p[(size_t)i*2];
             const auto gainVal=p[(size_t)i*2+1];
@@ -48,11 +84,13 @@ struct EightBandTone {
     std::array<float,2> process(float l,float r) noexcept {
         if(!std::isfinite(l))l=0.f;
         if(!std::isfinite(r))r=0.f;
+        const auto hp=lowCut.process(l,r);
+        l=hp[0];r=hp[1];
         for(auto& band:bell){
             const auto out=band.process(l,r);
             l=out[0];r=out[1];
         }
-        return {l,r};
+        return highCut.process(l,r);
     }
 };
 
@@ -80,14 +118,17 @@ public:
     std::array<float,2> process(float l,float r) noexcept {
         l=sane(l);r=sane(r);
         const float peak=std::max(std::abs(l),std::abs(r));
-        const float levelDb=20.f*std::log10(std::max(peak,1e-9f));
+        const float levelDb=log2ToDb20*std::log2(std::max(peak,1e-9f));
         const float over=levelDb-threshold;
         const float knee=4.f;
         const float target=over<=-knee*.5f?0.f:
             (over>=knee*.5f?over*slope:(over+knee*.5f)*(over+knee*.5f)*slope/(2.f*knee));
         const float fCoeff=target>fetGr?fetAtt:fetRel;
         fetGr=fCoeff*fetGr+(1.f-fCoeff)*target;
-        const float fastGain=std::pow(10.f,-fetGr/20.f);
+        // Flush inaudibly small release state before it enters the IEEE-754
+        // subnormal range on CPUs without FTZ/DAZ enabled.
+        if(fetGr<1.e-20f)fetGr=0.f;
+        const float fastGain=std::exp2(-fetGr*dbToLog2);
         const float fl=l*fastGain,fr=r*fastGain;
         // Limit the *detector* energy, not the audio signal. Squaring a
         // perfectly finite, pathological floating-point input can overflow,
@@ -96,25 +137,43 @@ public:
         const float dR=std::clamp(fr,-32.f,32.f);
         power=rmsCoeff*power+(1.f-rmsCoeff)*.5f*(dL*dL+dR*dR);
         if(!std::isfinite(power)||power<1e-25f)power=0.f;
-        const float rms=10.f*std::log10(std::max(power,1e-18f));
+        const float rms=log2ToDb10*std::log2(std::max(power,1e-18f));
         const float optoTarget=std::max(0.f,(rms-threshold+3.f)*.43f);
         const float oCoeff=optoTarget>optoGr?optoAtt:optoRel;
         optoGr=oCoeff*optoGr+(1.f-oCoeff)*optoTarget;
-        const float gain=fastGain*std::pow(10.f,-optoGr/20.f);
+        if(optoGr<1.e-20f)optoGr=0.f;
+        const float gain=fastGain*std::exp2(-optoGr*dbToLog2);
         const float blend=smash;
         // Makeup-free parallel saturation limits additive gain; at 0 this is
         // exact gain reduction with no hidden increase in signal amplitude.
         // Normalise the saturator's small-signal gain to unity, so enabling
         // NY parallel colouring cannot silently boost quiet material.
-        const float parallelL=std::tanh(l*3.5f)/3.5f;
-        const float parallelR=std::tanh(r*3.5f)/3.5f;
+        const float parallelL=tanhPade(l*3.5f)/3.5f;
+        const float parallelR=tanhPade(r*3.5f)/3.5f;
         return {sane(l*gain*(1.f-blend)+parallelL*blend),
                 sane(r*gain*(1.f-blend)+parallelR*blend)};
     }
     float reductionDb() const noexcept {return fetGr+optoGr;}
 private:
+    // Algebraically equivalent base-2 forms for the hot per-sample dB/gain
+    // conversions. Avoid general pow(10,x) in the real-time audio loop.
+    static constexpr float dbToLog2=0.1660964047443681f;
+    static constexpr float log2ToDb20=6.020599913279624f;
+    static constexpr float log2ToDb10=3.010299956639812f;
+    // [7/7] Pade approximation to tanh. Over [-4,4] its maximum absolute
+    // error is <1.5e-5; clamping outside keeps the saturator bounded while
+    // avoiding two expensive libm tanh calls per audio sample.
+    static float tanhPade(float x) noexcept {
+        x=std::clamp(x,-4.f,4.f);
+        const float x2=x*x;
+        const float x4=x2*x2;
+        return x*(135135.f+17325.f*x2+378.f*x4+x4*x2)
+             /(135135.f+62370.f*x2+3150.f*x4+28.f*x4*x2);
+    }
     static float unit(float v) noexcept {return std::isfinite(v)?std::clamp(v,0.f,1.f):0.f;}
-    static float sane(float v) noexcept {return std::isfinite(v)?v:0.f;}
+    static float sane(float v) noexcept {
+        return std::isfinite(v) && std::abs(v)>=std::numeric_limits<float>::min()?v:0.f;
+    }
     double sr=48000.;
     float threshold=-20.f,slope=.65f,smash=0.f;
     float fetAtt=.98f,fetRel=.999f,rmsCoeff=.999f,optoAtt=.99f,optoRel=.999f;
@@ -131,6 +190,11 @@ public:
         sr=std::isfinite(sampleRate)?std::clamp(sampleRate,8000.,192000.):48000.;
         detector.prepare(sr);attenuation.prepare(sr);
         env=0.f; reduction=0.f;
+        // Update the dynamic EQ on a fixed one-millisecond audio clock,
+        // not at arbitrary host block boundaries.
+        updateEvery=std::max(1,(int)std::lround(sr*.001));
+        updateCountdown=0;
+        reductionPole=std::exp(-1.f/(.0011f*(float)sr));
     }
     void set(float centre,float threshold,float amount,float release) noexcept {
         frequency=1800.f*std::pow(4.2f,unit(centre));
@@ -140,7 +204,8 @@ public:
         relCoeff=std::exp(-1.f/(relMs*.001f*(float)sr));
         attCoeff=std::exp(-1.f/(.003f*(float)sr));
         detector.setPeak(sr,frequency,12.,2.3);
-        attenuation.setPeak(sr,frequency,-(double)reduction,2.3);
+        // The attenuation filter itself is updated from process(), so
+        // different block sizes cannot shift its onset by an entire block.
     }
     std::array<float,2> process(float l,float r) noexcept {
         l=sane(l);r=sane(r);
@@ -153,7 +218,13 @@ public:
         if(env<1e-20f)env=0.f;
         const float over=20.f*std::log10(std::max(env,1.e-9f)/std::max(trigger,1.e-9f));
         const float wanted=std::clamp(over*.55f,0.f,maxCut);
-        reduction=.98f*reduction+.02f*wanted;
+        reduction=reductionPole*reduction+(1.f-reductionPole)*wanted;
+        if (--updateCountdown<=0) {
+            // 1 kHz coefficient updates with the existing 12 ms stable
+            // coefficient interpolation; no heap, locks or audio latency.
+            attenuation.setPeak(sr,frequency,-(double)reduction,2.3);
+            updateCountdown=updateEvery;
+        }
         return attenuation.process(l,r);
     }
     float reductionDb() const noexcept{return reduction;}
@@ -163,7 +234,8 @@ private:
     double sr=48000.;
     SmoothedBiquad detector,attenuation;
     float frequency=3600.f,trigger=.02f,maxCut=0.f,env=0.f,reduction=0.f;
-    float attCoeff=.9f,relCoeff=.999f;
+    float attCoeff=.9f,relCoeff=.999f,reductionPole=.98f;
+    int updateEvery=48,updateCountdown=0;
 };
 
 // Noise floor follower as a safe native fallback, NOT an RNNoise/ML neural

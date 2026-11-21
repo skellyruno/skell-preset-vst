@@ -32,6 +32,39 @@ int main(){
             assert(std::isfinite(y[0])&&std::isfinite(y[1]));
             assert(std::abs(y[0])<20.f);
         }
+        // Parametric EQ cuts must perform real, stable filtering at each
+        // supported sample rate; legacy-neutral state is exact bypass.
+        EightBandTone cuts;
+        std::array<float,16> neutral{};
+        neutral.fill(.5f);
+        cuts.prepare(sr);cuts.set(sr,neutral);cuts.setCuts(sr,1.f,0.f);
+        double dryPower=0.,lowCutPower=0.;
+        for(int n=0;n<(int)(sr*.28);++n) {
+            const float x=.12f*std::sin(float(2.*pi*70.*n/sr));
+            const auto y=cuts.process(x,-x);
+            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            if(n>sr*.12) {dryPower+=(double)x*x;lowCutPower+=(double)y[0]*y[0];}
+        }
+        assert(lowCutPower<dryPower*.2);
+        cuts.prepare(sr);cuts.set(sr,neutral);cuts.setCuts(sr,0.f,1.f);
+        dryPower=0.;double highCutPower=0.;
+        const double highTestHz=std::min(sr*.31,4500.);
+        for(int n=0;n<(int)(sr*.14);++n){
+            const float x=.12f*std::sin(float(2.*pi*highTestHz*n/sr));
+            const auto y=cuts.process(x,x);
+            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            if(n>sr*.06){dryPower+=(double)x*x;highCutPower+=(double)y[0]*y[0];}
+        }
+        assert(highCutPower<dryPower*.78);
+        // Zero is OFF. Switching back to identity does not leave a permanent
+        // low-pass colouration from the old filter coefficients.
+        cuts.setCuts(sr,0.f,0.f);
+        for(int n=0;n<(int)(sr*.1);++n){
+            const float x=.1f*std::sin(float(2.*pi*300.*n/sr));
+            const auto y=cuts.process(x,-x);
+            assert(std::isfinite(y[0])&&std::isfinite(y[1]));
+            if(n>sr*.08)assert(std::abs(y[0]-x)<.006f);
+        }
         SerialVocalDynamics dynamics;
         dynamics.prepare(sr);
         dynamics.set(.35f,.8f,.25f,0.f);
@@ -85,6 +118,35 @@ int main(){
             assert(std::isfinite(y[0]) && std::isfinite(y[1]));
             assert(harsh.reductionDb()>=0.f && harsh.reductionDb()<=10.f);
         }
+        // The actual harshness filter must follow its envelope even when
+        // hosts call set() at very different buffer boundaries (32 vs 2048).
+        // A steady presence tone must be attenuated at all host rates.
+        DynamicHarshness shortBlocks,longBlocks;
+        shortBlocks.prepare(sr);longBlocks.prepare(sr);
+        shortBlocks.set(.26f,.15f,1.f,.45f);
+        longBlocks.set(.26f,.15f,1.f,.45f);
+        double inputEnergy=0.,treatedEnergy=0.,maximumDifference=0.;
+        const float toneHz=2600.f;
+        const int frames=(int)(sr*.36);
+        for(int n=0;n<frames;++n){
+            if((n%32)==0)shortBlocks.set(.26f,.15f,1.f,.45f);
+            if((n%2048)==0)longBlocks.set(.26f,.15f,1.f,.45f);
+            const float left=.13f*std::sin((float)(2.*pi*toneHz*n/sr));
+            const float right=-.77f*left;
+            const auto a=shortBlocks.process(left,right);
+            const auto b=longBlocks.process(left,right);
+            assert(std::isfinite(a[0])&&std::isfinite(a[1]));
+            maximumDifference=std::max(maximumDifference,
+                std::max(std::abs((double)a[0]-b[0]),
+                         std::abs((double)a[1]-b[1])));
+            if(n>(int)(sr*.17)){
+                inputEnergy+=(double)left*left;
+                treatedEnergy+=(double)a[0]*a[0];
+            }
+        }
+        assert(maximumDifference<2.e-5);
+        assert(inputEnergy>1.e-5 && treatedEnergy<inputEnergy*.75);
+        assert(shortBlocks.reductionDb()>0.f);
         AdaptiveNoiseControl noise;
         noise.prepare(sr);
         noise.set(.45f,.9f,.1f,.4f);

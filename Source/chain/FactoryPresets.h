@@ -10,7 +10,7 @@ struct FactoryPreset {
     float tone,punch,space,grit;
 };
 // Original SKELL presets; each is generated using the same processors used in the live chain.
-inline constexpr std::array<FactoryPreset,43> factoryPresets {{
+inline constexpr std::array<FactoryPreset,55> factoryPresets {{
     {"Clean Lead","Main Vocals","Balanced modern vocal",0,.50f,.48f,.19f,.10f},
     {"Dark Trap Lead","Main Vocals","Warm focus, tight dynamics",1,.26f,.73f,.23f,.31f},
     {"Airy Pop","Main Vocals","Open high-frequency sheen",2,.80f,.42f,.36f,.12f},
@@ -54,5 +54,76 @@ inline constexpr std::array<FactoryPreset,43> factoryPresets {{
     {"Noise Guard","Main Vocals","Gentle adaptive background-noise floor control",1,.48f,.41f,.14f,.09f},
     {"Formant Sketch","Adlibs","Creative spectral pitch/formant colour; studio PDC",5,.51f,.42f,.67f,.27f},
     {"Studio Six","Main Vocals","Six native Skell rack stages: EQ, comp, drive, delay, reverb and chorus",0,.50f,.43f,.32f,.10f},
+    // Native, editable study of the Alchemist main-vocal reference. Protected
+    // offline v0.3/v0.7 champions remain separate; this is not a null match.
+    {"Alchemist (Native Preview)","Main Vocals",
+     "Experimental vocal match: EQ, FET/Opto-role dynamics and gentle multiband colour",
+     4,.50f,.42f,.02f,.12f},
+    // Index 44 is D/Max-inspired NATIVE TRIAL, not the protected D/Max
+    // lossless audio champion or an exact proprietary processor port.
+    {"Deuce D/Max (Native Trial)","Main Vocals",
+     "Editable Deuce REC to MAIN native chain based on documented references",
+     5,.52f,.50f,.04f,.20f},
+    // Index 45 is an opt-in quality candidate; old Alchemist at index 43
+    // remains unchanged for instantaneous host-side A/B and rollback.
+    {"Alchemist Refined (Trial)","Main Vocals",
+     "Protected Alchemist preview with five opt-in causal polish refinements",
+     4,.50f,.42f,.02f,.12f},
+    // User APPROVED v2.5 OFFLINE sound, but live native v2.5 is only
+    // a comparative candidate until its underlying v2.3 DSP is ported.
+    {"Deuce v2.5 (Native Trial)","Main Vocals",
+     "Preferred v2.5 reference: native REC/MAIN approximation with 7 kHz correction",
+     5,.52f,.50f,.04f,.20f},
+    // Index 47 is an opt-in Alchemist safety variant; 43 and 45 stay unchanged.
+    {"Alchemist Peak Guard (Trial)","Main Vocals",
+     "Alchemist refinement plus 4x interpolated-peak guard (~-0.97 dB, 3 ms PDC; not BS.1770 certified)",
+     4,.50f,.42f,.02f,.12f},
+    // Index 48 applies measured native-vs-MAIN tonal corrections while keeping
+    // the previous 43/45/47 factory candidates available for A/B rollback.
+    {"Alchemist Tone Match (Trial)","Main Vocals",
+     "Measured 2.93k +1.0dB / 5.1k -0.6dB / 12k -1.1dB correction plus peak guard; 3 ms PDC",
+     4,.50f,.42f,.02f,.12f},
+    {"Alchemist Lighter Dynamics (Trial)","Main Vocals",
+     "Factory 48 tone match with reduced fast/slow compressor wet blend for envelope A/B",
+     4,.50f,.42f,.02f,.12f},
+    {"Alchemist Fast Compressor Blend (Trial)","Main Vocals",
+     "Factory 48 tone match with only fast compressor wet reduced to 20%; smooth stays 70%",
+     4,.50f,.42f,.02f,.12f},
+    {"Alchemist Smooth Compressor Blend (Trial)","Main Vocals",
+     "Factory 48 tone match with only smooth compressor wet reduced to 50%; fast stays 35%",
+     4,.50f,.42f,.02f,.12f},
+    {"Alchemist Serial Dynamics (Trial)","Main Vocals",
+     "Factory 48 tone match with native FET peak catcher and slower RMS leveling; 3 ms peak guard",
+     4,.50f,.42f,.02f,.12f},
+    {"Alchemist Low-End Contour (Trial)","Main Vocals",
+     "Measured 20–120 Hz correction: 30 Hz high-pass and neutral 70 Hz bell; retains serial dynamics and peak guard",
+     4,.50f,.42f,.02f,.12f},
+    {"Alchemist Serial Dynamics Blend (Trial)","Main Vocals",
+     "Factory 53 contour with -27 dB serial threshold and 45% FET/RMS wet blend; no makeup gain",
+     4,.50f,.42f,.02f,.12f},
 }};
+static_assert(factoryPresets[43].name==std::string_view("Alchemist (Native Preview)"),
+    "Do not change approved Alchemist factory index");
+static_assert(factoryPresets[44].name==std::string_view("Deuce D/Max (Native Trial)"),
+    "Deuce trial must be discoverable as a Main Vocals factory preset");
+static_assert(factoryPresets[45].name==std::string_view("Alchemist Refined (Trial)"),
+    "Alchemist refinement stays at index 45");
+static_assert(factoryPresets[46].name==std::string_view("Deuce v2.5 (Native Trial)"),
+    "Newest user-preferred Deuce study appended at 46");
+static_assert(factoryPresets[47].name==std::string_view("Alchemist Peak Guard (Trial)"),
+    "Alchemist peak-guard variant must remain append-only at 47");
+static_assert(factoryPresets[48].name==std::string_view("Alchemist Tone Match (Trial)"),
+    "Measured Alchemist tone-match trial must remain append-only at 48");
+static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
+    "Lighter Alchemist dynamics trial must remain append-only at 49");
+static_assert(factoryPresets[50].name==std::string_view("Alchemist Fast Compressor Blend (Trial)"),
+    "Fast-compressor blend trial must append at 50");
+static_assert(factoryPresets[51].name==std::string_view("Alchemist Smooth Compressor Blend (Trial)"),
+    "Smooth-compressor blend trial must append at 51");
+static_assert(factoryPresets[52].name==std::string_view("Alchemist Serial Dynamics (Trial)"),
+    "Serial FET/RMS Alchemist trial must append at 52");
+static_assert(factoryPresets[53].name==std::string_view("Alchemist Low-End Contour (Trial)"),
+    "Measured low-end Alchemist trial must append at 53");
+static_assert(factoryPresets[54].name==std::string_view("Alchemist Serial Dynamics Blend (Trial)"),
+    "Serial dynamics blend trial must append at 54");
 }

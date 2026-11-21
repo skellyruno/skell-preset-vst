@@ -1,16 +1,28 @@
-# Skell Preset — LOCAL REAL JUCE SCREENSHOTS 🩻
+# Skell-Preset Quick4 local screenshot workflow
 
-This repository participates in SkellCore's four-scene local UI QA. **Don't generate a replacement UI image or present an audio waveform as a screenshot.** Capture the actual C++ `PluginEditor` instantiated with the real processor and component hierarchy.
+This repo owns the actual SkellPresetUIRenderer target and its scene definitions
+in tests/ui_renderer.cpp. It has a dedicated --quick4 flag for four current-source
+screenshots. No screenshot GitHub workflow is required.
 
-- CMake option: `-DSKELL_PRESET_BUILD_UI_RENDERER=ON`
-- Development renderer target: `SkellPresetUIRenderer`
-- Default: exactly **four** actual states: `obsidian-advanced-70, obsidian-preset-browser-70, obsidian-live-70, cream-advanced-70`
-- `--full`: opt-in previous comprehensive UI regression
-- Special case: real preset-browser view and original cream skin
-- Current verification: **local native compilation pending**. A committed renderer is not proof of a successful build on the latest revision.
+From the reusable SkellCore repository checkout:
 
-Common entrypoint: `skellcore-vst-template/tools/quick4_projects.py --plugin skell-preset-vst --project /path/to/skell-preset-vst --juce /path/to/JUCE --skellcore /path/to/skellcore-vst-template --output /tmp/skell-preset-vst-quick4`.
+Windows Developer PowerShell:
+    .\quick4.ps1 -Plugin skell-preset-vst -Ref feat/preset-quick4-local-persistent-20261114 -Update
 
-On restricted machines, source pinned dependencies must already exist; never quietly substitute different live plugin code or claim the screenshot is current if source compiling fails.
+Windows repeat with source cached:
+    .\quick4.ps1 -Plugin skell-preset-vst -Offline
 
-GitHub Actions is not needed for ordinary screenshots; any existing screenshot-only workflow is **manual-only**. Maintain VST3, DSP/latency/CPU, Windows, and FL Studio validation separately.
+Linux:
+    bash quick4.sh --ref feat/preset-quick4-local-persistent-20261114 --update
+
+Keep the persistent ~/Skelly/Quick4 workspace. It reuses a cached JUCE
+checkout, exact Skell-Preset Git source and Ninja build objects. The output
+captures/skell-preset-vst directory contains exactly four PNGs, a contact
+sheet, manifest.json, local-build-report.json and a SHA-stamped ZIP
+suitable for uploading in a separate chat.
+
+Manual deep audit: use -Full in PowerShell / --full on Linux, which keeps
+the original ~110 scene renderer. The portable test runner and Windows VST3
+build must pass separately. No fresh native screenshot is claimed by this
+documentation; render and inspect actual PNGs before claiming the current
+UI has been verified.
