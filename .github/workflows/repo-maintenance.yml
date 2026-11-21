@@ -1,0 +1,190 @@
+name: Repo Maintenance (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Maintenance action to perform
+        required: true
+        type: choice
+        options:
+          - retarget-pr
+          - merge-pr
+          - close-pr
+          - prune-merged-branches
+          - delete-branch
+      pr_number:
+        description: Pull request number (for retarget-pr, merge-pr, close-pr)
+        required: false
+        type: string
+        default: ""
+      base_branch:
+        description: Target base branch (for retarget-pr)
+        required: false
+        type: string
+        default: main
+      merge_method:
+        description: Merge method (for merge-pr)
+        required: false
+        type: choice
+        default: merge
+        options:
+          - merge
+          - squash
+          - rebase
+      branch_name:
+        description: Branch name (for delete-branch)
+        required: false
+        type: string
+        default: ""
+      exclude_branches:
+        description: Comma-separated branches to keep (for prune-merged-branches)
+        required: false
+        type: string
+        default: ""
+      comment:
+        description: Optional comment (for close-pr)
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: Preview changes without deleting (for prune-merged-branches)
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ACTION: ${{ inputs.action }}
+      PR_NUMBER: ${{ inputs.pr_number }}
+      BASE_BRANCH: ${{ inputs.base_branch }}
+      MERGE_METHOD: ${{ inputs.merge_method }}
+      BRANCH_NAME: ${{ inputs.branch_name }}
+      EXCLUDE_BRANCHES: ${{ inputs.exclude_branches }}
+      COMMENT: ${{ inputs.comment }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run maintenance action
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$ACTION" in
+            retarget-pr)
+              if [[ -z "$PR_NUMBER" ]]; then
+                echo "pr_number is required" >&2
+                exit 1
+              fi
+              echo "Retargeting PR #$PR_NUMBER to base '$BASE_BRANCH'..."
+              gh pr edit "$PR_NUMBER" --base "$BASE_BRANCH"
+              ;;
+
+            merge-pr)
+              if [[ -z "$PR_NUMBER" ]]; then
+                echo "pr_number is required" >&2
+                exit 1
+              fi
+              is_draft=$(gh pr view "$PR_NUMBER" --json isDraft --jq '.isDraft')
+              if [[ "$is_draft" == "true" ]]; then
+                echo "Marking draft PR #$PR_NUMBER ready for review..."
+                gh pr ready "$PR_NUMBER"
+              fi
+              echo "Merging PR #$PR_NUMBER via --$MERGE_METHOD..."
+              gh pr merge "$PR_NUMBER" "--$MERGE_METHOD" --delete-branch
+              ;;
+
+            close-pr)
+              if [[ -z "$PR_NUMBER" ]]; then
+                echo "pr_number is required" >&2
+                exit 1
+              fi
+              if [[ -n "$COMMENT" ]]; then
+                gh pr close "$PR_NUMBER" --comment "$COMMENT"
+              else
+                gh pr close "$PR_NUMBER"
+              fi
+              ;;
+
+            delete-branch)
+              if [[ -z "$BRANCH_NAME" || "$BRANCH_NAME" == "main" ]]; then
+                echo "Valid non-main branch_name is required" >&2
+                exit 1
+              fi
+              echo "Deleting remote branch '$BRANCH_NAME'..."
+              git push origin --delete "$BRANCH_NAME"
+              ;;
+
+            prune-merged-branches)
+              git fetch --prune origin
+              mapfile -t protected < <(
+                {
+                  echo "main"
+                  gh pr list --state open --limit 100 --json headRefName,baseRefName \
+                    --jq '.[] | .headRefName, .baseRefName'
+                  if [[ -n "$EXCLUDE_BRANCHES" ]]; then
+                    echo "$EXCLUDE_BRANCHES" | tr ',' '\n'
+                  fi
+                } | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | sort -u
+              )
+
+              echo "Protected branches (will not be deleted):"
+              printf '  - %s\n' "${protected[@]}"
+
+              mapfile -t candidates < <(
+                git branch -r --merged origin/main \
+                  | sed 's/^[[:space:]]*//' \
+                  | grep -v '^origin/HEAD ' \
+                  | sed 's#^origin/##'
+              )
+
+              to_delete=()
+              for b in "${candidates[@]}"; do
+                skip=false
+                for p in "${protected[@]}"; do
+                  if [[ "$b" == "$p" ]]; then
+                    skip=true
+                    break
+                  fi
+                done
+                if [[ "$skip" == "false" ]]; then
+                  to_delete+=("$b")
+                fi
+              done
+
+              echo "Merged branches eligible for deletion (${#to_delete[@]}):"
+              if [[ "${#to_delete[@]}" -eq 0 ]]; then
+                echo "  (none)"
+                exit 0
+              fi
+              printf '  - %s\n' "${to_delete[@]}"
+
+              if [[ "$DRY_RUN" == "true" ]]; then
+                echo "DRY_RUN=true: no branches were deleted."
+              else
+                deleted=0
+                for b in "${to_delete[@]}"; do
+                  echo "Deleting $b..."
+                  git push origin --delete "$b"
+                  deleted=$((deleted + 1))
+                done
+                echo "Deleted $deleted merged branches."
+              fi
+              ;;
+
+            *)
+              echo "Unknown action: $ACTION" >&2
+              exit 1
+              ;;
+          esac
