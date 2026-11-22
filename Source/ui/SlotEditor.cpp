@@ -943,6 +943,17 @@ void SlotEditor::applyTheme() {
     duckClose.setColour(juce::TextButton::textColourOffId,Theme::white);
     duckOn.setColour(juce::ToggleButton::textColourId,Theme::white);
     duckPanel.repaint();
+    for(int page=0;page<4;++page) {
+        auto& button=suitePageButtons[(size_t)page];
+        button.setColour(juce::TextButton::buttonColourId,
+            page==suitePage?Theme::green.withAlpha(.31f):Theme::panelAlt);
+        button.setColour(juce::TextButton::textColourOffId,
+            page==suitePage?Theme::green:Theme::white);
+    }
+    vocalFeelStyleButton.setColour(juce::TextButton::buttonColourId,
+                                  Theme::green.withAlpha(.16f));
+    vocalFeelStyleButton.setColour(juce::TextButton::textColourOffId,Theme::green);
+    vocalFeelStyles.repaint();
     modOrbButton.setColour(juce::TextButton::buttonColourId,
         modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
     modOrbButton.setColour(juce::TextButton::textColourOffId,
@@ -1622,8 +1633,12 @@ void SlotEditor::resized() {
     matchPageButtons[2].setBounds(754,72,112,23);
     limiterPageButtons[0].setBounds(62,106,113,26);
     limiterPageButtons[1].setBounds(183,106,124,26);
-    for(int page=0;page<4;++page)
+    for(int page=0;page<4;++page) {
         delayPageButtons[(size_t)page].setBounds(45+page*150,106,142,26);
+        suitePageButtons[(size_t)page].setBounds(45+page*144,106,136,27);
+    }
+    vocalFeelStyleButton.setBounds(626,105,238,29);
+    vocalFeelStyles.setBounds(628,139,235,340);
     duckOpen.setBounds(708,106,157,28);
     duckPanel.setBounds(505,136,353,262);
     duckClose.setBounds(318,11,25,23);
@@ -1654,7 +1669,8 @@ void SlotEditor::resized() {
 bool SlotEditor::testPopupLayoutsForTest() const {
     const auto bounds=getLocalBounds();
     if(getWidth()<906 || getHeight()<535)return false;
-    const juce::Component* popups[]{&modulePicker,&installedBrowser,&eqNodeMenu,&duckPanel};
+    const juce::Component* popups[]{&modulePicker,&installedBrowser,&eqNodeMenu,
+                                    &duckPanel,&vocalFeelStyles};
     for(const auto* popup:popups)
         if(!bounds.contains(popup->getBounds()) ||
            popup->getWidth()<190 || popup->getHeight()<200)return false;
@@ -1665,8 +1681,15 @@ bool SlotEditor::testPopupLayoutsForTest() const {
         &duckDepth,&duckThreshold,&duckAttack,&duckRelease};
     for(const auto* child:duckControls)
         if(!duckPanel.getLocalBounds().contains(child->getBounds()))return false;
+    if(vocalFeelStyleButton.getBounds().intersects(suitePageButtons[3].getBounds()))
+        return false;
+    for(int i=0;i<4;++i)
+        for(int j=i+1;j<4;++j)
+            if(suitePageButtons[(size_t)i].getBounds().intersects(
+                   suitePageButtons[(size_t)j].getBounds()))return false;
     return modulePicker.testLayoutForTest() &&
-           installedBrowser.testLayoutForTest() && eqNodeMenu.testLayoutForTest();
+           installedBrowser.testLayoutForTest() && eqNodeMenu.testLayoutForTest() &&
+           vocalFeelStyles.testLayoutForTest();
 }
 void SlotEditor::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
@@ -3175,6 +3198,15 @@ void SlotEditor::paint(juce::Graphics&g) {
         labels={"Reference On","Level Match","Air Match","Base Gain"};
     if(type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1)
         labels={"Gate Threshold","Release","Attack","Knee"};
+    if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
+        constexpr const char* captions[4][4]{
+            {"VOICE","SENS","LOW EQ","MID EQ"},
+            {"HIGH EQ","DE-ESS AMOUNT","DE-ESS FREQ","OPTO AMOUNT"},
+            {"COLOUR","MAIN","MAGIC","SPACE"},
+            {"ATTACK","ATTITUDE","PRESENCE","MASTER"}
+        };
+        for(int i=0;i<4;++i)labels[(size_t)i]=captions[suitePage][i];
+    }
     if(type==SkellPresetAudioProcessor::StudioDelayFX) {
         constexpr const char* captions[4][4]{
             {"TIME","FEEDBACK","STEREO MODE","R/L OFFSET"},
