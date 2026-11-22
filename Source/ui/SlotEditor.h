@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 #include "ModulePicker.h"
+#include "VocalFeelStyles.h"
 #include "InstalledVST3Browser.h"
 #include "SkellEQNodeMenu.h"
 #include <array>
@@ -102,6 +103,7 @@ public:
     void openModulePickerForScreenshot() {openModulePicker();}
     // UI-only: prevent overlapping modal effect selectors when opening the MIC panel.
     void dismissTransientOverlays() {
+        vocalFeelStyles.close();
         modulePicker.setVisible(false);
         installedBrowser.setVisible(false);
         eqNodeMenu.setVisible(false);
@@ -121,6 +123,7 @@ public:
     bool testMatchFinishPages();
     bool testStudioLimiterPages();
     bool testStudioDelayPages();
+    bool testVocalFeelSuiteUI();
     bool testAdlibControls();
     bool testWetSidechainPanel();
     bool testMicModelCards();
@@ -143,10 +146,14 @@ private:
     int matchPage=0; // 0: sound shape / 1: calibration / 2: native reference match
     int limiterPage=0; // local UI pages only; existing p1..p9 host IDs
     int delayPage=0; // opt-in Studio Delay: 16 controls across four UI pages
+    int suitePage=0; // Vocal Feel Suite: source 16 controls in four pages
+    int gestureSuiteParameter=-1; // return p11..p15 graph gestures
     void showEqBank(int firstBand);
     void showMatchPage(int page);
     void showLimiterPage(int page);
     void showDelayPage(int page);
+    void showSuitePage(int page);
+    void selectSuiteRecipe(int index);
     void applyKnobReadouts();
     // ComboBox remains as a noninteractive compatibility/synchronization
     // adapter; the user-facing selector is the searchable native overlay.
@@ -183,6 +190,9 @@ private:
     std::array<juce::TextButton,3> matchPageButtons;
     std::array<juce::TextButton,2> limiterPageButtons;
     std::array<juce::TextButton,4> delayPageButtons;
+    std::array<juce::TextButton,4> suitePageButtons;
+    juce::TextButton vocalFeelStyleButton{"VOICE STYLES  ▼"};
+    SkellVocalFeelStyles vocalFeelStyles;
     juce::Slider studioGateFloor;
     juce::Slider studioCompKnee;
     juce::TextButton duckOpen{"SIDECHAIN"},duckClose{"X"};
@@ -201,7 +211,8 @@ private:
     int gestureEqBand=-1; // same parameter IDs receive begin/end gestures
     bool graphSnapshotValid=false;
     int lastType=-1;
-    int lastPeakLevel=-1,lastGainReductionStep=-1;
+    int lastPeakLevel=-1,lastGainReductionStep=-1,lastDeessStep=-1;
+    std::array<int,5> lastSuiteLevels{{-1,-1,-1,-1,-1}};
     bool lastPowerOn=false;
     int lastHostedLatency=-1;
     bool lastHostedLoaded=false;

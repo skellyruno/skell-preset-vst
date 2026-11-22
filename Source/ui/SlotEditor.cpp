@@ -72,6 +72,7 @@ std::array<juce::String,4> titles(int type) {
         case 41:return {"Amount","HP Blend","Cutoff","Mix"};
         case 42:return {"Drive","Unused","Colour","Mix"};
         case 43:return {"Amount","Colour","Voice","Parallel"};
+        case 44:return {"Voice","Sens","Low","Mid"};
         default:return {"Level","Tone","Time","Blend"};
     }
 }
@@ -260,6 +261,37 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(button);
         button.setVisible(false);
     }
+    for(int page=0;page<4;++page) {
+        auto& button=suitePageButtons[(size_t)page];
+        constexpr const char* captions[]{"VOICE + TONE","DE-ESS + COMP",
+                                         "COLOUR + SPACE","ENERGY + OUT"};
+        button.setButtonText(captions[page]);
+        button.setTooltip("Vocal Feel Suite: 16 real parameters across four pages");
+        button.onClick=[this,page]{showSuitePage(page);};
+        addAndMakeVisible(button);button.setVisible(false);
+    }
+    vocalFeelStyleButton.setTooltip("Eleven vocal styles; preserve your Sens and Master levels");
+    vocalFeelStyleButton.onClick=[this] {
+        if(processor.slotType(slot)!=SkellPresetAudioProcessor::VocalFeelSuiteFX)return;
+        if(vocalFeelStyles.isVisible()) {vocalFeelStyles.close();return;}
+        int current=-1;
+        for(int recipe=0;recipe<11;++recipe){
+            bool matching=true;
+            for(int parameter=0;parameter<16;++parameter) {
+                if(parameter==1 || parameter==15)continue;
+                const float a=processor.getSlotParam(slot,parameter);
+                const float b=skellpreset::dsp::vocalFeelRecipes[(size_t)recipe].values[(size_t)parameter];
+                if(std::abs(a-b)>.006f){matching=false;break;}
+            }
+            if(matching){current=recipe;break;}
+        }
+        vocalFeelStyles.open(current);
+    };
+    addAndMakeVisible(vocalFeelStyleButton);
+    vocalFeelStyleButton.setVisible(false);
+    vocalFeelStyles.onChoose=[this](int index){selectSuiteRecipe(index);};
+    addAndMakeVisible(vocalFeelStyles);
+    vocalFeelStyles.setVisible(false);
     for(int page=0;page<4;++page) {
         auto& button=delayPageButtons[(size_t)page];
         button.setButtonText(page==0?"TIME":page==1?"TONE":
