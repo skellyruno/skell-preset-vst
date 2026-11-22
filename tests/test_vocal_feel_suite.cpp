@@ -75,6 +75,50 @@ int main(){
         }
         assert(loud>.001);
     }
+    // Stereo meter regression: the right-hand return must not disappear
+    // simply because the original left vocal channel is silent.
+    for(double rate:{44100.,48000.,96000.}) {
+        VocalFeelSuite rightOnly;rightOnly.prepare(rate);
+        auto settings=vocalFeelNeutral;
+        settings[12]=1.f; // ATTACK return is processed independently L/R
+        rightOnly.set(settings);
+        rightOnly.beginBlock();
+        float rightPeak=0.f;
+        for(int n=0;n<(int)(rate*.5);++n) {
+            const auto y=rightOnly.process(0.f,sample(n,rate));
+            rightPeak=std::max(rightPeak,std::abs(y[1]));
+        }
+        assert(rightPeak>.01f);
+        assert(rightOnly.chainRms(2)>.00001f);
+    }
+    // Repeating stable APVTS values at buffer boundaries cannot reset
+    // opto/de-ess state, change the output, or add CPU-heavy reconfiguration.
+    for(double rate:{44100.,48000.,96000.}) {
+        VocalFeelSuite stable,repeated;
+        stable.prepare(rate);repeated.prepare(rate);
+        auto settings=vocalFeelNeutral;
+        settings[5]=.65f;settings[6]=.48f;
+        settings[7]=.7f;settings[8]=.5f;
+        for(int k=10;k<15;++k)settings[(size_t)k]=.5f;
+        stable.set(settings);repeated.set(settings);
+        for(int n=0;n<(int)(rate*.6);++n) {
+            if(n%256==0)repeated.set(settings);
+            const float x=sample(n,rate);
+            const float sib=.05f*std::sin((float)(pi2*7900.*n/rate));
+            const auto one=stable.process(x+sib,x*.7f-sib);
+            const auto two=repeated.process(x+sib,x*.7f-sib);
+            assert(one[0]==two[0] && one[1]==two[1]);
+        }
+        // A fresh prepare must clear old return tails deterministically.
+        stable.prepare(rate);repeated.prepare(rate);
+        stable.set(settings);repeated.set(settings);
+        for(int n=0;n<1024;++n) {
+            const float x=sample(n,rate);
+            const auto one=stable.process(x,x*.6f);
+            const auto two=repeated.process(x,x*.6f);
+            assert(one[0]==two[0] && one[1]==two[1]);
+        }
+    }
     VocalFeelSuite stress;stress.prepare(48000.);
     auto p=vocalFeelNeutral;
     for(int k=10;k<15;++k)p[(size_t)k]=.7f;

@@ -1496,9 +1496,14 @@ void SlotEditor::refreshIfChanged() {
         ?juce::roundToInt(2.f*processor.getSlotDeessReductionDb(slot)):0;
     changed=changed || deessStep!=lastDeessStep;lastDeessStep=deessStep;
     for(int i=0;i<5;++i){
+        // The graph uses the same -55..0 dB scale; a linear-RMS
+        // quantizer made quiet real vocal returns appear frozen.
+        const float returnRms=type==SkellPresetAudioProcessor::VocalFeelSuiteFX
+            ?processor.getSuiteReturnRms(slot,i):0.f;
         const int quant=type==SkellPresetAudioProcessor::VocalFeelSuiteFX
-            ?juce::jlimit(0,16,juce::roundToInt(
-                processor.getSuiteReturnRms(slot,i)*36.f)):0;
+            ?juce::jlimit(0,16,juce::roundToInt(16.f*
+                juce::jlimit(0.f,1.f,
+                    (skellpreset::dsp::gainToDb(returnRms)+55.f)/55.f))):0;
         changed=changed || quant!=lastSuiteLevels[(size_t)i];
         lastSuiteLevels[(size_t)i]=quant;
     }

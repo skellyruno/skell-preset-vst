@@ -104,7 +104,7 @@ public:
         slap.prepare((int)(sr*.21));
         room.prepare(sr);
         room.set(.32f,.52f,25.f,180.f);
-        phaseL=0.f;phaseR=.37f;slapFeedback=0.f;
+        phaseL=0.f;phaseR=.37f;slapFeedback=0.f;roomTailActive=0;
         fastEnv=slowEnv=0.f;
         fastAttack=pole(2.f);fastRelease=pole(18.f);
         slowAttack=pole(35.f);slowRelease=pole(120.f);
@@ -138,9 +138,15 @@ public:
         }
         // The existing Skell SplitDeEsser attenuates only the detected
         // sibilance band, preserving the rest of the voice without a dry PDC.
-        const float cutoff=3000.f+9000.f*p[6];
-        deess.set(cutoff,-10.f-40.f*p[5],6.f+12.f*p[5],60.f);
-        opto.set(p[7],p[8],p[0],1.f);
+        // Avoid expensive exp/pow calls every audio block when the
+        // host parameters have not moved. Both engines keep their envelopes.
+        if(next[5]!=cached[5] || next[6]!=cached[6]) {
+            const float cutoff=3000.f+9000.f*p[6];
+            deess.set(cutoff,-10.f-40.f*p[5],6.f+12.f*p[5],60.f);
+        }
+        if(next[7]!=cached[7] || next[8]!=cached[8] ||
+           next[0]!=cached[0])
+            opto.set(p[7],p[8],p[0],1.f);
         cached=next;
         for(int k=0;k<5;++k)
             targetChain[(size_t)k]=vfReturn(p[(size_t)(10+k)]);
@@ -197,7 +203,7 @@ public:
                 doubleDepth*std::sin(phaseTwoPi*phaseR));
             mixed[0]=(.55f*ml+.6f*a)*.37f*chainG[0];
             mixed[1]=(.55f*mr+.6f*b)*.37f*chainG[0];
-            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[0]+=(double)mixed[0]*mixed[0];
+            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[0]+=.5*((double)mixed[0]*mixed[0]+(double)mixed[1]*mixed[1]);
         }else {
             doublerL.push(0.f);doublerR.push(0.f);
         }
@@ -210,7 +216,7 @@ public:
             const auto plate=room.process(sourceL,sourceR);
             mixed[0]=(.75f*tapL+.55f*plate[0])*.92f*chainG[1];
             mixed[1]=(.75f*tapR+.55f*plate[1])*.92f*chainG[1];
-            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[1]+=(double)mixed[0]*mixed[0];
+            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[1]+=.5*((double)mixed[0]*mixed[0]+(double)mixed[1]*mixed[1]);
         }else{
             slap.push(0.f);slapFeedback=0.f;
             // Continue draining the feedback network while a fader fades.
@@ -227,7 +233,7 @@ public:
             const float transient=clamp(fastEnv/(slowEnv+1.e-5f)-1.f,0.f,2.5f);
             mixed[0]=a*transient*.48f*chainG[2];
             mixed[1]=b*transient*.48f*chainG[2];
-            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[2]+=(double)mixed[0]*mixed[0];
+            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[2]+=.5*((double)mixed[0]*mixed[0]+(double)mixed[1]*mixed[1]);
         }
         // ATTITUDE: deliberately driven, heavily compressed voice mids.
         if(chainG[3]>1.e-6f){
@@ -238,7 +244,7 @@ public:
                 std::max(std::abs(driveL),std::abs(driveR)));
             mixed[0]=driveL*attenuation*.60f*chainG[3];
             mixed[1]=driveR*attenuation*.60f*chainG[3];
-            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[3]+=(double)mixed[0]*mixed[0];
+            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[3]+=.5*((double)mixed[0]*mixed[0]+(double)mixed[1]*mixed[1]);
         }
         // PRESENCE: voice-profile articulation with smooth upper air.
         if(chainG[4]>1.e-6f){
@@ -248,7 +254,7 @@ public:
             a=presenceAir.process(std::tanh(a*attenuation*2.f),0);
             b=presenceAir.process(std::tanh(b*attenuation*2.f),1);
             mixed[0]=a*.36f*chainG[4];mixed[1]=b*.36f*chainG[4];
-            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[4]+=(double)mixed[0]*mixed[0];
+            outputL+=mixed[0];outputR+=mixed[1];chainEnergy[4]+=.5*((double)mixed[0]*mixed[0]+(double)mixed[1]*mixed[1]);
         }
         ++frames;
         outputL=clamp(outputL*masterG,-16.f,16.f);
@@ -281,6 +287,7 @@ private:
     float sensG=1.f,mainG=1.f,masterG=1.f,targetSens=1.f,targetMain=1.f,targetMaster=1.f;
     float slapDelay=4800.f,doubleIncL=0.f,doubleIncR=0.f,doubleOffsetL=0.f,doubleOffsetR=0.f,doubleDepth=0.f;
     std::array<float,5> targetChain{},chainG{};
+    // Equal-power two-channel RMS, matching both stereo return outputs.
     std::array<double,5> chainEnergy{};
     int frames=0,roomTailActive=0;
     float compMax=0.f,deessMax=0.f;
