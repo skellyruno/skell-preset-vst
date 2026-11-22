@@ -367,6 +367,13 @@ int main(int argc, char** argv) {
         for(const auto& effect:effectScenes)
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
                                       818,482,0,1,false});
+        // Real JUCE suite captures are part of the deep, local visual audit,
+        // not Quick4's four stable fast-start views.
+        options.scenes.push_back({"obsidian-vocal-suite-voice-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-dynamics-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-mixes-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-output-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-style-picker-125",1460,860,0,1,false});
         options.scenes.push_back({"obsidian-effect-chorus-orb-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
                                   818,482,0,1,false});
@@ -449,6 +456,13 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
+            } else if(scene.id.startsWith("obsidian-vocal-suite-")) {
+                processor.clearRackToEmpty();
+                processor.setSlotType(0,SkellPresetAudioProcessor::VocalFeelSuiteFX);
+                processor.setSlotOn(0,true);
+                const auto& recipe=skellpreset::dsp::vocalFeelRecipes[1].values;
+                for(int k=0;k<16;++k)
+                    processor.setSlotParam(0,k,recipe[(size_t)k]);
             } else if(scene.id=="obsidian-effect-chorus-orb-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::VocalChorusFX);
@@ -486,6 +500,13 @@ int main(int argc, char** argv) {
             if(scene.id=="obsidian-rack-right-70"
                || scene.id=="obsidian-rack-right-browser-70")
                 editor.dockRackForScreenshot(true);
+            if(scene.id.startsWith("obsidian-vocal-suite-")) {
+                const int page=scene.id.contains("dynamics")?1:
+                               scene.id.contains("mixes")?2:
+                               scene.id.contains("output")?3:0;
+                editor.setSuiteForScreenshot(page,
+                    scene.id.contains("style-picker"));
+            }
             if(scene.id=="obsidian-module-picker-70")
                 editor.openModulePickerForScreenshot();
             if(scene.id=="obsidian-guided-tour-70" && !editor.showGuidedTourForScreenshot())
@@ -499,6 +520,7 @@ int main(int argc, char** argv) {
                     || scene.id=="obsidian-effect-alchemist-reference-70")
                 editor.selectRackSlotForScreenshot(6,0);
             else if(scene.id.startsWith("obsidian-effect-")
+                    || scene.id.startsWith("obsidian-vocal-suite-")
                     || scene.id=="obsidian-external-70"
                     || scene.id=="obsidian-installed-vst3-browser-70")
                 editor.selectRackSlotForScreenshot(0,0);
