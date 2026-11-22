@@ -131,6 +131,7 @@ struct Compressor {
 struct Gate {
     double sr=48000,envelope=0,gain=0;
     float threshold=-45.f,release=90.f,holdMs=55.f,hysteresisDb=3.f;
+    float attackMs=4.f; // historical gate attack default
     int holdRemaining=0;
     bool open=false;
     void prepare(double rate) noexcept {sr=std::max(8000.,rate);envelope=0;gain=0;holdRemaining=0;open=false;}
@@ -150,7 +151,7 @@ struct Gate {
                 open=false;
         }
         const float goal=open?1.f:0.f;
-        const auto smooth=std::exp(-1./(sr*.001*(goal>gain?4.:std::max(20.f,release))));
+        const auto smooth=std::exp(-1./(sr*.001*(goal>gain?(double)clamp(attackMs,.5f,25.f):(double)std::max(20.f,release))));
         gain=smooth*gain+(1-smooth)*goal;
         if(gain<1.e-20)gain=0.;
         return clamp((float)gain,0.f,1.f);

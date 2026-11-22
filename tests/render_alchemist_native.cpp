@@ -1037,7 +1037,13 @@ int studioSmoke() {
     recalledMic->loadFactoryPreset(0);
     const auto gateRelease=recalledMic->state.getRawParameterValue("micGateRelease");
     const auto gateHold=recalledMic->state.getRawParameterValue("micGateHold");
-    if(gateRestored->load()<.5f || std::abs(thresholdRestored->load()+45.f)>.05f ||
+    const auto* attack=recalledMic->state.getRawParameterValue("micGateAttackMs");
+    const auto* hysteresis=recalledMic->state.getRawParameterValue("micGateHysteresisDb");
+    const auto* depth=recalledMic->state.getRawParameterValue("micGateDepth");
+    if(!attack || std::abs(attack->load()-4.f)>.05f ||
+       !hysteresis || std::abs(hysteresis->load()-3.f)>.05f ||
+       !depth || std::abs(depth->load()-1.f)>.001f ||
+       gateRestored->load()<.5f || std::abs(thresholdRestored->load()+45.f)>.05f ||
        !gateRelease || std::abs(gateRelease->load()-160.f)>.05f ||
        !gateHold || std::abs(gateHold->load()-55.f)>.05f)
         return 94;

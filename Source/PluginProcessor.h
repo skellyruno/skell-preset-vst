@@ -222,6 +222,7 @@ private:
         std::atomic<float>* gateThreshold=nullptr;
         std::atomic<float>* gateRelease=nullptr;
         std::atomic<float>* gateHold=nullptr;
+        std::atomic<float>* gateAttack=nullptr,*gateHysteresis=nullptr,*gateDepth=nullptr;
     } rawMic;
     skellpreset::dsp::MicModelTone micFrontEnd;
     skellpreset::dsp::Gate micInputGate;

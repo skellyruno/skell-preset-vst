@@ -77,7 +77,8 @@ public:
             refresh();
         };
         addAndMakeVisible(gateEnabled);
-        for(auto* slider:{&gateThreshold,&gateRelease,&gateHold}) {
+        for(auto* slider:{&gateThreshold,&gateAttack,&gateHold,&gateRelease,
+                          &gateHysteresis,&gateDepth}) {
             slider->setSliderStyle(juce::Slider::LinearHorizontal);
             slider->setTextBoxStyle(juce::Slider::TextBoxRight,false,84,21);
             addAndMakeVisible(*slider);
@@ -88,9 +89,16 @@ public:
             processor.state,"micGateRelease",gateRelease);
         gateHoldLink=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             processor.state,"micGateHold",gateHold);
+        gateAttackLink=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,"micGateAttackMs",gateAttack);
+        gateHysteresisLink=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,"micGateHysteresisDb",gateHysteresis);
+        gateDepthLink=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,"micGateDepth",gateDepth);
         gateThreshold.textFromValueFunction=[](double v){return juce::String(v,1)+" dBFS";};
         gateRelease.textFromValueFunction=[](double v){return juce::String(v,0)+" ms";};
         gateHold.textFromValueFunction=[](double v){return juce::String(v,0)+" ms";};
+        gateAttack.textFromValueFunction=[](double v){return juce::String(v,1)+" ms";};
+        gateHysteresis.textFromValueFunction=[](double v){return juce::String(v,1)+" dB";};
+        gateDepth.textFromValueFunction=[](double v){return juce::String(juce::roundToInt(v*100.))+"%";};
+        gateDepth.valueFromTextFunction=[](const juce::String& s){return juce::jlimit(0.,1.,s.getDoubleValue()/100.);};
         enabled.setButtonText("OFF");
         enabled.onClick=[this] {
             const bool next=!on();
@@ -164,9 +172,8 @@ public:
         for(auto& simulation:simulations)simulation.setVisible(!gate);
         amount.setVisible(!gate);trim.setVisible(!gate);
         gateEnabled.setVisible(gate);
-        gateThreshold.setVisible(gate);
-        gateRelease.setVisible(gate);
-        gateHold.setVisible(gate);
+        for(auto* slider:{&gateThreshold,&gateAttack,&gateHold,&gateRelease,
+                          &gateHysteresis,&gateDepth})slider->setVisible(gate);
         refresh();
     }
     bool hasBeenMoved() const noexcept {return movedByUser;}
@@ -289,7 +296,8 @@ public:
             b.setColour(juce::TextButton::textColourOffId,
                         i==model?Theme::green:Theme::white);
         }
-        for(auto* slider:{&amount,&trim,&gateThreshold,&gateRelease,&gateHold}) {
+        for(auto* slider:{&amount,&trim,&gateThreshold,&gateAttack,&gateHold,
+                          &gateRelease,&gateHysteresis,&gateDepth}) {
             slider->setColour(juce::Slider::trackColourId,Theme::green);
             slider->setColour(juce::Slider::thumbColourId,Theme::white);
             slider->setColour(juce::Slider::textBoxTextColourId,Theme::white);
@@ -314,9 +322,8 @@ public:
         amount.setBounds(85,lower,w-101,25);
         trim.setBounds(85,lower+40,w-101,25);
         gateEnabled.setBounds(w-92,105,64,29);
-        gateThreshold.setBounds(110,156,w-128,30);
-        gateHold.setBounds(110,211,w-128,30);
-        gateRelease.setBounds(110,266,w-128,30);
+        juce::Slider* knobs[]{&gateThreshold,&gateAttack,&gateHold,&gateRelease,&gateHysteresis,&gateDepth};
+        for(int i=0;i<6;++i)knobs[i]->setBounds(110,139+29*i,w-128,25);
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
@@ -327,11 +334,10 @@ public:
         Theme::text(g,"DRAG HEADER  /  RESIZE CORNER",{17,36,getWidth()-34,14},9.5f,Theme::muted);
         if(gatePage){
             Theme::text(g,"LOW-LATENCY INPUT CLEANUP",{17,95,getWidth()-120,21},12,Theme::green,true);
-            Theme::text(g,"THRESHOLD",{17,157,90,22},11.4f,Theme::white,true);
-            Theme::text(g,"HOLD",{17,212,90,22},11.4f,Theme::white,true);
-            Theme::text(g,"RELEASE",{17,267,90,22},11.4f,Theme::white,true);
-            Theme::fittedText(g,"STEREO-LINKED / 3 dB HYSTERESIS / ZERO ADDED LATENCY",
-                {16,getHeight()-31,getWidth()-44,16},9.f,Theme::muted);
+            constexpr const char* labels[]{"THRESHOLD","ATTACK","HOLD","RELEASE","HYSTERESIS","REDUCTION"};
+            for(int i=0;i<6;++i)Theme::text(g,labels[i],{17,140+29*i,90,22},10.8f,Theme::white,true);
+            Theme::fittedText(g,"STEREO-LINKED / MANUAL / ZERO ADDED LATENCY",
+                {16,getHeight()-27,getWidth()-44,16},9.f,Theme::muted);
         } else {
         Theme::text(g,"INPUT MICROPHONE",{16,87,188,18},11.5f,Theme::white,true);
         const juce::StringArray descriptions{
@@ -393,7 +399,7 @@ public:
         const bool mapped=std::abs(threshold->load()+54.f)<.05f;
         const bool isolated=!input.isVisible() && !enabled.isVisible()
             && !simulations[0].isVisible() && !amount.isVisible()
-            && gateThreshold.isVisible() && gateRelease.isVisible();
+            && gateThreshold.isVisible() && gateAttack.isVisible() && gateHysteresis.isVisible() && gateDepth.isVisible() && gateRelease.isVisible();
         setPhysical("micGateOn",priorEnabled);
         setPhysical("micGateThreshold",priorThreshold);
         setPhysical("micPreOn",priorModel);
@@ -436,9 +442,9 @@ private:
     juce::TextButton input;
     SourceMenu sourceMenu;
     std::array<juce::TextButton,4> simulations;
-    juce::Slider amount,trim,gateThreshold,gateRelease,gateHold;
+    juce::Slider amount,trim,gateThreshold,gateAttack,gateHold,gateRelease,gateHysteresis,gateDepth;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountLink,trimLink;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateThresholdLink,gateReleaseLink,gateHoldLink;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateThresholdLink,gateReleaseLink,gateHoldLink,gateAttackLink,gateHysteresisLink,gateDepthLink;
     int lastInput=-1,lastTarget=-1;
     bool lastEnabled=false,lastGateEnabled=false,gatePage=false;
     bool movedByUser=false,dragHeader=false,resizing=false;

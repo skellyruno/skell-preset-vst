@@ -53,6 +53,7 @@ int main(){
               && loaded.micGateThreshold==-45.f
               && loaded.micGateRelease==160.f
               && loaded.micGateHold==55.f
+               && loaded.micGateAttackMs==4.f && loaded.micGateHysteresisDb==3.f && loaded.micGateDepth==1.f
               && !loaded.slots[0].duckOn
               && loaded.slots[0].duckDepth==.65f
               && loaded.slots[0].duckAttack==12.f,
@@ -84,6 +85,7 @@ int main(){
     first.micPreAmount=.72f;first.micPreTrim=.63f;
     first.micGateOn=true;first.micGateThreshold=-31.f;
     first.micGateRelease=250.f;first.micGateHold=83.f;
+    first.micGateAttackMs=11.f;first.micGateHysteresisDb=7.f;first.micGateDepth=.6f;
     first.macros.fill(.5f);
     first.macros[0]=.86f;
     auto path=testFile(dir,"roundtrip");
@@ -99,6 +101,7 @@ int main(){
           &&second.micPreTrim==.63f
           &&second.micGateOn &&second.micGateThreshold==-31.f
           &&second.micGateRelease==250.f &&second.micGateHold==83.f
+           &&second.micGateAttackMs==11.f &&second.micGateHysteresisDb==7.f &&second.micGateDepth==.6f
           &&second.slots[2].duckOn &&!second.slots[3].duckOn
           &&second.slots[2].duckDepth==.73f
           &&second.slots[2].duckThreshold==-28.f
@@ -302,6 +305,9 @@ int main(){
                 {true,"micGateThreshold","mic-gate-threshold","Reject null mic gate threshold"},
                 {true,"micGateRelease","mic-gate-release","Reject null mic gate release"},
                 {true,"micGateHold","mic-gate-hold","Reject null mic gate hold"},
+                 {true,"micGateAttackMs","mic-attack","Reject null mic gate attack"},
+                 {true,"micGateHysteresisDb","mic-hyst","Reject null mic gate hysteresis"},
+                 {true,"micGateDepth","mic-depth","Reject null mic gate reduction"},
                 {true,"micPreInput","mic-pre-input","Reject explicit null mic-pre input"},
                 {true,"micPreTarget","mic-pre-target","Reject explicit null mic-pre target"},
                 {true,"micPreAmount","mic-pre-amount","Reject explicit null mic-pre amount"},

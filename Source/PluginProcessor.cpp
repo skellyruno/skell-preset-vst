@@ -112,6 +112,9 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawMic.gateThreshold=state.getRawParameterValue("micGateThreshold");
     rawMic.gateRelease=state.getRawParameterValue("micGateRelease");
     rawMic.gateHold=state.getRawParameterValue("micGateHold");
+    rawMic.gateAttack=state.getRawParameterValue("micGateAttackMs");
+    rawMic.gateHysteresis=state.getRawParameterValue("micGateHysteresisDb");
+    rawMic.gateDepth=state.getRawParameterValue("micGateDepth");
     rawGlobal.mode=state.getRawParameterValue("mode");
     rawGlobal.input=state.getRawParameterValue("input");
     rawGlobal.mix=state.getRawParameterValue("mix");
@@ -308,6 +311,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         fl(prefix+"duckAttack","Slot "+juce::String(slot)+" ducking attack ms",
            2.f,80.f,12.f);
     }
+    // All three new controls append after every existing host ID.
+    fl("micGateAttackMs","Mic gate attack ms",.5f,25.f,4.f);
+    fl("micGateHysteresisDb","Mic gate hysteresis dB",0.f,12.f,3.f);
+    fl("micGateDepth","Mic gate reduction",0.f,1.f,1.f);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -686,7 +693,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     micInputGate.threshold=juce::jlimit(-80.f,-10.f,rawMic.gateThreshold->load());
     micInputGate.release=juce::jlimit(20.f,1000.f,rawMic.gateRelease->load());
     micInputGate.holdMs=juce::jlimit(0.f,250.f,rawMic.gateHold->load());
-    micInputGate.hysteresisDb=3.f;
+    micInputGate.hysteresisDb=juce::jlimit(0.f,12.f,rawMic.gateHysteresis->load());
+    micInputGate.attackMs=juce::jlimit(.5f,25.f,rawMic.gateAttack->load());
+    const float micGateDepth=juce::jlimit(0.f,1.f,rawMic.gateDepth->load());
     micGateWet.setTargetValue(rawMic.gateOn->load()>.5f?1.f:0.f);
     const bool delta=rawGlobal.delta->load()>.5f;
     const float macroTone=rawGlobal.macros[0]->load();
@@ -909,7 +918,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             if(gateWet>1.e-6f) {
                 const float gateGain=micInputGate.processGain(
                     std::max(std::abs(preL),std::abs(preR)));
-                const float applied=1.f+gateWet*(gateGain-1.f);
+                const float applied=1.f+gateWet*micGateDepth*(gateGain-1.f);
                 frontL*=applied;frontR*=applied;
             }
             const float micWet=micFrontWet.getNextValue();
@@ -1566,6 +1575,8 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     // their state is recalled directly, without selecting a new factory.
     setReal("micGateOn",1.f);setReal("micGateThreshold",-45.f);
     setReal("micGateRelease",160.f);setReal("micGateHold",55.f);
+    setReal("micGateAttackMs",4.f);setReal("micGateHysteresisDb",3.f);
+    setReal("micGateDepth",1.f);
     // Factory switches must reset all serialized macro values, including the
     // currently hidden compatibility slots 5..8, so imported state cannot leak.
     for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);
@@ -1589,6 +1600,9 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
     doc.micGateThreshold=value("micGateThreshold");
     doc.micGateRelease=value("micGateRelease");
     doc.micGateHold=value("micGateHold");
+    doc.micGateAttackMs=value("micGateAttackMs");
+    doc.micGateHysteresisDb=value("micGateHysteresisDb");
+    doc.micGateDepth=value("micGateDepth");
     for(int i=0;i<8;++i)doc.macros[(size_t)i]=value("macro"+juce::String(i+1));
     for(int position=0;position<slotCount;++position){
         auto& dst=doc.slots[(size_t)position];
@@ -1662,6 +1676,9 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     setReal("micGateThreshold",doc.micGateThreshold);
     setReal("micGateRelease",doc.micGateRelease);
     setReal("micGateHold",doc.micGateHold);
+    setReal("micGateAttackMs",doc.micGateAttackMs);
+    setReal("micGateHysteresisDb",doc.micGateHysteresisDb);
+    setReal("micGateDepth",doc.micGateDepth);
     for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
     name=doc.name;
     emptyRackIdentity.store(false,std::memory_order_release);
@@ -1829,6 +1846,25 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             absentMicGate.setProperty("value",0.f,nullptr);
             loaded.appendChild(absentMicGate,nullptr);
         }
+        // Legacy project snapshots omit new controls: fill defaults instead
+        // of inheriting settings from a previously loaded modern preset.
+        struct GateLegacyDefault {const char* id;float initial;};
+        constexpr GateLegacyDefault defaults[]{
+            {"micGateAttackMs",4.f},{"micGateHysteresisDb",3.f},{"micGateDepth",1.f}
+        };
+        for(const auto& def:defaults) {
+            bool present=false;
+            for(int i=0;i<loaded.getNumChildren();++i)
+                if(loaded.getChild(i).getProperty("id").toString()==def.id) {
+                    present=true;break;
+                }
+            if(!present) {
+                juce::ValueTree node(juce::Identifier("PARAM"));
+                node.setProperty("id",def.id,nullptr);
+                node.setProperty("value",def.initial,nullptr);
+                loaded.appendChild(node,nullptr);
+            }
+        }
         // Repair untrusted host XML before JUCE copies it into APVTS atomics.
         sanitizeParameterStateValues(loaded, state);
         state.replaceState(loaded);
@@ -1863,7 +1899,8 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
     for(const auto* id:{"input","mix","output","autoGain","delta",
                         "adapt","adaptAmount","globalGate","gateThreshold","laneMode",
                         "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim",
-                        "micGateOn","micGateThreshold","micGateRelease","micGateHold"})
+                        "micGateOn","micGateThreshold","micGateRelease","micGateHold",
+                        "micGateAttackMs","micGateHysteresisDb","micGateDepth"})
         add(id);
     for(int macro=1;macro<=8;++macro)add("macro"+juce::String(macro));
     for(const auto* lane:{"A","B","C"}) {

@@ -49,7 +49,10 @@ juce::Result validate(const Document& d) {
         || ! finiteRange(d.micPreTrim,0,1)
         || ! finiteRange(d.micGateThreshold,-80.f,-10.f)
         || ! finiteRange(d.micGateRelease,20.f,1000.f)
-        || ! finiteRange(d.micGateHold,0.f,250.f))
+        || ! finiteRange(d.micGateHold,0.f,250.f)
+         || ! finiteRange(d.micGateAttackMs,.5f,25.f)
+         || ! finiteRange(d.micGateHysteresisDb,0.f,12.f)
+         || ! finiteRange(d.micGateDepth,0.f,1.f))
         return juce::Result::fail("Invalid global parameter range");
     for (const auto v : d.macros)
         if (! finiteRange(v, 0, 1)) return juce::Result::fail("Invalid macro value");
@@ -99,6 +102,9 @@ juce::var toJson(const Document& d) {
     global->setProperty("micGateThreshold", d.micGateThreshold);
     global->setProperty("micGateRelease", d.micGateRelease);
     global->setProperty("micGateHold", d.micGateHold);
+    global->setProperty("micGateAttackMs",d.micGateAttackMs);
+    global->setProperty("micGateHysteresisDb",d.micGateHysteresisDb);
+    global->setProperty("micGateDepth",d.micGateDepth);
     juce::Array<juce::var> macros;
     for (float value : d.macros) macros.add(value);
     global->setProperty("macros", juce::var(macros));
@@ -198,6 +204,15 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         !decodeFloat(globals.getProperty("micGateHold",{}),
                      0.f,250.f,candidate.micGateHold))
         return juce::Result::fail("Invalid mic gate hold");
+    if(hasJsonProperty(globals,"micGateAttackMs") &&
+       !decodeFloat(globals.getProperty("micGateAttackMs",{}),.5f,25.f,candidate.micGateAttackMs))
+        return juce::Result::fail("Invalid mic gate attack");
+    if(hasJsonProperty(globals,"micGateHysteresisDb") &&
+       !decodeFloat(globals.getProperty("micGateHysteresisDb",{}),0.f,12.f,candidate.micGateHysteresisDb))
+        return juce::Result::fail("Invalid mic gate hysteresis");
+    if(hasJsonProperty(globals,"micGateDepth") &&
+       !decodeFloat(globals.getProperty("micGateDepth",{}),0.f,1.f,candidate.micGateDepth))
+        return juce::Result::fail("Invalid mic gate reduction");
     // Schema-v2 macros were added as an optional extension. Older v1/v2
     // archives without the property retain neutral 50% host defaults.
     // If present (including explicit null), the array remains strictly

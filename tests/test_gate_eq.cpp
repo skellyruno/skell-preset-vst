@@ -21,6 +21,10 @@ int main() {
         for(int i=0;i<(int)(rate*.60);++i)gate.processGain(0.f);
         assert(!gate.open && gate.gain<.02);
         assert(std::isfinite(gate.processGain(NAN)));
+        Gate fast,slow;fast.prepare(rate);slow.prepare(rate);
+        fast.threshold=-40.f;slow.threshold=-40.f;fast.attackMs=.5f;slow.attackMs=25.f;
+        for(int n=0;n<(int)(rate*.004);++n){fast.processGain(.35f);slow.processGain(.35f);}
+        assert(fast.gain>slow.gain+.10);
     }
     std::cout<<"PASS gate hold/hysteresis and analytical EQ response across 44.1/48/96 kHz\n";
 }
