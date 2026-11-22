@@ -437,11 +437,36 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const bool onlyFavorites=std::all_of(favorites.begin(),favorites.end(),
         [this](int entry) {return isFavorite(entry) &&
             (entry<0 || entry==alchemistIndex || entry==deuceIndex);});
+    // In-memory synthetic library entry: no user files or sidecars written.
+    // This catches an empty Artists/Favorites view that would otherwise make
+    // the category checks trivially pass, even when search is broken.
+    const auto oldKeys=artistKeys,oldNames=artistNames,oldFavorites=favoriteKeys;
+    const int injected=(int)userPresets.size();
+    userPresets.push_back(juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("__skell_artist_filter_probe__.skellpreset"));
+    const auto key=favoriteKey(-injected-1);
+    artistKeys.add(key);artistNames.add("__skell_artist_unique_probe__");
+    favoriteKeys.add(key);
+    bank=2;
+    search.setText("artist:__skell_artist_unique_probe__",juce::dontSendNotification);
+    const auto artistHits=filtered();
+    const bool artistQueryWorks=std::find(artistHits.begin(),artistHits.end(),-injected-1)!=artistHits.end();
+    bank=3;
+    search.setText("fav:__skell_artist_filter_probe__",juce::dontSendNotification);
+    const auto favoriteHits=filtered();
+    const bool favoriteQueryWorks=std::find(favoriteHits.begin(),favoriteHits.end(),-injected-1)!=favoriteHits.end();
+    bank=1;
+    search.setText("__skell_artist_filter_probe__",juce::dontSendNotification);
+    const auto personalHits=filtered();
+    const bool personalQueryWorks=std::find(personalHits.begin(),personalHits.end(),-injected-1)!=personalHits.end();
+    userPresets.pop_back();
+    artistKeys=oldKeys;artistNames=oldNames;favoriteKeys=oldFavorites;
     bank=previousBank;
     scroll=previousScroll;
     search.setText(query,juce::dontSendNotification);
     return banks.size()==4 && exactMainVocals && onlyUserPresets &&
-           onlyTagged && onlyFavorites;
+           onlyTagged && onlyFavorites && artistQueryWorks &&
+           favoriteQueryWorks && personalQueryWorks;
 }
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
@@ -624,8 +649,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         g.setColour(Theme::panelAlt);g.fillRoundedRectangle(rect,7.f);
-        const juce::Image& tileArt=custom
-            ?userArtwork[(size_t)(-entry-1)]:alchemistArtwork;
+        const juce::Image tileArt=custom
+            ?userArtwork[(size_t)(-entry-1)]
+            :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
         if(tileArt.isValid()) {
             juce::Graphics::ScopedSaveState cardArtwork(g);
             g.reduceClipRegion(rect.toNearestInt());
@@ -638,8 +664,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int seed=custom?-entry:entry+1;
         const auto accent=accents[(size_t)(seed%5)];
         const auto cover=juce::Rectangle<float>(215.f,(float)y+5.f,67.f,46.f);
-        const juce::Image& coverArt=custom
-            ?userArtwork[(size_t)(-entry-1)]:alchemistArtwork;
+        const juce::Image coverArt=custom
+            ?userArtwork[(size_t)(-entry-1)]
+            :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
         if(coverArt.isValid()) {
             // Full-bleed card artwork; graphics clipping keeps rounded card edges.
             juce::Graphics::ScopedSaveState artworkSave(g);
@@ -684,7 +711,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
         // content, duplicate presets or heavy image loads in paint().
         const int entry=entries[0];
         const bool custom=entry<0;
-        const auto art=custom?userArtwork[(size_t)(-entry-1)]:alchemistArtwork;
+        const auto art=custom?userArtwork[(size_t)(-entry-1)]
+            :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
         const auto frame=juce::Rectangle<float>(229.f,277.f,177.f,167.f);
         g.setColour(Theme::bg);g.fillRoundedRectangle(frame,8.f);
         if(art.isValid()) {
