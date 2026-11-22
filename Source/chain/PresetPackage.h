@@ -43,6 +43,10 @@ struct Document {
     bool micPreOn = false;
     int micPreInput = 0, micPreTarget = 0;
     float micPreAmount = 1.f, micPreTrim = .5f;
+    // Optional extension to schema v2; absent in old archives means OFF.
+    bool micGateOn=false;
+    float micGateThreshold=-40.f,micGateAttackMs=4.f,micGateHoldMs=60.f;
+    float micGateReleaseMs=85.f,micGateHysteresisDb=4.f;
     std::array<float, 8> macros {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
     std::array<Slot, slotCount> slots = [] {
         std::array<Slot, slotCount> result {};

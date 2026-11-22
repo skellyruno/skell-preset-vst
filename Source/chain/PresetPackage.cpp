@@ -45,7 +45,12 @@ juce::Result validate(const Document& d) {
         || d.micPreInput < 0 || d.micPreInput > 3
         || d.micPreTarget < 0 || d.micPreTarget > 3
         || ! finiteRange(d.micPreAmount,0,1)
-        || ! finiteRange(d.micPreTrim,0,1))
+        || ! finiteRange(d.micPreTrim,0,1)
+        || ! finiteRange(d.micGateThreshold,-75,-15)
+        || ! finiteRange(d.micGateAttackMs,.5f,25.f)
+        || ! finiteRange(d.micGateHoldMs,0,250)
+        || ! finiteRange(d.micGateReleaseMs,20,600)
+        || ! finiteRange(d.micGateHysteresisDb,0,12))
         return juce::Result::fail("Invalid global parameter range");
     for (const auto v : d.macros)
         if (! finiteRange(v, 0, 1)) return juce::Result::fail("Invalid macro value");
@@ -85,6 +90,12 @@ juce::var toJson(const Document& d) {
     global->setProperty("micPreTarget", d.micPreTarget);
     global->setProperty("micPreAmount", d.micPreAmount);
     global->setProperty("micPreTrim", d.micPreTrim);
+    global->setProperty("micGateOn",d.micGateOn);
+    global->setProperty("micGateThreshold",d.micGateThreshold);
+    global->setProperty("micGateAttackMs",d.micGateAttackMs);
+    global->setProperty("micGateHoldMs",d.micGateHoldMs);
+    global->setProperty("micGateReleaseMs",d.micGateReleaseMs);
+    global->setProperty("micGateHysteresisDb",d.micGateHysteresisDb);
     juce::Array<juce::var> macros;
     for (float value : d.macros) macros.add(value);
     global->setProperty("macros", juce::var(macros));
@@ -159,6 +170,26 @@ juce::Result fromJson(const juce::var& root, Document& out) {
     if (hasJsonProperty(globals,"micPreTrim")
         && !decodeFloat(globals.getProperty("micPreTrim",{}),0,1,candidate.micPreTrim))
         return juce::Result::fail("Invalid mic trim");
+    if(hasJsonProperty(globals,"micGateOn")) {
+        const auto flag=globals.getProperty("micGateOn",{});
+        if(!flag.isBool())return juce::Result::fail("Invalid mic gate enabled state");
+        candidate.micGateOn=(bool)flag;
+    }
+    if(hasJsonProperty(globals,"micGateThreshold")
+       && !decodeFloat(globals.getProperty("micGateThreshold",{}),-75,-15,candidate.micGateThreshold))
+        return juce::Result::fail("Invalid mic gate threshold");
+    if(hasJsonProperty(globals,"micGateAttackMs")
+       && !decodeFloat(globals.getProperty("micGateAttackMs",{}),.5f,25.f,candidate.micGateAttackMs))
+        return juce::Result::fail("Invalid mic gate attack");
+    if(hasJsonProperty(globals,"micGateHoldMs")
+       && !decodeFloat(globals.getProperty("micGateHoldMs",{}),0,250,candidate.micGateHoldMs))
+        return juce::Result::fail("Invalid mic gate hold");
+    if(hasJsonProperty(globals,"micGateReleaseMs")
+       && !decodeFloat(globals.getProperty("micGateReleaseMs",{}),20,600,candidate.micGateReleaseMs))
+        return juce::Result::fail("Invalid mic gate release");
+    if(hasJsonProperty(globals,"micGateHysteresisDb")
+       && !decodeFloat(globals.getProperty("micGateHysteresisDb",{}),0,12,candidate.micGateHysteresisDb))
+        return juce::Result::fail("Invalid mic gate hysteresis");
     // Schema-v2 macros were added as an optional extension. Older v1/v2
     // archives without the property retain neutral 50% host defaults.
     // If present (including explicit null), the array remains strictly

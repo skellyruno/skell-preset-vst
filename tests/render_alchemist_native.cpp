@@ -226,6 +226,8 @@ int blankSmoke() {
     }
     if(!dirtySerializedSlotControls(*plugin))return 48;
     plugin->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+    if(const auto* micGate=plugin->state.getRawParameterValue("micGateOn");
+       !micGate || micGate->load()<.5f)return 59;
     if(const int resetResult=checkNativeFactorySlotDefaults(
            *plugin,(int)skellpreset::alchemist::stages.size());resetResult!=0)
         return resetResult;

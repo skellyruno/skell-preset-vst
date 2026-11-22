@@ -12,6 +12,7 @@
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
 #include "chain/MicModelDSP.h"
+#include "chain/MicGateDSP.h"
 #include "chain/SkelldizerDSP.h"
 #include "chain/SpectralPitchFormant.h"
 #include "chain/VoxRackFX.h"
@@ -199,9 +200,13 @@ private:
         std::atomic<float>* target=nullptr;
         std::atomic<float>* amount=nullptr;
         std::atomic<float>* trim=nullptr;
+        std::atomic<float>* gateOn=nullptr,*gateThreshold=nullptr;
+        std::atomic<float>* gateAttack=nullptr,*gateHold=nullptr;
+        std::atomic<float>* gateRelease=nullptr,*gateHysteresis=nullptr;
     } rawMic;
     skellpreset::dsp::MicModelTone micFrontEnd;
-    juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet;
+    skellpreset::dsp::MicNoiseGate micGate;
+    juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet,micGateWet;
     struct RawGlobal {
         std::atomic<float>* mode=nullptr;std::atomic<float>* input=nullptr;
         std::atomic<float>* mix=nullptr;std::atomic<float>* output=nullptr;

@@ -101,6 +101,12 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawMic.target=state.getRawParameterValue("micPreTarget");
     rawMic.amount=state.getRawParameterValue("micPreAmount");
     rawMic.trim=state.getRawParameterValue("micPreTrim");
+    rawMic.gateOn=state.getRawParameterValue("micGateOn");
+    rawMic.gateThreshold=state.getRawParameterValue("micGateThreshold");
+    rawMic.gateAttack=state.getRawParameterValue("micGateAttackMs");
+    rawMic.gateHold=state.getRawParameterValue("micGateHoldMs");
+    rawMic.gateRelease=state.getRawParameterValue("micGateReleaseMs");
+    rawMic.gateHysteresis=state.getRawParameterValue("micGateHysteresisDb");
     rawGlobal.mode=state.getRawParameterValue("mode");
     rawGlobal.input=state.getRawParameterValue("input");
     rawGlobal.mix=state.getRawParameterValue("mix");
@@ -260,6 +266,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
                band<=7);
         }
     }
+    // Append new IDs after every existing factory/automation parameter.
+    // Empty rack and pre-gate host states retain previous gate-off behavior.
+    bl("micGateOn","MIC Noise Gate enabled",false);
+    fl("micGateThreshold","MIC Noise Gate threshold dB",-75,-15,-40);
+    fl("micGateAttackMs","MIC Noise Gate attack ms",.5f,25.f,4.f);
+    fl("micGateHoldMs","MIC Noise Gate hold ms",0,250,60);
+    fl("micGateReleaseMs","MIC Noise Gate release ms",20,600,85);
+    fl("micGateHysteresisDb","MIC Noise Gate hysteresis dB",0,12,4);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -354,6 +368,9 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     bypassWork.setSize(2,hostChunkCapacity,false,true);
     for(auto& e:engines)e.prepare(rate);
     micFrontEnd.prepare(rate);
+    micGate.prepare(rate);
+    micGateWet.reset(rate,.020);
+    micGateWet.setCurrentAndTargetValue(rawMic.gateOn->load()>.5f?1.f:0.f);
     micFrontWet.reset(rate,.020);
     micFrontWet.setCurrentAndTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     hosted.prepare(rate,hostChunkCapacity);
@@ -597,6 +614,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     juce::jlimit(0.f,3.f,rawMic.target->load())/3.f,
                     juce::jlimit(0.f,1.f,rawMic.amount->load()),
                     juce::jlimit(0.f,1.f,rawMic.trim->load()));
+    micGate.set(rawMic.gateThreshold->load(),rawMic.gateAttack->load(),
+                rawMic.gateHold->load(),rawMic.gateRelease->load(),
+                rawMic.gateHysteresis->load());
+    micGateWet.setTargetValue(rawMic.gateOn->load()>.5f?1.f:0.f);
     micFrontWet.setTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     const bool delta=rawGlobal.delta->load()>.5f;
     const float macroTone=rawGlobal.macros[0]->load();
@@ -800,15 +821,19 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
+            const float gateWet=micGateWet.getNextValue();
+            const float gateGain=gateWet>1.e-6f
+                ? 1.f+(micGate.processGain(preL,preR)-1.f)*gateWet : 1.f;
+            const float gatedL=preL*gateGain,gatedR=preR*gateGain;
             const float micWet=micFrontWet.getNextValue();
-            float frontL=preL,frontR=preR;
+            float frontL=gatedL,frontR=gatedR;
             // Default OFF should be CPU-neutral for legacy FL Studio racks.
             // Process the input model only while active or during its 20ms
             // bypass crossfade; no allocations or latency are introduced.
             if(micWet>1.e-6f) {
-                const auto colored=micFrontEnd.process(preL,preR);
-                frontL=preL+(colored[0]-preL)*micWet;
-                frontR=preR+(colored[1]-preR)*micWet;
+                const auto colored=micFrontEnd.process(gatedL,gatedR);
+                frontL=gatedL+(colored[0]-gatedL)*micWet;
+                frontR=gatedR+(colored[1]-gatedR)*micWet;
             }
             const auto original=bypassPdc.process(l,r,blockLatency);
             // Front-end tone is upstream of the rack AND its wet/dry blend.
@@ -1422,6 +1447,10 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal("output",5.17f);
     setReal("micPreOn",0);setReal("micPreInput",0);
     setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
+    // Requested factory behavior: dedicated MIC gate ON for every new load.
+    setReal("micGateOn",1.f);setReal("micGateThreshold",-40.f);
+    setReal("micGateAttackMs",4.f);setReal("micGateHoldMs",60.f);
+    setReal("micGateReleaseMs",85.f);setReal("micGateHysteresisDb",4.f);
     // Factory switches must reset all serialized macro values, including the
     // currently hidden compatibility slots 5..8, so imported state cannot leak.
     for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);
@@ -1441,6 +1470,12 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
     doc.micPreTarget=juce::jlimit(0,3,(int)value("micPreTarget"));
     doc.micPreAmount=juce::jlimit(0.f,1.f,value("micPreAmount"));
     doc.micPreTrim=juce::jlimit(0.f,1.f,value("micPreTrim"));
+    doc.micGateOn=value("micGateOn")>.5f;
+    doc.micGateThreshold=value("micGateThreshold");
+    doc.micGateAttackMs=value("micGateAttackMs");
+    doc.micGateHoldMs=value("micGateHoldMs");
+    doc.micGateReleaseMs=value("micGateReleaseMs");
+    doc.micGateHysteresisDb=value("micGateHysteresisDb");
     for(int i=0;i<8;++i)doc.macros[(size_t)i]=value("macro"+juce::String(i+1));
     for(int position=0;position<slotCount;++position){
         auto& dst=doc.slots[(size_t)position];
@@ -1498,6 +1533,13 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     setReal("micPreTarget",(float)doc.micPreTarget);
     setReal("micPreAmount",doc.micPreAmount);
     setReal("micPreTrim",doc.micPreTrim);
+    // Optional fields missing from old .skellpreset packages default OFF.
+    setReal("micGateOn",doc.micGateOn?1.f:0.f);
+    setReal("micGateThreshold",doc.micGateThreshold);
+    setReal("micGateAttackMs",doc.micGateAttackMs);
+    setReal("micGateHoldMs",doc.micGateHoldMs);
+    setReal("micGateReleaseMs",doc.micGateReleaseMs);
+    setReal("micGateHysteresisDb",doc.micGateHysteresisDb);
     for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
     name=doc.name;
     emptyRackIdentity.store(false,std::memory_order_release);
@@ -1681,7 +1723,9 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
     };
     for(const auto* id:{"input","mix","output","autoGain","delta",
                         "adapt","adaptAmount","globalGate","gateThreshold","laneMode",
-                        "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim"})
+                        "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim",
+                        "micGateOn","micGateThreshold","micGateAttackMs","micGateHoldMs",
+                        "micGateReleaseMs","micGateHysteresisDb"})
         add(id);
     for(int macro=1;macro<=8;++macro)add("macro"+juce::String(macro));
     for(const auto* lane:{"A","B","C"}) {

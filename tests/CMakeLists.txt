@@ -154,3 +154,8 @@ add_test(NAME SkellPresetStudioChorusDSPTest COMMAND SkellPresetStudioChorusDSPT
 add_executable(SkellPresetStudioNativeDSPTest test_studio_native_dsp.cpp)
 target_compile_features(SkellPresetStudioNativeDSPTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetStudioNativeDSPTest COMMAND SkellPresetStudioNativeDSPTest)
+
+# Causal stereo-linked MIC Noise Gate, 44.1/48/96k portable safety checks.
+add_executable(SkellPresetMicGateTest test_mic_gate.cpp)
+target_compile_features(SkellPresetMicGateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMicGateTest COMMAND SkellPresetMicGateTest)

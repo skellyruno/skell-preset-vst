@@ -72,6 +72,9 @@ int main(){
     first.micPreInput=1;  // generic condenser input
     first.micPreTarget=3; // generic air output
     first.micPreAmount=.72f;first.micPreTrim=.63f;
+    first.micGateOn=true;first.micGateThreshold=-44.f;
+    first.micGateAttackMs=3.f;first.micGateHoldMs=70.f;
+    first.micGateReleaseMs=120.f;first.micGateHysteresisDb=5.f;
     first.macros.fill(.5f);
     first.macros[0]=.86f;
     auto path=testFile(dir,"roundtrip");
@@ -84,7 +87,10 @@ int main(){
           &&second.slots[11].type==13&&second.slots[15].type==17
           &&second.micPreOn && second.micPreInput==1
           &&second.micPreTarget==3 && second.micPreAmount==.72f
-          &&second.micPreTrim==.63f,
+          &&second.micPreTrim==.63f
+          &&second.micGateOn && second.micGateThreshold==-44.f
+          &&second.micGateAttackMs==3.f && second.micGateHoldMs==70.f
+          &&second.micGateReleaseMs==120.f && second.micGateHysteresisDb==5.f,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
 
     // Schema v2 supports all new VoxRack modules without modifying the
