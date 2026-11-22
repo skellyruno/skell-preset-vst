@@ -942,9 +942,9 @@ public:
                                          && std::isfinite(suiteSignal.getSample(1,n));
         }
         bool hasLiveReturns=true;
-        for(int chain=0;chain<5;++chain)
+        for(int returnIndex=0;returnIndex<5;++returnIndex)
             hasLiveReturns=hasLiveReturns &&
-                processor.getSuiteReturnRms(0,chain)>.00001f;
+                processor.getSuiteReturnRms(0,returnIndex)>.00001f;
         const bool hasLiveDynamics=processor.getSlotGainReductionDb(0)>.05f &&
             processor.getSlotDeessReductionDb(0)>=0.f;
         juce::MemoryBlock suiteSaved;

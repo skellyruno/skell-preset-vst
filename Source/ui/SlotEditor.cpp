@@ -2122,7 +2122,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
         // Actual per-chain RMS from callback-owned DSP: no invented signal
         // graphics. Dragging a bar uses the original p11..p15 automation ID.
-        constexpr const char* names[]{"MAGIC","SPACE","ATTACK","ATTITUDE","PRESENCE"};
+        constexpr const char* returnNames[]{"MAGIC","SPACE","ATTACK","ATTITUDE","PRESENCE"};
         const float compressorGr=juce::jlimit(0.f,48.f,
             processor.getSlotGainReductionDb(slot));
         const float deessGr=juce::jlimit(0.f,24.f,
@@ -2146,7 +2146,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             g.setColour(Theme::green.withAlpha(.82f));
             if(measured>0.f)
                 g.fillRoundedRectangle({x+12.f,239.f,120.f*measured,10.f},4.f);
-            Theme::fittedText(g,names[chain],
+            Theme::fittedText(g,returnNames[chain],
                 {(int)x+9,262,126,19},10.6f,Theme::white,true,
                 juce::Justification::centred);
             Theme::text(g,juce::String(level*10.f,1),
