@@ -67,8 +67,10 @@ std::array<juce::String,4> titles(int type) {
         case 36:return {"Threshold","Ratio","Attack","Release"};
         case 37:return {"Pre Gain","Threshold","Type A/B","Effect Mix"};
         case 38:return {"Time","Feedback","Stereo Mode","R/L Offset"};
-        case 39:case 40:case 41:case 42:
-            return {"Amount","Rate","Tone","Mix"};
+        case 39:return {"Depth","Beat Division","Gate Tightness","Mix"};
+        case 40:return {"Stereo Width","LFO Rate","Unused","Mix"};
+        case 41:return {"Amount","HP Blend","Cutoff","Mix"};
+        case 42:return {"Drive","Unused","Colour","Mix"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -475,6 +477,22 @@ void SlotEditor::applyKnobReadouts() {
                     }
                 }
             }
+            if(module>=SkellPresetAudioProcessor::AdlibChop &&
+               module<=SkellPresetAudioProcessor::AdlibSaturate) {
+                if((module==SkellPresetAudioProcessor::AdlibMotion && i==2) ||
+                   (module==SkellPresetAudioProcessor::AdlibSaturate && i==1))
+                    return "N/A";
+                if(module==SkellPresetAudioProcessor::AdlibChop && i==1)
+                    return juce::String(1<<juce::jlimit(0,3,(int)(v*3.999)))+"x / beat";
+                if(module==SkellPresetAudioProcessor::AdlibMotion && i==1)
+                    return juce::String(.08+9.92*v,2)+" Hz";
+                if(module==SkellPresetAudioProcessor::AdlibFilter && i==2) {
+                    const double hz=80.*std::pow(225.,v);
+                    return hz>=1000.?juce::String(hz/1000.,2)+" kHz":
+                        juce::String(hz,0)+" Hz";
+                }
+                return juce::String(100.*v,0)+"%";
+            }
             if(module==SkellPresetAudioProcessor::MicModelFX) {
                 if(i==0)return skellpreset::dsp::MicModelTone::inputName(
                     skellpreset::dsp::MicModelTone::index((float)v));
@@ -621,6 +639,20 @@ void SlotEditor::applyKnobReadouts() {
                         return unit(value);
                     }
                 }
+            }
+            if(module>=SkellPresetAudioProcessor::AdlibChop &&
+               module<=SkellPresetAudioProcessor::AdlibSaturate) {
+                const auto unit=[](double x){return juce::jlimit(0.,1.,x);};
+                if(module==SkellPresetAudioProcessor::AdlibChop && i==1)
+                    return (juce::jlimit(0,3,(int)std::round(
+                        std::log2(juce::jmax(1.,value))))+.5)/4.;
+                if(module==SkellPresetAudioProcessor::AdlibMotion && i==1)
+                    return unit((value-.08)/9.92);
+                if(module==SkellPresetAudioProcessor::AdlibFilter && i==2) {
+                    const double hz=juce::jmax(80.,value*(text.contains("khz")?1000.:1.));
+                    return unit(std::log(hz/80.)/std::log(225.));
+                }
+                return unit(value/100.);
             }
             if(module==SkellPresetAudioProcessor::MicModelFX) {
                 if(i==0 || i==1) {
@@ -988,6 +1020,45 @@ bool SlotEditor::testStudioDelayPages() {
     select(physical);
     return ok;
 }
+bool SlotEditor::testAdlibControls() {
+    const int physical=slot,oldType=processor.slotType(slot);
+    const auto* oldOn=processor.state.getRawParameterValue(
+        "s"+juce::String(slot+1)+"_on");
+    const bool wasOn=oldOn&&oldOn->load()>.5f;
+    std::array<float,16> old{};
+    for(int i=0;i<16;++i)old[(size_t)i]=processor.getSlotParam(slot,i);
+    bool ok=true;
+    for(int type=SkellPresetAudioProcessor::AdlibChop;
+        type<=SkellPresetAudioProcessor::AdlibSaturate;++type) {
+        processor.setSlotType(slot,type);
+        processor.setSlotOn(slot,true);
+        select(slot);
+        ok=ok&&moduleSelectorMatchesAudio()&&knobs[0].isEnabled()&&knobs[3].isEnabled();
+        if(type==SkellPresetAudioProcessor::AdlibChop)
+            ok=ok&&titles(type)[1]=="Beat Division"&&
+                knobs[1].getTextFromValue(.625).contains("4x")&&
+                knobs[1].valueFromTextFunction&&
+                std::abs(knobs[1].valueFromTextFunction("8x")-.875)<.003;
+        else if(type==SkellPresetAudioProcessor::AdlibMotion)
+            ok=ok&&!knobs[2].isEnabled()&&
+                knobs[2].getTextFromValue(.5)=="N/A"&&
+                knobs[1].valueFromTextFunction&&
+                std::abs(knobs[1].valueFromTextFunction("5.04 Hz")-.5)<.005;
+        else if(type==SkellPresetAudioProcessor::AdlibFilter)
+            ok=ok&&titles(type)[1]=="HP Blend"&&
+                knobs[2].valueFromTextFunction&&
+                std::abs(knobs[2].valueFromTextFunction("1200 Hz")-
+                         std::log(15.)/std::log(225.))<.003;
+        else
+            ok=ok&&!knobs[1].isEnabled()&&
+                knobs[1].getTextFromValue(.5)=="N/A";
+    }
+    processor.setSlotType(physical,oldType);
+    processor.setSlotOn(physical,wasOn);
+    for(int i=0;i<16;++i)processor.setSlotParam(physical,i,old[(size_t)i]);
+    select(physical);
+    return ok;
+}
 bool SlotEditor::testStudioLimiterPages() {
     const int previousType=processor.slotType(slot);
     const int physical=slot;
@@ -1252,7 +1323,15 @@ void SlotEditor::refreshIfChanged() {
     for(auto& button:delayPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioDelayFX);
     studioGateFloor.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
     studioCompKnee.setVisible(type==SkellPresetAudioProcessor::StudioCompressorFX);
-    for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
+    for(int i=0;i<4;++i) {
+        auto& knob=knobs[(size_t)i];
+        const bool unused=(type==SkellPresetAudioProcessor::AdlibMotion && i==2)
+            ||(type==SkellPresetAudioProcessor::AdlibSaturate && i==1);
+        knob.setEnabled(!external && !unused);
+        knob.setVisible(!external);
+        knob.setTooltip(unused?"Reserved automation ID: the shared DSP ignores this control":
+                         juce::String{});
+    }
     repaint();
 }
 void SlotEditor::resized() {
@@ -2494,6 +2573,70 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.setColour(channel==0?Theme::green:Theme::blue);
                 g.strokePath(curve,juce::PathStrokeType(channel==0?2.7f:1.9f));
             }
+        } else if(type>=SkellPresetAudioProcessor::AdlibChop &&
+                  type<=SkellPresetAudioProcessor::AdlibSaturate) {
+            // Parameter-driven shapes from the shared DSP's algorithms.
+            // This is not a measured spectrum or synthesized live audio trace.
+            const float depth=processor.getSlotParam(slot,0);
+            const float rate=processor.getSlotParam(slot,1);
+            const float tone=processor.getSlotParam(slot,2);
+            const float mix=processor.getSlotParam(slot,3);
+            const int divisions=1<<juce::jlimit(0,3,(int)(rate*3.999f));
+            const float drive=1.f+14.f*depth;
+            const float inv=1.f/std::tanh(drive);
+            const float colour=.6f+.4f*tone;
+            juce::Path primary,secondary;
+            for(int k=0;k<=220;++k) {
+                const float t=k/220.f;
+                float a=0.f,b=0.f;
+                if(type==SkellPresetAudioProcessor::AdlibChop) {
+                    const float phase=(float)std::fmod((double)t*divisions,1.);
+                    const float duty=.82f-.55f*tone;
+                    const float attack=juce::jlimit(0.f,1.f,phase*35.f);
+                    const float release=juce::jlimit(0.f,1.f,(duty-phase)*35.f);
+                    a=1.f-depth*mix*(1.f-juce::jmax(0.f,juce::jmin(attack,release)));
+                } else if(type==SkellPresetAudioProcessor::AdlibMotion) {
+                    const float pan=std::sin(t*juce::MathConstants<float>::twoPi)*depth;
+                    a=.5f+.32f*mix*(-juce::jmax(0.f,pan)+.85f*juce::jmax(0.f,-pan));
+                    b=.5f+.32f*mix*(-juce::jmax(0.f,-pan)+.85f*juce::jmax(0.f,pan));
+                } else if(type==SkellPresetAudioProcessor::AdlibFilter) {
+                    const float hz=20.f*std::pow(1000.f,t);
+                    const float cutoff=80.f*std::pow(225.f,tone);
+                    const float lp=1.f/std::sqrt(1.f+(hz/cutoff)*(hz/cutoff));
+                    const float hp=(hz/cutoff)*lp;
+                    a=1.f+depth*mix*((1.f-rate)*lp+rate*hp-1.f);
+                } else {
+                    const float input=-1.f+2.f*t;
+                    const float colourSample=std::tanh(input*drive)*inv*colour+
+                                              input*(1.f-colour);
+                    a=input+(colourSample-input)*depth*mix;
+                    b=input;
+                }
+                const float px=x0+t*w;
+                const bool symmetric=type==SkellPresetAudioProcessor::AdlibSaturate;
+                const float scale=symmetric?.36f:.68f;
+                const float py=symmetric?plot.getCentreY()-a*h*scale:y1-a*h*scale;
+                const float py2=symmetric?plot.getCentreY()-b*h*scale:y1-b*h*scale;
+                if(k==0){primary.startNewSubPath(px,py);secondary.startNewSubPath(px,py2);}
+                else {primary.lineTo(px,py);secondary.lineTo(px,py2);}
+            }
+            if(type==SkellPresetAudioProcessor::AdlibMotion ||
+               type==SkellPresetAudioProcessor::AdlibSaturate) {
+                g.setColour(Theme::blue.withAlpha(.75f));
+                g.strokePath(secondary,juce::PathStrokeType(1.7f));
+            }
+            g.setColour(Theme::green);
+            g.strokePath(primary,juce::PathStrokeType(2.8f));
+            const juce::String title=type==SkellPresetAudioProcessor::AdlibChop
+                ?"BPM GATE  /  "+juce::String(divisions)+"x BEAT DIVISION":
+                type==SkellPresetAudioProcessor::AdlibMotion
+                ?"STEREO MOTION  /  "+juce::String(.08f+9.92f*rate,2)+" Hz":
+                type==SkellPresetAudioProcessor::AdlibFilter
+                ?"FILTER PROFILE  /  LOW TO HIGH":
+                "TANH SATURATION  /  "+juce::String(drive,1)+"x DRIVE";
+            Theme::fittedText(g,title,{55,172,735,22},12.5f,Theme::green,true);
+            Theme::text(g,"CONTROL RESPONSE / NOT LIVE AUDIO",
+                        {55,327,735,18},10.f,Theme::muted);
         } else if(type!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
             // Match Finish already draws its measured harmonic-transfer curve,
             // a muted clean reference and its own labels above. The generic
@@ -2507,6 +2650,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         if(!isPagedEQ(type) &&
            type!=SkellPresetAudioProcessor::Limiter &&
            type!=SkellPresetAudioProcessor::StudioLimiterFX &&
+           !(type>=SkellPresetAudioProcessor::AdlibChop &&
+             type<=SkellPresetAudioProcessor::AdlibSaturate) &&
            !(modOrbView && isModulationOrbEffect(type))) {
         // The limiter has its own output meter and transfer curve.
         // Its generic XY crosshair obscured those readouts without adding
@@ -2764,6 +2909,9 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
     // Dynamics is a display of the limiter transfer, while its four knobs
     // edit p5..p8. Do not silently change off-page p1/p2 on graph drag.
     if(type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1)return;
+    // Adlib graphs visualize control responses and do not edit invisible XY axes.
+    if(type>=SkellPresetAudioProcessor::AdlibChop &&
+       type<=SkellPresetAudioProcessor::AdlibSaturate)return;
     constexpr float plotCentreY=254.f;
     if(type==SkellPresetAudioProcessor::EQ){
         const auto x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
@@ -2934,6 +3082,10 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         if(onBackgroundClick)onBackgroundClick();
         return;
     }
+    if(type>=SkellPresetAudioProcessor::AdlibChop &&
+       type<=SkellPresetAudioProcessor::AdlibSaturate &&
+       juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))
+        return; // Adlib response is a visual diagnostic, never a fake XY editor
     if(isModulationOrbEffect(type) && modOrbView)
         return; // display-only modulation orb must not alter DSP automation
     if(type==SkellPresetAudioProcessor::SkelldizerFX) {

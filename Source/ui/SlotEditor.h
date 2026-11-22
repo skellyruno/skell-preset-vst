@@ -77,6 +77,7 @@ public:
     bool testMatchFinishPages();
     bool testStudioLimiterPages();
     bool testStudioDelayPages();
+    bool testAdlibControls();
     bool testMicModelCards();
     bool testModOrbToggle();
     void setModOrbForScreenshot(bool enabled);

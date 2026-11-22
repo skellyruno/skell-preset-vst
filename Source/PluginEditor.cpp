@@ -646,6 +646,8 @@ public:
             issues.add("Studio Limiter pages or dedicated p9 gate floor do not control host DSP");
         if(!slot.testStudioDelayPages())
             issues.add("Studio Delay effect pages failed to map p1..p16 host parameters");
+        if(!slot.testAdlibControls())
+            issues.add("AdlibFX UI knob units, inert controls or parameter bindings failed");
         if(!slot.testMicModelCards())
             issues.add("Mic Modeling profile cards failed to update stable host parameters");
         if(!slot.testModOrbToggle())
