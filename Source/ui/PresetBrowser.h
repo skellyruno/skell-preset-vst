@@ -21,14 +21,15 @@ public:
     juce::Image selectedCover() const;
     int visibleFactoryPresetsForTest() const;
     bool canSetCoverForTest() const {return canEditCover();}
-    bool testMainVocalsPresetFilterForTest(); // exact two-item factory whitelist
+    bool testMainVocalsPresetFilterForTest(); // primary whitelist and independent artists/favorites
     std::function<void()> onClose;
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
 private:
     SkellPresetAudioProcessor& processor;
-    juce::TextEditor search;
-    juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},artworkButton{"SET COVER"};
+    juce::TextEditor search,artistEditor;
+    juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
+        artworkButton{"SET COVER"},artistButton{"SET ARTIST"};
     std::unique_ptr<juce::FileChooser> fileChooser;
     bool chooserActive=false;
     void setChooserActive(bool active);
@@ -38,6 +39,7 @@ private:
     void refreshArtwork();
     int bank=0,scroll=0,hoveredCard=-1;
     juce::StringArray favoriteKeys; // sidecar only; not in VST3 state or preset ZIP
+    juce::StringArray artistKeys,artistNames; // user library sidecar, never audio state
     std::vector<juce::File> userPresets;
     std::vector<juce::Image> userArtwork; // UI-thread thumbnail cache, no filesystem in paint()
     juce::Image alchemistArtwork; // editable factory cover, stored separately
@@ -50,6 +52,11 @@ private:
     void loadFavorites();
     bool saveFavorites() const;
     juce::File favoritesFile() const;
+    juce::File artistsFile() const;
+    juce::String artistForUser(int index) const;
+    void loadArtists();
+    bool saveArtists() const;
+    bool setArtistForUser(int index,const juce::String& name);
     juce::File libraryDirectory() const;
     juce::File activeArtworkDestination() const;
     bool canEditCover() const;

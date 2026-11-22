@@ -7,7 +7,7 @@
 #include <array>
 
 namespace {
-const juce::StringArray banks{"Main Vocals","My Presets"};
+const juce::StringArray banks{"Main Vocals","My Presets","Artists","Favorites"};
 constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
 constexpr int deuceIndex=skellpreset::deuce_v25::factoryIndex;
 // Each factory sound has deterministic original cover art; no bitmap decoding
@@ -65,7 +65,10 @@ void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
 }
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.setMultiLine(false);
-    search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
+    search.setTextToShowWhenEmpty("Search presets, artists or artist:name",Theme::muted);
+    artistEditor.setMultiLine(false);
+    artistEditor.setTextToShowWhenEmpty("Artist for selected preset",Theme::muted);
+    artistEditor.setTooltip("Type an artist name for your selected personal preset, then press SET ARTIST");
     applyTheme();
     search.onTextChange=[this]{scroll=0;hoveredCard=-1;repaint();};
     search.onEscapeKey=[this]{setVisible(false);if(onClose)onClose();};
@@ -75,20 +78,34 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
         if(!entries.empty())auditionEntry(entries[(size_t)std::min(scroll,(int)entries.size()-1)]);
     };
     addAndMakeVisible(search);
-    for (auto* button : {&importButton,&exportButton,&artworkButton}) {
+    addAndMakeVisible(artistEditor);
+    for (auto* button : {&importButton,&exportButton,&artworkButton,&artistButton})
         addAndMakeVisible(*button);
-    }
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
     exportButton.setTooltip("Save the active chain, slot order, macros and global controls");
     artworkButton.setTooltip("Choose a cover for Alchemist or any selected saved preset");
     artworkButton.setEnabled(false);
+    artistButton.setEnabled(false);
+    artistButton.setTooltip("Save an artist label to the selected personal preset. Does not modify its .skellpreset file.");
     reloadAlchemistArtwork();
     scanLibrary();
     loadFavorites();
+    loadArtists();
     refreshArtwork();
     importButton.onClick=[this] {chooseImport();};
     exportButton.onClick=[this] {chooseExport();};
     artworkButton.onClick=[this] {chooseArtwork();};
+    artistButton.onClick=[this] {
+        if(!activeUserPreset.existsAsFile())return;
+        for(int i=0;i<(int)userPresets.size();++i)
+            if(userPresets[(size_t)i]==activeUserPreset) {
+                if(setArtistForUser(i,artistEditor.getText())) {
+                    scroll=0;hoveredCard=-1;repaint();
+                }
+                return;
+            }
+    };
+    artistEditor.onReturnKey=[this]{if(artistButton.isEnabled())artistButton.triggerClick();};
     setWantsKeyboardFocus(true);
 }
 void PresetBrowser::applyTheme() {
@@ -96,8 +113,12 @@ void PresetBrowser::applyTheme() {
     search.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
     search.setColour(juce::TextEditor::textColourId,Theme::white);
     search.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
-    search.setTextToShowWhenEmpty("Search presets or banks",Theme::muted);
-    for(auto* button:{&importButton,&exportButton,&artworkButton}) {
+    search.setTextToShowWhenEmpty("Search presets, artists or artist:name",Theme::muted);
+    artistEditor.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
+    artistEditor.setColour(juce::TextEditor::textColourId,Theme::white);
+    artistEditor.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
+    artistEditor.setTextToShowWhenEmpty("Artist for selected preset",Theme::muted);
+    for(auto* button:{&importButton,&exportButton,&artworkButton,&artistButton}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panel);
         button->setColour(juce::TextButton::textColourOffId,Theme::white);
     }
@@ -188,19 +209,24 @@ void PresetBrowser::copyToLibrary(const juce::File& source) {
     scanLibrary();
     refreshArtwork();
 }
-void PresetBrowser::open(){scanLibrary();loadFavorites();refreshArtwork();bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
+void PresetBrowser::open(){scanLibrary();loadFavorites();loadArtists();refreshArtwork();bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
-    // Smaller, compact actions with breathing room below the bank list.
-    importButton.setBounds(18,427,128,26);
-    exportButton.setBounds(18,462,128,26);
-    artworkButton.setBounds(18,497,128,26);
+    // Four categories remain visible; artist assignment is a sidebar-only
+    // library operation and never opens/re-saves the source preset package.
+    artistEditor.setBounds(18,393,166,25);
+    artistButton.setBounds(18,427,80,26);
+    importButton.setBounds(104,427,80,26);
+    exportButton.setBounds(18,462,166,26);
+    artworkButton.setBounds(18,497,166,26);
 }
 void PresetBrowser::setChooserActive(bool active) {
     chooserActive=active;
     importButton.setEnabled(!active);
     exportButton.setEnabled(!active);
     artworkButton.setEnabled(!active && canEditCover());
+    artistButton.setEnabled(!active && activeUserPreset.existsAsFile());
+    artistEditor.setEnabled(!active && activeUserPreset.existsAsFile());
 }
 void PresetBrowser::chooseImport() {
     if(chooserActive)return;
@@ -270,6 +296,74 @@ juce::File PresetBrowser::favoritesFile() const {
     // saved-preset identifiers remain intact across sessions and host reloads.
     return libraryDirectory().getParentDirectory().getChildFile("Favorites.txt");
 }
+
+juce::File PresetBrowser::artistsFile() const {
+    // Artist tags are library metadata, not factory IDs, host automation,
+    // FL Studio project state or .skellpreset ZIP contents.
+    return libraryDirectory().getParentDirectory().getChildFile("ArtistTags.txt");
+}
+juce::String PresetBrowser::artistForUser(int index) const {
+    if(index<0 || index>=(int)userPresets.size())return {};
+    const auto key=favoriteKey(-index-1);
+    const int found=artistKeys.indexOf(key,true);
+    return found>=0 && found<artistNames.size()?artistNames[found]:juce::String{};
+}
+void PresetBrowser::loadArtists() {
+    artistKeys.clear();artistNames.clear();
+    const auto file=artistsFile();
+    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>65536)return;
+    for(const auto& line:juce::StringArray::fromLines(file.loadFileAsString())) {
+        const int tab=line.indexOfChar('\t');
+        if(tab<6)continue;
+        const auto key=line.substring(0,tab).trim().toLowerCase();
+        const auto artist=line.substring(tab+1).trim();
+        if(!key.startsWith("user:") || key.length()>260 ||
+           key.containsAnyOf("\r\n\t") || artist.isEmpty() ||
+           artist.length()>60 || artist.containsAnyOf("\r\n\t") ||
+           artistKeys.contains(key,true))continue;
+        artistKeys.add(key);artistNames.add(artist);
+        if(artistKeys.size()>=200)break;
+    }
+}
+bool PresetBrowser::saveArtists() const {
+    const auto target=artistsFile();
+    if(target.getParentDirectory().createDirectory().failed())return false;
+    juce::StringArray rows;
+    for(int i=0;i<artistKeys.size() && i<artistNames.size();++i)
+        rows.add(artistKeys[i]+"\t"+artistNames[i]);
+    // Atomic replacement keeps existing user tags intact on disk failure.
+    juce::TemporaryFile pending(target);
+    if(!pending.getFile().replaceWithText(rows.joinIntoString("\n")+"\n"))
+        return false;
+    return pending.overwriteTargetFileWithTemporary();
+}
+bool PresetBrowser::setArtistForUser(int index,const juce::String& input) {
+    const auto artist=input.trim();
+    if(index<0 || index>=(int)userPresets.size())return false;
+    if(artist.length()>60 || artist.containsAnyOf("\r\n\t")) {
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+            "Invalid artist","Use an artist name up to 60 characters without tabs or line breaks.");
+        return false;
+    }
+    const auto key=favoriteKey(-index-1);
+    if(key.isEmpty())return false;
+    const auto beforeKeys=artistKeys,beforeNames=artistNames;
+    const int existing=artistKeys.indexOf(key,true);
+    if(existing>=0) {
+        if(artist.isEmpty()) {
+            artistKeys.remove(existing);artistNames.remove(existing);
+        } else artistNames.set(existing,artist);
+    } else if(artist.isNotEmpty() && artistKeys.size()<200) {
+        artistKeys.add(key);artistNames.add(artist);
+    }
+    if(!saveArtists()) {
+        artistKeys=beforeKeys;artistNames=beforeNames;
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+            "Artist not saved","Check the Skell Preset library folder permissions.");
+        return false;
+    }
+    return true;
+}
 juce::String PresetBrowser::favoriteKey(int entry) const {
     if(entry>=0)return "factory:"+juce::String(entry);
     const auto index=-entry-1;
@@ -333,21 +427,33 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const bool onlyUserPresets=std::all_of(personal.begin(),personal.end(),
         [](int entry){return entry<0;});
 
+    bank=2; // Artists only shows user presets carrying an artist label.
+    const auto artistPresets=filtered();
+    const bool onlyTagged=std::all_of(artistPresets.begin(),artistPresets.end(),
+        [this](int entry){return entry<0 && artistForUser(-entry-1).isNotEmpty();});
+
+    bank=3; // Favorites include user presets and the two whitelisted factories.
+    const auto favorites=filtered();
+    const bool onlyFavorites=std::all_of(favorites.begin(),favorites.end(),
+        [this](int entry) {return isFavorite(entry) &&
+            (entry<0 || entry==alchemistIndex || entry==deuceIndex);});
     bank=previousBank;
     scroll=previousScroll;
     search.setText(query,juce::dontSendNotification);
-    return banks.size()==2 && exactMainVocals && onlyUserPresets;
+    return banks.size()==4 && exactMainVocals && onlyUserPresets &&
+           onlyTagged && onlyFavorites;
 }
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
     const auto q=search.getText().toLowerCase().trim();
+    const bool favoriteFilter=bank==3 || q.startsWith("fav:");
 
-    if(bank==0) { // Main Vocals: only the two requested factory presets.
+    if(bank==0 || bank==3) {
+        // Preserve the owner's exact Alchemist/Deuce-only factory whitelist.
         for(const int i:{alchemistIndex,deuceIndex}) {
             if(i<0 || i>=(int)skellpreset::factoryPresets.size())continue;
             const auto& item=skellpreset::factoryPresets[(size_t)i];
             const juce::String name(item.name),b(item.bank),desc(item.description);
-            if(b!="Main Vocals")continue;
             bool found=q.isEmpty() || name.containsIgnoreCase(q) ||
                        b.containsIgnoreCase(q) || desc.containsIgnoreCase(q);
             if(q.startsWith("bank:"))
@@ -357,32 +463,56 @@ std::vector<int> PresetBrowser::filtered() const {
             if(q.startsWith("author:"))
                 found=juce::String("skell audio").containsIgnoreCase(
                     q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("artist:") || q.startsWith("match:"))found=false;
             if(q.startsWith("fav:")) {
                 const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
-                found=isFavorite(i) && (term.isEmpty() || name.containsIgnoreCase(term));
+                found=term.isEmpty() || name.containsIgnoreCase(term);
             }
-            if(q.startsWith("match:"))found=false;
+            if(favoriteFilter && !isFavorite(i))found=false;
             if(found)list.push_back(i);
         }
     }
-
-    if(bank==1) { // Personal files are kept separate from the two factory sounds.
+    if(bank==1 || bank==2 || bank==3) {
         for(int i=0;i<(int)userPresets.size();++i) {
             const auto label=userPresets[(size_t)i].getFileNameWithoutExtension();
+            const auto artist=artistForUser(i);
             bool found=q.isEmpty() || label.containsIgnoreCase(q) ||
-                       juce::String("My Presets").containsIgnoreCase(q);
-            if(q.startsWith("bank:"))
-                found=juce::String("My Presets").containsIgnoreCase(
+                       artist.containsIgnoreCase(q) ||
+                       (bank==1 && juce::String("My Presets").containsIgnoreCase(q));
+            if(q.startsWith("artist:"))
+                found=artist.isNotEmpty() && artist.containsIgnoreCase(
                     q.fromFirstOccurrenceOf(":",false,false).trim());
-            if(q.startsWith("author:")||q.startsWith("match:")||q.startsWith("tag:"))
-                found=false;
+            if(q.startsWith("bank:"))
+                found=bank==1 && juce::String("My Presets").containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("fav:")) {
+                const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
+                found=term.isEmpty() || label.containsIgnoreCase(term) ||
+                      artist.containsIgnoreCase(term);
+            }
+            if(q.startsWith("author:") || q.startsWith("match:") ||
+               q.startsWith("tag:"))found=false;
+            if(bank==2 && artist.isEmpty())found=false;
+            if(favoriteFilter && !isFavorite(-i-1))found=false;
             if(found)list.push_back(-i-1);
+        }
+        if(bank==2) {
+            // Group a personal artist's sounds together, stable by filename.
+            std::stable_sort(list.begin(),list.end(),[this](int a,int b){
+                return artistForUser(-a-1).compareIgnoreCase(artistForUser(-b-1))<0;
+            });
         }
     }
     return list;
 }
 void PresetBrowser::refreshArtwork() {
     artworkButton.setEnabled(!chooserActive && canEditCover());
+    artistButton.setEnabled(!chooserActive && activeUserPreset.existsAsFile());
+    artistEditor.setEnabled(!chooserActive && activeUserPreset.existsAsFile());
+    juce::String artist;
+    for(int i=0;i<(int)userPresets.size();++i)
+        if(userPresets[(size_t)i]==activeUserPreset) {artist=artistForUser(i);break;}
+    artistEditor.setText(artist,juce::dontSendNotification);
     // 128x96 thumbnails are only for cards; never scale them to wallpaper.
     selectedUserBackdrop={};
     if(activeUserPreset.existsAsFile()) {
@@ -475,7 +605,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
     }
     Theme::text(g,juce::String((int)userPresets.size())+" PERSONAL PRESETS",
         {18,368,175,22},11,Theme::green,true);
-    Theme::text(g,"Select a sound to audition.",{18,390,175,20},11,Theme::muted);
+    // Artist metadata can be assigned to personal presets with the sidebar
+    // text field; the actual native preset and host program IDs stay intact.
     for(int i=0;i<6;i++){
         const int itemIndex=i+scroll;
         if(itemIndex>=(int)entries.size())break;
@@ -486,8 +617,10 @@ void PresetBrowser::paint(juce::Graphics&g) {
             :(entry==alchemistIndex?juce::String("Alchemist")
               :(entry==deuceIndex?juce::String("Deuce")
                 :juce::String(skellpreset::factoryPresets[(size_t)entry].name)));
-        const juce::String itemBank=custom?"My Presets":
-            juce::String(skellpreset::factoryPresets[(size_t)entry].bank);
+        const juce::String userArtist=custom?artistForUser(-entry-1):juce::String{};
+        const juce::String itemBank=custom
+            ?(userArtist.isNotEmpty()?"ARTIST: "+userArtist:juce::String("My Presets"))
+            :juce::String(skellpreset::factoryPresets[(size_t)entry].bank);
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         g.setColour(Theme::panelAlt);g.fillRoundedRectangle(rect,7.f);
@@ -572,14 +705,15 @@ void PresetBrowser::paint(juce::Graphics&g) {
         Theme::text(g,"your plugin backdrop.",{424,424,196,18},11,Theme::muted);
     }
     if(entries.empty()) {
-        Theme::text(g,bank==3?"NO FAVORITES YET":bank==2?"NO SAVED PRESETS":"NO MATCHING PRESETS",
-                    {246,222,350,40},15,Theme::muted,true);
+        Theme::text(g,bank==3?"NO FAVORITES YET":
+            bank==2?"NO ARTIST PRESETS YET":"NO MATCHING PRESETS",
+            {246,222,350,40},15,Theme::muted,true);
         if(bank==3)
-            Theme::text(g,"Click the star beside a preset to add it here.",
-                {246,255,370,23},11,Theme::muted);
+            Theme::text(g,"Star a factory or personal preset to save it here.",
+                {246,255,385,23},11,Theme::muted);
         if(bank==2)
-            Theme::text(g,"Save your current rack to build a personal library.",
-                {246,255,370,23},11,Theme::muted);
+            Theme::text(g,"Load a personal preset and assign its artist at left.",
+                {246,255,385,23},11,Theme::muted);
     }
     if((int)entries.size()>6){
         const float railTop=110.f,railHeight=361.f;

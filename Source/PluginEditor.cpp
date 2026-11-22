@@ -543,7 +543,7 @@ public:
            !browser.canSetCoverForTest())
             issues.add("Main Vocals must show exactly Alchemist and Deuce");
         if(!browser.testMainVocalsPresetFilterForTest())
-            issues.add("Main Vocals whitelist or separate My Presets bank regressed");
+            issues.add("Main Vocals, My Presets, Artists or Favorites browser filter regressed");
         if(processor.presetName()!="Alchemist" ||
            processor.getProgramName(skellpreset::alchemist::factoryIndex)!="Alchemist" ||
            processor.getProgramName(skellpreset::deuce_v25::factoryIndex)!="Deuce")
