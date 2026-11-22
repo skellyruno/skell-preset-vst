@@ -9,6 +9,8 @@
 namespace {
 const juce::StringArray banks{"Main Vocals","My Presets","Artists","Favorites",
                               "Rage","Indie","R&B"};
+constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
+constexpr int deuceIndex=skellpreset::deuce_v25::factoryIndex;
 // One shared geometry model for painting, click hit-testing and UI regression.
 // The three genres have a visible MANUAL heading and never overlap controls.
 juce::Rectangle<int> bankBounds(int index) noexcept {
@@ -19,8 +21,6 @@ juce::String singlePreviewName(int entry) {
     if(entry==deuceIndex)return "DEUCE";
     return entry<0?"YOUR PRESET":"FACTORY PRESET";
 }
-constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
-constexpr int deuceIndex=skellpreset::deuce_v25::factoryIndex;
 // Each factory sound has deterministic original cover art; no bitmap decoding
 // or file I/O during a repaint. User-selected images override this motif.
 void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
