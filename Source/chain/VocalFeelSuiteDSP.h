@@ -187,8 +187,14 @@ public:
             doublerL.push(.5f*(ml+mr));doublerR.push(.5f*(ml+mr));
             phaseL+=doubleIncL;phaseR+=doubleIncR;
             if(phaseL>=1.f)phaseL-=1.f;if(phaseR>=1.f)phaseR-=1.f;
-            const float a=doublerL.read(doubleOffsetL+doubleDepth*std::sin(2.*pi*phaseL));
-            const float b=doublerR.read(doubleOffsetR+doubleDepth*std::sin(2.*pi*phaseR));
+            // Use single-precision modulation on the audio thread. A
+            // double-to-float narrowing here raised MSVC /W4 concerns and
+            // the computed delay needs only sub-sample float precision.
+            constexpr float phaseTwoPi=6.2831853071795864769f;
+            const float a=doublerL.read(doubleOffsetL+
+                doubleDepth*std::sin(phaseTwoPi*phaseL));
+            const float b=doublerR.read(doubleOffsetR+
+                doubleDepth*std::sin(phaseTwoPi*phaseR));
             mixed[0]=(.55f*ml+.6f*a)*.37f*chainG[0];
             mixed[1]=(.55f*mr+.6f*b)*.37f*chainG[0];
             outputL+=mixed[0];outputR+=mixed[1];chainEnergy[0]+=(double)mixed[0]*mixed[0];
