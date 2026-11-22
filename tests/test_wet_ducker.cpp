@@ -31,6 +31,15 @@ int main() {
             i%3?std::numeric_limits<float>::quiet_NaN():100.f,-100.f);
         if(!std::isfinite(g)||g<0.f||g>1.f)return 7;
     }
+    // New DUCKING attack is an audible DSP control, not an inert GUI value.
+    d.prepare(48000.);d.set(true,.8f,-36.f,320.f,2.f);
+    float fast=1.f;
+    for(int i=0;i<480;++i)fast=d.processGain(.8f,.8f);
+    d.prepare(48000.);d.set(true,.8f,-36.f,320.f,80.f);
+    float soft=1.f;
+    for(int i=0;i<480;++i)soft=d.processGain(.8f,.8f);
+    if(!(fast<soft-.35f && fast>=0.f && soft<=1.f))return 8;
+    std::printf("PASS: 2ms duck attack %.4f < 80ms duck attack %.4f\n",fast,soft);
     std::printf("PASS: voice wet duck OFF=unity, linked -%0.1f dB, 200 ms recovery, NaN clamp, zero lookahead\n",
                 -20.f*std::log10(active));
     return 0;

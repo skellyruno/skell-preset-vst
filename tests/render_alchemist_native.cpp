@@ -826,29 +826,36 @@ int studioSmoke() {
         auto* duckOn=processor->state.getParameter("s1_duckOn");
         auto* duckDepth=processor->state.getParameter("s1_duckDepth");
         auto* duckRelease=processor->state.getParameter("s1_duckRelease");
-        if(!duckOn || !duckDepth || !duckRelease ||
+        auto* duckAttack=processor->state.getParameter("s1_duckAttack");
+        if(!duckOn || !duckDepth || !duckRelease || !duckAttack ||
            processor->getLatencySamples()!=0) return 98;
         duckOn->setValueNotifyingHost(duckOn->convertTo0to1(1.f));
         duckDepth->setValueNotifyingHost(duckDepth->convertTo0to1(.78f));
         duckRelease->setValueNotifyingHost(duckRelease->convertTo0to1(420.f));
+        duckAttack->setValueNotifyingHost(duckAttack->convertTo0to1(26.f));
         juce::MemoryBlock packed;
         processor->getStateInformation(packed);
         auto recalled=std::make_unique<SkellPresetAudioProcessor>();
         recalled->setStateInformation(packed.getData(),(int)packed.getSize());
         const auto* on=recalled->state.getRawParameterValue("s1_duckOn");
         const auto* amount=recalled->state.getRawParameterValue("s1_duckDepth");
-        if(!on || !amount || on->load()<.5f ||
-           std::abs(amount->load()-.78f)>.02f)return 99;
+        const auto* attackSaved=recalled->state.getRawParameterValue("s1_duckAttack");
+        if(!on || !amount || !attackSaved || on->load()<.5f ||
+           std::abs(amount->load()-.78f)>.02f ||
+           std::abs(attackSaved->load()-26.f)>.1f)return 99;
         const auto duckFile=juce::File::getSpecialLocation(juce::File::tempDirectory)
             .getNonexistentChildFile("skell-wet-sidechain-smoke",".skellpreset",false);
         if(processor->exportPreset(duckFile).failed())return 100;
         auto restored=std::make_unique<SkellPresetAudioProcessor>();
         const auto saved=restored->importPreset(duckFile);
         duckFile.deleteFile();
-        if(saved.failed() || restored->state.getRawParameterValue("s1_duckOn")->load()<.5f)
-            return 101;
+        const auto* restoredAttack=restored->state.getRawParameterValue("s1_duckAttack");
+        if(saved.failed() || !restoredAttack ||
+           restored->state.getRawParameterValue("s1_duckOn")->load()<.5f ||
+           std::abs(restoredAttack->load()-26.f)>.1f)return 101;
         restored->loadFactoryPreset(0);
-        if(restored->state.getRawParameterValue("s1_duckOn")->load()>.5f)
+        if(restored->state.getRawParameterValue("s1_duckOn")->load()>.5f ||
+           std::abs(restored->state.getRawParameterValue("s1_duckAttack")->load()-12.f)>.1f)
             return 102;
         std::puts("PASS: wet sidechain APVTS state, ZIP import/export, OFF factory reset, 0 PDC");
     }

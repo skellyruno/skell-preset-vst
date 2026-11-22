@@ -54,7 +54,8 @@ int main(){
               && loaded.micGateRelease==160.f
               && loaded.micGateHold==55.f
               && !loaded.slots[0].duckOn
-              && loaded.slots[0].duckDepth==.65f,
+              && loaded.slots[0].duckDepth==.65f
+              && loaded.slots[0].duckAttack==12.f,
               "Default rack imports without activating effects or mic preamp");
         bool importedNeutralParameters=true;
         for(const auto& slot:loaded.slots)
@@ -73,6 +74,7 @@ int main(){
         slot.enabled=s%2==0;slot.wet=.15f+(float)s*.04f;
         slot.duckOn=s==2;slot.duckDepth=.73f;
         slot.duckThreshold=-28.f;slot.duckRelease=480.f;
+        slot.duckAttack=34.f;
         slot.params.fill(.5f);
     }
     first.activeSlotCount=14;
@@ -100,7 +102,8 @@ int main(){
           &&second.slots[2].duckOn &&!second.slots[3].duckOn
           &&second.slots[2].duckDepth==.73f
           &&second.slots[2].duckThreshold==-28.f
-          &&second.slots[2].duckRelease==480.f,
+          &&second.slots[2].duckRelease==480.f
+          &&second.slots[2].duckAttack==34.f,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
 
     // Schema v2 supports all new VoxRack modules without modifying the
@@ -312,7 +315,8 @@ int main(){
                 {false,"duckOn","duck-on","Reject explicit null wet sidechain on"},
                 {false,"duckDepth","duck-depth","Reject null duck depth"},
                 {false,"duckThreshold","duck-threshold","Reject null duck threshold"},
-                {false,"duckRelease","duck-release","Reject null duck release"}
+                {false,"duckRelease","duck-release","Reject null duck release"},
+                {false,"duckAttack","duck-attack","Reject null duck attack"}
             };
             for(const auto& test:nullCases) {
                 auto nullJson=juce::JSON::parse(jsonText);

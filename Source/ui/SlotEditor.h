@@ -47,9 +47,10 @@ public:
         Theme::panelBox(g,getLocalBounds().toFloat().reduced(1.f),8.f,true);
         Theme::text(g,"VOCAL SIDECHAIN / DUCK FX RETURNS",
                     {16,11,getWidth()-57,24},13.f,Theme::green,true);
-        Theme::text(g,"DEPTH",{17,84,86,20},11,Theme::white,true);
+        Theme::text(g,"DUCKING",{17,84,86,20},11,Theme::white,true);
         Theme::text(g,"THRESHOLD",{17,125,86,20},11,Theme::white,true);
-        Theme::text(g,"RELEASE",{17,166,86,20},11,Theme::white,true);
+        Theme::text(g,"ATTACK",{17,166,86,20},11,Theme::white,true);
+        Theme::text(g,"RELEASE",{17,207,86,20},11,Theme::white,true);
         Theme::fittedText(g,"DRY VOCAL TRIGGERS / 0 PDC / NO SIDECHAIN BUS",
                           {17,getHeight()-17,getWidth()-33,12},9,Theme::muted);
     }
@@ -154,9 +155,9 @@ private:
     juce::TextButton duckOpen{"SIDECHAIN"},duckClose{"X"};
     SkellWetDuckPanel duckPanel;
     juce::ToggleButton duckOn{"DUCK WHEN VOCAL IS PRESENT"};
-    juce::Slider duckDepth,duckThreshold,duckRelease;
+    juce::Slider duckDepth,duckThreshold,duckAttack,duckRelease;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> duckOnAttachment;
-    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,3> duckAttachments;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> duckAttachments;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateFloorAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> studioCompKneeAttachment;
     std::array<SkellHoverPercentKnob,4> knobs;

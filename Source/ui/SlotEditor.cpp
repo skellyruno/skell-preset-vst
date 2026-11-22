@@ -286,7 +286,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     duckPanel.addAndMakeVisible(duckClose);
     duckOn.setTooltip("Stereo-linked ducking from dry vocal, not from delay/reverb feedback");
     duckPanel.addAndMakeVisible(duckOn);
-    for(auto* slider:{&duckDepth,&duckThreshold,&duckRelease}) {
+    for(auto* slider:{&duckDepth,&duckThreshold,&duckAttack,&duckRelease}) {
         slider->setSliderStyle(juce::Slider::LinearHorizontal);
         slider->setTextBoxStyle(juce::Slider::TextBoxRight,false,78,22);
         slider->setScrollWheelEnabled(true);
@@ -294,6 +294,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     }
     duckDepth.setTooltip("0% = no ducking, 100% = attenuate wet return during speech");
     duckThreshold.setTooltip("Vocal detector threshold, dBFS");
+    duckAttack.setTooltip("Ducking attack: 2 ms = tight fast cut; 80 ms = gradual natural duck");
     duckRelease.setTooltip("Rise of the reverb/delay tail when vocal stops, ms");
     for(int index=0;index<2;++index) {
         auto& control=eqCutSliders[(size_t)index];
@@ -836,10 +837,10 @@ void SlotEditor::applyTheme() {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(juce::Slider* s:std::array<juce::Slider*,12>{{
+    for(juce::Slider* s:std::array<juce::Slider*,13>{{
         &eqQSlider,&eqCutSliders[0],&eqCutSliders[1],&studioGateFloor,
         &studioCompKnee,&knobs[0],&knobs[1],&knobs[2],&knobs[3],
-        &duckDepth,&duckThreshold,&duckRelease}}) {
+        &duckDepth,&duckThreshold,&duckAttack,&duckRelease}}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         s->setColour(juce::Slider::thumbColourId,Theme::white);
@@ -1057,11 +1058,13 @@ bool SlotEditor::testWetSidechainPanel() {
     auto* amount=processor.state.getParameter(prefix+"duckDepth");
     auto* threshold=processor.state.getParameter(prefix+"duckThreshold");
     auto* release=processor.state.getParameter(prefix+"duckRelease");
-    if(!on||!amount||!threshold||!release)return false;
+    auto* attack=processor.state.getParameter(prefix+"duckAttack");
+    if(!on||!amount||!threshold||!release||!attack)return false;
     const float saved[]{processor.state.getRawParameterValue(prefix+"duckOn")->load(),
                         processor.state.getRawParameterValue(prefix+"duckDepth")->load(),
                         processor.state.getRawParameterValue(prefix+"duckThreshold")->load(),
-                        processor.state.getRawParameterValue(prefix+"duckRelease")->load()};
+                        processor.state.getRawParameterValue(prefix+"duckRelease")->load(),
+                        processor.state.getRawParameterValue(prefix+"duckAttack")->load()};
     processor.setSlotType(slot,SkellPresetAudioProcessor::Reverb);
     select(slot);
     bool ok=duckOpen.isVisible()&&!duckPanel.isVisible();
@@ -1072,16 +1075,20 @@ bool SlotEditor::testWetSidechainPanel() {
     duckDepth.setValue(.77,juce::sendNotificationSync);
     duckThreshold.setValue(-34.,juce::sendNotificationSync);
     duckRelease.setValue(420.,juce::sendNotificationSync);
+    duckAttack.setValue(5.,juce::sendNotificationSync);
     ok=ok&&processor.state.getRawParameterValue(prefix+"duckOn")->load()>.5f &&
        std::abs(processor.state.getRawParameterValue(prefix+"duckDepth")->load()-.77f)<.02f &&
        duckThreshold.getTextFromValue(-34.).contains("dBFS") &&
-       duckRelease.getTextFromValue(420.).contains("ms");
+       duckRelease.getTextFromValue(420.).contains("ms") &&
+       duckAttack.getTextFromValue(5.).contains("ms") &&
+       std::abs(processor.state.getRawParameterValue(prefix+"duckAttack")->load()-5.f)<.1f;
     duckClose.onClick();
     ok=ok&&!duckPanel.isVisible();
     on->setValueNotifyingHost(on->convertTo0to1(saved[0]));
     amount->setValueNotifyingHost(amount->convertTo0to1(saved[1]));
     threshold->setValueNotifyingHost(threshold->convertTo0to1(saved[2]));
     release->setValueNotifyingHost(release->convertTo0to1(saved[3]));
+    attack->setValueNotifyingHost(attack->convertTo0to1(saved[4]));
     processor.setSlotType(physical,originalType);
     select(physical);
     return ok;
@@ -1225,12 +1232,16 @@ void SlotEditor::select(int newSlot) {
     duckAttachments[1]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.state,prefix+"duckThreshold",duckThreshold);
     duckAttachments[2]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        processor.state,prefix+"duckAttack",duckAttack);
+    duckAttachments[3]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.state,prefix+"duckRelease",duckRelease);
     // Restore physical readouts after APVTS attachment creates the slider ranges.
     duckDepth.textFromValueFunction=[](double v){return juce::String(v*100.,0)+"%";};
     duckThreshold.textFromValueFunction=[](double v){return juce::String(v,1)+" dBFS";};
+    duckAttack.textFromValueFunction=[](double v){return juce::String(v,0)+" ms";};
     duckRelease.textFromValueFunction=[](double v){return juce::String(v,0)+" ms";};
-    duckDepth.updateText();duckThreshold.updateText();duckRelease.updateText();
+    duckDepth.updateText();duckThreshold.updateText();duckAttack.updateText();
+    duckRelease.updateText();
     moduleBox.setSelectedId(processor.slotType(slot)+1,juce::dontSendNotification);
     if(isPagedEQ(processor.slotType(slot))) {
         eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -1435,12 +1446,13 @@ void SlotEditor::resized() {
     for(int page=0;page<4;++page)
         delayPageButtons[(size_t)page].setBounds(45+page*150,106,142,26);
     duckOpen.setBounds(708,106,157,28);
-    duckPanel.setBounds(505,146,353,209);
+    duckPanel.setBounds(505,136,353,262);
     duckClose.setBounds(318,11,25,23);
     duckOn.setBounds(16,41,326,31);
     duckDepth.setBounds(108,80,232,30);
     duckThreshold.setBounds(108,121,232,30);
-    duckRelease.setBounds(108,162,232,30);
+    duckAttack.setBounds(108,162,232,30);
+    duckRelease.setBounds(108,203,232,30);
     studioGateFloor.setBounds(548,104,298,27);
     studioCompKnee.setBounds(548,104,298,27);
     loadExternal.setBounds(542,33,164,32);
