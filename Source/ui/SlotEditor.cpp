@@ -487,6 +487,18 @@ void SlotEditor::applyKnobReadouts() {
                 if(i==2)return juce::String(2.+20.*v,1)+" dB";
                 return juce::String(35.+245.*v,0)+" ms";
             }
+            if(module==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
+                const int parameter=suitePage*4+i;
+                if(parameter==0)return v<.25?"MALE":v<.75?"MALE 2":"FEMALE";
+                if(parameter==8)return v<.25?"FLAT":v<.75?"WARM":"TUBE";
+                if(parameter==1 || (parameter>=2 && parameter<=4))
+                    return juce::String((v-.5)*24.,1)+" dB";
+                if(parameter==6)
+                    return juce::String((3000.+9000.*v)/1000.,2)+" kHz";
+                if(parameter==5 || parameter==7)
+                    return juce::String(juce::roundToInt(v*100.))+"%";
+                return juce::String(v*10.,1);
+            }
             if(module==SkellPresetAudioProcessor::VocalFeelOptoFX) {
                 if(i==0 || i==3)return juce::String(juce::roundToInt(v*100.))+"%";
                 if(i==1)return v<.25?"FLAT":v<.75?"WARM":"TUBE";
@@ -679,6 +691,28 @@ void SlotEditor::applyKnobReadouts() {
                 if(i==1)return juce::jlimit(0.,1.,(value+53.)/39.);
                 if(i==2)return juce::jlimit(0.,1.,(value-2.)/20.);
                 return juce::jlimit(0.,1.,(value-35.)/245.);
+            }
+            if(module==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
+                const int parameter=suitePage*4+i;
+                if(parameter==0) {
+                    if(text.contains("female"))return 1.;
+                    if(text.contains("male 2")||text=="deep")return .5;
+                    return 0.;
+                }
+                if(parameter==8) {
+                    if(text.contains("tube"))return 1.;
+                    if(text.contains("warm"))return .5;
+                    return 0.;
+                }
+                if(parameter==1 || (parameter>=2 && parameter<=4))
+                    return juce::jlimit(0.,1.,value/24.+.5);
+                if(parameter==6) {
+                    const double hz=value*(text.contains("khz")?1000.:1.);
+                    return juce::jlimit(0.,1.,(hz-3000.)/9000.);
+                }
+                if(parameter==5 || parameter==7)
+                    return juce::jlimit(0.,1.,value/100.);
+                return juce::jlimit(0.,1.,value/10.);
             }
             if(module==SkellPresetAudioProcessor::StudioDelayFX) {
                 // The visible units are editable physical units, NOT a 0..100
@@ -1324,7 +1358,8 @@ void SlotEditor::select(int newSlot) {
     if(slot!=newSlot)releaseEmbeddedEditor();
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
-    lastPeakLevel=-1;lastGainReductionStep=-1;
+    lastPeakLevel=-1;lastGainReductionStep=-1;lastDeessStep=-1;
+    lastSuiteLevels.fill(-1);vocalFeelStyles.close();
     graphSnapshotValid=false; // never leave the previous slot's power state
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
@@ -1377,6 +1412,8 @@ void SlotEditor::select(int newSlot) {
         showLimiterPage(0);
     if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioDelayFX)
         showDelayPage(0);
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::VocalFeelSuiteFX)
+        showSuitePage(0);
     repaint();
 }
 void SlotEditor::refreshIfChanged() {
@@ -1394,10 +1431,22 @@ void SlotEditor::refreshIfChanged() {
     bool changed=!graphSnapshotValid || type!=lastType || powerOn!=lastPowerOn;
     // 0.5 dB steps bound GUI repaints. The meter is measured on the audio
     // callback and published atomically; no synthetic GR animation.
-    const int grStep=type==SkellPresetAudioProcessor::VocalFeelOptoFX
+    const bool vocalMeter=type==SkellPresetAudioProcessor::VocalFeelOptoFX ||
+                          type==SkellPresetAudioProcessor::VocalFeelSuiteFX;
+    const int grStep=vocalMeter
         ?juce::roundToInt(2.f*processor.getSlotGainReductionDb(slot)):0;
     changed=changed || grStep!=lastGainReductionStep;
     lastGainReductionStep=grStep;
+    const int deessStep=type==SkellPresetAudioProcessor::VocalFeelSuiteFX
+        ?juce::roundToInt(2.f*processor.getSlotDeessReductionDb(slot)):0;
+    changed=changed || deessStep!=lastDeessStep;lastDeessStep=deessStep;
+    for(int i=0;i<5;++i){
+        const int quant=type==SkellPresetAudioProcessor::VocalFeelSuiteFX
+            ?juce::jlimit(0,16,juce::roundToInt(
+                processor.getSuiteReturnRms(slot,i)*36.f)):0;
+        changed=changed || quant!=lastSuiteLevels[(size_t)i];
+        lastSuiteLevels[(size_t)i]=quant;
+    }
     lastPowerOn=powerOn;
     for(int i=0;i<6;++i)changed=changed || std::abs(current[(size_t)i]-lastControls[(size_t)i])>1.e-5f;
     const float measured=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
@@ -1467,7 +1516,8 @@ void SlotEditor::refreshIfChanged() {
     if(type!=lastType){
         // A new effect resets the EQ bank, preserving all saved parameter
         // values while reattaching only the controls visible on this page.
-        eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;delayPage=0;
+        eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;delayPage=0;suitePage=0;
+        vocalFeelStyles.close();
         gateFloorAttachment.reset();
         studioCompKneeAttachment.reset();
         modOrbView=false;
@@ -1499,6 +1549,8 @@ void SlotEditor::refreshIfChanged() {
                 processor.state,prefix+"p5",studioCompKnee);
         else if(type==SkellPresetAudioProcessor::StudioDelayFX)
             showDelayPage(0);
+        else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX)
+            showSuitePage(0);
         else if(type==SkellPresetAudioProcessor::StudioLimiterFX) {
             gateFloorAttachment=
                 std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -1540,6 +1592,9 @@ void SlotEditor::refreshIfChanged() {
     for(auto& button:matchPageButtons)button.setVisible(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX);
     for(auto& button:limiterPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
     for(auto& button:delayPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioDelayFX);
+    for(auto& button:suitePageButtons)button.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
+    vocalFeelStyleButton.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
+    if(type!=SkellPresetAudioProcessor::VocalFeelSuiteFX)vocalFeelStyles.close();
     studioGateFloor.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
     studioCompKnee.setVisible(type==SkellPresetAudioProcessor::StudioCompressorFX);
     for(int i=0;i<4;++i) {
