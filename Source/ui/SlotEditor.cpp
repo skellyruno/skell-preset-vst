@@ -3327,6 +3327,35 @@ bool SlotEditor::testPowerDotSync() {
     select(original);
     return clickable && toggled && restored;
 }
+bool SlotEditor::testAllNativeEffectLayoutsForTest() {
+    // Enumerate every native effect through the ACTUAL APVTS-backed JUCE
+    // editor. We use the spare 16th physical slot on the test processor;
+    // published factory IDs are untouched and the caller reloads its fixture.
+    const int originalSelected=slot;
+    constexpr int probeSlot=SkellPresetAudioProcessor::slotCount-1;
+    bool clean=true;
+    for(int type=0;type<SkellPresetAudioProcessor::NumberOfModules;++type) {
+        // External VST3 belongs to its independent native plugin browser;
+        // MicModelFX is a legacy slot compatibility type with its own MIC UI.
+        if(type==SkellPresetAudioProcessor::ExternalVST3 ||
+           type==SkellPresetAudioProcessor::MicModelFX)continue;
+        processor.setSlotType(probeSlot,type);
+        processor.setSlotOn(probeSlot,type!=SkellPresetAudioProcessor::Empty);
+        select(probeSlot);
+        clean=clean && testIntegratedEffectLayout() && testPopupLayoutsForTest();
+        const bool hasControl=type!=SkellPresetAudioProcessor::Empty;
+        for(const auto& control:knobs)
+            if(control.isVisible()!=hasControl)clean=false;
+        if(!clean)break;
+    }
+    // This method is only used from the headless UI smoke, immediately
+    // followed by an explicit factory reload. Never leave a probe type
+    // active in a user session.
+    processor.setSlotType(probeSlot,SkellPresetAudioProcessor::Empty);
+    processor.setSlotOn(probeSlot,false);
+    select(originalSelected);
+    return clean;
+}
 bool SlotEditor::testIntegratedEffectLayout() const {
     if(slotPower.getBounds()!=juce::Rectangle<int>(843,22,40,40) ||
        slotPower.getBounds().intersects(editExternal.getBounds()) ||

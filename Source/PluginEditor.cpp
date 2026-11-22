@@ -861,6 +861,8 @@ public:
            processor.getProgramName(53)!="Alchemist Low-End Contour (Trial)" ||
            processor.getProgramName(54)!="Alchemist Serial Dynamics Blend (Trial)")
             issues.add("Append-only factory catalog or legacy Alchemist index changed");
+        if(!slot.testAllNativeEffectLayoutsForTest())
+            issues.add("A native effect editor has clipped/invisible inline controls or popup geometry");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);

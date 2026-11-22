@@ -127,6 +127,7 @@ public:
     bool testPowerDotSync();
     bool testIntegratedEffectLayout() const;
     bool testPopupLayoutsForTest() const;
+    bool testAllNativeEffectLayoutsForTest();
     bool testModOrbToggle();
     void setModOrbForScreenshot(bool enabled);
     void setMatchPageForScreenshot(int page) {showMatchPage(page);}
