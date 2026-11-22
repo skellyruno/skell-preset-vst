@@ -861,6 +861,30 @@ int studioSmoke() {
        !thresholdRestored || std::abs(thresholdRestored->load()+20.f)>.05f)
         return 79;
     std::puts("PASS: input noise gate bypass, stereo link, zero PDC and host-state recall");
+    // Factory recall must clear an enabled custom gate instead of silently
+    // altering a published factory's audio; defaults for the 3 gate knobs too.
+    recalledMic->loadFactoryPreset(0);
+    const auto gateRelease=recalledMic->state.getRawParameterValue("micGateRelease");
+    const auto gateHold=recalledMic->state.getRawParameterValue("micGateHold");
+    if(gateRestored->load()>.5f || std::abs(thresholdRestored->load()+45.f)>.05f ||
+       !gateRelease || std::abs(gateRelease->load()-160.f)>.05f ||
+       !gateHold || std::abs(gateHold->load()-55.f)>.05f)
+        return 94;
+    // Portable .skellpreset must preserve the new gate, not only host binary
+    // state. Previous schema-v2 files without gate fields remain OFF.
+    const auto gateFile=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("skell-studio-gate-roundtrip",".skellpreset",false);
+    if(processor->exportPreset(gateFile).failed())return 95;
+    auto importedGate=std::make_unique<SkellPresetAudioProcessor>();
+    const auto importResult=importedGate->importPreset(gateFile);
+    gateFile.deleteFile();
+    if(importResult.failed())return 96;
+    const auto* importedOn=importedGate->state.getRawParameterValue("micGateOn");
+    const auto* importedThreshold=importedGate->state.getRawParameterValue("micGateThreshold");
+    if(!importedOn || importedOn->load()<.5f || !importedThreshold ||
+       std::abs(importedThreshold->load()+20.f)>.05f)
+        return 97;
+    std::puts("PASS: factory gate reset and opt-in native package gate roundtrip");
     processor->releaseResources();
     return 0;
 }

@@ -1,4 +1,5 @@
 #include "../Source/chain/PresetPackage.h"
+#include "../Source/chain/EffectRegistry.h"
 #include <iostream>
 #include <string>
 
@@ -48,7 +49,10 @@ int main(){
               && loaded.slots[15].slotId == 15
               && !loaded.slots[0].enabled
               && !loaded.slots[15].enabled
-              && !loaded.micPreOn,
+              && !loaded.micPreOn && !loaded.micGateOn
+              && loaded.micGateThreshold==-45.f
+              && loaded.micGateRelease==160.f
+              && loaded.micGateHold==55.f,
               "Default rack imports without activating effects or mic preamp");
         bool importedNeutralParameters=true;
         for(const auto& slot:loaded.slots)
@@ -72,6 +76,8 @@ int main(){
     first.micPreInput=1;  // generic condenser input
     first.micPreTarget=3; // generic air output
     first.micPreAmount=.72f;first.micPreTrim=.63f;
+    first.micGateOn=true;first.micGateThreshold=-31.f;
+    first.micGateRelease=250.f;first.micGateHold=83.f;
     first.macros.fill(.5f);
     first.macros[0]=.86f;
     auto path=testFile(dir,"roundtrip");
@@ -84,7 +90,9 @@ int main(){
           &&second.slots[11].type==13&&second.slots[15].type==17
           &&second.micPreOn && second.micPreInput==1
           &&second.micPreTarget==3 && second.micPreAmount==.72f
-          &&second.micPreTrim==.63f,
+          &&second.micPreTrim==.63f
+          &&second.micGateOn &&second.micGateThreshold==-31.f
+          &&second.micGateRelease==250.f &&second.micGateHold==83.f,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
 
     // Schema v2 supports all new VoxRack modules without modifying the
@@ -201,7 +209,8 @@ int main(){
                   "Load old native v2 file with flat EQ cuts and neutral Q");
         }
     }
-    // Modules 33..37 are append-only. ID 38 is deliberately unknown.
+    // New modules append; every effect in the current registry must be importable
+    // without widening or renumbering any old APVTS type choice.
     {
         auto newest=first;
         newest.slots[0].type=33;
@@ -212,7 +221,7 @@ int main(){
         check(skellpreset::package::read(file,recalled).wasOk()
               &&recalled.slots[0].type==33,
               "Recall Skelldizer module 33 without remapping");
-        for(int studio=34;studio<=37;++studio) {
+        for(int studio=34;studio<skellpreset::registry::count();++studio) {
             newest.slots[0].type=studio;
             const auto target=testFile(dir,"studio-module-"+juce::String(studio));
             check(skellpreset::package::write(target,newest).wasOk(),
@@ -222,10 +231,10 @@ int main(){
                   && loaded.slots[0].type==studio,
                   "Recall appended Studio module without renumbering");
         }
-        newest.slots[0].type=38;
+        newest.slots[0].type=skellpreset::registry::count();
         check(skellpreset::package::write(
-                 testFile(dir,"unknown-id38"),newest).failed(),
-              "Reject unknown module 38");
+                 testFile(dir,"unknown-new-module"),newest).failed(),
+              "Reject any module type beyond the current registry");
     }
     // Schema-v2 macros are optional too: absent means neutral, malformed means reject.
     {
@@ -278,6 +287,10 @@ int main(){
             };
             const NullCase nullCases[] = {
                 {true,"micPreOn","mic-pre-on","Reject explicit null mic-pre enable"},
+                {true,"micGateOn","mic-gate-on","Reject null mic gate on"},
+                {true,"micGateThreshold","mic-gate-threshold","Reject null mic gate threshold"},
+                {true,"micGateRelease","mic-gate-release","Reject null mic gate release"},
+                {true,"micGateHold","mic-gate-hold","Reject null mic gate hold"},
                 {true,"micPreInput","mic-pre-input","Reject explicit null mic-pre input"},
                 {true,"micPreTarget","mic-pre-target","Reject explicit null mic-pre target"},
                 {true,"micPreAmount","mic-pre-amount","Reject explicit null mic-pre amount"},

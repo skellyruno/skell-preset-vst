@@ -43,6 +43,10 @@ struct Document {
     bool micPreOn = false;
     int micPreInput = 0, micPreTarget = 0;
     float micPreAmount = 1.f, micPreTrim = .5f;
+    // Optional v2 extension; absence means the original input gate stays OFF.
+    // Keep old .skellpreset packages readable and allow new gate state recall.
+    bool micGateOn = false;
+    float micGateThreshold = -45.f, micGateRelease = 160.f, micGateHold = 55.f;
     std::array<float, 8> macros {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
     std::array<Slot, slotCount> slots = [] {
         std::array<Slot, slotCount> result {};
