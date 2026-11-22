@@ -93,6 +93,20 @@ public:
         return correct;
     }
 
+    bool testLayoutForTest() const {
+        if(getWidth()<340 || getHeight()<345)return false;
+        const auto bounds=getLocalBounds();
+        const auto resultText=juce::Rectangle<int>(27,112,juce::jmax(110,getWidth()-165),23);
+        const auto categoryText=juce::Rectangle<int>(getWidth()-130,115,100,17);
+        const auto firstRow=juce::Rectangle<int>(15,108,getWidth()-30,34);
+        const auto lastRow=firstRow.translated(0,(visibleRows()-1)*37);
+        const auto footer=juce::Rectangle<int>(17,getHeight()-55,getWidth()-34,26);
+        return bounds.contains(search.getBounds()) && bounds.contains(firstRow) &&
+            bounds.contains(lastRow) && bounds.contains(footer) &&
+            !search.getBounds().intersects(firstRow) &&
+            !resultText.intersects(categoryText) &&
+            !lastRow.intersects(footer);
+    }
     void applyTheme() {
         Theme::selectFor(processor.state);
         search.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
@@ -180,7 +194,9 @@ public:
                 g.drawRoundedRectangle(rect.reduced(.5f),5.f,1.1f);
             }
             const auto name=processor.moduleName(type);
-            Theme::fittedText(g,name,{27,y+4,203,23},14.0f,
+            // Reserve the category chip's right-side area at 340px minimum
+            // width; the old fixed 203px name field overlapped it by 20px.
+            Theme::fittedText(g,name,{27,y+4,juce::jmax(110,getWidth()-165),23},14.0f,
                               active?Theme::green:Theme::white,true);
             Theme::text(g,category(type).toUpperCase(),
                         {getWidth()-130,y+7,100,17},10.6f,

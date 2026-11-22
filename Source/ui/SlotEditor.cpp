@@ -1490,6 +1490,23 @@ void SlotEditor::resized() {
         knobs[(size_t)k].setBounds(168+column*430,411+row*57,257,30);
     }
 }
+bool SlotEditor::testPopupLayoutsForTest() const {
+    const auto bounds=getLocalBounds();
+    if(getWidth()<906 || getHeight()<535)return false;
+    const juce::Component* popups[]{&modulePicker,&installedBrowser,&eqNodeMenu,&duckPanel};
+    for(const auto* popup:popups)
+        if(!bounds.contains(popup->getBounds()) ||
+           popup->getWidth()<190 || popup->getHeight()<200)return false;
+    // Overlays may occupy the same coordinates, but only one popup from
+    // the mutually-exclusive effect-picker / VST3 browser pair can be visible.
+    if(modulePicker.isVisible() && installedBrowser.isVisible())return false;
+    const juce::Component* duckControls[]{&duckClose,&duckOn,
+        &duckDepth,&duckThreshold,&duckAttack,&duckRelease};
+    for(const auto* child:duckControls)
+        if(!duckPanel.getLocalBounds().contains(child->getBounds()))return false;
+    return modulePicker.testLayoutForTest() &&
+           installedBrowser.testLayoutForTest() && eqNodeMenu.testLayoutForTest();
+}
 void SlotEditor::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
     // ONE uninterrupted studio effect face. Controls and graph are inside

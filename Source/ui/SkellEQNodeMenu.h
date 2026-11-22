@@ -17,6 +17,15 @@ public:
     void close(){setVisible(false);}
     void chooseTypeForTest(int kind){choose(kind);}
     void removeForTest(){if(onRemove)onRemove();close();}
+    bool testLayoutForTest() const noexcept {
+        if(getWidth()<195 || getHeight()<233)return false;
+        const auto bounds=getLocalBounds();
+        for(int i=0;i<5;++i) {
+            const auto filter=juce::Rectangle<int>(10,43+i*30,getWidth()-20,27);
+            if(!bounds.contains(filter))return false;
+        }
+        return bounds.contains(juce::Rectangle<int>(20,206,getWidth()-40,22));
+    }
     void paint(juce::Graphics& g)override{
         Theme::panelBox(g,getLocalBounds().toFloat(),9.f);
         Theme::text(g,"EQ NODE / FILTER TYPE",{13,10,getWidth()-26,24},

@@ -20,11 +20,30 @@ public:
     void close() {setVisible(false);if(onClose)onClose();}
 
     void setWorldLinkState(bool requested,bool localOnline,bool hubOnline) {
-        if(!requested) worldLinkLabel="JOIN SKELLWORLD  |  PRESENCE ONLY";
-        else if(hubOnline) worldLinkLabel="LEAVE SKELLWORLD  |  HUB CONNECTED";
-        else if(localOnline) worldLinkLabel="LEAVE SKELLWORLD  |  LOCAL ONLY";
-        else worldLinkLabel="LEAVE SKELLWORLD  |  CONNECTING";
-        repaint();
+        const juce::String next=!requested
+            ?"JOIN SKELLWORLD  |  PRESENCE ONLY"
+            :hubOnline?"LEAVE SKELLWORLD  |  HUB CONNECTED"
+            :localOnline?"LEAVE SKELLWORLD  |  LOCAL ONLY"
+            :"LEAVE SKELLWORLD  |  CONNECTING";
+        // The world-link status may be polled at 30 Hz. Do not repaint a
+        // static popover thirty times a second when nothing has changed.
+        if(next!=worldLinkLabel){worldLinkLabel=next;repaint();}
+    }
+    bool testLayoutForTest() const noexcept {
+        const auto bounds=getLocalBounds();
+        if(getWidth()<388 || getHeight()<326)return false;
+        const auto close=juce::Rectangle<int>(getWidth()-47,10,37,40);
+        const auto world=juce::Rectangle<int>(25,239,getWidth()-50,39);
+        if(!bounds.contains(close) || !bounds.contains(world))return false;
+        for(int i=0;i<4;++i) {
+            const auto a=juce::Rectangle<int>(25+(i%2)*177,119+(i/2)*47,166,39);
+            if(!bounds.contains(a)||a.intersects(world))return false;
+            for(int j=i+1;j<4;++j)
+                if(a.intersects(juce::Rectangle<int>(
+                    25+(j%2)*177,119+(j/2)*47,166,39)))
+                    return false;
+        }
+        return true;
     }
     bool hasWorldLinkControlForTest() const noexcept {
         return worldLinkLabel.isNotEmpty() && (bool)onWorldLinkToggle;
@@ -42,7 +61,7 @@ public:
         Theme::text(g,"INTERFACE SCALE",{25,65,getWidth()-50,23},12,Theme::green,true);
         Theme::text(g,"Choose a size. The layout keeps its aspect ratio.",
                     {25,88,getWidth()-50,20},10.8f,Theme::muted);
-        const std::array<juce::String,4> labels{{"70%","85%","100%","125%"}};
+        static constexpr const char* labels[]{"70%","85%","100%","125%"};
         for(int i=0;i<4;++i){
             const int x=25+(i%2)*177, y=119+(i/2)*47;
             const auto r=juce::Rectangle<float>((float)x,(float)y,166.f,39.f);
@@ -53,7 +72,7 @@ public:
             g.drawRoundedRectangle(r.reduced(.5f),7.f,1.15f);
             Theme::text(g,labels[(size_t)i],{x+13,y+8,122,23},14,
                         active?Theme::green:Theme::white,true);
-            if(active)Theme::text(g,"●",{x+138,y+8,16,23},12,Theme::green);
+            if(active){g.setColour(Theme::green);g.fillEllipse((float)x+142.f,(float)y+16.f,7.f,7.f);}
         }
         Theme::text(g,"SKELLWORLD  /  OPTIONAL LOCAL PRESENCE",
                     {25,214,getWidth()-50,18},10,Theme::green,true);

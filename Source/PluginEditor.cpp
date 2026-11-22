@@ -482,6 +482,10 @@ public:
                                + " / " + juce::String((int)j));
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
         if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
+        if(!settingsPanel.testLayoutForTest())
+            issues.add("Settings scale cards or close/presence targets are clipped");
+        if(!slot.testPopupLayoutsForTest())
+            issues.add("Effect / VST3 / EQ / wet duck popups have clipping or overlay conflicts");
         if(!juce::Rectangle<int>(0,0,Theme::width,Theme::height)
             .contains(settingsPanel.getBounds()))
             issues.add("Themed Settings overlay clipped by canvas");

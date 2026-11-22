@@ -76,6 +76,18 @@ public:
         load.setColour(juce::TextButton::textColourOffId,Theme::green);
         repaint();
     }
+    bool testLayoutForTest() const {
+        const auto bounds=getLocalBounds();
+        const juce::Component* controls[]{&search,&list,&rescan,&chooseFile,&cancel,&load};
+        if(getWidth()<390 || getHeight()<240)return false;
+        for(int i=0;i<6;++i) {
+            if(!bounds.contains(controls[i]->getBounds()))return false;
+            for(int j=i+1;j<6;++j)
+                if(controls[i]->getBounds().intersects(controls[j]->getBounds()))
+                    return false;
+        }
+        return true;
+    }
     void resized() override {
         const auto w=getWidth(),h=getHeight();
         search.setBounds(17,54,w-34,35);

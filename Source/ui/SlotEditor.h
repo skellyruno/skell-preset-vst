@@ -126,6 +126,7 @@ public:
     bool testMicModelCards();
     bool testPowerDotSync();
     bool testIntegratedEffectLayout() const;
+    bool testPopupLayoutsForTest() const;
     bool testModOrbToggle();
     void setModOrbForScreenshot(bool enabled);
     void setMatchPageForScreenshot(int page) {showMatchPage(page);}
