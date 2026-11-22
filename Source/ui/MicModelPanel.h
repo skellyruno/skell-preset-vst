@@ -77,6 +77,15 @@ public:
             refresh();
         };
         addAndMakeVisible(gateEnabled);
+        gateAdvanced.setButtonText("MORE CONTROLS");
+        gateAdvanced.setTooltip("Show attack, hold and hysteresis without changing their stored values");
+        gateAdvanced.onClick=[this]{
+            advancedGate=!advancedGate;
+            updateGateVisibility();
+            resized();
+            repaint();
+        };
+        addAndMakeVisible(gateAdvanced);
         juce::Slider* gateKnobs[]{&gateThreshold,&gateAttack,&gateHold,
                                   &gateRelease,&gateHysteresis,&gateDepth};
         constexpr double gateDefaults[]{-45.,4.,55.,160.,3.,1.};
@@ -187,9 +196,19 @@ public:
         for(auto& simulation:simulations)simulation.setVisible(!gate);
         amount.setVisible(!gate);trim.setVisible(!gate);
         gateEnabled.setVisible(gate);
-        for(auto* slider:{&gateThreshold,&gateAttack,&gateHold,&gateRelease,
-                          &gateHysteresis,&gateDepth})slider->setVisible(gate);
+        gateAdvanced.setVisible(gate);
+        updateGateVisibility();
+        resized();
         refresh();
+    }
+    void updateGateVisibility() {
+        gateThreshold.setVisible(gatePage);
+        gateRelease.setVisible(gatePage);
+        gateDepth.setVisible(gatePage);
+        gateAttack.setVisible(gatePage && advancedGate);
+        gateHold.setVisible(gatePage && advancedGate);
+        gateHysteresis.setVisible(gatePage && advancedGate);
+        gateAdvanced.setButtonText(advancedGate?"LESS CONTROLS":"MORE CONTROLS");
     }
     bool hasBeenMoved() const noexcept {return movedByUser;}
     void visibilityChanged() override {
@@ -285,6 +304,10 @@ public:
                               lastGateEnabled?Theme::green.withAlpha(.24f):Theme::panelAlt);
         gateEnabled.setColour(juce::TextButton::textColourOffId,
                               lastGateEnabled?Theme::green:Theme::white);
+        gateAdvanced.setColour(juce::TextButton::buttonColourId,
+            advancedGate?Theme::green.withAlpha(.16f):Theme::panelAlt);
+        gateAdvanced.setColour(juce::TextButton::textColourOffId,
+            advancedGate?Theme::green:Theme::white);
         for(auto* tab:{&modelTab,&gateTab}){
             const bool selected=(tab==&gateTab)==gatePage;
             tab->setColour(juce::TextButton::buttonColourId,
@@ -337,8 +360,18 @@ public:
         amount.setBounds(85,lower,w-101,25);
         trim.setBounds(85,lower+40,w-101,25);
         gateEnabled.setBounds(w-92,105,64,29);
-        juce::Slider* knobs[]{&gateThreshold,&gateAttack,&gateHold,&gateRelease,&gateHysteresis,&gateDepth};
-        for(int i=0;i<6;++i)knobs[i]->setBounds(110,139+29*i,w-128,25);
+        gateAdvanced.setBounds(16,105,142,29);
+        if(advancedGate) {
+            juce::Slider* knobs[]{&gateThreshold,&gateAttack,&gateHold,
+                                  &gateRelease,&gateHysteresis,&gateDepth};
+            for(int i=0;i<6;++i)knobs[i]->setBounds(114,143+29*i,w-130,25);
+        } else {
+            gateThreshold.setBounds(114,164,w-130,30);
+            gateRelease.setBounds(114,214,w-130,30);
+            gateDepth.setBounds(114,264,w-130,30);
+            for(auto* slider:{&gateAttack,&gateHold,&gateHysteresis})
+                slider->setBounds(0,0,0,0);
+        }
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
@@ -346,16 +379,25 @@ public:
         g.setColour(Theme::green.withAlpha(.62f));
         g.fillRoundedRectangle({13.f,13.f,3.f,17.f},1.f);
         Theme::text(g,"MIC INPUT  /  FRONT-END",{25,9,getWidth()-143,27},15.5f,Theme::white,true);
-        Theme::text(g,"DRAG HEADER  /  RESIZE CORNER",{17,36,getWidth()-34,14},9.5f,Theme::muted);
+        Theme::text(g,"INPUT STUDIO  /  DRAG TO MOVE",{17,36,getWidth()-34,14},9.4f,Theme::muted);
         if(gatePage){
-            Theme::text(g,"LOW-LATENCY INPUT CLEANUP",{17,95,getWidth()-120,21},12,Theme::green,true);
-            constexpr const char* labels[]{"THRESHOLD","ATTACK","HOLD",
-                                           "RELEASE","HYSTERESIS","REDUCTION"};
-            for(int i=0;i<6;++i)
-                Theme::fittedText(g,labels[i],{17,140+29*i,91,22},
-                                  10.8f,Theme::white,true,
-                                  juce::Justification::centredLeft);
-            Theme::fittedText(g,"STEREO-LINKED / MANUAL / ZERO ADDED LATENCY",
+            Theme::fittedText(g,"STEREO-LINKED  /  ZERO ADDED LATENCY",
+                {17,85,getWidth()-34,16},10.3f,Theme::muted,true);
+            if(advancedGate) {
+                constexpr const char* labels[]{"THRESHOLD","ATTACK","HOLD",
+                                               "RELEASE","HYSTERESIS","REDUCTION"};
+                for(int i=0;i<6;++i)
+                    Theme::fittedText(g,labels[i],{17,144+29*i,94,22},
+                        10.6f,Theme::white,true,
+                        juce::Justification::centredLeft);
+            } else {
+                constexpr const char* labels[]{"THRESHOLD","RELEASE","REDUCTION"};
+                for(int i=0;i<3;++i)
+                    Theme::fittedText(g,labels[i],{17,167+50*i,94,22},
+                        11.3f,Theme::white,true,
+                        juce::Justification::centredLeft);
+            }
+            Theme::fittedText(g,"NO AUTO MODE / ADVANCED SETTINGS PRESERVED",
                 {16,getHeight()-27,getWidth()-44,16},9.f,Theme::muted);
         } else {
         Theme::text(g,"INPUT MICROPHONE",{16,87,188,18},11.5f,Theme::white,true);
@@ -416,27 +458,34 @@ public:
             && !on() && anyActive();
         gateThreshold.setValue(-54.f,juce::sendNotificationSync);
         const bool mapped=std::abs(threshold->load()+54.f)<.05f;
-        const bool isolated=!input.isVisible() && !enabled.isVisible()
-            && !simulations[0].isVisible() && !amount.isVisible()
-            && gateThreshold.isVisible() && gateAttack.isVisible()
-            && gateHysteresis.isVisible() && gateDepth.isVisible()
-            && gateRelease.isVisible();
+        const bool simple=gatePage && gateAdvanced.isVisible()
+            && gateThreshold.isVisible() && gateRelease.isVisible()
+            && gateDepth.isVisible() && !gateAttack.isVisible()
+            && !gateHold.isVisible() && !gateHysteresis.isVisible();
+        gateAdvanced.onClick();
+        const bool expanded=advancedGate && gateAttack.isVisible()
+            && gateHold.isVisible() && gateHysteresis.isVisible()
+            && gateThreshold.isVisible() && gateRelease.isVisible()
+            && gateDepth.isVisible();
         const juce::Slider* sliders[]{&gateThreshold,&gateAttack,&gateHold,
                                       &gateRelease,&gateHysteresis,&gateDepth};
         bool noOverlaps=getHeight()>=345 && getWidth()>=340;
         for(int i=0;i<6;++i) {
-            const auto r=sliders[i]->getBounds();
-            noOverlaps=noOverlaps && getLocalBounds().contains(r) &&
-                r.getBottom()<=getHeight()-27 && r.getX()>=110 &&
-                r.getWidth()>=160 && !r.intersects(gateEnabled.getBounds());
+            const auto bounds=sliders[i]->getBounds();
+            noOverlaps=noOverlaps && getLocalBounds().contains(bounds) &&
+                bounds.getBottom()<=getHeight()-27 && bounds.getX()>=110 &&
+                bounds.getWidth()>=160 &&
+                !bounds.intersects(gateEnabled.getBounds()) &&
+                !bounds.intersects(gateAdvanced.getBounds());
             for(int j=i+1;j<6;++j)
-                noOverlaps=noOverlaps && !r.intersects(sliders[j]->getBounds());
+                noOverlaps=noOverlaps && !bounds.intersects(sliders[j]->getBounds());
         }
+        gateAdvanced.onClick();
         setPhysical("micGateOn",priorEnabled);
         setPhysical("micGateThreshold",priorThreshold);
         setPhysical("micPreOn",priorModel);
         showPage(false);
-        return switched && mapped && isolated && noOverlaps &&
+        return switched && mapped && simple && expanded && noOverlaps &&
                !gatePage && modelTab.isVisible();
     }
     bool testInputAndBypass() {
@@ -471,7 +520,7 @@ private:
         }
     }
     SkellPresetAudioProcessor& processor;
-    juce::TextButton close,enabled,modelTab,gateTab,gateEnabled;
+    juce::TextButton close,enabled,modelTab,gateTab,gateEnabled,gateAdvanced;
     juce::TextButton input;
     SourceMenu sourceMenu;
     std::array<juce::TextButton,4> simulations;
@@ -479,7 +528,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountLink,trimLink;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateThresholdLink,gateReleaseLink,gateHoldLink,gateAttackLink,gateHysteresisLink,gateDepthLink;
     int lastInput=-1,lastTarget=-1;
-    bool lastEnabled=false,lastGateEnabled=false,gatePage=false;
+    bool lastEnabled=false,lastGateEnabled=false,gatePage=false,advancedGate=false;
     bool movedByUser=false,dragHeader=false,resizing=false;
     juce::Point<int> dragOrigin{};
     juce::Rectangle<int> resizeStart{};
