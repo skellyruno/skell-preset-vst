@@ -1147,7 +1147,8 @@ public:
         if(count!=lastScopeSampleCount) {
             lastScopeSampleCount=count;
             if(idle.isVisible())idle.repaint();
-            repaint(juce::Rectangle<int>(73,51,271,25));
+            // The former top LIVE status was removed; do not repaint the
+            // static SKELL title/version every incoming scope update.
             const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
             if(activeView==0 || (activeView==3 && previousMode==0))
                 // Original Simple waveform lives around y=317; repaint the
