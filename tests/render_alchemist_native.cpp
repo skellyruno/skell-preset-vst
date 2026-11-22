@@ -617,6 +617,42 @@ int uiSmoke() {
     const auto after=editor->getScreenshotLayoutIssues();
     report(after,"final-layout");
     if(!after.isEmpty())return 54;
+    // Real-editor De-Esser lifecycle regression: select its actual panel,
+    // automate spectral settings and process finite audio with GUI alive.
+    // This checks the observed crash path more directly than the portable
+    // split-band test alone; it does not substitute for FL Studio testing.
+    editor->configureForScreenshot(0,1,false);
+    plugin->clearRackToEmpty();
+    plugin->setSlotType(0,SkellPresetAudioProcessor::DeEsser);
+    plugin->setSlotOn(0,true);
+    editor->selectRackSlotForScreenshot(0,0);
+    auto deesserLayout=editor->getScreenshotLayoutIssues();
+    report(deesserLayout,"deesser-editor");
+    if(!deesserLayout.isEmpty())return 55;
+    for(int block=0;block<80;++block) {
+        if(block%8==0) {
+            plugin->setSlotParam(0,0,block%16==0?.06f:.94f);
+            plugin->setSlotParam(0,1,block%16==0?.15f:.85f);
+            plugin->setSlotParam(0,2,block%16==0?.65f:.25f);
+            plugin->setSlotParam(0,3,block%16==0?.05f:.95f);
+        }
+        juce::AudioBuffer<float> samples(2,256);
+        for(int n=0;n<256;++n) {
+            const auto phase=2.*juce::MathConstants<double>::pi
+                *(block*256+n)/48000.;
+            const float sample=(float)(.32*std::sin(7200.*phase)
+                                       +.10*std::sin(240.*phase));
+            samples.setSample(0,n,sample);
+            samples.setSample(1,n,sample*.8f);
+        }
+        juce::MidiBuffer events;
+        plugin->processBlock(samples,events);
+        for(int channel=0;channel<2;++channel)
+            for(int n=0;n<256;++n)
+                if(!std::isfinite(samples.getSample(channel,n)))return 56;
+    }
+    if(plugin->getLatencySamples()!=0)return 57;
+    editor->showHomeForScreenshot();
     editor.reset();
     plugin->releaseResources();
     std::puts("PASS: real JUCE editor geometry, rack wheel, MIC, and picker controls; no screenshot captures");
@@ -757,14 +793,18 @@ int studioSmoke() {
             oldFactory.getData(),(int)oldFactory.getSize());
         if(!oldXml) return 109;
         auto oldTree=juce::ValueTree::fromXml(*oldXml);
-        bool removedGate=false;
+        std::array<bool,4> missingIds{};
+        const juce::StringArray newGateIds{"micGateOn","micGateAttackMs",
+            "micGateHysteresisDb","micGateDepth"};
         for(int child=oldTree.getNumChildren()-1;child>=0;--child) {
-            if(oldTree.getChild(child).getProperty("id").toString()=="micGateOn") {
+            const auto id=oldTree.getChild(child).getProperty("id").toString();
+            const int which=newGateIds.indexOf(id);
+            if(which>=0) {
                 oldTree.removeChild(child,nullptr);
-                removedGate=true;
+                missingIds[(size_t)which]=true;
             }
         }
-        if(!removedGate) return 110;
+        for(const auto removed:missingIds)if(!removed)return 110;
         auto missingGateXml=oldTree.createXml();
         if(!missingGateXml) return 111;
         juce::MemoryBlock oldFactoryWithoutGate;
@@ -772,10 +812,29 @@ int studioSmoke() {
         selected->loadFactoryPreset(43); // New user selection enables the gate.
         if(selected->state.getRawParameterValue("micGateOn")->load()<.5f)
             return 112;
+        // Deliberately dirty all added controls to verify missing-state
+        // migration does not preserve stale values from a different preset.
+        struct Change {const char* id;float value;};
+        constexpr Change changed[]{
+            {"micGateAttackMs",19.f},{"micGateHysteresisDb",10.f},
+            {"micGateDepth",.2f}
+        };
+        for(const auto& change:changed) {
+            auto* param=selected->state.getParameter(change.id);
+            if(!param)return 118;
+            param->setValueNotifyingHost(param->convertTo0to1(change.value));
+        }
         selected->setStateInformation(oldFactoryWithoutGate.getData(),
                                       (int)oldFactoryWithoutGate.getSize());
+        const auto* restoredAttack=selected->state.getRawParameterValue("micGateAttackMs");
+        const auto* restoredHyst=selected->state.getRawParameterValue("micGateHysteresisDb");
+        const auto* restoredDepth=selected->state.getRawParameterValue("micGateDepth");
         if(selected->state.getRawParameterValue("micGateOn")->load()>.5f ||
-           selected->getCurrentProgram()!=43) return 113;
+           selected->getCurrentProgram()!=43 ||
+           !restoredAttack || std::abs(restoredAttack->load()-4.f)>.05f ||
+           !restoredHyst || std::abs(restoredHyst->load()-3.f)>.05f ||
+           !restoredDepth || std::abs(restoredDepth->load()-1.f)>.001f)
+            return 113;
         std::puts("PASS: factory gate ON, saved OFF and legacy missing-gate FL host states remain OFF");
     }
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
