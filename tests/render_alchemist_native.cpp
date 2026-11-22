@@ -698,6 +698,29 @@ int percentDisplaySmoke(){
 }
 
 int studioSmoke() {
+    // Host automation of newly appended parameters must change Empty Rack's
+    // program identity to Custom Rack, just like every legacy control.
+    // This regression exercises the registered APVTS listeners directly.
+    {
+        auto identity=std::make_unique<SkellPresetAudioProcessor>();
+        if(identity->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+            return 87;
+        auto* gate=identity->state.getParameter("micGateOn");
+        if(!gate)return 88;
+        gate->setValueNotifyingHost(gate->convertTo0to1(1.f));
+        if(identity->getCurrentProgram()!=SkellPresetAudioProcessor::customRackProgramIndex)
+            return 89;
+        identity->clearRackToEmpty();
+        if(identity->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+            return 90;
+        auto* delay=identity->state.getParameter("s1_fxExt8");
+        if(!delay)return 91;
+        delay->setValueNotifyingHost(delay->convertTo0to1(1.f));
+        if(identity->slotType(0)!=SkellPresetAudioProcessor::StudioDelayFX ||
+           identity->getCurrentProgram()!=SkellPresetAudioProcessor::customRackProgramIndex)
+            return 93;
+        std::puts("PASS: new mic gate and Studio Delay automation preserves Empty/Custom program identity");
+    }
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
     processor->prepareToPlay(48000.,257);
     const int types[]{

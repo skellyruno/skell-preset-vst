@@ -1733,7 +1733,8 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
     };
     for(const auto* id:{"input","mix","output","autoGain","delta",
                         "adapt","adaptAmount","globalGate","gateThreshold","laneMode",
-                        "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim"})
+                        "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim",
+                        "micGateOn","micGateThreshold","micGateRelease","micGateHold"})
         add(id);
     for(int macro=1;macro<=8;++macro)add("macro"+juce::String(macro));
     for(const auto* lane:{"A","B","C"}) {
@@ -1744,7 +1745,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
         const auto prefix=slotPrefix(slot);
         for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
                                 "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
-                                "eqLowCut","eqHighCut"})add(prefix+suffix);
+                                "fxExt8","eqLowCut","eqHighCut"})add(prefix+suffix);
         for(int parameter=1;parameter<=16;++parameter)
             add(prefix+"p"+juce::String(parameter));
         for(int band=1;band<=8;++band) {
