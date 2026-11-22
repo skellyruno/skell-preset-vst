@@ -4,6 +4,7 @@
 #include "../Source/PluginProcessor.h"
 #include "../Source/chain/AlchemistNativePreset.h"
 #include "../Source/chain/NativeSoundMatchTrials.h"
+#include "../Source/chain/VocalFeelRecipes.h"
 #include "../Source/host/InstalledVST3Index.h"
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>

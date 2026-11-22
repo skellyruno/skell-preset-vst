@@ -44,10 +44,21 @@ jobs:
     needs: portable-tests
     steps:
       - uses: actions/checkout@v5
+      # Cache only external immutable FetchContent sources/build helpers, not
+      # the full plugin build tree. CMake still revalidates its pinned refs.
+      - name: Restore JUCE and pinned SkellCore FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: skellpreset-windows-fetchcontent-${{ hashFiles('CMakeLists.txt', 'SkellCore/CMakeLists.txt') }}
+          restore-keys: |
+            skellpreset-windows-fetchcontent-
       - name: Configure JUCE 8 and SkellCore
         run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON -DSKELL_PRESET_BUILD_UI_RENDERER=ON
-      - name: Compile Windows VST3, regression fixtures and real UI renderer
-        run: cmake --build build --config Release --parallel 2
+      # Build the user-testable VST3 before unrelated heavy JUCE renderer,
+      # nested-host and package-test executables. Production checks still run.
+      - name: Compile shipping Windows VST3 first
+        run: cmake --build build --config Release --target SkellPreset_VST3 --parallel 3
       # JUCE's manifest writer emits permissive JSON with trailing commas.
       # The VST3 bundle is user-installable only after strict normalization;
       # verify the exact shipping plugin (not SkellHostFixture.vst3).
@@ -66,6 +77,52 @@ jobs:
           if ($manifest.Name -ne 'Skell-Preset' -or $manifest.Version -ne '0.7.0') {
             throw 'Unexpected Skell-Preset identity or version in VST3 moduleinfo'
           }
+      # This is a PREVIEW binary only: compiler + metadata checked, not yet
+      # native host/UI/FL Studio/pluginval approved. Final artifact is later.
+      - name: Bundle VST3
+        shell: pwsh
+        run: |
+          # Do not accidentally package the SkellHostFixture.vst3 regression
+          # plugin now present in the same build tree.
+          $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
+          # Revalidate the exact VST3 that will be packaged.
+          $metadata = Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json'
+          $validated = Get-Content -LiteralPath $metadata -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($validated.Name -ne 'Skell-Preset' -or $validated.Version -ne '0.7.0') { throw 'Shipping VST3 metadata identity/version mismatch' }
+          # Embed provenance so a downloaded ZIP can be matched to its source.
+          $bin = Get-ChildItem -LiteralPath $vst.FullName -Recurse -File -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $bin) { throw 'Skell-Preset binary missing inside VST3 bundle' }
+          $hash = (Get-FileHash -LiteralPath $bin.FullName -Algorithm SHA256).Hash
+          $info = @(
+            'Product: Skell-Preset',
+            'Version: 0.7.0',
+            "PR Source Commit: ${{ github.event.pull_request.head.sha || github.sha }}",
+            "CI Checkout Commit: ${{ github.sha }}",
+            "Branch: ${{ github.head_ref || github.ref_name }}",
+            "Workflow Run: ${{ github.run_id }}",
+            "Binary SHA256: $hash",
+            'Bundle: Skell-Preset.vst3',
+            'PREVIEW ONLY until all exact-head native/UI/FL Studio/pluginval gates pass',
+            'Unverified installed-copy identity: check DAW plugin path separately'
+          )
+          $info | Set-Content -LiteralPath Skell-Preset-BUILD-INFO.txt -Encoding UTF8
+          # upload-artifact creates the downloadable ZIP itself. Stage the
+          # bundle directly so users do not receive a ZIP-inside-a-ZIP.
+          $packageRoot = Join-Path $PWD 'Skell-Preset-Windows-VST3'
+          if (Test-Path -LiteralPath $packageRoot) { Remove-Item -LiteralPath $packageRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $packageRoot | Out-Null
+          Copy-Item -LiteralPath $vst.FullName -Destination $packageRoot -Recurse -Force
+          Copy-Item -LiteralPath 'Skell-Preset-BUILD-INFO.txt' -Destination $packageRoot -Force
+      - name: Upload early Windows VST3 test preview
+        uses: actions/upload-artifact@v5
+        with:
+          name: Skell-Preset-Windows-VST3-PREVIEW
+          path: Skell-Preset-Windows-VST3/**
+          if-no-files-found: error
+          retention-days: 14
+      - name: Compile remaining native regression fixtures and real UI renderer
+        run: cmake --build build --config Release --parallel 3
       - name: Validate native preset ZIP import/export and security
         run: ctest --test-dir build -C Release --output-on-failure -E SkellPresetRealRackStress
       - name: Stress compiled full rack and print CPU/latency metrics
@@ -91,40 +148,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native factory recall/audio/PDC/state regression failed: $LASTEXITCODE" }
           & $renderer.FullName --lowend-override-smoke
           if ($LASTEXITCODE -ne 0) { throw "Factory 54 low-end override regression failed: $LASTEXITCODE" }
-      - name: Bundle VST3
-        shell: pwsh
-        run: |
-          # Do not accidentally package the SkellHostFixture.vst3 regression
-          # plugin now present in the same build tree.
-          $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
-          if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
-          # Revalidate the exact VST3 that will be packaged.
-          $metadata = Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json'
-          $validated = Get-Content -LiteralPath $metadata -Raw | ConvertFrom-Json -ErrorAction Stop
-          if ($validated.Name -ne 'Skell-Preset' -or $validated.Version -ne '0.7.0') { throw 'Shipping VST3 metadata identity/version mismatch' }
-          # Embed provenance so a downloaded ZIP can be matched to its source.
-          $bin = Get-ChildItem -LiteralPath $vst.FullName -Recurse -File -Filter 'Skell-Preset.vst3' | Select-Object -First 1
-          if (-not $bin) { throw 'Skell-Preset binary missing inside VST3 bundle' }
-          $hash = (Get-FileHash -LiteralPath $bin.FullName -Algorithm SHA256).Hash
-          $info = @(
-            'Product: Skell-Preset',
-            'Version: 0.7.0',
-            "PR Source Commit: ${{ github.event.pull_request.head.sha || github.sha }}",
-            "CI Checkout Commit: ${{ github.sha }}",
-            "Branch: ${{ github.head_ref || github.ref_name }}",
-            "Workflow Run: ${{ github.run_id }}",
-            "Binary SHA256: $hash",
-            'Bundle: Skell-Preset.vst3',
-            'Unverified installed-copy identity: check DAW plugin path separately'
-          )
-          $info | Set-Content -LiteralPath Skell-Preset-BUILD-INFO.txt -Encoding UTF8
-          # upload-artifact creates the downloadable ZIP itself. Stage the
-          # bundle directly so users do not receive a ZIP-inside-a-ZIP.
-          $packageRoot = Join-Path $PWD 'Skell-Preset-Windows-VST3'
-          if (Test-Path -LiteralPath $packageRoot) { Remove-Item -LiteralPath $packageRoot -Recurse -Force }
-          New-Item -ItemType Directory -Path $packageRoot | Out-Null
-          Copy-Item -LiteralPath $vst.FullName -Destination $packageRoot -Recurse -Force
-          Copy-Item -LiteralPath 'Skell-Preset-BUILD-INFO.txt' -Destination $packageRoot -Force
       - name: Package compiled Alchemist diagnostic renderer
         shell: pwsh
         run: |
