@@ -863,6 +863,43 @@ public:
             issues.add("Append-only factory catalog or legacy Alchemist index changed");
         if(!slot.testAllNativeEffectLayoutsForTest())
             issues.add("A native effect editor has clipped/invisible inline controls or popup geometry");
+        // Real stereo audio → APVTS slot 43 → measured GR → exact state
+        // snapshot/restore. Never prove a new plugin using UI-only graphics.
+        processor.loadFactoryPreset(25); // zero-PDC tracking factory
+        processor.setSlotType(0,SkellPresetAudioProcessor::VocalFeelOptoFX);
+        processor.setSlotOn(0,true);
+        processor.setSlotParam(0,0,.8f);
+        processor.setSlotParam(0,1,.5f); // WARM
+        processor.setSlotParam(0,2,.5f); // MALE 2
+        processor.setSlotParam(0,3,1.f);
+        const bool validNativeType=processor.slotType(0)==SkellPresetAudioProcessor::VocalFeelOptoFX
+            && processor.state.getParameter("s1_fxExt10")!=nullptr;
+        juce::AudioBuffer<float> optoSignal(2,256);
+        juce::MidiBuffer optoMidi;
+        bool validAudio=true;
+        for(int block=0;block<110;++block) {
+            for(int sample=0;sample<256;++sample) {
+                const float t=(float)(block*256+sample)/48000.f;
+                const float wave=.36f*std::sin(juce::MathConstants<float>::twoPi*250.f*t);
+                optoSignal.setSample(0,sample,wave);
+                optoSignal.setSample(1,sample,wave*.8f);
+            }
+            processor.processBlock(optoSignal,optoMidi);
+            for(int sample=0;sample<256;++sample)
+                validAudio=validAudio && std::isfinite(optoSignal.getSample(0,sample))
+                            && std::isfinite(optoSignal.getSample(1,sample));
+        }
+        const bool realReduction=processor.getSlotGainReductionDb(0)>1.f
+            && processor.getSlotGainReductionDb(0)<40.f;
+        juce::MemoryBlock optoSnapshot;
+        processor.getStateInformation(optoSnapshot);
+        processor.setSlotType(0,SkellPresetAudioProcessor::Empty);
+        processor.setStateInformation(optoSnapshot.getData(),(int)optoSnapshot.getSize());
+        const bool optoRecalled=processor.slotType(0)==SkellPresetAudioProcessor::VocalFeelOptoFX
+            && std::abs(processor.getSlotParam(0,0)-.8f)<.01f
+            && std::abs(processor.getSlotParam(0,1)-.5f)<.01f;
+        if(!validNativeType || !validAudio || !realReduction || !optoRecalled)
+            issues.add("Vocal Feel Opto real audio, 0-PDC, GR meter or host state roundtrip failed");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);

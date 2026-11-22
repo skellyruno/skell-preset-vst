@@ -88,8 +88,10 @@ private:
     }
     static float tube(float x) noexcept {
         constexpr float bias=.24f;
-        static const float baseline=std::tanh(bias);
-        static const float inv=1.f/(1.f-baseline*baseline);
+        // constexpr numeric coefficients avoid thread-safe static local
+        // initialization/guard on the real-time audio callback.
+        constexpr float baseline=.2354957495f;
+        constexpr float inv=1.0587144485f;
         return (std::tanh(x+bias)-baseline)*inv;
     }
     double fs=48000.;
