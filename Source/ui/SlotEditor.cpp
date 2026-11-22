@@ -1442,8 +1442,9 @@ void SlotEditor::refreshIfChanged() {
             ||(type==SkellPresetAudioProcessor::AdlibSaturate && i==1);
         knob.setEnabled(!external && !unused);
         knob.setVisible(!external && type!=SkellPresetAudioProcessor::Empty);
-        knob.setTooltip(unused?"Reserved automation ID: the shared DSP ignores this control":
-                         juce::String{});
+        knob.setTooltip(unused
+            ?juce::String("Reserved automation parameter; no audible DSP")
+            :titles(type)[(size_t)i]+" / drag, wheel, or type a value");
     }
     repaint();
 }

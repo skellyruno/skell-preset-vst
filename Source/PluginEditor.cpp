@@ -485,6 +485,9 @@ public:
                                   "Simple mode lost a macro control");
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
             issues.add("Mode visibility did not match the requested workspace");
+        for(const auto* master:{&input,&mix,&output})
+            if(master->isVisible()==advanced)
+                issues.add("Input/Mix/Output are not restricted to Simple mode");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
         if(powerButton.isBypassed()!=(current==3))
             issues.add("Power indicator disagrees with host bypass state");
@@ -497,7 +500,8 @@ public:
                     if(macro[(size_t)i].getBounds().intersects(macro[(size_t)j].getBounds()))
                         issues.add("Simple macro dials overlap");
             }
-            if(input.getWidth()<35 || mix.getWidth()<35 || output.getWidth()<35 ||
+            if(input.getWidth()<44 || mix.getWidth()<44 || output.getWidth()<44 ||
+               input.getHeight()<39 || mix.getHeight()<39 || output.getHeight()<39 ||
                input.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag ||
                mix.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag ||
                output.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag)
@@ -562,9 +566,32 @@ public:
         powerButton.onClick();
         if(bypassShade.isVisible() || powerButton.isBypassed())
             issues.add("Power button did not restore the processing ON state");
-        // Simple mode retains the four original rotary macros and their
-        // stable host automation. Advanced must hide all four.
+        // Exercise the real APVTS sliders through both workspace modes.
+        // Restore the prior values so later factory regressions stay clean.
         configureForScreenshot(0,0,false);
+        const std::array<double,3> oldMasters{input.getValue(),mix.getValue(),output.getValue()};
+        const bool simpleShown=input.isVisible() && mix.isVisible() && output.isVisible();
+        input.setValue(3.0,juce::sendNotificationSync);
+        mix.setValue(.67,juce::sendNotificationSync);
+        output.setValue(-2.0,juce::sendNotificationSync);
+        const auto correctState=[this]{
+            return std::abs(processor.state.getRawParameterValue("input")->load()-3.f)<.05f &&
+                std::abs(processor.state.getRawParameterValue("mix")->load()-.67f)<.02f &&
+                std::abs(processor.state.getRawParameterValue("output")->load()+2.f)<.05f;
+        };
+        const bool automated=correctState();
+        viewSwitch.onClick();
+        const bool hiddenInAdvanced=!input.isVisible() && !mix.isVisible() &&
+            !output.isVisible() && correctState();
+        viewSwitch.onClick();
+        const bool recalled=input.isVisible() && mix.isVisible() && output.isVisible() &&
+            correctState() && std::abs(input.getValue()-3.0)<.05 &&
+            std::abs(mix.getValue()-.67)<.02 && std::abs(output.getValue()+2.0)<.05;
+        input.setValue(oldMasters[0],juce::sendNotificationSync);
+        mix.setValue(oldMasters[1],juce::sendNotificationSync);
+        output.setValue(oldMasters[2],juce::sendNotificationSync);
+        if(!simpleShown || !automated || !hiddenInAdvanced || !recalled)
+            issues.add("Simple Input/Mix/Output visibility or automation recall regressed");
         for(int i=0;i<4;++i) {
             if(!macro[(size_t)i].isVisible()
                || macro[(size_t)i].getSliderStyle()!=
@@ -878,14 +905,19 @@ public:
         g.fillRect(0,635,Theme::width,53);
         g.setColour(Theme::white.withAlpha(.055f));
         g.drawHorizontalLine(636,12.f,(float)Theme::width-12.f);
-        g.setColour(Theme::stroke.withAlpha(.50f));
-        g.drawVerticalLine(801,644.f,681.f);
+        const int masterMode=(int)processor.state.getRawParameterValue("mode")->load();
+        if(masterMode==0 || (masterMode==3 && previousMode==0)) {
+            g.setColour(Theme::stroke.withAlpha(.50f));
+            g.drawVerticalLine(801,644.f,681.f);
+        }
         Theme::text(g,"IN",{26,646,42,18},11,Theme::muted,true);
         Theme::text(g,"OUT",{214,646,48,18},11,Theme::muted,true);
-        for(int ix=0;ix<12;ix++){
-            g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getInputPeak())?Theme::green:Theme::stroke);
+        const float inPeak=juce::jlimit(0.f,1.f,processor.getInputPeak());
+        const float outPeak=juce::jlimit(0.f,1.f,processor.getOutputPeak());
+        for(int ix=0;ix<12;++ix){
+            g.setColour(ix<12.f*inPeak?Theme::green:Theme::stroke);
             g.fillRect(68+ix*10,651,7,11);
-            g.setColour(ix<12*juce::jlimit(0.f,1.f,processor.getOutputPeak())?Theme::green:Theme::stroke);
+            g.setColour(ix<12.f*outPeak?Theme::green:Theme::stroke);
             g.fillRect(263+ix*10,651,7,11);
         }
         // Hardware dials show the true physical gain and mix readouts.
@@ -894,7 +926,7 @@ public:
         const bool masterControlsInSimple=(currentView==0 ||
             (currentView==3 && previousMode==0));
         if(masterControlsInSimple) {
-        const juce::StringArray masterNames{"INPUT","MIX","OUTPUT"};
+        static constexpr const char* masterNames[]{"INPUT","MIX","OUTPUT"};
         const float values[]{(float)input.getValue(),(float)mix.getValue(),
                              (float)output.getValue()};
         for(int i=0;i<3;++i) {
@@ -903,17 +935,14 @@ public:
             Theme::panelBox(g,card,5.f);
             g.setColour(Theme::green.withAlpha(.78f));
             g.fillRoundedRectangle((float)x+7.f,645.f,2.f,9.f,1.f);
-            Theme::text(g,masterNames[i],{x+47,641,58,13},10.8f,Theme::muted,true);
+            Theme::text(g,masterNames[i],{x+52,642,54,14},11.4f,Theme::muted,true);
             const auto readout=i==1
                 ?mix.getTextFromValue(values[i])
                 :(i==0?input.getTextFromValue(values[i])
                      :output.getTextFromValue(values[i]));
             Theme::fittedText(g,readout,
-                        {x+43,655,63,23},15.4f,Theme::white,true);
+                        {x+50,658,57,23},15.8f,Theme::white,true);
         }
-        } else {
-            Theme::text(g,"MASTER GAIN + DRY/WET  /  SIMPLE VIEW",
-                {814,645,290,22},10.7f,Theme::muted,true);
         }
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
@@ -940,8 +969,8 @@ public:
             }
             g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.9f));
             g.strokePath(simpleScope,juce::PathStrokeType(1.7f));
-            const juce::StringArray labels{"TONE","PUNCH","SPACE","GRIT"};
-            const juce::StringArray hints{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
+            static constexpr const char* labels[]{"TONE","PUNCH","SPACE","GRIT"};
+            static constexpr const char* hints[]{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
             for(int k=0;k<4;k++){
                 const float x=78.f+254.f*k;
                 const auto raw=processor.state.getRawParameterValue(
@@ -1042,9 +1071,11 @@ public:
             knob.setBounds(127+i*254,398,120,113);
             knob.setVisible(display==0);
         }
-        input.setBounds(818,650,39,33);
-        mix.setBounds(934,650,39,33);
-        output.setBounds(1050,650,39,33);
+        // Keep all three original APVTS controls Simple-only and usable
+        // even when the plugin is displayed at its default 70% scale.
+        input.setBounds(810,642,45,40);
+        mix.setBounds(926,642,45,40);
+        output.setBounds(1042,642,45,40);
         // Keep published input/mix/output APVTS values active in both modes,
         // but expose their studio gain staging only in the Simple workspace.
         for(auto* control:{&input,&mix,&output})
