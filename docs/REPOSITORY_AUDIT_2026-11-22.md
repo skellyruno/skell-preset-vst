@@ -14,6 +14,27 @@
 - **#89 Alchemist Factory 55 controlled-density trial:** four ahead, two behind. Exact-head Windows VST3 and portable SkellCore CI passed; controlled same-take 19–34s A/B and user approval remain.
 - **#8 native shared AdlibFX:** five ahead, 748 behind, `mergeable=false`, conflicts. Historical CI passed on 2026-11-12 but is not proof of compatibility with current architecture. Four AdlibFX modules were *excluded* from merged #88. Reconcile on a separate compatible branch; do not merge old PR directly.
 
+## Follow-on tree-level preservation scan (same original 47 non-main refs)
+
+Fetched each historical branch's **recursive Git tree** and compared every blob path/immutable Git blob SHA with the current `main` tree from the original snapshot. This is a stronger file-presence scan than the commit-graph counts above.
+
+**Across the original 47 non-main branches, there are only five distinct file paths absent from `main`:**
+
+| Branch-only file | Source branch(s) / reconciliation |
+|---|---|
+| `.github/workflows/build.yml` | Obsolete legacy build entry point in multiple pre-consolidation branches; keep in those historical refs, do **not** reinstate alongside modern Windows VST3 workflow |
+| `tests/test_factory_presets.cpp` | `audit/preset-slot-order-strict-20261113`; asserts exactly 43 factory presets and historical 0–42 program order, now replaced by the 55-program production catalog. The current `tests/test_alchemist_native.cpp` pins 55 entries and first-43 identities |
+| `Source/chain/Skelldizer.h` | `feature/skelldizer-native-dsp`; earlier one-band prototype, replaced by today's `Source/chain/SkelldizerDSP.h` three-band audio engine. **Do not overwrite** the current processor with the prototype |
+| `tests/test_skelldizer.cpp` | `feature/skelldizer-native-dsp`; older prototype tests. Current portable `tests/test_skelldizer_dsp.cpp` and `tests/test_skelldizer_multinstance_stress.cpp` test current engine, finite/denormal recovery, DSP parity, 20 instances and sample-rate stress |
+| `tests/test_factory_macro_reset.cpp` | Old empty-rack/host-state branches; broad assertions on default APVTS values, program identity, saved-state roundtrip and rejection of corrupted host state. Current `--smoke-blank` native renderer and preset/package tests cover much of this; **exact assertion-by-assertion parity not yet proven**. Keep old refs until the remaining distinctive assertions are migrated |
+
+This inventory covers **paths** only: changes to existing files across the 41 old closed-unmerged PR branches are still a potential source of unique behavior, and exact Git blob SHA mismatch does not establish either useful divergence or equivalence. **Zero historical branch deletions authorized.**
+
+### Subsequent work after the snapshot
+- [Draft #92](https://github.com/skellyruno/skell-preset-vst/pull/92) ports the four excluded AdlibFX modules as **new IDs 39–42**, using immutable SkellCore AdlibFX on a stack above #90; old #8 remains intact. Portable CI passed; exact-head Windows verification pending at audit-update time.
+- #90 gained new host-program-identity regression for mic gate / `fxExt8`, commit `67e75dc`; subsequent exact-head CI pending at audit-update time.
+- [Issue #93](https://github.com/skellyruno/skell-preset-vst/issues/93) records the administrator-only requirement to activate `main` branch protection and exact mandatory `portable-tests`/`windows-vst3` checks. Workflow code cannot enforce this server-side policy.
+
 ## Maintenance and security
 - **Critical:** legacy `import-stage2.yml` was manually runnable with `contents:write`, deleted `bootstrap` and `windows-vst3.yml`, and pushed to `main`. This safeguard PR retires the active job and preserves the original YAML as documentation.
 - **Critical:** `repo-maintenance.yml` could automatically mark draft PRs ready and merge them without verifying CI. This safeguard PR disables that action.
