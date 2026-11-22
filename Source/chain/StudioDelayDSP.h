@@ -67,7 +67,7 @@ public:
         glide=1.-std::exp(-1./(sr*.025));
         shapeDenom=std::max(.001f,std::tanh(drive));
     }
-    std::array<float,2> process(float left,float right) noexcept {
+    std::array<float,2> process(float left,float right,float echoDuck=1.f) noexcept {
         if(history[0].empty()||diffuser[0].empty())return {left,right};
         const float l=std::isfinite(left)?std::clamp(left,-8.f,8.f):0.f;
         const float r=std::isfinite(right)?std::clamp(right,-8.f,8.f):0.f;
@@ -107,7 +107,8 @@ public:
         }
         write=(write+1)%history[0].size();
         diffWrite=(diffWrite+1)%diffuser[0].size();
-        const float echoGain=mode==3?0.f:wet;
+        const float echoGain=(mode==3?0.f:wet)*
+            (std::isfinite(echoDuck)?std::clamp(echoDuck,0.f,1.f):1.f);
         return {std::clamp(dry*l+echoGain*echo[0],-8.f,8.f),
                 std::clamp(dry*r+echoGain*echo[1],-8.f,8.f)};
     }

@@ -67,6 +67,10 @@ juce::Result validate(const Document& d) {
         for(int k=0;k<8;++k)
             if(slot.studioEqKind[(size_t)k]<0 || slot.studioEqKind[(size_t)k]>4)
                 return juce::Result::fail("Invalid Studio EQ filter type");
+        if(!finiteRange(slot.duckDepth,0.f,1.f) ||
+           !finiteRange(slot.duckThreshold,-60.f,-12.f) ||
+           !finiteRange(slot.duckRelease,50.f,1500.f))
+            return juce::Result::fail("Invalid wet sidechain controls");
         if(!finiteRange(slot.eqLowCut,0,1)||!finiteRange(slot.eqHighCut,0,1))
             return juce::Result::fail("Invalid EQ cut control");
     }
@@ -120,6 +124,10 @@ juce::var toJson(const Document& d) {
         item->setProperty("studioEqOn",juce::var(enabled));
         item->setProperty("eqLowCut",slot.eqLowCut);
         item->setProperty("eqHighCut",slot.eqHighCut);
+        item->setProperty("duckOn",slot.duckOn);
+        item->setProperty("duckDepth",slot.duckDepth);
+        item->setProperty("duckThreshold",slot.duckThreshold);
+        item->setProperty("duckRelease",slot.duckRelease);
         chain.add(juce::var(item));
     }
     root->setProperty("chain", juce::var(chain));
@@ -262,6 +270,23 @@ juce::Result fromJson(const juce::var& root, Document& out) {
                 slot.studioEqOn[(size_t)k]=(bool)(*active.getArray())[k];
             }
         }
+        // If absent, old presets remain dry/FX identical. Bad values are
+        // rejected before ANY live destination parameters are changed.
+        if(hasJsonProperty(item,"duckOn")) {
+            const auto enabled=item.getProperty("duckOn",{});
+            if(!enabled.isBool())
+                return juce::Result::fail("Invalid wet sidechain enable");
+            slot.duckOn=(bool)enabled;
+        }
+        if((hasJsonProperty(item,"duckDepth") &&
+            !decodeFloat(item.getProperty("duckDepth",{}),0.f,1.f,slot.duckDepth)) ||
+           (hasJsonProperty(item,"duckThreshold") &&
+            !decodeFloat(item.getProperty("duckThreshold",{}),-60.f,-12.f,
+                         slot.duckThreshold)) ||
+           (hasJsonProperty(item,"duckRelease") &&
+            !decodeFloat(item.getProperty("duckRelease",{}),50.f,1500.f,
+                         slot.duckRelease)))
+            return juce::Result::fail("Invalid sidechain parameter");
         // Optional extensions keep legacy .skellpreset v1 and v2 readable.
         const auto lo=item.getProperty("eqLowCut",{});
         const auto hi=item.getProperty("eqHighCut",{});
