@@ -2079,10 +2079,45 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.strokePath(before,juce::PathStrokeType(1.7f));
         g.setColour(Theme::green);
         g.strokePath(after,juce::PathStrokeType(2.2f));
-        Theme::text(g,"INPUT",{47,326,110,18},10.5f,Theme::blue,true);
-        Theme::text(g,"OUTPUT",{171,326,115,18},10.5f,Theme::green,true);
-        Theme::text(g,"REAL 36-BAND SPECTRUM  /  80 Hz—9 kHz  /  GUI-ONLY FFT ALTERNATIVE",
-                    {302,326,550,18},9.5f,Theme::muted,false,
+        // The copper trace is calculated from the EXACT low shelf / mid
+        // bell / high shelf design used by the native Suite's realtime DSP.
+        // It is a STATIC tonal response, clearly distinct from live spectra.
+        const int voice=juce::jlimit(0,2,
+            juce::roundToInt(processor.getSlotParam(slot,0)*2.f));
+        const auto& profile=skellpreset::dsp::vocalFeelVoices[(size_t)voice];
+        skellpreset::dsp::Biquad lowTone,midTone,highTone;
+        skellpreset::dsp::vfShelf(lowTone,sr,profile.low,
+            (processor.getSlotParam(slot,2)-.5f)*24.f,false);
+        midTone.setPeak(sr,profile.mid,
+            (processor.getSlotParam(slot,3)-.5f)*24.f,.9);
+        skellpreset::dsp::vfShelf(highTone,sr,profile.high,
+            (processor.getSlotParam(slot,4)-.5f)*24.f,true);
+        juce::Path tone;
+        for(int band=0;band<skellpreset::visual::LiveSpectrumAnalyzer::bands;++band) {
+            const float x=55.f+band*(787.f/35.f);
+            const float hz=skellpreset::visual::LiveSpectrumAnalyzer::frequency(band);
+            const double db=lowTone.magnitudeDb(hz,sr)
+                           +midTone.magnitudeDb(hz,sr)
+                           +highTone.magnitudeDb(hz,sr);
+            const float y=juce::jlimit(208.f,320.f,263.f-(float)db*2.25f);
+            if(band==0)tone.startNewSubPath(x,y);
+            else tone.lineTo(x,y);
+        }
+        g.setColour(Theme::amber.withAlpha(.90f));
+        g.strokePath(tone,juce::PathStrokeType(1.9f));
+        // Real dynamically-selected de-esser cutoff; this guide shows
+        // where sibilance detection begins, not a fake attenuation trace.
+        const float cutoff=3000.f+9000.f*processor.getSlotParam(slot,6);
+        const float cutoffX=55.f+787.f*juce::jlimit(0.f,1.f,
+            std::log(cutoff/80.f)/std::log(112.5f));
+        g.setColour(Theme::blue.withAlpha(.36f));
+        g.drawVerticalLine((int)cutoffX,210.f,320.f);
+        Theme::text(g,"INPUT",{47,326,96,18},10.3f,Theme::blue,true);
+        Theme::text(g,"OUTPUT",{156,326,105,18},10.3f,Theme::green,true);
+        Theme::text(g,"EQ CURVE",{276,326,122,18},10.3f,Theme::amber,true);
+        Theme::text(g,"DE-ESS REGION",{413,326,175,18},10.3f,Theme::muted,true);
+        Theme::text(g,"MEASURED / 80 Hz - 9 kHz",
+                    {614,326,233,18},9.6f,Theme::muted,false,
                     juce::Justification::centredRight);
     } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
         // Actual per-chain RMS from callback-owned DSP: no invented signal
