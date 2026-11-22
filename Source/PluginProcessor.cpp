@@ -1561,9 +1561,10 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal("output",5.17f);
     setReal("micPreOn",0);setReal("micPreInput",0);
     setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
-    // Factory programs predate the optional front-end gate. An enabled gate
-    // left from a custom rack must never alter any factory preset's audio.
-    setReal("micGateOn",0.f);setReal("micGateThreshold",-45.f);
+    // A fresh factory selection opts into the independent front-end gate.
+    // Empty Rack and restored legacy/older saved states remain gate OFF:
+    // their state is recalled directly, without selecting a new factory.
+    setReal("micGateOn",1.f);setReal("micGateThreshold",-45.f);
     setReal("micGateRelease",160.f);setReal("micGateHold",55.f);
     // Factory switches must reset all serialized macro values, including the
     // currently hidden compatibility slots 5..8, so imported state cannot leak.

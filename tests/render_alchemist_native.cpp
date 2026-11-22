@@ -721,6 +721,31 @@ int studioSmoke() {
             return 93;
         std::puts("PASS: new mic gate and Studio Delay automation preserves Empty/Custom program identity");
     }
+    // Selecting any factory opts into the MIC gate without changing factory IDs.
+    // Empty Rack and explicitly saved OFF host state must continue to restore OFF.
+    {
+        auto selected=std::make_unique<SkellPresetAudioProcessor>();
+        const auto* gate=selected->state.getRawParameterValue("micGateOn");
+        if(!gate || gate->load()>.5f) return 104;
+        juce::MemoryBlock savedEmpty;
+        selected->getStateInformation(savedEmpty);
+        for(int program=0;program<SkellPresetAudioProcessor::emptyRackProgramIndex;++program) {
+            selected->loadFactoryPreset(program);
+            if(gate->load()<.5f || selected->getCurrentProgram()!=program)
+                return 105;
+        }
+        selected->clearRackToEmpty();
+        if(gate->load()>.5f ||
+           selected->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+            return 106;
+        selected->loadFactoryPreset(0);
+        selected->setStateInformation(savedEmpty.getData(),(int)savedEmpty.getSize());
+        const auto* restored=selected->state.getRawParameterValue("micGateOn");
+        if(!restored || restored->load()>.5f ||
+           selected->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+            return 107;
+        std::puts("PASS: factory gate ON for all 55 identities; Empty Rack and saved OFF remain OFF");
+    }
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
     processor->prepareToPlay(48000.,257);
     const int types[]{
@@ -975,12 +1000,12 @@ int studioSmoke() {
        !thresholdRestored || std::abs(thresholdRestored->load()+20.f)>.05f)
         return 79;
     std::puts("PASS: input noise gate bypass, stereo link, zero PDC and host-state recall");
-    // Factory recall must clear an enabled custom gate instead of silently
-    // altering a published factory's audio; defaults for the 3 gate knobs too.
+    // A new factory selection enables its front-end gate with safe knob
+    // defaults; restored project and package states keep saved ON/OFF choices.
     recalledMic->loadFactoryPreset(0);
     const auto gateRelease=recalledMic->state.getRawParameterValue("micGateRelease");
     const auto gateHold=recalledMic->state.getRawParameterValue("micGateHold");
-    if(gateRestored->load()>.5f || std::abs(thresholdRestored->load()+45.f)>.05f ||
+    if(gateRestored->load()<.5f || std::abs(thresholdRestored->load()+45.f)>.05f ||
        !gateRelease || std::abs(gateRelease->load()-160.f)>.05f ||
        !gateHold || std::abs(gateHold->load()-55.f)>.05f)
         return 94;
@@ -998,7 +1023,7 @@ int studioSmoke() {
     if(!importedOn || importedOn->load()<.5f || !importedThreshold ||
        std::abs(importedThreshold->load()+20.f)>.05f)
         return 97;
-    std::puts("PASS: factory gate reset and opt-in native package gate roundtrip");
+    std::puts("PASS: factory gate ON reset and native package gate roundtrip");
     processor->releaseResources();
     return 0;
 }
