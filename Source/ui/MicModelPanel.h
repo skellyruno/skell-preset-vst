@@ -62,10 +62,17 @@ public:
         close.setButtonText("X");
         close.onClick=[this]{sourceMenu.setVisible(false);setVisible(false);if(onClose)onClose();};
         addAndMakeVisible(close);
+        modPage.setButtonText("MIC MOD");
+        gatePage.setButtonText("NOISE GATE");
+        modPage.onClick=[this]{showGatePage=false;refresh();};
+        gatePage.onClick=[this]{
+            sourceMenu.setVisible(false);showGatePage=true;refresh();
+        };
+        addAndMakeVisible(modPage);addAndMakeVisible(gatePage);
         enabled.setButtonText("OFF");
         enabled.onClick=[this] {
-            const bool next=!on();
-            setPhysical("micPreOn",next?1.f:0.f);
+            const bool next=showGatePage?!gateOn():!on();
+            setPhysical(showGatePage?"micGateOn":"micPreOn",next?1.f:0.f);
             refresh();
         };
         addAndMakeVisible(enabled);
@@ -110,6 +117,18 @@ public:
             processor.state,"micPreAmount",amount);
         trimLink=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             processor.state,"micPreTrim",trim);
+        const char* gateIds[]{"micGateThreshold","micGateAttackMs","micGateHoldMs",
+                              "micGateReleaseMs","micGateHysteresisDb"};
+        juce::Slider* sliders[]{&gateThreshold,&gateAttack,&gateHold,
+                                &gateRelease,&gateHysteresis};
+        for(int k=0;k<5;++k) {
+            sliders[k]->setSliderStyle(juce::Slider::LinearHorizontal);
+            sliders[k]->setTextBoxStyle(juce::Slider::TextBoxRight,false,64,20);
+            addAndMakeVisible(*sliders[k]);
+            gateLinks[(size_t)k]=std::make_unique<
+                juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,gateIds[k],*sliders[k]);
+        }
         amount.textFromValueFunction=[](double v) {
             return juce::String(juce::roundToInt(v*100.))+"%";
         };
@@ -189,14 +208,19 @@ public:
         const auto* p=processor.state.getRawParameterValue("micPreOn");
         return p!=nullptr && p->load()>.5f;
     }
+    bool gateOn() const {
+        const auto* p=processor.state.getRawParameterValue("micGateOn");
+        return p!=nullptr && p->load()>.5f;
+    }
     void refreshIfChanged() {
         const auto* in=processor.state.getRawParameterValue("micPreInput");
         const auto* out=processor.state.getRawParameterValue("micPreTarget");
         const int inputIndex=in?juce::jlimit(0,3,(int)in->load()):0;
         const int targetIndex=out?juce::jlimit(0,3,(int)out->load()):0;
         const bool enabledNow=on();
+        const bool gateEnabledNow=gateOn();
         if(inputIndex!=lastInput || targetIndex!=lastTarget ||
-           enabledNow!=lastEnabled)
+           enabledNow!=lastEnabled || gateEnabledNow!=lastGateEnabled)
             refresh();
     }
     void refresh() {
@@ -206,13 +230,31 @@ public:
         const int source=in?juce::jlimit(0,3,(int)in->load()):0;
         const int model=out?juce::jlimit(0,3,(int)out->load()):0;
         lastInput=source;lastTarget=model;lastEnabled=on();
+        lastGateEnabled=gateOn();
+        const bool active=showGatePage?gateOn():on();
+        modPage.setColour(juce::TextButton::buttonColourId,
+                          showGatePage?Theme::panelAlt:Theme::green.withAlpha(.23f));
+        gatePage.setColour(juce::TextButton::buttonColourId,
+                           showGatePage?Theme::green.withAlpha(.23f):Theme::panelAlt);
+        modPage.setColour(juce::TextButton::textColourOffId,
+                          showGatePage?Theme::muted:Theme::green);
+        gatePage.setColour(juce::TextButton::textColourOffId,
+                           showGatePage?Theme::green:Theme::muted);
+        input.setVisible(!showGatePage);
+        amount.setVisible(!showGatePage);
+        trim.setVisible(!showGatePage);
+        for(auto& card:simulations)card.setVisible(!showGatePage);
+        for(auto* slider:{&gateThreshold,&gateAttack,&gateHold,
+                           &gateRelease,&gateHysteresis})
+            slider->setVisible(showGatePage);
+        if(showGatePage)sourceMenu.setVisible(false);
         const juce::StringArray sources{"NEUTRAL","CONDENSER","DYNAMIC","RIBBON"};
         input.setButtonText(sources[source]+"  ▼");
-        enabled.setButtonText(on()?"ON":"OFF");
+        enabled.setButtonText(active?"ON":"OFF");
         enabled.setColour(juce::TextButton::buttonColourId,
-                          on()?Theme::green.withAlpha(.24f):Theme::panelAlt);
+                          active?Theme::green.withAlpha(.24f):Theme::panelAlt);
         enabled.setColour(juce::TextButton::textColourOffId,
-                          on()?Theme::green:Theme::muted);
+                          active?Theme::green:Theme::muted);
         close.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         close.setColour(juce::TextButton::textColourOffId,Theme::white);
         input.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
@@ -225,7 +267,8 @@ public:
             b.setColour(juce::TextButton::textColourOffId,
                         i==model?Theme::green:Theme::white);
         }
-        for(auto* slider:{&amount,&trim}) {
+        for(auto* slider:{&amount,&trim,&gateThreshold,&gateAttack,
+                          &gateHold,&gateRelease,&gateHysteresis}) {
             slider->setColour(juce::Slider::trackColourId,Theme::green);
             slider->setColour(juce::Slider::thumbColourId,Theme::white);
             slider->setColour(juce::Slider::textBoxTextColourId,Theme::white);
@@ -238,6 +281,13 @@ public:
         const int w=getWidth();
         close.setBounds(w-35,9,25,25);
         enabled.setBounds(w-102,9,57,25);
+        modPage.setBounds(16,36,juce::jmax(85,(w-46)/2),22);
+        gatePage.setBounds(27+juce::jmax(85,(w-46)/2),36,
+                           juce::jmax(90,(w-46)/2),22);
+        juce::Slider* gateSliders[]{&gateThreshold,&gateAttack,&gateHold,
+                                    &gateRelease,&gateHysteresis};
+        for(int i=0;i<5;++i)
+            gateSliders[i]->setBounds(112,87+35*i,w-128,26);
         input.setBounds(16,68,w-32,29);
         sourceMenu.setBounds(16,100,w-32,118);
         const int cardWidth=(w-46)/2;
@@ -253,8 +303,20 @@ public:
         Theme::panelBox(g,getLocalBounds().toFloat(),10.f);
         g.setColour(Theme::green.withAlpha(.62f));
         g.fillRoundedRectangle({13.f,13.f,3.f,17.f},1.f);
-        Theme::text(g,"MIC MODEL",{25,9,getWidth()-143,27},16,Theme::white,true);
-        Theme::text(g,"DRAG HEADER  /  RESIZE CORNER",{17,37,getWidth()-34,16},10.2f,Theme::muted);
+        Theme::text(g,showGatePage?"MIC NOISE GATE":"MIC MODEL",
+                    {25,9,getWidth()-143,27},16,Theme::white,true);
+        if(showGatePage) {
+            constexpr const char* names[]{"THRESHOLD","ATTACK","HOLD","RELEASE","HYSTERESIS"};
+            for(int i=0;i<5;++i)
+                Theme::text(g,names[i],{16,87+35*i,95,26},11.f,Theme::white,true);
+            Theme::fittedText(g,"STEREO-LINKED / PRE-RACK / ZERO LOOKAHEAD",
+                {15,getHeight()-24,getWidth()-44,16},9.f,Theme::muted,false,
+                juce::Justification::centredLeft);
+            g.setColour(Theme::green.withAlpha(.7f));
+            const float x=(float)getWidth()-5.f,y=(float)getHeight()-5.f;
+            for(int i=0;i<3;++i)g.drawLine(x-9.f+4.f*i,y,x,y-9.f+4.f*i,1.f);
+            return;
+        }
         Theme::text(g,"INPUT MICROPHONE",{16,51,188,18},11.5f,Theme::white,true);
         const juce::StringArray descriptions{
             "FLAT","WARM","FOCUS","AIR"};
@@ -296,6 +358,19 @@ public:
         if(key==juce::KeyPress::escapeKey){close.onClick();return true;}
         return false;
     }
+    bool testNoiseGateControls() {
+        const auto* raw=processor.state.getRawParameterValue("micGateOn");
+        const bool before=gateOn();
+        gatePage.onClick();
+        const bool tab=showGatePage && gateThreshold.isVisible()
+                       && !input.isVisible();
+        enabled.onClick();
+        const bool toggled=raw && (raw->load()>.5f)!=before;
+        setPhysical("micGateOn",before?1.f:0.f);
+        modPage.onClick();
+        refresh();
+        return tab && toggled && !showGatePage && input.isVisible();
+    }
     bool testInputAndBypass() {
         const auto currentOn=on();
         const auto* raw=processor.state.getRawParameterValue("micPreTarget");
@@ -328,14 +403,16 @@ private:
         }
     }
     SkellPresetAudioProcessor& processor;
-    juce::TextButton close,enabled;
+    juce::TextButton close,enabled,modPage,gatePage;
     juce::TextButton input;
     SourceMenu sourceMenu;
     std::array<juce::TextButton,4> simulations;
     juce::Slider amount,trim;
+    juce::Slider gateThreshold,gateAttack,gateHold,gateRelease,gateHysteresis;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountLink,trimLink;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,5> gateLinks;
     int lastInput=-1,lastTarget=-1;
-    bool lastEnabled=false;
+    bool lastEnabled=false,lastGateEnabled=false,showGatePage=false;
     bool movedByUser=false,dragHeader=false,resizing=false;
     juce::Point<int> dragOrigin{};
     juce::Rectangle<int> resizeStart{};

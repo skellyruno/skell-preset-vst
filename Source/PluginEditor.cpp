@@ -519,6 +519,8 @@ public:
             issues.add("Dedicated MIC panel did not open from rack icon");
         if(!micPanel.testInputAndBypass())
             issues.add("Dedicated MIC panel cannot automate target or bypass");
+        if(!micPanel.testNoiseGateControls())
+            issues.add("MIC NOISE GATE page must toggle the separate gate parameter");
         chain.triggerMicForTest();
         if(micPanel.isVisible())
             issues.add("Dedicated MIC panel failed to close");
@@ -1062,9 +1064,9 @@ public:
         if(settingsPanel.isVisible())settingsPanel.toFront(true);
         if(micPanel.isVisible())micPanel.toFront(true);
         micButton.setColour(juce::TextButton::buttonColourId,
-            micPanel.on()?Theme::green.withAlpha(.21f):Theme::panelAlt);
+            (micPanel.on()||micPanel.gateOn())?Theme::green.withAlpha(.21f):Theme::panelAlt);
         micButton.setColour(juce::TextButton::textColourOffId,
-            micPanel.on()?Theme::green:Theme::white);
+            (micPanel.on()||micPanel.gateOn())?Theme::green:Theme::white);
         preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
         viewSwitch.setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
         viewSwitch.setTooltip(display==0?"Open full effect chain":"Switch to four macros");
@@ -1081,7 +1083,7 @@ public:
         processor.refreshHostedLatency();
         if(settingsPanel.isVisible())refreshWorldLinkStatus();
         if(micPanel.isVisible())micPanel.refreshIfChanged();
-        const bool micActive=micPanel.on();
+        const bool micActive=micPanel.on()||micPanel.gateOn();
         if(micActive!=lastMicOn) {
             lastMicOn=micActive;
             micButton.setColour(juce::TextButton::buttonColourId,
