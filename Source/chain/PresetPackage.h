@@ -32,7 +32,8 @@ struct Slot {
     float eqLowCut=0.f,eqHighCut=0.f;
     // Native v2 optional extension, default OFF on original archives.
     bool duckOn=false;
-    float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f;
+    float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
+          duckAttack=12.f;
 };
 
 struct Document {

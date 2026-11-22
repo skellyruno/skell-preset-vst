@@ -182,7 +182,8 @@ private:
     struct Controls {
         int type=0;bool on=false;float wet=1;float eqLowCut=0,eqHighCut=0;
         bool duckOn=false;
-        float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f;
+        float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
+              duckAttack=12.f;
         std::array<float,16> p{};std::array<float,8> q{};
         std::array<int,8> studioEqKinds{{3,0,0,0,0,0,4,0}};
         std::array<bool,8> studioEqEnabled{{true,true,true,true,true,true,true,false}};
@@ -204,7 +205,8 @@ private:
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
         std::atomic<float>* duckOn=nullptr,*duckDepth=nullptr;
-        std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr;
+        std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr,
+                          *duckAttack=nullptr;
         std::array<std::atomic<float>*,16> p{};
         std::array<std::atomic<float>*,8> q{};
         std::array<std::atomic<float>*,8> studioEqKind{};

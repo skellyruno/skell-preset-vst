@@ -14,13 +14,17 @@ public:
         detectRelease=std::exp(-1.0/(sr*.065));
         gainAttack=std::exp(-1.0/(sr*.012));
     }
-    void set(bool on,float amount,float thresholdDb,float releaseMs) noexcept {
+    // Default 12 ms attack preserves the previously shipped ducking behavior.
+    void set(bool on,float amount,float thresholdDb,float releaseMs,
+             float attackMs=12.f) noexcept {
         enabled=on;
         depth=finiteClamp(amount,0.f,1.f);
         const float db=finiteClamp(thresholdDb,-60.f,-12.f);
         threshold=std::pow(10.f,db/20.f);
         const float ms=finiteClamp(releaseMs,50.f,1500.f);
         gainRelease=std::exp(-1.0/(sr*.001*(double)ms));
+        gainAttack=std::exp(-1.0/(sr*.001*(double)
+            finiteClamp(attackMs,2.f,80.f)));
         configured=true;
     }
     float processGain(float left,float right) noexcept {

@@ -69,7 +69,8 @@ juce::Result validate(const Document& d) {
                 return juce::Result::fail("Invalid Studio EQ filter type");
         if(!finiteRange(slot.duckDepth,0.f,1.f) ||
            !finiteRange(slot.duckThreshold,-60.f,-12.f) ||
-           !finiteRange(slot.duckRelease,50.f,1500.f))
+           !finiteRange(slot.duckRelease,50.f,1500.f) ||
+           !finiteRange(slot.duckAttack,2.f,80.f))
             return juce::Result::fail("Invalid wet sidechain controls");
         if(!finiteRange(slot.eqLowCut,0,1)||!finiteRange(slot.eqHighCut,0,1))
             return juce::Result::fail("Invalid EQ cut control");
@@ -128,6 +129,7 @@ juce::var toJson(const Document& d) {
         item->setProperty("duckDepth",slot.duckDepth);
         item->setProperty("duckThreshold",slot.duckThreshold);
         item->setProperty("duckRelease",slot.duckRelease);
+        item->setProperty("duckAttack",slot.duckAttack);
         chain.add(juce::var(item));
     }
     root->setProperty("chain", juce::var(chain));
@@ -285,7 +287,10 @@ juce::Result fromJson(const juce::var& root, Document& out) {
                          slot.duckThreshold)) ||
            (hasJsonProperty(item,"duckRelease") &&
             !decodeFloat(item.getProperty("duckRelease",{}),50.f,1500.f,
-                         slot.duckRelease)))
+                         slot.duckRelease)) ||
+           (hasJsonProperty(item,"duckAttack") &&
+            !decodeFloat(item.getProperty("duckAttack",{}),2.f,80.f,
+                         slot.duckAttack)))
             return juce::Result::fail("Invalid sidechain parameter");
         // Optional extensions keep legacy .skellpreset v1 and v2 readable.
         const auto lo=item.getProperty("eqLowCut",{});

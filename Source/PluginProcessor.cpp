@@ -92,6 +92,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.duckDepth=state.getRawParameterValue(prefix+"duckDepth");
         r.duckThreshold=state.getRawParameterValue(prefix+"duckThreshold");
         r.duckRelease=state.getRawParameterValue(prefix+"duckRelease");
+        r.duckAttack=state.getRawParameterValue(prefix+"duckAttack");
         r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
         r.eqHighCut=state.getRawParameterValue(prefix+"eqHighCut");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
@@ -299,6 +300,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
            -60.f,-12.f,-32.f);
         fl(prefix+"duckRelease","Slot "+juce::String(slot)+" duck release ms",
            50.f,1500.f,320.f);
+    }
+    // Append after all previous parameters, including 16x four sidechain
+    // controls, so existing FL Studio automation indices cannot shift.
+    for(int slot=1;slot<=slotCount;++slot) {
+        const auto prefix="s"+juce::String(slot)+"_";
+        fl(prefix+"duckAttack","Slot "+juce::String(slot)+" ducking attack ms",
+           2.f,80.f,12.f);
     }
     return p;
 }
@@ -708,6 +716,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         c.duckDepth=raw.duckDepth->load();
         c.duckThreshold=raw.duckThreshold->load();
         c.duckRelease=raw.duckRelease->load();
+        c.duckAttack=raw.duckAttack->load();
         c.eqLowCut=raw.eqLowCut->load();
         c.eqHighCut=raw.eqHighCut->load();
         for(int k=0;k<16;++k)c.p[(size_t)k]=raw.p[(size_t)k]->load();
@@ -719,7 +728,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         }
         auto& e=engines[(size_t)s];
         if(supportsWetSidechain(c.type))
-            e.voiceDuck.set(c.duckOn,c.duckDepth,c.duckThreshold,c.duckRelease);
+            e.voiceDuck.set(c.duckOn,c.duckDepth,c.duckThreshold,
+                            c.duckRelease,c.duckAttack);
         switch(c.type) {
             case EQ:
                 e.peak.setPeak(rate,40.*std::pow(300.,c.p[0]),
@@ -1269,6 +1279,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal(slotPrefix(s)+"duckDepth",.65f);
         setReal(slotPrefix(s)+"duckThreshold",-32.f);
         setReal(slotPrefix(s)+"duckRelease",320.f);
+        setReal(slotPrefix(s)+"duckAttack",12.f);
         
     }
     std::uint64_t seqReset=0;
@@ -1591,6 +1602,7 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         dst.duckDepth=value(prefix+"duckDepth");
         dst.duckThreshold=value(prefix+"duckThreshold");
         dst.duckRelease=value(prefix+"duckRelease");
+        dst.duckAttack=value(prefix+"duckAttack");
         for(int k=0;k<16;++k)dst.params[(size_t)k]=getSlotParam(dst.slotId,k);
         for(int band=0;band<8;++band){
             const auto n=juce::String(band+1);
@@ -1616,6 +1628,7 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
         setReal(prefix+"duckDepth",slot.duckDepth);
         setReal(prefix+"duckThreshold",slot.duckThreshold);
         setReal(prefix+"duckRelease",slot.duckRelease);
+        setReal(prefix+"duckAttack",slot.duckAttack);
         for(int k=0;k<16;++k)setSlotParam(slot.slotId,k,slot.params[(size_t)k]);
         for(int band=0;band<8;++band){
             const auto n=juce::String(band+1);
