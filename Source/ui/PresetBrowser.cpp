@@ -9,6 +9,16 @@
 namespace {
 const juce::StringArray banks{"Main Vocals","My Presets","Artists","Favorites",
                               "Rage","Indie","R&B"};
+// One shared geometry model for painting, click hit-testing and UI regression.
+// The three genres have a visible MANUAL heading and never overlap controls.
+juce::Rectangle<int> bankBounds(int index) noexcept {
+    return {17,index<4?109+index*34:264+(index-4)*32,168,30};
+}
+juce::String singlePreviewName(int entry) {
+    if(entry==alchemistIndex)return "ALCHEMIST";
+    if(entry==deuceIndex)return "DEUCE";
+    return entry<0?"YOUR PRESET":"FACTORY PRESET";
+}
 constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
 constexpr int deuceIndex=skellpreset::deuce_v25::factoryIndex;
 // Each factory sound has deterministic original cover art; no bitmap decoding
@@ -240,12 +250,12 @@ void PresetBrowser::open(){scanLibrary();loadFavorites();loadArtists();loadGenre
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
     // Explicit manual genre picker; user preset audio/ZIP state is untouched.
-    genrePicker.setBounds(18,358,106,27);
-    genreButton.setBounds(130,358,54,27);
-    artistEditor.setBounds(18,393,166,25);
-    artistButton.setBounds(18,427,80,26);
-    importButton.setBounds(104,427,80,26);
-    exportButton.setBounds(18,462,166,26);
+    genrePicker.setBounds(18,365,106,27);
+    genreButton.setBounds(130,365,54,27);
+    artistEditor.setBounds(18,398,166,25);
+    artistButton.setBounds(18,430,80,26);
+    importButton.setBounds(104,430,80,26);
+    exportButton.setBounds(18,464,166,26);
     artworkButton.setBounds(18,497,166,26);
 }
 void PresetBrowser::setChooserActive(bool active) {
@@ -501,6 +511,34 @@ void PresetBrowser::toggleFavorite(int entry) {
     scroll=juce::jlimit(0,std::max(0,(int)filtered().size()-6),scroll);
     repaint();
 }
+bool PresetBrowser::testBrowserLayoutForTest() const {
+    if(getWidth()<620 || getHeight()<530)return false;
+    const auto bounds=getLocalBounds();
+    if(!bounds.contains(search.getBounds()) ||
+       !bounds.contains(genrePicker.getBounds()) ||
+       !bounds.contains(artistEditor.getBounds()) ||
+       !bounds.contains(genreButton.getBounds()) ||
+       !bounds.contains(artistButton.getBounds()) ||
+       !bounds.contains(importButton.getBounds()) ||
+       !bounds.contains(exportButton.getBounds()) ||
+       !bounds.contains(artworkButton.getBounds()))return false;
+    const juce::Component* actions[]{&genrePicker,&genreButton,&artistEditor,
+        &artistButton,&importButton,&exportButton,&artworkButton};
+    for(int i=0;i<7;++i) {
+        const auto row=bankBounds(i);
+        if(!bounds.contains(row))return false;
+        for(auto* action:actions)
+            if(row.intersects(action->getBounds()))return false;
+        for(int j=i+1;j<7;++j)
+            if(row.intersects(bankBounds(j)))return false;
+    }
+    for(int i=0;i<7;++i)
+        for(int j=i+1;j<7;++j)
+            if(actions[i]->getBounds().intersects(actions[j]->getBounds()))
+                return false;
+    return singlePreviewName(deuceIndex)=="DEUCE" &&
+           singlePreviewName(alchemistIndex)=="ALCHEMIST";
+}
 bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const int previousBank=bank, previousScroll=scroll;
     const auto query=search.getText();
@@ -752,11 +790,18 @@ void PresetBrowser::paint(juce::Graphics&g) {
     Theme::text(g,juce::String((int)entries.size())+
         (entries.size()==1?" SOUND":" SOUNDS"),{207,73,246,20},12,Theme::white,true);
     Theme::text(g,"ESC TO CLOSE",{getWidth()-121,75,100,20},10,Theme::muted,false,juce::Justification::centredRight);
+    Theme::text(g,"GENRES / MANUAL",{29,246,150,14},9.2f,Theme::muted,true);
     for(int i=0;i<banks.size();i++){
-        auto b=juce::Rectangle<float>(17.f,111.f+i*35.f,168.f,31.f);
-        g.setColour(i==bank?Theme::green.withAlpha(.11f):Theme::panel);g.fillRoundedRectangle(b,6);
-        g.setColour(i==bank?Theme::green.withAlpha(.7f):Theme::stroke);g.drawRoundedRectangle(b,6,1);
-        Theme::text(g,banks[i],{29,(int)b.getY()+5,145,21},12,Theme::white,i==bank);
+        const auto b=bankBounds(i).toFloat();
+        const bool selected=i==bank;
+        g.setColour(selected?Theme::green.withAlpha(.14f):Theme::panel);
+        g.fillRoundedRectangle(b,6.f);
+        g.setColour(selected?Theme::green.withAlpha(.78f):Theme::stroke.withAlpha(.75f));
+        g.drawRoundedRectangle(b.reduced(.5f),6.f,selected?1.25f:1.f);
+        Theme::fittedText(g,banks[i],
+            {29,(int)b.getY()+5,145,20},12.f,
+            selected?Theme::white:Theme::muted,selected,
+            juce::Justification::centredLeft);
     }
     // Artist metadata can be assigned to personal presets with the sidebar
     // text field; the actual native preset and host program IDs stay intact.
@@ -813,7 +858,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const bool hovered=itemIndex==hoveredCard;
         g.setColour(loaded?Theme::green:hovered?Theme::blue:Theme::stroke);
         g.drawRoundedRectangle(rect,7,hovered?1.6f:1.f);
-        Theme::text(g,itemName,{294,y+7,260,24},15,Theme::white,true);
+        Theme::fittedText(g,itemName,{294,y+7,260,24},15.f,Theme::white,true,
+                          juce::Justification::centredLeft);
         const auto bankColour=custom?Theme::green:Theme::blue;
         Theme::fittedText(g,itemBank,{294,y+33,210,16},11.f,bankColour,true,
                           juce::Justification::centredLeft);
@@ -853,16 +899,27 @@ void PresetBrowser::paint(juce::Graphics&g) {
             g.drawImageWithin(art,(int)frame.getX(),(int)frame.getY(),
                 (int)frame.getWidth(),(int)frame.getHeight(),
                 juce::RectanglePlacement::centred);
-        } else paintCover(g,frame,43,Theme::green);
+        } else paintCover(g,frame,custom?-entry:entry+1,
+                          entry==deuceIndex?Theme::blue:Theme::green);
         g.setColour(Theme::green.withAlpha(.40f));
         g.drawRoundedRectangle(frame.reduced(.7f),7.6f,1.15f);
         Theme::text(g,"COVER PREVIEW",{424,282,191,20},10,Theme::green,true);
-        Theme::text(g,custom?"YOUR PRESET":"ALCHEMIST",
-                    {424,308,193,25},16,Theme::white,true);
-        Theme::text(g,"Use SET COVER to", {424,347,190,18},12,Theme::muted);
-        Theme::text(g,"personalize this sound.",{424,367,190,18},12,Theme::muted);
-        Theme::text(g,"Artwork also becomes",{424,407,196,18},11,Theme::muted);
-        Theme::text(g,"your plugin backdrop.",{424,424,196,18},11,Theme::muted);
+        Theme::fittedText(g,singlePreviewName(entry),
+            {424,308,193,25},16.f,Theme::white,true,
+            juce::Justification::centredLeft);
+        if(entry==deuceIndex) {
+            // Deuce has no editable factory cover. Never suggest that the
+            // SET COVER control would modify this factory sound.
+            Theme::text(g,"Deuce factory artwork",{424,347,190,18},12,Theme::muted);
+            Theme::text(g,"is preserved.",{424,367,190,18},12,Theme::muted);
+            Theme::text(g,"Save a personal version",{424,407,196,18},11,Theme::muted);
+            Theme::text(g,"to choose new artwork.",{424,424,196,18},11,Theme::muted);
+        } else {
+            Theme::text(g,"Select the sound, then",{424,347,190,18},12,Theme::muted);
+            Theme::text(g,"use SET COVER.",{424,367,190,18},12,Theme::muted);
+            Theme::text(g,"Your saved artwork",{424,407,196,18},11,Theme::muted);
+            Theme::text(g,"can become the backdrop.",{424,424,196,18},11,Theme::muted);
+        }
     }
     if(entries.empty()) {
         Theme::text(g,bank==3?"NO FAVORITES YET":
@@ -928,9 +985,11 @@ void PresetBrowser::auditionEntry(int entry) {
     else loadUserFromBrowser(-entry-1);
 }
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
-    if(e.y>=111 && e.y<356 && e.x>=17 && e.x<=185){
-        const int idx=(e.y-111)/35;
-        if(idx>=0&&idx<banks.size()){bank=idx;scroll=0;repaint();}return;
+    if(e.x>=17 && e.x<185){
+        for(int index=0;index<banks.size();++index)
+            if(bankBounds(index).contains(e.getPosition())) {
+                bank=index;scroll=0;hoveredCard=-1;repaint();return;
+            }
     }
     if(e.y>=110&&e.x>=207&&e.y<476){
         const auto entries=filtered();const int row=(e.y-110)/61;

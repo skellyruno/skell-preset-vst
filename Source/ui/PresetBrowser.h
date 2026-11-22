@@ -22,6 +22,7 @@ public:
     int visibleFactoryPresetsForTest() const;
     bool canSetCoverForTest() const {return canEditCover();}
     bool testMainVocalsPresetFilterForTest(); // primary whitelist and independent artists/favorites
+    bool testBrowserLayoutForTest() const; // actual categories and action-control bounds
     std::function<void()> onClose;
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;

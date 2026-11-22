@@ -77,10 +77,23 @@ public:
             refresh();
         };
         addAndMakeVisible(gateEnabled);
-        for(auto* slider:{&gateThreshold,&gateAttack,&gateHold,&gateRelease,
-                          &gateHysteresis,&gateDepth}) {
+        juce::Slider* gateKnobs[]{&gateThreshold,&gateAttack,&gateHold,
+                                  &gateRelease,&gateHysteresis,&gateDepth};
+        constexpr double gateDefaults[]{-45.,4.,55.,160.,3.,1.};
+        constexpr const char* gateHints[]{
+            "Below this dBFS level the mic gate starts to close",
+            "How quickly the gate opens for a voice",
+            "Minimum open time to preserve quiet syllables",
+            "How smoothly the gate closes after a phrase",
+            "Extra dB below threshold needed before closing",
+            "0% leaves audio dry; 100% applies full closed-state reduction"
+        };
+        for(int i=0;i<6;++i) {
+            auto* slider=gateKnobs[i];
             slider->setSliderStyle(juce::Slider::LinearHorizontal);
-            slider->setTextBoxStyle(juce::Slider::TextBoxRight,false,84,21);
+            slider->setTextBoxStyle(juce::Slider::TextBoxRight,false,78,20);
+            slider->setDoubleClickReturnValue(true,gateDefaults[i]);
+            slider->setTooltip(gateHints[i]);
             addAndMakeVisible(*slider);
         }
         gateThresholdLink=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -99,6 +112,8 @@ public:
         gateHysteresis.textFromValueFunction=[](double v){return juce::String(v,1)+" dB";};
         gateDepth.textFromValueFunction=[](double v){return juce::String(juce::roundToInt(v*100.))+"%";};
         gateDepth.valueFromTextFunction=[](const juce::String& s){return juce::jlimit(0.,1.,s.getDoubleValue()/100.);};
+        for(auto* slider:{&gateThreshold,&gateAttack,&gateHold,&gateRelease,
+                          &gateHysteresis,&gateDepth})slider->updateText();
         enabled.setButtonText("OFF");
         enabled.onClick=[this] {
             const bool next=!on();
@@ -334,8 +349,12 @@ public:
         Theme::text(g,"DRAG HEADER  /  RESIZE CORNER",{17,36,getWidth()-34,14},9.5f,Theme::muted);
         if(gatePage){
             Theme::text(g,"LOW-LATENCY INPUT CLEANUP",{17,95,getWidth()-120,21},12,Theme::green,true);
-            constexpr const char* labels[]{"THRESHOLD","ATTACK","HOLD","RELEASE","HYSTERESIS","REDUCTION"};
-            for(int i=0;i<6;++i)Theme::text(g,labels[i],{17,140+29*i,90,22},10.8f,Theme::white,true);
+            constexpr const char* labels[]{"THRESHOLD","ATTACK","HOLD",
+                                           "RELEASE","HYSTERESIS","REDUCTION"};
+            for(int i=0;i<6;++i)
+                Theme::fittedText(g,labels[i],{17,140+29*i,91,22},
+                                  10.8f,Theme::white,true,
+                                  juce::Justification::centredLeft);
             Theme::fittedText(g,"STEREO-LINKED / MANUAL / ZERO ADDED LATENCY",
                 {16,getHeight()-27,getWidth()-44,16},9.f,Theme::muted);
         } else {
@@ -399,12 +418,26 @@ public:
         const bool mapped=std::abs(threshold->load()+54.f)<.05f;
         const bool isolated=!input.isVisible() && !enabled.isVisible()
             && !simulations[0].isVisible() && !amount.isVisible()
-            && gateThreshold.isVisible() && gateAttack.isVisible() && gateHysteresis.isVisible() && gateDepth.isVisible() && gateRelease.isVisible();
+            && gateThreshold.isVisible() && gateAttack.isVisible()
+            && gateHysteresis.isVisible() && gateDepth.isVisible()
+            && gateRelease.isVisible();
+        const juce::Slider* sliders[]{&gateThreshold,&gateAttack,&gateHold,
+                                      &gateRelease,&gateHysteresis,&gateDepth};
+        bool noOverlaps=getHeight()>=345 && getWidth()>=340;
+        for(int i=0;i<6;++i) {
+            const auto r=sliders[i]->getBounds();
+            noOverlaps=noOverlaps && getLocalBounds().contains(r) &&
+                r.getBottom()<=getHeight()-27 && r.getX()>=110 &&
+                r.getWidth()>=160 && !r.intersects(gateEnabled.getBounds());
+            for(int j=i+1;j<6;++j)
+                noOverlaps=noOverlaps && !r.intersects(sliders[j]->getBounds());
+        }
         setPhysical("micGateOn",priorEnabled);
         setPhysical("micGateThreshold",priorThreshold);
         setPhysical("micPreOn",priorModel);
         showPage(false);
-        return switched && mapped && isolated && !gatePage && modelTab.isVisible();
+        return switched && mapped && isolated && noOverlaps &&
+               !gatePage && modelTab.isVisible();
     }
     bool testInputAndBypass() {
         const auto currentOn=on();
