@@ -82,7 +82,7 @@ public:
         gateAdvanced.onClick=[this]{
             advancedGate=!advancedGate;
             updateGateVisibility();
-            resized();
+            if(getWidth()>=340 && getHeight()>=345)resized();
             repaint();
         };
         addAndMakeVisible(gateAdvanced);
@@ -198,7 +198,9 @@ public:
         gateEnabled.setVisible(gate);
         gateAdvanced.setVisible(gate);
         updateGateVisibility();
-        resized();
+        // Constructor calls showPage() before JUCE assigns panel bounds.
+        // Never set negative slider widths during zero-size startup.
+        if(getWidth()>=340 && getHeight()>=345)resized();
         refresh();
     }
     void updateGateVisibility() {
