@@ -140,6 +140,11 @@ public:
         if(stylesOpen && vocalFeelStyleButton.onClick)
             vocalFeelStyleButton.onClick();
     }
+    void setSuiteSpectrumForScreenshot(bool enabled) {
+        if(processor.slotType(slot)==SkellPresetAudioProcessor::VocalFeelSuiteFX
+           && suiteSpectrumView!=enabled && suiteSpectrumButton.onClick)
+            suiteSpectrumButton.onClick();
+    }
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;

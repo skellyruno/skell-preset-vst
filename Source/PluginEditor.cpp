@@ -414,6 +414,10 @@ public:
         editingIdle=false;idle.setVisible(false);
         slot.setSuiteForScreenshot(page,stylesOpen);
     }
+    void setSuiteSpectrumForScreenshot(bool enabled) {
+        editingIdle=false;idle.setVisible(false);
+        slot.setSuiteSpectrumForScreenshot(enabled);
+    }
     void setMicPanelForScreenshot(bool visible) {
         // A capture of the closed mic panel must not close a completely
         // independent open preset browser scene. Only opening MIC owns
@@ -869,6 +873,8 @@ public:
             issues.add("A native effect editor has clipped/invisible inline controls or popup geometry");
         if(!slot.testVocalFeelSuiteUI())
             issues.add("Vocal Feel Suite 16 controls, styles popup, or return automation drag failed");
+        if(!slot.testSuiteSpectrumUIForTest())
+            issues.add("Vocal Feel Spectrum live input/output UI button or read-only mode failed");
         // Real stereo audio → APVTS slot 43 → measured GR → exact state
         // snapshot/restore. Never prove a new plugin using UI-only graphics.
         processor.loadFactoryPreset(25); // zero-PDC tracking factory
@@ -1511,6 +1517,9 @@ void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
 }
 void SkellPresetAudioProcessorEditor::setSuiteForScreenshot(int page,bool stylesOpen) {
     canvas->setSuiteForScreenshot(page,stylesOpen);
+}
+void SkellPresetAudioProcessorEditor::setSuiteSpectrumForScreenshot(bool enabled) {
+    canvas->setSuiteSpectrumForScreenshot(enabled);
 }
 void SkellPresetAudioProcessorEditor::setMicPanelForScreenshot(bool visible) {
     canvas->setMicPanelForScreenshot(visible);

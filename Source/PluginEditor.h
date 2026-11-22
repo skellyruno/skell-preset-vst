@@ -14,6 +14,7 @@ public:
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
     void setMatchPageForScreenshot(int page);
     void setSuiteForScreenshot(int page,bool stylesOpen);
+    void setSuiteSpectrumForScreenshot(bool enabled);
     void setMicPanelForScreenshot(bool visible);
     void setModOrbForScreenshot(bool enabled);
     void dockRackForScreenshot(bool right);

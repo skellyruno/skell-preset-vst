@@ -374,6 +374,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-vocal-suite-mixes-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-vocal-suite-output-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-vocal-suite-style-picker-125",1460,860,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-spectrum-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-chorus-orb-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
                                   818,482,0,1,false});
@@ -506,6 +507,8 @@ int main(int argc, char** argv) {
                                scene.id.contains("output")?3:0;
                 editor.setSuiteForScreenshot(page,
                     scene.id.contains("style-picker"));
+                if(scene.id.contains("spectrum"))
+                    editor.setSuiteSpectrumForScreenshot(true);
             }
             if(scene.id=="obsidian-module-picker-70")
                 editor.openModulePickerForScreenshot();
