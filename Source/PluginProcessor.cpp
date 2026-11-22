@@ -269,10 +269,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     // Append new IDs after every existing factory/automation parameter.
     // Empty rack and pre-gate host states retain previous gate-off behavior.
     bl("micGateOn","MIC Noise Gate enabled",false);
-    fl("micGateThreshold","MIC Noise Gate threshold dB",-75,-15,-40);
-    fl("micGateAttackMs","MIC Noise Gate attack ms",.5f,25.f,4.f);
-    fl("micGateHoldMs","MIC Noise Gate hold ms",0,250,60);
-    fl("micGateReleaseMs","MIC Noise Gate release ms",20,600,85);
+    fl("micGateThreshold","MIC Noise Gate threshold dB",-75,-15,-46);
+    fl("micGateAttackMs","MIC Noise Gate attack ms",.5f,25.f,2.f);
+    fl("micGateHoldMs","MIC Noise Gate hold ms",0,250,25);
+    fl("micGateReleaseMs","MIC Noise Gate release ms",20,600,40);
     fl("micGateHysteresisDb","MIC Noise Gate hysteresis dB",0,12,4);
     return p;
 }
@@ -1448,9 +1448,9 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     setReal("micPreOn",0);setReal("micPreInput",0);
     setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
     // Requested factory behavior: dedicated MIC gate ON for every new load.
-    setReal("micGateOn",1.f);setReal("micGateThreshold",-40.f);
-    setReal("micGateAttackMs",4.f);setReal("micGateHoldMs",60.f);
-    setReal("micGateReleaseMs",85.f);setReal("micGateHysteresisDb",4.f);
+    setReal("micGateOn",1.f);setReal("micGateThreshold",-46.f);
+    setReal("micGateAttackMs",2.f);setReal("micGateHoldMs",25.f);
+    setReal("micGateReleaseMs",40.f);setReal("micGateHysteresisDb",4.f);
     // Factory switches must reset all serialized macro values, including the
     // currently hidden compatibility slots 5..8, so imported state cannot leak.
     for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);

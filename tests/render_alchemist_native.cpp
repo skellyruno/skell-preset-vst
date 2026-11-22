@@ -228,6 +228,8 @@ int blankSmoke() {
     plugin->loadFactoryPreset(skellpreset::alchemist::factoryIndex);
     if(const auto* micGate=plugin->state.getRawParameterValue("micGateOn");
        !micGate || micGate->load()<.5f)return 59;
+    if(const auto* threshold=plugin->state.getRawParameterValue("micGateThreshold");
+       !threshold || std::abs(threshold->load()+46.f)>.001f)return 60;
     if(const int resetResult=checkNativeFactorySlotDefaults(
            *plugin,(int)skellpreset::alchemist::stages.size());resetResult!=0)
         return resetResult;

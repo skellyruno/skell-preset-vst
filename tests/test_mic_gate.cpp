@@ -6,7 +6,7 @@ using skellpreset::dsp::MicNoiseGate;
 int main() {
  int count=0;
  for(double sr:{44100.,48000.,96000.}) {
-  MicNoiseGate g;g.prepare(sr);g.set(-40.f,4.f,60.f,85.f,4.f);
+  MicNoiseGate g;g.prepare(sr);g.set(-46.f,2.f,25.f,40.f,4.f);
   for(int n=0;n<sr/2;n++)if(g.processGain(0,0)!=0.f)return 1;
   ++count;float v=0;
   for(int n=0;n<sr/2;n++)v=g.processGain(.12f,-.12f);

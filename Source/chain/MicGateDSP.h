@@ -7,13 +7,13 @@ class MicNoiseGate final {
 public:
  void prepare(double sampleRate) noexcept {
   sr=std::isfinite(sampleRate)?std::clamp(sampleRate,8000.,192000.):48000.;
-  detector=0.;gain=0.;holdRemaining=0;open=false;set(-40.f,4.f,60.f,85.f,4.f);
+  detector=0.;gain=0.;holdRemaining=0;open=false;set(-46.f,2.f,25.f,40.f,4.f);
  }
  void set(float thresholdDb,float attackMs,float holdMs,float releaseMs,float hysteresisDb) noexcept {
-  thresholdDb=finiteClamp(thresholdDb,-75.f,-15.f,-40.f);
-  attackMs=finiteClamp(attackMs,.5f,25.f,4.f);
-  holdMs=finiteClamp(holdMs,0.f,250.f,60.f);
-  releaseMs=finiteClamp(releaseMs,20.f,600.f,85.f);
+  thresholdDb=finiteClamp(thresholdDb,-75.f,-15.f,-46.f);
+  attackMs=finiteClamp(attackMs,.5f,25.f,2.f);
+  holdMs=finiteClamp(holdMs,0.f,250.f,25.f);
+  releaseMs=finiteClamp(releaseMs,20.f,600.f,40.f);
   hysteresisDb=finiteClamp(hysteresisDb,0.f,12.f,4.f);
   openThreshold=std::pow(10.,thresholdDb/20.);
   closeThreshold=std::pow(10.,(thresholdDb-hysteresisDb)/20.);
