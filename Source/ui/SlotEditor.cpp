@@ -1574,7 +1574,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             const float over=juce::jmax(0.f,inDb-threshold);
             const float grDb=over<=0.f?0.f:
                 kneeA>1.e-5f?
-                ((std::log1p((over+1.f)*kneeA)*kneeB-1.f)*(slope+1.f)-over:
+                ((std::log1p((over+1.f)*kneeA)*kneeB-1.f)*(slope+1.f)-over):
                 over*slope;
             const float x=plot.getX()+ix;
             if(ix==0) {

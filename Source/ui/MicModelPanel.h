@@ -376,13 +376,13 @@ public:
         return false;
     }
     bool testNoiseGateAndBypass() {
-        const auto* enabled=processor.state.getRawParameterValue("micGateOn");
+        const auto* gateParameter=processor.state.getRawParameterValue("micGateOn");
         const auto* threshold=processor.state.getRawParameterValue("micGateThreshold");
-        if(!enabled || !threshold)return false;
+        if(!gateParameter || !threshold)return false;
         const auto* model=processor.state.getRawParameterValue("micPreOn");
         if(!model)return false;
         const float priorModel=model->load();
-        const float priorEnabled=enabled->load(),priorThreshold=threshold->load();
+        const float priorEnabled=gateParameter->load(),priorThreshold=threshold->load();
         showPage(true);
         setPhysical("micPreOn",0.f);
         setPhysical("micGateOn",0.f);
