@@ -272,6 +272,29 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     };
     addAndMakeVisible(studioCompKnee);
     studioCompKnee.setVisible(false);
+    duckOpen.setTooltip("Lower selected reverb/delay return while vocal is active, without external routing");
+    duckOpen.onClick=[this] {
+        if(!SkellPresetAudioProcessor::supportsWetSidechain(processor.slotType(slot)))return;
+        const bool opening=!duckPanel.isVisible();
+        if(opening){modulePicker.setVisible(false);installedBrowser.setVisible(false);}
+        duckPanel.setVisible(opening);
+        if(opening)duckPanel.toFront(true);
+    };
+    addAndMakeVisible(duckOpen);duckOpen.setVisible(false);
+    addAndMakeVisible(duckPanel);duckPanel.setVisible(false);
+    duckClose.onClick=[this]{duckPanel.setVisible(false);};
+    duckPanel.addAndMakeVisible(duckClose);
+    duckOn.setTooltip("Stereo-linked ducking from dry vocal, not from delay/reverb feedback");
+    duckPanel.addAndMakeVisible(duckOn);
+    for(auto* slider:{&duckDepth,&duckThreshold,&duckRelease}) {
+        slider->setSliderStyle(juce::Slider::LinearHorizontal);
+        slider->setTextBoxStyle(juce::Slider::TextBoxRight,false,78,22);
+        slider->setScrollWheelEnabled(true);
+        duckPanel.addAndMakeVisible(*slider);
+    }
+    duckDepth.setTooltip("0% = no ducking, 100% = attenuate wet return during speech");
+    duckThreshold.setTooltip("Vocal detector threshold, dBFS");
+    duckRelease.setTooltip("Rise of the reverb/delay tail when vocal stops, ms");
     for(int index=0;index<2;++index) {
         auto& control=eqCutSliders[(size_t)index];
         control.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -813,9 +836,10 @@ void SlotEditor::applyTheme() {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(juce::Slider* s:std::array<juce::Slider*,9>{{
+    for(juce::Slider* s:std::array<juce::Slider*,12>{{
         &eqQSlider,&eqCutSliders[0],&eqCutSliders[1],&studioGateFloor,
-        &studioCompKnee,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}}) {
+        &studioCompKnee,&knobs[0],&knobs[1],&knobs[2],&knobs[3],
+        &duckDepth,&duckThreshold,&duckRelease}}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         s->setColour(juce::Slider::thumbColourId,Theme::white);
@@ -828,6 +852,12 @@ void SlotEditor::applyTheme() {
     addEqNode.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.14f));
     addEqNode.setColour(juce::TextButton::textColourOffId,Theme::green);
     eqNodeMenu.repaint();
+    duckOpen.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.17f));
+    duckOpen.setColour(juce::TextButton::textColourOffId,Theme::green);
+    duckClose.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
+    duckClose.setColour(juce::TextButton::textColourOffId,Theme::white);
+    duckOn.setColour(juce::ToggleButton::textColourId,Theme::white);
+    duckPanel.repaint();
     modOrbButton.setColour(juce::TextButton::buttonColourId,
         modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
     modOrbButton.setColour(juce::TextButton::textColourOffId,
@@ -1020,6 +1050,42 @@ bool SlotEditor::testStudioDelayPages() {
     select(physical);
     return ok;
 }
+bool SlotEditor::testWetSidechainPanel() {
+    const int physical=slot,originalType=processor.slotType(slot);
+    const auto prefix="s"+juce::String(slot+1)+"_";
+    auto* on=processor.state.getParameter(prefix+"duckOn");
+    auto* amount=processor.state.getParameter(prefix+"duckDepth");
+    auto* threshold=processor.state.getParameter(prefix+"duckThreshold");
+    auto* release=processor.state.getParameter(prefix+"duckRelease");
+    if(!on||!amount||!threshold||!release)return false;
+    const float saved[]{processor.state.getRawParameterValue(prefix+"duckOn")->load(),
+                        processor.state.getRawParameterValue(prefix+"duckDepth")->load(),
+                        processor.state.getRawParameterValue(prefix+"duckThreshold")->load(),
+                        processor.state.getRawParameterValue(prefix+"duckRelease")->load()};
+    processor.setSlotType(slot,SkellPresetAudioProcessor::Reverb);
+    select(slot);
+    bool ok=duckOpen.isVisible()&&!duckPanel.isVisible();
+    duckOpen.onClick();
+    ok=ok&&duckPanel.isVisible()&&duckDepth.isVisible()&&duckOn.isVisible()
+         &&duckPanel.getRight()<=getWidth()&&duckPanel.getBottom()<=getHeight();
+    duckOn.setToggleState(true,juce::sendNotificationSync);
+    duckDepth.setValue(.77,juce::sendNotificationSync);
+    duckThreshold.setValue(-34.,juce::sendNotificationSync);
+    duckRelease.setValue(420.,juce::sendNotificationSync);
+    ok=ok&&processor.state.getRawParameterValue(prefix+"duckOn")->load()>.5f &&
+       std::abs(processor.state.getRawParameterValue(prefix+"duckDepth")->load()-.77f)<.02f &&
+       duckThreshold.getTextFromValue(-34.).contains("dBFS") &&
+       duckRelease.getTextFromValue(420.).contains("ms");
+    duckClose.onClick();
+    ok=ok&&!duckPanel.isVisible();
+    on->setValueNotifyingHost(on->convertTo0to1(saved[0]));
+    amount->setValueNotifyingHost(amount->convertTo0to1(saved[1]));
+    threshold->setValueNotifyingHost(threshold->convertTo0to1(saved[2]));
+    release->setValueNotifyingHost(release->convertTo0to1(saved[3]));
+    processor.setSlotType(physical,originalType);
+    select(physical);
+    return ok;
+}
 bool SlotEditor::testAdlibControls() {
     const int physical=slot,oldType=processor.slotType(slot);
     const auto* oldOn=processor.state.getRawParameterValue(
@@ -1142,13 +1208,29 @@ void SlotEditor::select(int newSlot) {
     lastPeakLevel=-1;
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
+    duckPanel.setVisible(false);
     graphSnapshotValid=false;
     eqQAttachment.reset();
     gateFloorAttachment.reset();
+    duckOnAttachment.reset();
+    for(auto& a:duckAttachments)a.reset();
     for(auto& a:eqCutAttachments)a.reset();
     externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
+    duckOnAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processor.state,prefix+"duckOn",duckOn);
+    duckAttachments[0]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        processor.state,prefix+"duckDepth",duckDepth);
+    duckAttachments[1]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        processor.state,prefix+"duckThreshold",duckThreshold);
+    duckAttachments[2]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        processor.state,prefix+"duckRelease",duckRelease);
+    // Restore physical readouts after APVTS attachment creates the slider ranges.
+    duckDepth.textFromValueFunction=[](double v){return juce::String(v*100.,0)+"%";};
+    duckThreshold.textFromValueFunction=[](double v){return juce::String(v,1)+" dBFS";};
+    duckRelease.textFromValueFunction=[](double v){return juce::String(v,0)+" ms";};
+    duckDepth.updateText();duckThreshold.updateText();duckRelease.updateText();
     moduleBox.setSelectedId(processor.slotType(slot)+1,juce::dontSendNotification);
     if(isPagedEQ(processor.slotType(slot))) {
         eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -1311,6 +1393,9 @@ void SlotEditor::refreshIfChanged() {
     // choice, while older saved EQ instances remain editable and recallable.
     upgradeEq.setVisible(false);
     modOrbButton.setVisible(isModulationOrbEffect(type));
+    const bool hasSidechain=SkellPresetAudioProcessor::supportsWetSidechain(type);
+    duckOpen.setVisible(hasSidechain);
+    if(!hasSidechain)duckPanel.setVisible(false);
     eqQSlider.setVisible(isPagedEQ(type));
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(int index=0;index<8;++index)
@@ -1349,6 +1434,13 @@ void SlotEditor::resized() {
     limiterPageButtons[1].setBounds(183,106,124,26);
     for(int page=0;page<4;++page)
         delayPageButtons[(size_t)page].setBounds(45+page*150,106,142,26);
+    duckOpen.setBounds(708,106,157,28);
+    duckPanel.setBounds(505,146,353,209);
+    duckClose.setBounds(318,11,25,23);
+    duckOn.setBounds(16,41,326,31);
+    duckDepth.setBounds(108,80,232,30);
+    duckThreshold.setBounds(108,121,232,30);
+    duckRelease.setBounds(108,162,232,30);
     studioGateFloor.setBounds(548,104,298,27);
     studioCompKnee.setBounds(548,104,298,27);
     loadExternal.setBounds(542,33,164,32);
@@ -2778,7 +2870,9 @@ void SlotEditor::paint(juce::Graphics&g) {
     // 8-band EQ owns the 96..148px header for its band selectors and
     // filter controls. Don't draw duplicate effect headings over them.
     if(effectTitle.isNotEmpty() && type!=SkellPresetAudioProcessor::EightBandToneFX){
-        Theme::fittedText(g,effectTitle,{47,103,730,22},14,Theme::green,true);
+        const int titleWidth=SkellPresetAudioProcessor::supportsWetSidechain(type)
+            ?645:730;
+        Theme::fittedText(g,effectTitle,{47,103,titleWidth,22},14,Theme::green,true);
         Theme::fittedText(g,effectDetail,{47,128,755,18},12,Theme::muted);
     }
     if(type==SkellPresetAudioProcessor::Compressor ||

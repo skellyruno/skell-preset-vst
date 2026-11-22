@@ -648,6 +648,8 @@ public:
             issues.add("Studio Delay effect pages failed to map p1..p16 host parameters");
         if(!slot.testAdlibControls())
             issues.add("AdlibFX UI knob units, inert controls or parameter bindings failed");
+        if(!slot.testWetSidechainPanel())
+            issues.add("Sidechain editor controls, host bindings or layout failed");
         if(!slot.testMicModelCards())
             issues.add("Mic Modeling profile cards failed to update stable host parameters");
         if(!slot.testModOrbToggle())
