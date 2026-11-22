@@ -1022,6 +1022,22 @@ int studioSmoke() {
         return 78;
     }
     micGate->setValueNotifyingHost(micGate->convertTo0to1(1.f));
+    // Prove the newly appended REDUCTION control affects the actual
+    // processBlock output. Zero reduction is the same audible dry gate bypass.
+    auto* depthControl=processor->state.getParameter("micGateDepth");
+    auto* attackControl=processor->state.getParameter("micGateAttackMs");
+    auto* hysteresisControl=processor->state.getParameter("micGateHysteresisDb");
+    if(!depthControl || !attackControl || !hysteresisControl)return 114;
+    depthControl->setValueNotifyingHost(depthControl->convertTo0to1(0.f));
+    const auto zeroReduction=gateEnergy(.004f,.004f);
+    depthControl->setValueNotifyingHost(depthControl->convertTo0to1(1.f));
+    const auto fullReduction=gateEnergy(.004f,.004f);
+    if(!(zeroReduction[1]>quietBypass[1]*.95 &&
+         fullReduction[1]>=0. && fullReduction[1]<zeroReduction[1]*.05))
+        return 115;
+    attackControl->setValueNotifyingHost(attackControl->convertTo0to1(11.f));
+    hysteresisControl->setValueNotifyingHost(hysteresisControl->convertTo0to1(7.f));
+    depthControl->setValueNotifyingHost(depthControl->convertTo0to1(.4f));
     juce::MemoryBlock micState;
     processor->getStateInformation(micState);
     auto recalledMic=std::make_unique<SkellPresetAudioProcessor>();
@@ -1031,6 +1047,13 @@ int studioSmoke() {
     if(!gateRestored || gateRestored->load()<.5f ||
        !thresholdRestored || std::abs(thresholdRestored->load()+20.f)>.05f)
         return 79;
+    const auto* savedAttack=recalledMic->state.getRawParameterValue("micGateAttackMs");
+    const auto* savedHyst=recalledMic->state.getRawParameterValue("micGateHysteresisDb");
+    const auto* savedDepth=recalledMic->state.getRawParameterValue("micGateDepth");
+    if(!savedAttack || std::abs(savedAttack->load()-11.f)>.05f ||
+       !savedHyst || std::abs(savedHyst->load()-7.f)>.05f ||
+       !savedDepth || std::abs(savedDepth->load()-.4f)>.001f)
+        return 116;
     std::puts("PASS: input noise gate bypass, stereo link, zero PDC and host-state recall");
     // A new factory selection enables its front-end gate with safe knob
     // defaults; restored project and package states keep saved ON/OFF choices.
@@ -1061,6 +1084,13 @@ int studioSmoke() {
     if(!importedOn || importedOn->load()<.5f || !importedThreshold ||
        std::abs(importedThreshold->load()+20.f)>.05f)
         return 97;
+    const auto* pkgAttack=importedGate->state.getRawParameterValue("micGateAttackMs");
+    const auto* pkgHyst=importedGate->state.getRawParameterValue("micGateHysteresisDb");
+    const auto* pkgDepth=importedGate->state.getRawParameterValue("micGateDepth");
+    if(!pkgAttack || std::abs(pkgAttack->load()-11.f)>.05f ||
+       !pkgHyst || std::abs(pkgHyst->load()-7.f)>.05f ||
+       !pkgDepth || std::abs(pkgDepth->load()-.4f)>.001f)
+        return 117;
     std::puts("PASS: factory gate ON reset and native package gate roundtrip");
     processor->releaseResources();
     return 0;
