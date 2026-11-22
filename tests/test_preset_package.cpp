@@ -52,7 +52,9 @@ int main(){
               && !loaded.micPreOn && !loaded.micGateOn
               && loaded.micGateThreshold==-45.f
               && loaded.micGateRelease==160.f
-              && loaded.micGateHold==55.f,
+              && loaded.micGateHold==55.f
+              && !loaded.slots[0].duckOn
+              && loaded.slots[0].duckDepth==.65f,
               "Default rack imports without activating effects or mic preamp");
         bool importedNeutralParameters=true;
         for(const auto& slot:loaded.slots)
@@ -69,6 +71,8 @@ int main(){
         // 0..11 values in the first ten slots of v1 test archives.
         slot.type=s<11?s%11:13+s-11;
         slot.enabled=s%2==0;slot.wet=.15f+(float)s*.04f;
+        slot.duckOn=s==2;slot.duckDepth=.73f;
+        slot.duckThreshold=-28.f;slot.duckRelease=480.f;
         slot.params.fill(.5f);
     }
     first.activeSlotCount=14;
@@ -92,7 +96,11 @@ int main(){
           &&second.micPreTarget==3 && second.micPreAmount==.72f
           &&second.micPreTrim==.63f
           &&second.micGateOn &&second.micGateThreshold==-31.f
-          &&second.micGateRelease==250.f &&second.micGateHold==83.f,
+          &&second.micGateRelease==250.f &&second.micGateHold==83.f
+          &&second.slots[2].duckOn &&!second.slots[3].duckOn
+          &&second.slots[2].duckDepth==.73f
+          &&second.slots[2].duckThreshold==-28.f
+          &&second.slots[2].duckRelease==480.f,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
 
     // Schema v2 supports all new VoxRack modules without modifying the
@@ -300,7 +308,11 @@ int main(){
                 {false,"studioEqKind","studio-eq-kind","Reject explicit null Studio EQ type array"},
                 {false,"studioEqOn","studio-eq-on","Reject explicit null Studio EQ enable array"},
                 {false,"eqLowCut","eq-low-cut","Reject explicit null EQ low-cut value"},
-                {false,"eqHighCut","eq-high-cut","Reject explicit null EQ high-cut value"}
+                {false,"eqHighCut","eq-high-cut","Reject explicit null EQ high-cut value"},
+                {false,"duckOn","duck-on","Reject explicit null wet sidechain on"},
+                {false,"duckDepth","duck-depth","Reject null duck depth"},
+                {false,"duckThreshold","duck-threshold","Reject null duck threshold"},
+                {false,"duckRelease","duck-release","Reject null duck release"}
             };
             for(const auto& test:nullCases) {
                 auto nullJson=juce::JSON::parse(jsonText);

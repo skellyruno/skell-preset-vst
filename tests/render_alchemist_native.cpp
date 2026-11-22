@@ -728,7 +728,11 @@ int studioSmoke() {
         SkellPresetAudioProcessor::StudioLimiterFX,
         SkellPresetAudioProcessor::StudioCompressorFX,
         SkellPresetAudioProcessor::StudioFastDistFX,
-        SkellPresetAudioProcessor::StudioDelayFX
+        SkellPresetAudioProcessor::StudioDelayFX,
+        SkellPresetAudioProcessor::AdlibChop,
+        SkellPresetAudioProcessor::AdlibMotion,
+        SkellPresetAudioProcessor::AdlibFilter,
+        SkellPresetAudioProcessor::AdlibSaturate
     };
     for(const int type:types){
         processor->setSlotOn(0,false);
@@ -744,6 +748,12 @@ int studioSmoke() {
         }else if(type==SkellPresetAudioProcessor::StudioFastDistFX) {
             processor->setSlotParam(0,0,.7f);
             processor->setSlotParam(0,3,.6f);
+        }else if(type>=SkellPresetAudioProcessor::AdlibChop &&
+                 type<=SkellPresetAudioProcessor::AdlibSaturate) {
+            processor->setSlotParam(0,0,.88f);
+            processor->setSlotParam(0,1,.90f);
+            processor->setSlotParam(0,2,.22f);
+            processor->setSlotParam(0,3,1.f);
         }else if(type==SkellPresetAudioProcessor::StudioDelayFX) {
             processor->setSlotParam(0,0,.32f); // ~100 ms free-running echo
             processor->setSlotParam(0,1,.36f);
@@ -807,6 +817,103 @@ int studioSmoke() {
         }
         std::printf("PASS: Studio ID %d, PDC %d, peak %.4f, change %.4f, state recall\n",
                     type,latency,peak,difference);
+    }
+    // Host state and native preset recall of new opt-in return duck controls.
+    // Every previous factory slot, effect ID and wet state stays unchanged.
+    {
+        processor->setSlotType(0,SkellPresetAudioProcessor::Reverb);
+        processor->setSlotOn(0,true);
+        auto* duckOn=processor->state.getParameter("s1_duckOn");
+        auto* duckDepth=processor->state.getParameter("s1_duckDepth");
+        auto* duckRelease=processor->state.getParameter("s1_duckRelease");
+        if(!duckOn || !duckDepth || !duckRelease ||
+           processor->getLatencySamples()!=0) return 98;
+        duckOn->setValueNotifyingHost(duckOn->convertTo0to1(1.f));
+        duckDepth->setValueNotifyingHost(duckDepth->convertTo0to1(.78f));
+        duckRelease->setValueNotifyingHost(duckRelease->convertTo0to1(420.f));
+        juce::MemoryBlock packed;
+        processor->getStateInformation(packed);
+        auto recalled=std::make_unique<SkellPresetAudioProcessor>();
+        recalled->setStateInformation(packed.getData(),(int)packed.getSize());
+        const auto* on=recalled->state.getRawParameterValue("s1_duckOn");
+        const auto* amount=recalled->state.getRawParameterValue("s1_duckDepth");
+        if(!on || !amount || on->load()<.5f ||
+           std::abs(amount->load()-.78f)>.02f)return 99;
+        const auto duckFile=juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getNonexistentChildFile("skell-wet-sidechain-smoke",".skellpreset",false);
+        if(processor->exportPreset(duckFile).failed())return 100;
+        auto restored=std::make_unique<SkellPresetAudioProcessor>();
+        const auto saved=restored->importPreset(duckFile);
+        duckFile.deleteFile();
+        if(saved.failed() || restored->state.getRawParameterValue("s1_duckOn")->load()<.5f)
+            return 101;
+        restored->loadFactoryPreset(0);
+        if(restored->state.getRawParameterValue("s1_duckOn")->load()>.5f)
+            return 102;
+        std::puts("PASS: wet sidechain APVTS state, ZIP import/export, OFF factory reset, 0 PDC");
+    }
+    // Acoustic proof through the real compiled JUCE audio processor:
+    // a voiced input must duck the ECHO, not the signal path's dry vocal.
+    // Compare identical 400 Hz stereo input with opt-in sidechain OFF/ON.
+    {
+        const auto runDelay=[&](bool enabled)->std::array<double,2> {
+            auto p=std::make_unique<SkellPresetAudioProcessor>();
+            p->prepareToPlay(48000.,256);
+            p->setSlotType(0,SkellPresetAudioProcessor::StudioDelayFX);
+            p->setSlotOn(0,true);
+            p->setSlotParam(0,0,0.f); // 25 ms
+            p->setSlotParam(0,1,.50f);
+            p->setSlotParam(0,2,.30f); // true stereo
+            p->setSlotParam(0,4,0.f);
+            p->setSlotParam(0,5,.85f);
+            p->setSlotParam(0,7,0.f);
+            p->setSlotParam(0,9,0.f);
+            p->setSlotParam(0,10,1.f); // full echo
+            p->setSlotParam(0,11,1.f); // exact unity dry
+            p->setSlotParam(0,12,0.f);
+            if(auto* amount=p->state.getParameter("s1_duckDepth"))
+                amount->setValueNotifyingHost(amount->convertTo0to1(.90f));
+            if(auto* on=p->state.getParameter("s1_duckOn"))
+                on->setValueNotifyingHost(on->convertTo0to1(enabled?1.f:0.f));
+            std::array<double,2> energy{};
+            for(int block=0;block<250;++block) {
+                juce::AudioBuffer<float> b(2,256);
+                for(int n=0;n<256;++n) {
+                    const int index=block*256+n;
+                    const float voice=index<48000?(float)(
+                        .3*std::sin(2.*juce::MathConstants<double>::pi*
+                                      400.*index/48000.)):0.f;
+                    b.setSample(0,n,voice);
+                    b.setSample(1,n,voice);
+                }
+                juce::MidiBuffer midi;
+                p->processBlock(b,midi);
+                for(int n=0;n<256;++n) {
+                    const int index=block*256+n;
+                    const double dry=index<48000?
+                        .3*std::sin(2.*juce::MathConstants<double>::pi*
+                                     400.*index/48000.):0.;
+                    const double echo=(double)b.getSample(0,n)-dry;
+                    if(!std::isfinite(echo)) {
+                        p->releaseResources();
+                        return std::array<double,2>{{-1.,-1.}};
+                    }
+                    if(index>12000&&index<45000)energy[0]+=echo*echo;
+                    if(index>49000&&index<56000)energy[1]+=echo*echo;
+                }
+            }
+            p->releaseResources();
+            return energy;
+        };
+        const auto without=runDelay(false),with=runDelay(true);
+        if(!(without[0]>.01 && with[0]>=0. &&
+             with[0]<without[0]*.33 && with[1]>=0.)) {
+            std::fprintf(stderr,"VOICE SIDECHAIN AUDIO: dry-echo %.7f, ducked-echo %.7f, tails %.7f / %.7f\n",
+                         without[0],with[0],without[1],with[1]);
+            return 103;
+        }
+        std::printf("PASS: compiled Studio Delay wet return ducked %.1f dB while dry vocal stays unity; zero new latency\n",
+                    10.*std::log10(std::max(1.e-8,with[0]/without[0])));
     }
     // Exercise the FRONT-END mic gate through the actual JUCE audio callback.
     // It must be opt-in, zero-PDC, stereo linked, recallable, and bypass clean.

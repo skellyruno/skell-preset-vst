@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <SkellCore/Core.h>
+#include <SkellCore/AdlibFX.h>
 #include "chain/BasicDSP.h"
 #include "chain/LiveAudioScope.h"
 #include "chain/ClipRecorder.h"
@@ -9,6 +10,7 @@
 #include "chain/StudioChorusDSP.h"
 #include "chain/StudioNativeDSP.h"
 #include "chain/StudioDelayDSP.h"
+#include "chain/WetDuckerDSP.h"
 #include "chain/ImportedVocalFX.h"
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
@@ -25,8 +27,13 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, NumberOfModules };
     static constexpr int slotCount=16;
+    static bool supportsWetSidechain(int type) noexcept {
+        return type==Reverb || type==VoxRackRoom || type==Delay ||
+               type==StudioDelayFX || type==AdlibThrow ||
+               type==DuckingPingPongFX;
+    }
     static constexpr int defaultSlotCount=10;
     static constexpr int emptyRackProgramIndex=static_cast<int>(skellpreset::factoryPresets.size());
     static constexpr int customRackProgramIndex=emptyRackProgramIndex+1;
@@ -139,6 +146,7 @@ private:
         skellpreset::studio::FastDist studioDist;
         skellpreset::dsp::VocalFlanger flanger;
         skellpreset::dsp::VocalRingMod ring;
+        skellcore::adlibfx::Processor adlibFx;
         skellpreset::dsp::VocalRider rider;
         skellpreset::dsp::DuckingPingPongDelay duckingDelay;
         skellpreset::dsp::VocalVibrato vibrato;
@@ -153,6 +161,7 @@ private:
         skellpreset::dsp::StereoSampleDelay pitchDry;
         skellpreset::dsp::Delay delay;
         skellpreset::studio::StereoDelay studioDelay;
+        skellpreset::dsp::VoiceWetDucker voiceDuck;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
         skellcore::TruePeakLimiter limiter;
@@ -168,10 +177,12 @@ private:
     };
     std::array<EngineSlot,slotCount> engines;
     skellpreset::host::HostedVST3 hosted;
-    juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork;
+    juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork,sidechainWork;
     int hostChunkCapacity=512;
     struct Controls {
         int type=0;bool on=false;float wet=1;float eqLowCut=0,eqHighCut=0;
+        bool duckOn=false;
+        float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f;
         std::array<float,16> p{};std::array<float,8> q{};
         std::array<int,8> studioEqKinds{{3,0,0,0,0,0,4,0}};
         std::array<bool,8> studioEqEnabled{{true,true,true,true,true,true,true,false}};
@@ -188,9 +199,12 @@ private:
         std::atomic<float>* extension6=nullptr;
         std::atomic<float>* extension7=nullptr;
         std::atomic<float>* extension8=nullptr;
+        std::atomic<float>* extension9=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
+        std::atomic<float>* duckOn=nullptr,*duckDepth=nullptr;
+        std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr;
         std::array<std::atomic<float>*,16> p{};
         std::array<std::atomic<float>*,8> q{};
         std::array<std::atomic<float>*,8> studioEqKind{};

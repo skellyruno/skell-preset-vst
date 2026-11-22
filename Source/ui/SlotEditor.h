@@ -40,6 +40,20 @@ protected:
 private:
     bool hovered=false,editing=false;
 };
+// Compact JUCE popup with real APVTS attachments and no audio-thread GUI.
+class SkellWetDuckPanel final:public juce::Component {
+public:
+    void paint(juce::Graphics& g) override {
+        Theme::panelBox(g,getLocalBounds().toFloat().reduced(1.f),8.f,true);
+        Theme::text(g,"VOCAL SIDECHAIN / DUCK FX RETURNS",
+                    {16,11,getWidth()-57,24},13.f,Theme::green,true);
+        Theme::text(g,"DEPTH",{17,84,86,20},11,Theme::white,true);
+        Theme::text(g,"THRESHOLD",{17,125,86,20},11,Theme::white,true);
+        Theme::text(g,"RELEASE",{17,166,86,20},11,Theme::white,true);
+        Theme::fittedText(g,"DRY VOCAL TRIGGERS / 0 PDC / NO SIDECHAIN BUS",
+                          {17,getHeight()-17,getWidth()-33,12},9,Theme::muted);
+    }
+};
 class SlotEditor final:public juce::Component {
 public:
     explicit SlotEditor(SkellPresetAudioProcessor& p);
@@ -62,6 +76,7 @@ public:
         modulePicker.setVisible(false);
         installedBrowser.setVisible(false);
         eqNodeMenu.setVisible(false);
+        duckPanel.setVisible(false);
     }
     bool modulePickerVisibleForTest() const noexcept {return modulePicker.isVisible();}
     bool hasEmbeddedEditorForTest() const noexcept {return embeddedEditor!=nullptr;}
@@ -77,6 +92,8 @@ public:
     bool testMatchFinishPages();
     bool testStudioLimiterPages();
     bool testStudioDelayPages();
+    bool testAdlibControls();
+    bool testWetSidechainPanel();
     bool testMicModelCards();
     bool testModOrbToggle();
     void setModOrbForScreenshot(bool enabled);
@@ -134,6 +151,12 @@ private:
     std::array<juce::TextButton,4> delayPageButtons;
     juce::Slider studioGateFloor;
     juce::Slider studioCompKnee;
+    juce::TextButton duckOpen{"SIDECHAIN"},duckClose{"X"};
+    SkellWetDuckPanel duckPanel;
+    juce::ToggleButton duckOn{"DUCK WHEN VOCAL IS PRESENT"};
+    juce::Slider duckDepth,duckThreshold,duckRelease;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> duckOnAttachment;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,3> duckAttachments;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateFloorAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> studioCompKneeAttachment;
     std::array<SkellHoverPercentKnob,4> knobs;

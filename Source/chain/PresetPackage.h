@@ -30,6 +30,9 @@ struct Slot {
     std::array<bool,8> studioEqOn {{true,true,true,true,true,true,true,false}};
     // Optional v2 fields; absent in old presets, so both filters are flat.
     float eqLowCut=0.f,eqHighCut=0.f;
+    // Native v2 optional extension, default OFF on original archives.
+    bool duckOn=false;
+    float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f;
 };
 
 struct Document {
