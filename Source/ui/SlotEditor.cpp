@@ -263,6 +263,9 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     studioCompKnee.setSliderStyle(juce::Slider::LinearHorizontal);
     studioCompKnee.setTextBoxStyle(juce::Slider::TextBoxRight,false,54,20);
     studioCompKnee.setTooltip("Studio compressor soft-knee intensity (independent p5 automation)");
+    studioCompKnee.textFromValueFunction=[](double v){
+        return juce::String(juce::roundToInt(v*100.))+"%";
+    };
     addAndMakeVisible(studioCompKnee);
     studioCompKnee.setVisible(false);
     for(int index=0;index<2;++index) {

@@ -1070,9 +1070,9 @@ public:
         if(settingsPanel.isVisible())settingsPanel.toFront(true);
         if(micPanel.isVisible())micPanel.toFront(true);
         micButton.setColour(juce::TextButton::buttonColourId,
-            micPanel.on()?Theme::green.withAlpha(.21f):Theme::panelAlt);
+            micPanel.anyActive()?Theme::green.withAlpha(.21f):Theme::panelAlt);
         micButton.setColour(juce::TextButton::textColourOffId,
-            micPanel.on()?Theme::green:Theme::white);
+            micPanel.anyActive()?Theme::green:Theme::white);
         preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
         viewSwitch.setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
         viewSwitch.setTooltip(display==0?"Open full effect chain":"Switch to four macros");
@@ -1089,7 +1089,7 @@ public:
         processor.refreshHostedLatency();
         if(settingsPanel.isVisible())refreshWorldLinkStatus();
         if(micPanel.isVisible())micPanel.refreshIfChanged();
-        const bool micActive=micPanel.on();
+        const bool micActive=micPanel.anyActive();
         if(micActive!=lastMicOn) {
             lastMicOn=micActive;
             micButton.setColour(juce::TextButton::buttonColourId,

@@ -231,6 +231,12 @@ public:
         const auto* p=processor.state.getRawParameterValue("micPreOn");
         return p!=nullptr && p->load()>.5f;
     }
+    // The rack MIC indicator reflects EITHER independent front-end processor.
+    // Keep on() specific to mic modeling so its ON button never toggles the gate.
+    bool anyActive() const {
+        const auto* gate=processor.state.getRawParameterValue("micGateOn");
+        return on() || (gate && gate->load()>.5f);
+    }
     void refreshIfChanged() {
         const auto* in=processor.state.getRawParameterValue("micPreInput");
         const auto* out=processor.state.getRawParameterValue("micPreTarget");
@@ -373,15 +379,21 @@ public:
         const auto* enabled=processor.state.getRawParameterValue("micGateOn");
         const auto* threshold=processor.state.getRawParameterValue("micGateThreshold");
         if(!enabled || !threshold)return false;
+        const auto* model=processor.state.getRawParameterValue("micPreOn");
+        if(!model)return false;
+        const float priorModel=model->load();
         const float priorEnabled=enabled->load(),priorThreshold=threshold->load();
         showPage(true);
+        setPhysical("micPreOn",0.f);
         setPhysical("micGateOn",0.f);
         gateEnabled.onClick();
-        const bool switched=gatePage && lastGateEnabled && gateEnabled.isVisible();
+        const bool switched=gatePage && lastGateEnabled && gateEnabled.isVisible()
+            && !on() && anyActive();
         gateThreshold.setValue(-54.f,juce::sendNotificationSync);
         const bool mapped=std::abs(threshold->load()+54.f)<.05f;
         setPhysical("micGateOn",priorEnabled);
         setPhysical("micGateThreshold",priorThreshold);
+        setPhysical("micPreOn",priorModel);
         showPage(false);
         return switched && mapped && !gatePage && modelTab.isVisible();
     }
