@@ -35,6 +35,12 @@ This inventory covers **paths** only: changes to existing files across the 41 ol
 - #90 gained new host-program-identity regression for mic gate / `fxExt8`, commit `67e75dc`; subsequent exact-head CI pending at audit-update time.
 - [Issue #93](https://github.com/skellyruno/skell-preset-vst/issues/93) records the administrator-only requirement to activate `main` branch protection and exact mandatory `portable-tests`/`windows-vst3` checks. Workflow code cannot enforce this server-side policy.
 
+### Historical factory 43-program test recovered
+
+The old `tests/test_factory_presets.cpp` from `audit/preset-slot-order-strict-20261113` pinned **every original factory host index 0–42** and the original bank split. Its historical 43-program ceiling must **not** overwrite the 55-program factory catalog. The reconciled `tests/test_factory_catalog_history.cpp` pins all **55 current host program indexes**, verifies original **Main Vocals 18 / Adlibs 17 / Vocoding 8** bank counts, and rejects invalid or duplicate preset metadata. This portable C++17 test runs in both Ubuntu and Windows CTest. No existing preset audio, automation ID or factory index is modified.
+
+The old branch/file remain preserved. Exact-head CI and any subsequent native FL Studio recall remain separate release gates.
+
 ## Maintenance and security
 - **Critical:** legacy `import-stage2.yml` was manually runnable with `contents:write`, deleted `bootstrap` and `windows-vst3.yml`, and pushed to `main`. This safeguard PR retires the active job and preserves the original YAML as documentation.
 - **Critical:** `repo-maintenance.yml` could automatically mark draft PRs ready and merge them without verifying CI. This safeguard PR disables that action.
