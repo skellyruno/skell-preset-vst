@@ -26,6 +26,9 @@ public:
         filterLow.fill(0.f);filterHigh.fill(0.f);
         write=diffWrite=0;phase=0.;
         delayL=delayR=targetL=targetR=sr*.25;
+        // The first callback must honor the selected time immediately.
+        // Subsequent automation ramps remain pitch-continuous over 25 ms.
+        configured=false;
     }
     // p[0..15] are normalized host controls, read once per callback.
     void set(const std::array<float,16>& p,double bpm) noexcept {
@@ -41,6 +44,10 @@ public:
         const double offset=.05*get(3);
         targetL=std::clamp(time*sr,1.,sr*6.10);
         targetR=std::clamp((time+offset)*sr,1.,sr*6.15);
+        if(!configured) {
+            delayL=targetL;delayR=targetR;
+            configured=true;
+        }
         feedback=.94f*get(1);
         mode=std::clamp(static_cast<int>(get(2)*3.999f),0,3);
         const double lowHz=12.+1600.*get(4)*get(4);
@@ -68,7 +75,8 @@ public:
         delayR+=(targetR-delayR)*glide;
         phase+=2.*3.141592653589793*lfoRate/sr;
         if(phase>=2.*3.141592653589793)phase-=2.*3.141592653589793;
-        const double sway=std::sin(phase)*modDepth;
+        // Avoid per-sample trig in the default zero-modulation mode.
+        const double sway=modDepth>0.?std::sin(phase)*modDepth:0.;
         float echo[2]{read(0,delayL+sway),read(1,delayR-sway)};
         if(mode==0) {
             const float mono=.5f*(echo[0]+echo[1]);
@@ -83,8 +91,13 @@ public:
             high=(1.f-highPole)*low+highPole*high;
             const float filtered=low-high;
             const float coloured=filtered*(1.f-.45f*tone);
-            const float shaped=std::tanh(coloured*drive)/shapeDenom;
-            const float nonlinear=coloured+(shaped-coloured)*saturation;
+            // No nonlinear DSP when saturation is OFF. Preserve the exact
+            // original linear output while saving two tanh calls per frame.
+            float nonlinear=coloured;
+            if(saturation>0.f) {
+                const float shaped=std::tanh(coloured*drive)/shapeDenom;
+                nonlinear+=(shaped-coloured)*saturation;
+            }
             auto& allpass=diffuser[static_cast<std::size_t>(ch)];
             const float delayed=allpass[diffWrite];
             const float diffused=delayed-diffusion*nonlinear;
@@ -116,5 +129,6 @@ private:
     float feedback=.25f,lowPole=.5f,highPole=.99f,drive=1.f,shapeDenom=.76f;
     float saturation=0.f,wet=.4f,dry=1.f,tone=.5f,diffusion=.1f;
     int mode=1;
+    bool configured=false; // set() initializes delay time only once per prepare/reset
 };
 } // namespace skellpreset::studio
