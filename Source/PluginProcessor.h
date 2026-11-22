@@ -10,6 +10,7 @@
 #include "chain/StudioChorusDSP.h"
 #include "chain/StudioNativeDSP.h"
 #include "chain/StudioDelayDSP.h"
+#include "chain/VocalFeelOptoDSP.h"
 #include "chain/WetDuckerDSP.h"
 #include "chain/ImportedVocalFX.h"
 #include "chain/AdvancedVocalDSP.h"
@@ -27,7 +28,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, VocalFeelOptoFX, NumberOfModules };
     static constexpr int slotCount=16;
     static bool supportsWetSidechain(int type) noexcept {
         return type==Reverb || type==VoxRackRoom || type==Delay ||
@@ -126,6 +127,9 @@ public:
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
+    float getSlotGainReductionDb(int slot) const noexcept {
+        return slotGainReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
+    }
 private:
     struct EngineSlot {
         skellpreset::dsp::SmoothedBiquad peak, highpass;
@@ -161,6 +165,7 @@ private:
         skellpreset::dsp::StereoSampleDelay pitchDry;
         skellpreset::dsp::Delay delay;
         skellpreset::studio::StereoDelay studioDelay;
+        skellpreset::dsp::VocalFeelOpto vocalFeel;
         skellpreset::dsp::VoiceWetDucker voiceDuck;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
@@ -201,6 +206,7 @@ private:
         std::atomic<float>* extension7=nullptr;
         std::atomic<float>* extension8=nullptr;
         std::atomic<float>* extension9=nullptr;
+        std::atomic<float>* extension10=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
@@ -236,6 +242,7 @@ private:
     } rawGlobal;
     std::array<RawSlot,slotCount> rawSlots;
     std::array<std::atomic<float>,slotCount> slotPeaks;
+    std::array<std::atomic<float>,slotCount> slotGainReductionDb;
     std::atomic<float> inputPeak{0},outputPeak{0};
     skellpreset::visual::LiveAudioScope liveScope;
     skellpreset::capture::ClipRecorder capture;

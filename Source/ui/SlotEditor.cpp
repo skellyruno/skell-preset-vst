@@ -71,6 +71,7 @@ std::array<juce::String,4> titles(int type) {
         case 40:return {"Stereo Width","LFO Rate","Unused","Mix"};
         case 41:return {"Amount","HP Blend","Cutoff","Mix"};
         case 42:return {"Drive","Unused","Colour","Mix"};
+        case 43:return {"Amount","Colour","Voice","Parallel"};
         default:return {"Level","Tone","Time","Blend"};
     }
 }
@@ -453,6 +454,11 @@ void SlotEditor::applyKnobReadouts() {
                 if(i==1)return juce::String(-53.+39.*v,1)+" dBFS";
                 if(i==2)return juce::String(2.+20.*v,1)+" dB";
                 return juce::String(35.+245.*v,0)+" ms";
+            }
+            if(module==SkellPresetAudioProcessor::VocalFeelOptoFX) {
+                if(i==0 || i==3)return juce::String(juce::roundToInt(v*100.))+"%";
+                if(i==1)return v<.25?"FLAT":v<.75?"WARM":"TUBE";
+                return v<.25?"MALE":v<.75?"MALE 2":"FEMALE";
             }
             if(module==SkellPresetAudioProcessor::StudioCompressorFX) {
                 if(i==0) {
@@ -1224,7 +1230,7 @@ void SlotEditor::select(int newSlot) {
     if(slot!=newSlot)releaseEmbeddedEditor();
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
-    lastPeakLevel=-1;
+    lastPeakLevel=-1;lastGainReductionStep=-1;
     graphSnapshotValid=false; // never leave the previous slot's power state
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
@@ -1292,6 +1298,12 @@ void SlotEditor::refreshIfChanged() {
     const bool powerOn=power && power->load()>.5f && type!=SkellPresetAudioProcessor::Empty;
     slotPower.setStatus(powerOn,type!=SkellPresetAudioProcessor::Empty);
     bool changed=!graphSnapshotValid || type!=lastType || powerOn!=lastPowerOn;
+    // 0.5 dB steps bound GUI repaints. The meter is measured on the audio
+    // callback and published atomically; no synthetic GR animation.
+    const int grStep=type==SkellPresetAudioProcessor::VocalFeelOptoFX
+        ?juce::roundToInt(2.f*processor.getSlotGainReductionDb(slot)):0;
+    changed=changed || grStep!=lastGainReductionStep;
+    lastGainReductionStep=grStep;
     lastPowerOn=powerOn;
     for(int i=0;i<6;++i)changed=changed || std::abs(current[(size_t)i]-lastControls[(size_t)i])>1.e-5f;
     const float measured=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
@@ -1808,6 +1820,30 @@ void SlotEditor::paint(juce::Graphics&g) {
             {47,186,650,21},13,Theme::white);
         Theme::text(g,"ILLUSTRATIVE MAX REDUCTION  /  ACTUAL GAIN IS LEVEL-DEPENDENT",
             {43,327,790,17},11,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::VocalFeelOptoFX) {
+        // Measured gain reduction; sampled from the actual per-slot engine.
+        // No fake FFT or imagined loudness score.
+        const float gr=juce::jlimit(0.f,24.f,processor.getSlotGainReductionDb(slot));
+        const float x=64.f,y=242.f,width=730.f;
+        const float proportion=gr/24.f;
+        Theme::text(g,"VOCAL FEEL  /  LINKED OPTO DETECTOR",
+                    {48,165,680,22},14,Theme::green,true);
+        Theme::text(g,"GAIN REDUCTION  "+juce::String(gr,1)+" dB",
+                    {49,198,630,25},15,Theme::white,true);
+        g.setColour(Theme::stroke);
+        g.fillRoundedRectangle({x,y,width,24.f},5.f);
+        g.setColour(Theme::green.withAlpha(.90f));
+        g.fillRoundedRectangle({x,y,width*proportion,24.f},5.f);
+        for(int tick=1;tick<6;++tick) {
+            const float xx=x+width*(float)tick/6.f;
+            g.setColour(Theme::white.withAlpha(.13f));
+            g.drawVerticalLine((int)xx,y+1.f,y+23.f);
+        }
+        Theme::text(g,"0 dB",{61,275,95,18},10.7f,Theme::muted);
+        Theme::text(g,"24 dB",{732,275,69,18},10.7f,Theme::muted,
+                    false,juce::Justification::centredRight);
+        Theme::text(g,"VOICE-KEYED  /  FLAT · WARM · TUBE  /  ZERO ADDED LATENCY",
+                    {49,326,770,18},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::Compressor){
         // Steady-state input/output transfer, derived from compressor controls.
         const auto* punch=processor.state.getRawParameterValue("macro2");

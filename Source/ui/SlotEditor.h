@@ -201,7 +201,7 @@ private:
     int gestureEqBand=-1; // same parameter IDs receive begin/end gestures
     bool graphSnapshotValid=false;
     int lastType=-1;
-    int lastPeakLevel=-1;
+    int lastPeakLevel=-1,lastGainReductionStep=-1;
     bool lastPowerOn=false;
     int lastHostedLatency=-1;
     bool lastHostedLoaded=false;

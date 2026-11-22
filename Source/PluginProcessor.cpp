@@ -75,6 +75,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     for(int i=0;i<slotCount;i++){
         initialOrder|=(std::uint64_t)i << (4*i);
         slotPeaks[(size_t)i].store(0);
+        slotGainReductionDb[(size_t)i].store(0);
         auto& r=rawSlots[(size_t)i];const auto prefix=slotPrefix(i);
         r.type=state.getRawParameterValue(prefix+"type");
         r.extension=state.getRawParameterValue(prefix+"fxExt");
@@ -86,6 +87,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension7=state.getRawParameterValue(prefix+"fxExt7");
         r.extension8=state.getRawParameterValue(prefix+"fxExt8");
         r.extension9=state.getRawParameterValue(prefix+"fxExt9");
+        r.extension10=state.getRawParameterValue(prefix+"fxExt10");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         r.duckOn=state.getRawParameterValue(prefix+"duckOn");
@@ -315,6 +317,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     fl("micGateAttackMs","Mic gate attack ms",.5f,25.f,4.f);
     fl("micGateHysteresisDb","Mic gate hysteresis dB",0.f,12.f,3.f);
     fl("micGateDepth","Mic gate reduction",0.f,1.f,1.f);
+    // NEW, appended option. Never add to fxExt9: its host choice range is
+    // published and changing its normalization would break saved DAW states.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt10",1},
+            "Slot "+juce::String(slot)+" Vocal Feel opto effect",
+            juce::StringArray{"None","Vocal Feel Opto"},0));
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -334,7 +343,9 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     harshness.prepare(sampleRate);noiseControl.prepare(sampleRate);
     studioPitch.prepare(sampleRate);
     pitchDry.prepare(skellpreset::dsp::SpectralPitchFormant::latencySamples);
-    delay.prepare(sampleRate);studioDelay.prepare(sampleRate);reverb[0].prepare(sampleRate);
+    delay.prepare(sampleRate);studioDelay.prepare(sampleRate);
+    vocalFeel.prepare(sampleRate);
+    reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
     hostDry.prepare(skellpreset::host::HostedVST3::maxTotalLatency);
@@ -413,6 +424,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
         e.prepare(rate);
         e.voiceDuck.prepare(rate);
     }
+    for(auto& meter:slotGainReductionDb)meter.store(0.f,std::memory_order_relaxed);
     micFrontEnd.prepare(rate);
     micInputGate.prepare(rate);
     micFrontWet.reset(rate,.020);
@@ -475,7 +487,9 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int studioNative=raw.extension7?juce::jlimit(0,4,(int)raw.extension7->load()):0;
     const int studioDelay=raw.extension8?juce::jlimit(0,1,(int)raw.extension8->load()):0;
     const int adlib=raw.extension9?juce::jlimit(0,4,(int)raw.extension9->load()):0;
+    const int vocalFeel=raw.extension10?juce::jlimit(0,1,(int)raw.extension10->load()):0;
     if(oldType!=Empty)return oldType;
+    if(vocalFeel>0)return VocalFeelOptoFX;
     if(adlib>0)return (int)StudioDelayFX+adlib;
     if(studioDelay>0)return (int)StudioFastDistFX+studioDelay;
     if(studioNative>0)return (int)SkelldizerFX+studioNative;
@@ -493,11 +507,19 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
     const bool newStudio=chosen>SkelldizerFX && slotType(slot)!=chosen;
+    if(chosen!=VocalFeelOptoFX)setReal(id+"fxExt10",0.f);
     if(chosen<=StudioDelayFX)setReal(id+"fxExt9",0.f);
     if(chosen<=StudioFastDistFX)setReal(id+"fxExt8",0.f);
     if(chosen<=SkelldizerFX)setReal(id+"fxExt7",0.f);
     if(chosen<=MicModelFX)setReal(id+"fxExt6",0.f);
-    if(chosen>StudioDelayFX) {
+    if(chosen==VocalFeelOptoFX) {
+        // Stable legacy type/extension parameters are untouched in meaning.
+        setReal(id+"type",(float)Empty);
+        for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5",
+                                "fxExt6","fxExt7","fxExt8","fxExt9"})
+            setReal(id+choice,0.f);
+        setReal(id+"fxExt10",1.f);
+    } else if(chosen>StudioDelayFX) {
         setReal(id+"type",(float)Empty);
         for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4",
                                 "fxExt5","fxExt6","fxExt7","fxExt8"})
@@ -571,6 +593,12 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(newStudio) {
         // First selection only; imported preset parameters restore afterward.
         for(int k=0;k<16;++k)setSlotParam(slot,k,.5f);
+        if(chosen==VocalFeelOptoFX) {
+            setSlotParam(slot,0,.45f); // opto strength
+            setSlotParam(slot,1,0.f);  // FLAT colour: no saturation by default
+            setSlotParam(slot,2,.5f);  // MALE 2 detector
+            setSlotParam(slot,3,1.f);  // 100% processing (rack wet still independent)
+        }
         if(chosen>=AdlibChop && chosen<=AdlibSaturate) {
             // First selection only; imported presets override these defaults.
             setSlotParam(slot,0,.65f);
@@ -851,6 +879,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case StudioDelayFX:
                 e.studioDelay.set(c.p,hostBpm);
                 break;
+            case VocalFeelOptoFX:
+                e.vocalFeel.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
                                   500.f+17500.f*c.p[2]);
@@ -890,7 +921,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     }
     blockLatency=juce::jlimit(0,slotCount*(lookahead+skellpreset::dsp::SpectralPitchFormant::latencySamples)+
         skellpreset::host::HostedVST3::maxTotalLatency,blockLatency);
-    std::array<float,slotCount> meter{};
+    std::array<float,slotCount> meter{},grMeter{};
     float inPeak=0.f,outPeak=0.f;
     const int limit=juce::jmax(64,hostChunkCapacity);
     for(int offset=0;offset<total;offset+=limit) {
@@ -1022,6 +1053,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case StudioCompressorFX: {
                         const auto y=e.studioComp.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case VocalFeelOptoFX: {
+                        const auto y=e.vocalFeel.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case StudioEQFX: {
@@ -1204,6 +1239,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 meter[(size_t)s]=std::max(meter[(size_t)s],
                     std::max(std::abs(processedL),std::abs(processedR)));
             }
+            if(c.type==VocalFeelOptoFX && c.on)
+                grMeter[(size_t)s]=std::max(grMeter[(size_t)s],
+                                           e.vocalFeel.gainReductionDb());
         }
         for(int n=0;n<frames;++n) {
             const float dryL=dryWork.getSample(0,n);
@@ -1233,8 +1271,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     }
     inputPeak.store(inPeak,std::memory_order_relaxed);
     outputPeak.store(outPeak,std::memory_order_relaxed);
-    for(int s=0;s<slotCount;++s)
+    for(int s=0;s<slotCount;++s) {
         slotPeaks[(size_t)s].store(meter[(size_t)s],std::memory_order_relaxed);
+        slotGainReductionDb[(size_t)s].store(grMeter[(size_t)s],std::memory_order_relaxed);
+    }
 }
 
 int SkellPresetAudioProcessor::appendRackSlot() {
@@ -1828,6 +1868,23 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
                 }
             }
             if(validProgram)selectedProgram=parsedProgram;
+        }
+        // Old FL Studio snapshots have no fxExt10. Explicitly supply OFF to
+        // avoid inheriting a previously active opto instance when recalling a
+        // legacy project on an already-open processor.
+        for(int slot=1;slot<=slotCount;++slot) {
+            const auto id="s"+juce::String(slot)+"_fxExt10";
+            bool present=false;
+            for(int i=0;i<loaded.getNumChildren();++i)
+                if(loaded.getChild(i).getProperty("id").toString()==id) {
+                    present=true;break;
+                }
+            if(!present) {
+                juce::ValueTree child(juce::Identifier("PARAM"));
+                child.setProperty("id",id,nullptr);
+                child.setProperty("value",0.f,nullptr);
+                loaded.appendChild(child,nullptr);
+            }
         }
         // Pre-gate FL Studio host snapshots have no micGateOn child. If an
         // older state replaces an active factory gate, explicitly restore OFF
