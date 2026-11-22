@@ -273,10 +273,10 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         // If absent, old presets remain dry/FX identical. Bad values are
         // rejected before ANY live destination parameters are changed.
         if(hasJsonProperty(item,"duckOn")) {
-            const auto enabled=item.getProperty("duckOn",{});
-            if(!enabled.isBool())
+            const auto duckEnabled=item.getProperty("duckOn",{});
+            if(!duckEnabled.isBool())
                 return juce::Result::fail("Invalid wet sidechain enable");
-            slot.duckOn=(bool)enabled;
+            slot.duckOn=(bool)duckEnabled;
         }
         if((hasJsonProperty(item,"duckDepth") &&
             !decodeFloat(item.getProperty("duckDepth",{}),0.f,1.f,slot.duckDepth)) ||
