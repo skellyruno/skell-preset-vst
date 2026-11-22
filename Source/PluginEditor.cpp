@@ -17,6 +17,7 @@
 #include <SkellCore/WorldLink.h>
 #include <array>
 #include <memory>
+#include <vector>
 
 namespace {
 void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical) {
@@ -69,6 +70,15 @@ public:
             slot.openModulePicker();
         };
 
+        undo.setButtonText("UNDO");
+        redo.setButtonText("REDO");
+        undo.setTooltip("Undo a preset load (Ctrl+Z). New edits and external hosted VST3s are not in history yet.");
+        redo.setTooltip("Redo a preset load (Ctrl+Y or Ctrl+Shift+Z)");
+        style(undo);style(redo);
+        addAndMakeVisible(undo);addAndMakeVisible(redo);
+        undo.onClick=[this]{restoreHistory(undoStates,redoStates);};
+        redo.onClick=[this]{restoreHistory(redoStates,undoStates);};
+        updateHistoryButtons();
         preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
         preset.onClick=[this]{
             micPanel.setVisible(false);
@@ -275,7 +285,10 @@ public:
                     }
                 });
         };
+        browser.onBeforeLoad=[this]{prepareHistory();};
+        browser.onLoadFailed=[this]{pendingHistory.reset();updateHistoryButtons();};
         browser.onLoaded=[this]{
+            commitHistory();
             editingIdle=false;idle.setVisible(false);
             slot.select(0);chain.setSelectedSlot(0);refresh();
         };
@@ -345,8 +358,8 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(juce::TextButton* b:std::array<juce::TextButton*,8>{{
-            &preset,&match,&viewSwitch,&powerButton,&help,&settings,&record,&micButton}})
+        for(juce::TextButton* b:std::array<juce::TextButton*,10>{{
+            &preset,&match,&viewSwitch,&undo,&redo,&powerButton,&help,&settings,&record,&micButton}})
             style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
@@ -460,7 +473,8 @@ public:
            || std::abs(input.valueFromTextFunction("50%"))>1.e-5
            || std::abs(input.valueFromTextFunction("+6 dB")-6.)>1.e-5)
             issues.add("Master rotary readout or legacy percent input incorrectly maps physical dB");
-        const std::array<const juce::Component*,5> top{{&preset,&match,&viewSwitch,&settings,&powerButton}};
+        const std::array<const juce::Component*,7> top{{
+            &preset,&match,&viewSwitch,&undo,&redo,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -624,6 +638,25 @@ public:
         for(const auto& control:macro)
             if(control.isVisible())
                 issues.add("Legacy macro appears in advanced mode");
+        // The real browser's native preset commands must be undoable with a
+        // bounded state journal, and Redo must reconstruct the selected sound.
+        processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+        browser.loadFactoryForHistoryTest(skellpreset::deuce_v25::factoryIndex);
+        const bool loadedDeuce=processor.getCurrentProgram()==skellpreset::deuce_v25::factoryIndex &&
+            undo.isEnabled() && !redo.isEnabled();
+        undo.onClick();
+        const bool undoRecalled=processor.getCurrentProgram()==skellpreset::alchemist::factoryIndex &&
+            redo.isEnabled();
+        redo.onClick();
+        const bool redoRecalled=processor.getCurrentProgram()==skellpreset::deuce_v25::factoryIndex &&
+            undo.isEnabled();
+        undo.onClick();
+        // A new browser operation after undo invalidates stale redo history.
+        browser.loadFactoryForHistoryTest(skellpreset::deuce_v25::factoryIndex);
+        const bool newLoadClearsRedo=!redo.isEnabled();
+        if(!loadedDeuce || !undoRecalled || !redoRecalled || !newLoadClearsRedo)
+            issues.add("Header Undo/Redo does not restore native factory preset state");
+        undoStates.clear();redoStates.clear();pendingHistory.reset();updateHistoryButtons();
         const int beforeTheme=selectedTheme;
         themeButton.onClick();
         if(selectedTheme!=(beforeTheme+1)%3)
@@ -1054,7 +1087,11 @@ public:
         }
         preset.setBounds(356,27,332,39);
         match.setBounds(696,27,87,37);
-        viewSwitch.setBounds(796,27,264,37);
+        viewSwitch.setBounds(796,27,176,37);
+        // Bounded message-thread preset history in the top bar.
+        // The two small actions never obscure the Power / Settings group.
+        undo.setBounds(978,28,41,36);
+        redo.setBounds(1023,28,41,36);
         micButton.setBounds(0,0,44,36);
         micButton.setVisible(false);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
@@ -1204,6 +1241,22 @@ public:
         if(key==juce::KeyPress::escapeKey && micPanel.isVisible()) {
             micPanel.setVisible(false);return true;
         }
+        // Never steal Ctrl+Z from the browser's active search/editor field.
+        if(!browser.isVisible() && !settingsPanel.isVisible() &&
+           !micPanel.isVisible() && key.getModifiers().isCommandDown()) {
+            const auto character=juce::CharacterFunctions::toLowerCase(key.getKeyCode());
+            if(character=='z') {
+                if(key.getModifiers().isShiftDown())
+                    restoreHistory(redoStates,undoStates);
+                else
+                    restoreHistory(undoStates,redoStates);
+                return true;
+            }
+            if(character=='y') {
+                restoreHistory(redoStates,undoStates);
+                return true;
+            }
+        }
         if(key==juce::KeyPress::escapeKey && settingsPanel.isVisible()){
             settingsPanel.close();return true;
         }
@@ -1215,6 +1268,66 @@ public:
         return false;
     }
 private:
+    // Preset-level history is intentionally separate from host automation
+    // gestures: JUCE's APVTS is not given a new UndoManager, and no published
+    // automation ID changes. All snapshots/restores run on the UI thread.
+    struct HistorySnapshot {
+        juce::MemoryBlock state;
+        juce::File selectedPreset;
+    };
+    static constexpr size_t historyLimit=12;
+    std::vector<HistorySnapshot> undoStates,redoStates;
+    std::unique_ptr<HistorySnapshot> pendingHistory;
+    bool makeSnapshot(HistorySnapshot& snapshot) {
+        // Hosted VST3 state cannot currently be restored atomically with its
+        // external native editor; skip it rather than claiming safe undo.
+        for(int slotId=0;slotId<SkellPresetAudioProcessor::slotCount;++slotId)
+            if(processor.slotType(slotId)==SkellPresetAudioProcessor::ExternalVST3)
+                return false;
+        processor.getStateInformation(snapshot.state);
+        if(snapshot.state.getSize()==0 || snapshot.state.getSize()>2u*1024u*1024u)
+            return false;
+        snapshot.selectedPreset=browser.historySelection();
+        return true;
+    }
+    void updateHistoryButtons() {
+        undo.setEnabled(!undoStates.empty());
+        redo.setEnabled(!redoStates.empty());
+    }
+    void pushHistory(std::vector<HistorySnapshot>& stack,HistorySnapshot snapshot) {
+        if(stack.size()>=historyLimit)stack.erase(stack.begin());
+        stack.push_back(std::move(snapshot));
+    }
+    void prepareHistory() {
+        pendingHistory.reset();
+        HistorySnapshot snapshot;
+        if(makeSnapshot(snapshot))
+            pendingHistory=std::make_unique<HistorySnapshot>(std::move(snapshot));
+    }
+    void commitHistory() {
+        if(!pendingHistory)return;
+        pushHistory(undoStates,std::move(*pendingHistory));
+        pendingHistory.reset();
+        redoStates.clear();
+        updateHistoryButtons();
+    }
+    void restoreHistory(std::vector<HistorySnapshot>& from,
+                        std::vector<HistorySnapshot>& to) {
+        if(from.empty())return;
+        HistorySnapshot current;
+        if(!makeSnapshot(current))return;
+        auto target=std::move(from.back());
+        from.pop_back();
+        // These snapshots were produced by getStateInformation itself.
+        // In particular, no stale factory ID or slot-order renumbering occurs.
+        processor.setStateInformation(target.state.getData(),
+                                      (int)target.state.getSize());
+        browser.restoreHistorySelection(target.selectedPreset);
+        pushHistory(to,std::move(current));
+        pendingHistory.reset();
+        updateHistoryButtons();
+        refresh();
+    }
     SkellPresetAudioProcessorEditor& outer;
     SkellPresetAudioProcessor& processor;
     ChainPanel chain;SlotEditor slot;SkellIdleDeck idle;
@@ -1230,7 +1343,7 @@ private:
     bool lastMicOn=false;
     int lastRecordingState=-1;
     unsigned lastScopeSampleCount=~0u;
-    SkellActionButton preset,match,help,record,micButton;
+    SkellActionButton preset,match,undo,redo,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
