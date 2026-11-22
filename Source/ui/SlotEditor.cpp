@@ -586,6 +586,40 @@ void SlotEditor::applyKnobReadouts() {
                 if(i==2)return juce::jlimit(0.,1.,(value-2.)/20.);
                 return juce::jlimit(0.,1.,(value-35.)/245.);
             }
+            if(module==SkellPresetAudioProcessor::StudioDelayFX) {
+                // The visible units are editable physical units, NOT a 0..100
+                // value disguised as Hz/ms. Host parameter IDs/ranges unchanged.
+                const int parameter=delayPage*4+i;
+                const double hz=value*(text.contains("khz")?1000.:1.);
+                const auto unit=[](double n){return juce::jlimit(0.,1.,n);};
+                switch(parameter) {
+                    case 0:return unit(std::log(juce::jmax(25.,value)/25.)/std::log(80.));
+                    case 1:return unit(value/94.);
+                    case 2:{
+                        if(text.contains("ping"))return .625;
+                        if(text.contains("mono"))return .125;
+                        if(text.contains("stereo"))return .375;
+                        if(text=="off")return .875;
+                        return unit(value/3.);
+                    }
+                    case 3:return unit(value/50.);
+                    case 4:return unit(std::sqrt(juce::jmax(0.,(hz-12.)/1600.)));
+                    case 5:return unit(std::log(juce::jmax(400.,hz)/400.)/std::log(45.));
+                    case 6:return unit((value-1.)/7.);
+                    case 7:return unit(value/100.);
+                    case 8:return unit((value-.05)/5.);
+                    case 9:return unit(value/12.);
+                    case 10:case 11:case 14:case 15:return unit(value/100.);
+                    case 12:return text=="on" || value>=1.?1.:0.;
+                    case 13:{
+                        constexpr const char* divisions[]{"4 beats","2 beats","1 beat",
+                            "1/2 beat","1/4 beat","1/8 beat","1/16 beat","1/32 beat"};
+                        for(int k=0;k<8;++k)
+                            if(text==divisions[k])return (k+.5)/8.;
+                        return unit(value);
+                    }
+                }
+            }
             if(module==SkellPresetAudioProcessor::MicModelFX) {
                 if(i==0 || i==1) {
                     for(int n=0;n<4;++n) {
@@ -925,7 +959,25 @@ bool SlotEditor::testStudioDelayPages() {
     processor.setSlotParam(physical,13,.76f);
     showDelayPage(3);
     ok=ok && delayPage==3 && knobs[0].getTextFromValue(1.)=="ON" &&
-         knobs[1].getTextFromValue(.76).isNotEmpty();
+         knobs[1].getTextFromValue(.76).isNotEmpty() &&
+         knobs[1].valueFromTextFunction &&
+         std::abs(knobs[1].valueFromTextFunction("1/8 beat")-.6875)<.002 &&
+         knobs[0].valueFromTextFunction &&
+         knobs[0].valueFromTextFunction("OFF")==0.;
+    showDelayPage(0);
+    ok=ok && knobs[0].valueFromTextFunction &&
+         std::abs(knobs[0].valueFromTextFunction("250 ms")-
+                  std::log(10.)/std::log(80.))<.003 &&
+         knobs[1].valueFromTextFunction &&
+         std::abs(knobs[1].valueFromTextFunction("47%")-.5)<.002 &&
+         knobs[2].valueFromTextFunction &&
+         std::abs(knobs[2].valueFromTextFunction("PING PONG")-.625)<.002;
+    showDelayPage(1);
+    ok=ok && knobs[0].valueFromTextFunction &&
+         std::abs(knobs[0].valueFromTextFunction("412 Hz")-.5)<.002 &&
+         knobs[1].valueFromTextFunction &&
+         std::abs(knobs[1].valueFromTextFunction("6 kHz")-
+                  std::log(15.)/std::log(45.))<.003;
     showDelayPage(2);
     knobs[2].setValue(.61,juce::sendNotificationSync);
     ok=ok && std::abs(processor.getSlotParam(physical,10)-.61f)<.01f;
