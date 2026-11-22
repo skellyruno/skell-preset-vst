@@ -35,6 +35,8 @@ public:
         if(amount<=0.f||blend<=0.f){reportedGr=0.f;return {l,r};}
         detectorL+=lowPole*(l-detectorL);
         detectorR+=lowPole*(r-detectorR);
+        if(std::abs(detectorL)<1.e-20f)detectorL=0.f;
+        if(std::abs(detectorR)<1.e-20f)detectorR=0.f;
         const float hpL=l-detectorL,hpR=r-detectorR;
         const float linked=std::max(std::abs(hpL),std::abs(hpR));
         envelope=rmsPole*envelope+(1.f-rmsPole)*linked*linked;
@@ -56,6 +58,9 @@ public:
         const float slowPole=std::exp(-1000.f/(slowRel*(float)fs));
         fastGr=target+(fastGr-target)*(target>fastGr?attackPole:releasePole);
         slowGr=target+(slowGr-target)*(target>slowGr?attackPole:slowPole);
+        if(fastGr<1.e-15f)fastGr=0.f;
+        if(slowGr<1.e-15f)slowGr=0.f;
+        if(memory<1.e-15f)memory=0.f;
         reportedGr=std::clamp(.65f*fastGr+.35f*slowGr,0.f,48.f);
         if(reportedGr<1.e-15f)reportedGr=0.f;
         const float gain=std::pow(10.f,-.05f*(reportedGr-std::min(3.f,.20f*reportedGr)));
@@ -63,6 +68,8 @@ public:
         const int model=colour<.25f?0:colour<.75f?1:2;
         if(model==1){
             warmL+=warmPole*(wetL-warmL);warmR+=warmPole*(wetR-warmR);
+            if(std::abs(warmL)<1.e-20f)warmL=0.f;
+            if(std::abs(warmR)<1.e-20f)warmR=0.f;
             const float a=wetL+.08f*warmL,b=wetR+.08f*warmR;
             wetL+=.22f*amount*(soft(a)-wetL);
             wetR+=.22f*amount*(soft(b)-wetR);

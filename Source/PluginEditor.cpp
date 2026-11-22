@@ -873,7 +873,8 @@ public:
         processor.setSlotParam(0,2,.5f); // MALE 2
         processor.setSlotParam(0,3,1.f);
         const bool validNativeType=processor.slotType(0)==SkellPresetAudioProcessor::VocalFeelOptoFX
-            && processor.state.getParameter("s1_fxExt10")!=nullptr;
+            && processor.state.getParameter("s1_fxExt10")!=nullptr
+            && processor.getLatencySamples()==0;
         juce::AudioBuffer<float> optoSignal(2,256);
         juce::MidiBuffer optoMidi;
         bool validAudio=true;
