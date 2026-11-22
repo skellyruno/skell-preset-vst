@@ -71,7 +71,7 @@ std::array<juce::String,4> titles(int type) {
         case 40:return {"Stereo Width","LFO Rate","Unused","Mix"};
         case 41:return {"Amount","HP Blend","Cutoff","Mix"};
         case 42:return {"Drive","Unused","Colour","Mix"};
-        default:return {"Control 1","Control 2","Control 3","Control 4"};
+        default:return {"Level","Tone","Time","Blend"};
     }
 }
 }
@@ -83,6 +83,15 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     moduleBox.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
     addChildComponent(moduleBox); // retain selected IDs for host/UI assertions
     moduleBox.setVisible(false);
+    slotPower.onClick=[this] {
+        if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty)return;
+        const auto* current=processor.state.getRawParameterValue(
+            "s"+juce::String(slot+1)+"_on");
+        processor.setSlotOn(slot,!(current && current->load()>.5f));
+        graphSnapshotValid=false;
+        refreshIfChanged();
+    };
+    addAndMakeVisible(slotPower);
     modulePicker.onSelect=[this](int type){
         const bool wasEmpty=processor.slotType(slot)==SkellPresetAudioProcessor::Empty;
         processor.setSlotType(slot,type);
@@ -309,10 +318,13 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     }
     for(int i=0;i<4;++i){
         auto& k=knobs[(size_t)i];
-        k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        k.setScrollWheelEnabled(true); // real host automation, no rack navigation
-        k.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
-        k.setTooltip("Hover or adjust for 0-100 numeric value. Double-click resets.");
+        // In-place studio parameter sliders. These are bound to the same
+        // published sN_p1..p4 automation as the removed four-knob footer.
+        k.setSliderStyle(juce::Slider::LinearHorizontal);
+        k.setScrollWheelEnabled(true);
+        k.setTextBoxStyle(juce::Slider::TextBoxRight,false,92,24);
+        k.setDoubleClickReturnValue(true,.5);
+        k.setTooltip("Drag or type the value directly in this effect panel; double-click resets.");
         // Human-readable display only; hosts still automate the exact stable
         // normalized parameter range. Never make display conversions in DSP.
         k.setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
@@ -1213,6 +1225,7 @@ void SlotEditor::select(int newSlot) {
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
     lastPeakLevel=-1;
+    graphSnapshotValid=false; // never leave the previous slot's power state
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
     duckPanel.setVisible(false);
@@ -1275,7 +1288,11 @@ void SlotEditor::refreshIfChanged() {
     for(int i=0;i<4;++i)current[(size_t)i]=processor.getSlotParam(slot,i);
     if(const auto* macro=processor.state.getRawParameterValue("macro1"))current[4]=macro->load();
     if(const auto* macro=processor.state.getRawParameterValue("macro2"))current[5]=macro->load();
-    bool changed=!graphSnapshotValid || type!=lastType;
+    const auto* power=processor.state.getRawParameterValue(prefix+"on");
+    const bool powerOn=power && power->load()>.5f && type!=SkellPresetAudioProcessor::Empty;
+    slotPower.setStatus(powerOn,type!=SkellPresetAudioProcessor::Empty);
+    bool changed=!graphSnapshotValid || type!=lastType || powerOn!=lastPowerOn;
+    lastPowerOn=powerOn;
     for(int i=0;i<6;++i)changed=changed || std::abs(current[(size_t)i]-lastControls[(size_t)i])>1.e-5f;
     const float measured=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
     const int level=juce::jlimit(0,14,juce::roundToInt(measured*14.f));
@@ -1424,7 +1441,7 @@ void SlotEditor::refreshIfChanged() {
         const bool unused=(type==SkellPresetAudioProcessor::AdlibMotion && i==2)
             ||(type==SkellPresetAudioProcessor::AdlibSaturate && i==1);
         knob.setEnabled(!external && !unused);
-        knob.setVisible(!external);
+        knob.setVisible(!external && type!=SkellPresetAudioProcessor::Empty);
         knob.setTooltip(unused?"Reserved automation ID: the shared DSP ignores this control":
                          juce::String{});
     }
@@ -1463,16 +1480,20 @@ void SlotEditor::resized() {
     layoutEmbeddedEditor();
     upgradeEq.setBounds(650,97,212,31);
     modOrbButton.setBounds(764,77,95,23);
-    // Center each native effect's real automatable control on the deck.
-    for(int k=0;k<4;k++)knobs[(size_t)k].setBounds(48+211*k,433,97,78);
+    // Two tidy parameter rows INSIDE the single effect face: never a
+    // disconnected hardware-knob strip. Graph and effect pages stay intact.
+    slotPower.setBounds(843,22,40,40);
+    for(int k=0;k<4;++k) {
+        const int column=k%2,row=k/2;
+        knobs[(size_t)k].setBounds(168+column*430,411+row*57,257,30);
+    }
 }
 void SlotEditor::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
-    Theme::panelBox(g,{0,0,906.f,406.f},9.f);
-    Theme::panelBox(g,{0,410.f,906.f,125.f},9.f);
-    // Subtle rack mounting holes make this feel like a physical processor,
-    // without crossing the interactive plot or module controls.
-    for(float sx:{12.f,894.f})for(float sy:{13.f,395.f,422.f,521.f}){
+    // ONE uninterrupted studio effect face. Controls and graph are inside
+    // it; the former second box and duplicate knob panel are gone.
+    Theme::panelBox(g,{0,0,906.f,535.f},9.f);
+    for(float sx:{12.f,894.f})for(float sy:{13.f,521.f}){
         g.setColour(Theme::bg);g.fillEllipse(sx-2.5f,sy-2.5f,5.f,5.f);
         g.setColour(Theme::stroke);g.drawEllipse(sx-2.5f,sy-2.5f,5.f,5.f,1.f);
     }
@@ -1488,20 +1509,17 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(type!=SkellPresetAudioProcessor::ExternalVST3) {
         // Remove the duplicate module dropdown and ON/WET controls. One action
         // surface lives in the rack, including for external hosted VST3 effects.
-        Theme::text(g,"CLICK RACK TO EDIT  /  DOUBLE-CLICK TO REPLACE",
-                    {479,24,386,25},12.0f,Theme::green.withAlpha(.90f),true);
+        // Power is the single interactive status dot at the upper right.
+        // It mirrors the rack's sN_on state, including host automation.
         const auto category=type==SkellPresetAudioProcessor::StudioLimiterFX
             ?juce::String("LIMITER")
             :type==SkellPresetAudioProcessor::AlchemistMatchFinishFX
                 ?juce::String("MATCH")
                 :juce::String(skellpreset::registry::at(type).category).toUpperCase();
-        // Keep this status chip entirely clear of Alchemist page tabs
-        // (starting at x=512) and the Mod Orb button (x=764).
-        const auto chip=juce::Rectangle<float>(395.f,68.f,107.f,25.f);
-        g.setColour(Theme::green.withAlpha(.12f));g.fillRoundedRectangle(chip,5.f);
-        g.setColour(Theme::green.withAlpha(.42f));
-        g.drawRoundedRectangle(chip,5.f,.85f);
-        Theme::fittedText(g,category,{403,71,91,19},11.5f,Theme::green,true);
+        // Compact category, no extra header card competing with effects.
+        Theme::fittedText(g,category,{516,70,296,21},10.8f,
+                          Theme::green.withAlpha(.88f),true,
+                          juce::Justification::centredRight);
         // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
         // vertebrae respond to the signal while leaving parameter graphs readable.
         Theme::text(g,"SLOT OUTPUT",{22,73,158,18},11.2f,Theme::muted,true);
@@ -2970,33 +2988,23 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"GATE FLOOR",{430,107,116,20},11.5f,Theme::white,true);
     if(type==SkellPresetAudioProcessor::StudioCompressorFX)
         Theme::text(g,"SOFT KNEE",{430,107,116,20},11.5f,Theme::white,true);
-    if(type==SkellPresetAudioProcessor::ExternalVST3) {
-        Theme::fittedText(g,"HOSTED VST3  /  INLINE UI IF SUPPORTED / WINDOW FALLBACK",
-            {447,462,424,49},12,Theme::muted,true);
-    } else {
-        for(int i=0;i<4;i++) {
-            // At the 70% default display scale the previous 12px muted
-            // captions became very faint and long labels looked clipped.
-            // Give each hardware rotary a high-contrast, full-width legend.
-            const int available=i==3?115:142;
+    if(type!=SkellPresetAudioProcessor::ExternalVST3 &&
+       type!=SkellPresetAudioProcessor::Empty) {
+        // In-face labels for the actual bound controls. Readouts live in
+        // each text box; no duplicate numerical overlay or "Control 1".
+        for(int i=0;i<4;++i) {
+            const int column=i%2,row=i/2;
+            const int x=42+column*430,y=413+row*57;
             Theme::fittedText(g,labels[(size_t)i].toUpperCase(),
-                        {146+211*i,451,available,23},
-                        12.8f,Theme::white.withAlpha(.77f),true);
-            // Physical value readout comes from the exact bound APVTS
-            // slider formatter, not an independently estimated graph.
-            // Text stays within the gap before the NEXT rotary control.
-            auto& control=knobs[(size_t)i];
-            const auto readout=control.getTextFromValue(control.getValue());
-            Theme::fittedText(g,readout,
-                        {146+211*i,477,104,25},
-                        16.8f,Theme::green.brighter(.25f),true);
+                {x,y,122,26},11.8f,Theme::white,true,
+                juce::Justification::centredLeft);
         }
     }
     const juce::String gestureHint="DRAG GRAPH  /  X: "+
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
     Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
-                  isModulationOrbEffect(type) && modOrbView ? "MODULATION ORB IS VISUAL ONLY / EDIT WITH KNOBS BELOW" :
+                  isModulationOrbEffect(type) && modOrbView ? "MODULATION ORB IS VISUAL ONLY / EDIT IN-PANEL CONTROLS" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::EightBandToneFX ? "CLICK ANY OF EIGHT NODES  /  DRAG TO CHANGE ITS FREQUENCY + GAIN" :
                   type==SkellPresetAudioProcessor::AdaptiveNoiseFX ? "ADAPTIVE GATE  /  NOT AN RNNOISE NEURAL MODEL" :
@@ -3007,7 +3015,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::ExternalVST3
                     ? juce::String("HOSTED VST3  /  INLINE EDITOR OR OPEN PLUGIN UI")
                   : type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1
-                    ? juce::String("DYNAMICS PAGE  /  GRAPH READ-ONLY  /  USE KNOBS BELOW")
+                    ? juce::String("DYNAMICS PAGE  /  GRAPH READ-ONLY  /  USE IN-PANEL CONTROLS")
                     : gestureHint,{30,386,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {
@@ -3271,6 +3279,48 @@ void SlotEditor::mouseUp(const juce::MouseEvent&){
     gestureEqBand=-1;
 }
 
+bool SlotEditor::testPowerDotSync() {
+    const int original=slot;
+    const int type=processor.slotType(slot);
+    const auto* raw=processor.state.getRawParameterValue(
+        "s"+juce::String(slot+1)+"_on");
+    if(!raw)return false;
+    const bool initial=raw->load()>.5f;
+    if(type==SkellPresetAudioProcessor::Empty) {
+        // Scratch only the test slot, then restore the same empty identity.
+        processor.setSlotType(slot,SkellPresetAudioProcessor::Compressor);
+        processor.setSlotOn(slot,true);
+        refreshIfChanged();
+    }
+    const bool before=processor.state.getRawParameterValue(
+        "s"+juce::String(slot+1)+"_on")->load()>.5f;
+    const bool clickable=slotPower.isEnabled();
+    slotPower.onClick();
+    const bool toggled=(processor.state.getRawParameterValue(
+        "s"+juce::String(slot+1)+"_on")->load()>.5f)!=before;
+    slotPower.onClick();
+    const bool restored=(processor.state.getRawParameterValue(
+        "s"+juce::String(slot+1)+"_on")->load()>.5f)==before;
+    if(type==SkellPresetAudioProcessor::Empty) {
+        processor.setSlotOn(slot,initial);
+        processor.setSlotType(slot,SkellPresetAudioProcessor::Empty);
+    } else processor.setSlotOn(slot,initial);
+    select(original);
+    return clickable && toggled && restored;
+}
+bool SlotEditor::testIntegratedEffectLayout() const {
+    if(slotPower.getBounds()!=juce::Rectangle<int>(843,22,40,40) ||
+       !getLocalBounds().contains(slotPower.getBounds()))return false;
+    for(int i=0;i<4;++i) {
+        const auto r=knobs[(size_t)i].getBounds();
+        if(!getLocalBounds().contains(r) || r.getY()<405 ||
+           r.getBottom()>510 || r.intersects(slotPower.getBounds()))
+            return false;
+        for(int j=i+1;j<4;++j)
+            if(r.intersects(knobs[(size_t)j].getBounds()))return false;
+    }
+    return true;
+}
 bool SlotEditor::testClassicDynamicsUnits() {
     // Headless test only: save and restore all existing slot parameters.
     const int physical=slot, originalType=processor.slotType(physical);

@@ -40,6 +40,34 @@ protected:
 private:
     bool hovered=false,editing=false;
 };
+// Single corner light controls the exact sN_on automation used by the rack.
+// Drawn as a real button with a generous hit target, not a decorative LED.
+class SkellSlotPowerDot final:public juce::Button {
+public:
+    SkellSlotPowerDot():juce::Button("Toggle this rack slot") {
+        setTooltip("Click to bypass or enable this effect in both the editor and rack");
+    }
+    void setStatus(bool active,bool available) {
+        if(on!=active || isEnabled()!=available) {
+            on=active;setEnabled(available);repaint();
+        }
+    }
+    void paintButton(juce::Graphics& g,bool hover,bool pressed) override {
+        const float cx=getWidth()*.5f,cy=getHeight()*.5f;
+        if(on && isEnabled()) {
+            g.setColour(Theme::green.withAlpha(hover?.32f:.15f));
+            g.fillEllipse(cx-13.f,cy-13.f,26.f,26.f);
+        }
+        g.setColour(Theme::bg);g.fillEllipse(cx-9.f,cy-9.f,18.f,18.f);
+        g.setColour(on && isEnabled()?Theme::green:Theme::stroke);
+        g.drawEllipse(cx-9.f,cy-9.f,18.f,18.f,1.7f);
+        g.setColour(on && isEnabled()?Theme::green.brighter(pressed?0.f:.18f):
+                    Theme::muted.withAlpha(.55f));
+        g.fillEllipse(cx-5.f,cy-5.f,10.f,10.f);
+    }
+private:
+    bool on=false;
+};
 // Compact JUCE popup with real APVTS attachments and no audio-thread GUI.
 class SkellWetDuckPanel final:public juce::Component {
 public:
@@ -96,6 +124,8 @@ public:
     bool testAdlibControls();
     bool testWetSidechainPanel();
     bool testMicModelCards();
+    bool testPowerDotSync();
+    bool testIntegratedEffectLayout() const;
     bool testModOrbToggle();
     void setModOrbForScreenshot(bool enabled);
     void setMatchPageForScreenshot(int page) {showMatchPage(page);}
@@ -119,6 +149,7 @@ private:
     // ComboBox remains as a noninteractive compatibility/synchronization
     // adapter; the user-facing selector is the searchable native overlay.
     juce::ComboBox moduleBox;
+    SkellSlotPowerDot slotPower;
     SkellModulePicker modulePicker;
     SkellInstalledVST3Browser installedBrowser;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
@@ -169,6 +200,7 @@ private:
     bool graphSnapshotValid=false;
     int lastType=-1;
     int lastPeakLevel=-1;
+    bool lastPowerOn=false;
     int lastHostedLatency=-1;
     bool lastHostedLoaded=false;
     std::array<float,6> lastControls{};

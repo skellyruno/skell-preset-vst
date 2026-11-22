@@ -600,7 +600,7 @@ public:
         const int beforeTheme=selectedTheme;
         themeButton.onClick();
         if(selectedTheme!=(beforeTheme+1)%3)
-            issues.add("Skull click didn't cycle themes immediately");
+            issues.add("Skell mark click didn't cycle themes immediately");
         setTheme(beforeTheme);
         dockRack(true);
         if(chain.getX()<=slot.getX()
@@ -652,6 +652,10 @@ public:
             issues.add("AdlibFX UI knob units, inert controls or parameter bindings failed");
         if(!slot.testWetSidechainPanel())
             issues.add("Sidechain editor controls, host bindings or layout failed");
+        if(!slot.testIntegratedEffectLayout())
+            issues.add("Unified effect UI has overlapping/missing inline parameter controls");
+        if(!slot.testPowerDotSync())
+            issues.add("Effect power light does not toggle the same APVTS state as the rack");
         if(!slot.testMicModelCards())
             issues.add("Mic Modeling profile cards failed to update stable host parameters");
         if(!slot.testModOrbToggle())
@@ -858,16 +862,10 @@ public:
         // fighting the old waveform strip for the same 14 px.
         Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{76,54,190,15},
                     10.3f,Theme::muted,true);
-        // Local visual preview only; no shared SkellCore updater yet.
-        Theme::text(g,"v0.1",{274,54,36,15},9.5f,
-                    Theme::green.withAlpha(.77f),true);
-        const float inputLevel=juce::jlimit(0.f,1.f,processor.getInputPeak());
-        const bool recording=processor.isCapturing();
-        const auto liveColour=recording?Theme::red:Theme::green;
-        g.setColour(liveColour.withAlpha(.23f+.65f*inputLevel));
-        g.fillEllipse(314.f,58.f,6.f,6.f);
-        Theme::text(g,recording?"REC":"LIVE",{325,53,28,17},9.5f,
-                    liveColour,true);
+        // UI edition marker belongs with the title, not an isolated LIVE
+        // badge. Binary package version stays 0.7.0 for old host projects.
+        Theme::text(g,"V 0.1",{282,30,64,18},11.f,
+                    Theme::green.withAlpha(.86f),true);
         Theme::text(g,"PRESET",{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
@@ -892,6 +890,10 @@ public:
         }
         // Hardware dials show the true physical gain and mix readouts.
         // The actual gain stages operate in dB; only dry/wet uses %.
+        const int currentView=(int)processor.state.getRawParameterValue("mode")->load();
+        const bool masterControlsInSimple=(currentView==0 ||
+            (currentView==3 && previousMode==0));
+        if(masterControlsInSimple) {
         const juce::StringArray masterNames{"INPUT","MIX","OUTPUT"};
         const float values[]{(float)input.getValue(),(float)mix.getValue(),
                              (float)output.getValue()};
@@ -908,6 +910,10 @@ public:
                      :output.getTextFromValue(values[i]));
             Theme::fittedText(g,readout,
                         {x+43,655,63,23},15.4f,Theme::white,true);
+        }
+        } else {
+            Theme::text(g,"MASTER GAIN + DRY/WET  /  SIMPLE VIEW",
+                {814,645,290,22},10.7f,Theme::muted,true);
         }
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
@@ -1039,6 +1045,10 @@ public:
         input.setBounds(818,650,39,33);
         mix.setBounds(934,650,39,33);
         output.setBounds(1050,650,39,33);
+        // Keep published input/mix/output APVTS values active in both modes,
+        // but expose their studio gain staging only in the Simple workspace.
+        for(auto* control:{&input,&mix,&output})
+            control->setVisible(display==0);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1110,28,36,36);
         settingsPanel.setBounds(743,78,388,326);
@@ -1069,7 +1079,11 @@ public:
             s.setEnabled(!bypass);
             s.setAlpha(bypass?.35f:1.f);
         }
-        for(auto* s:{&input,&mix,&output}){s->setEnabled(!bypass);s->setAlpha(bypass?.35f:1.f);}
+        for(auto* s:{&input,&mix,&output}) {
+            s->setVisible(display==0);
+            s->setEnabled(!bypass);
+            s->setAlpha(bypass?.35f:1.f);
+        }
         bypassShade.setVisible(bypass);
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
