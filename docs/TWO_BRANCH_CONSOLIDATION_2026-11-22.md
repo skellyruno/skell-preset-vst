@@ -27,3 +27,9 @@ Date: 2026-11-22
 
 ## Merge safeguards
 Never merge unverified audio/UI changes into main, force push, delete historical branches, renumber host automation, or release a Windows build without native GUI/audio testing. 
+
+## Ring-buffer indexing CPU optimization — Nov 22
+- Replaced runtime-modulo operations in per-sample Studio Delay read/write paths with equivalent conditional ring wrapping. No ring sizes, tap interpolation, feedback paths, UI parameters, state or PDC changed.
+- **Standalone C++17 exact header**, 15-second 44.1k stereo owner-provided voice: 661,500 stereo frames; unducked and 12ms ducked output raw float PCM are **bitwise identical** before and after (verified with binary `cmp`).
+- Same local Linux container, same `g++ -O2 -std=c++17 -DNDEBUG`, `steady_clock`, 5 warm trial rounds, 48k stereo, 8 and 16 engines, one second per engine. 8 instances: median **12.859→10.977 ms** (~**14.6%** less). 16 instances: median **26.264→23.000 ms** (~**12.4%** less). This is a **DSP kernel benchmark only**, not a Windows FL Studio real-time CPU measurement.
+- Existing portable Studio Delay regressions exercise first-echo sample accuracy, six-second beat sync across ring wraps, stereo feedback, safety/finite output. **New exact-head Windows VST3, JUCE compiled audio and UI checks must pass**; do not merge on standalone performance results alone.

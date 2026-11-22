@@ -105,8 +105,10 @@ public:
             const float next=input[ch]+feedback*(nonlinear*(1.f-diffusion)+diffused*diffusion);
             history[static_cast<std::size_t>(ch)][write]=std::clamp(next,-8.f,8.f);
         }
-        write=(write+1)%history[0].size();
-        diffWrite=(diffWrite+1)%diffuser[0].size();
+        // Both ring sizes are prepared outside process(). Conditional wraps
+        // avoid four expensive runtime-divisor modulo operations per frame.
+        if(++write==history[0].size())write=0;
+        if(++diffWrite==diffuser[0].size())diffWrite=0;
         const float echoGain=(mode==3?0.f:wet)*
             (std::isfinite(echoDuck)?std::clamp(echoDuck,0.f,1.f):1.f);
         return {std::clamp(dry*l+echoGain*echo[0],-8.f,8.f),
@@ -118,8 +120,8 @@ private:
         const double delay=std::clamp(samples,1.,static_cast<double>(line.size()-3));
         const auto integral=static_cast<std::size_t>(delay);
         const auto frac=static_cast<float>(delay-static_cast<double>(integral));
-        const auto a=(write+line.size()-integral)%line.size();
-        const auto b=(a+line.size()-1)%line.size();
+        const auto a=write>=integral?write-integral:write+line.size()-integral;
+        const auto b=a==0?line.size()-1:a-1;
         return line[a]+frac*(line[b]-line[a]);
     }
     double sr=48000.,targetL=12000.,targetR=12000.,delayL=12000.,delayR=12000.;
