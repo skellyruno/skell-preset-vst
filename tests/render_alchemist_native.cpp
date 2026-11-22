@@ -744,7 +744,39 @@ int studioSmoke() {
         if(!restored || restored->load()>.5f ||
            selected->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
             return 107;
-        std::puts("PASS: factory gate ON for all 55 identities; Empty Rack and saved OFF remain OFF");
+        // Emulate an older FL Studio factory snapshot with no micGateOn
+        // parameter at all, and restore it over an active new factory gate.
+        // The historical factory 43 identity and original OFF sound survive.
+        selected->loadFactoryPreset(43);
+        auto* gateParameter=selected->state.getParameter("micGateOn");
+        if(!gateParameter) return 108;
+        gateParameter->setValueNotifyingHost(gateParameter->convertTo0to1(0.f));
+        juce::MemoryBlock oldFactory;
+        selected->getStateInformation(oldFactory);
+        auto oldXml=juce::AudioProcessor::getXmlFromBinary(
+            oldFactory.getData(),(int)oldFactory.getSize());
+        if(!oldXml) return 109;
+        auto oldTree=juce::ValueTree::fromXml(*oldXml);
+        bool removedGate=false;
+        for(int child=oldTree.getNumChildren()-1;child>=0;--child) {
+            if(oldTree.getChild(child).getProperty("id").toString()=="micGateOn") {
+                oldTree.removeChild(child,nullptr);
+                removedGate=true;
+            }
+        }
+        if(!removedGate) return 110;
+        auto missingGateXml=oldTree.createXml();
+        if(!missingGateXml) return 111;
+        juce::MemoryBlock oldFactoryWithoutGate;
+        juce::AudioProcessor::copyXmlToBinary(*missingGateXml,oldFactoryWithoutGate);
+        selected->loadFactoryPreset(43); // New user selection enables the gate.
+        if(selected->state.getRawParameterValue("micGateOn")->load()<.5f)
+            return 112;
+        selected->setStateInformation(oldFactoryWithoutGate.getData(),
+                                      (int)oldFactoryWithoutGate.getSize());
+        if(selected->state.getRawParameterValue("micGateOn")->load()>.5f ||
+           selected->getCurrentProgram()!=43) return 113;
+        std::puts("PASS: factory gate ON, saved OFF and legacy missing-gate FL host states remain OFF");
     }
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
     processor->prepareToPlay(48000.,257);

@@ -1812,6 +1812,23 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             }
             if(validProgram)selectedProgram=parsedProgram;
         }
+        // Pre-gate FL Studio host snapshots have no micGateOn child. If an
+        // older state replaces an active factory gate, explicitly restore OFF
+        // rather than letting the current atomics leak into the old project.
+        // This addition affects only state recall, never fresh factory loads.
+        bool serializedMicGate=false;
+        for(int child=0;child<loaded.getNumChildren();++child) {
+            if(loaded.getChild(child).getProperty("id").toString()=="micGateOn") {
+                serializedMicGate=true;
+                break;
+            }
+        }
+        if(!serializedMicGate) {
+            juce::ValueTree absentMicGate(juce::Identifier("PARAM"));
+            absentMicGate.setProperty("id","micGateOn",nullptr);
+            absentMicGate.setProperty("value",0.f,nullptr);
+            loaded.appendChild(absentMicGate,nullptr);
+        }
         // Repair untrusted host XML before JUCE copies it into APVTS atomics.
         sanitizeParameterStateValues(loaded, state);
         state.replaceState(loaded);
