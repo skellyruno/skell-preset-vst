@@ -1992,6 +1992,42 @@ void SlotEditor::paint(juce::Graphics&g) {
             {47,186,650,21},13,Theme::white);
         Theme::text(g,"ILLUSTRATIVE MAX REDUCTION  /  ACTUAL GAIN IS LEVEL-DEPENDENT",
             {43,327,790,17},11,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
+        // Actual per-chain RMS from callback-owned DSP: no invented signal
+        // graphics. Dragging a bar uses the original p11..p15 automation ID.
+        constexpr const char* names[]{"MAGIC","SPACE","ATTACK","ATTITUDE","PRESENCE"};
+        const float compressorGr=juce::jlimit(0.f,48.f,
+            processor.getSlotGainReductionDb(slot));
+        const float deessGr=juce::jlimit(0.f,24.f,
+            processor.getSlotDeessReductionDb(slot));
+        Theme::text(g,"VOCAL FEEL  /  FIVE LIVE PARALLEL RETURNS",
+                    {47,161,660,22},13.4f,Theme::green,true);
+        Theme::text(g,"OPTO  "+juce::String(compressorGr,1)+" dB",
+                    {48,185,220,21},11.4f,Theme::white,true);
+        Theme::text(g,"DE-ESS  "+juce::String(deessGr,1)+" dB",
+                    {300,185,260,21},11.4f,Theme::white,true);
+        for(int chain=0;chain<5;++chain) {
+            const float x=49.f+chain*163.f;
+            const float rms=processor.getSuiteReturnRms(slot,chain);
+            const float measured=juce::jlimit(0.f,1.f,
+                (skellpreset::dsp::gainToDb(rms)+55.f)/55.f);
+            const float level=processor.getSlotParam(slot,10+chain);
+            g.setColour(Theme::panelAlt);
+            g.fillRoundedRectangle({x,220.f,145.f,69.f},5.f);
+            g.setColour(Theme::stroke);
+            g.fillRoundedRectangle({x+12.f,239.f,120.f,10.f},4.f);
+            g.setColour(Theme::green.withAlpha(.82f));
+            if(measured>0.f)
+                g.fillRoundedRectangle({x+12.f,239.f,120.f*measured,10.f},4.f);
+            Theme::fittedText(g,names[chain],
+                {(int)x+9,262,126,19},10.6f,Theme::white,true,
+                juce::Justification::centred);
+            Theme::text(g,juce::String(level*10.f,1),
+                {(int)x+49,294,50,18},11,Theme::green,true,
+                juce::Justification::centred);
+        }
+        Theme::text(g,"LIVE RETURN RMS / DRAG A COLUMN VERTICALLY TO CHANGE ITS MIX",
+                    {45,326,780,17},10.5f,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::VocalFeelOptoFX) {
         // Measured gain reduction; sampled from the actual per-slot engine.
         // No fake FFT or imagined loudness score.
@@ -3283,6 +3319,10 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
             .5f+(plotCentreY-point.y)/206.f*2.4f);
         processor.setSlotParam(slot,activeEqBand*2,x);
         processor.setSlotParam(slot,activeEqBand*2+1,gain);
+    } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
+        if(gestureSuiteParameter>=10 && gestureSuiteParameter<=14)
+            processor.setSlotParam(slot,gestureSuiteParameter,
+                juce::jlimit(0.f,1.f,(319.f-point.y)/111.f));
     } else if(type!=SkellPresetAudioProcessor::Empty) {
         // Unified gesture: the same XY marker is used by each bespoke display.
         const float x=juce::jlimit(0.f,1.f,(point.x-57.f)/787.f);
@@ -3432,6 +3472,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         if(onBackgroundClick)onBackgroundClick();
         return;
     }
+    if(vocalFeelStyles.isVisible()){vocalFeelStyles.close();return;}
     if(type>=SkellPresetAudioProcessor::AdlibChop &&
        type<=SkellPresetAudioProcessor::AdlibSaturate &&
        juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))
@@ -3471,6 +3512,14 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         return;
     }
     draggingGraph=true;
+    if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
+        gestureSuiteParameter=juce::jlimit(10,14,10+(int)((e.x-49.f)/163.f));
+        if(auto* parameter=processor.state.getParameter(
+                "s"+juce::String(slot+1)+"_p"+juce::String(gestureSuiteParameter+1)))
+            parameter->beginChangeGesture();
+        updateGraphNode(e.position);
+        return;
+    }
     if(isPagedEQ(type)){
         float nearest=std::numeric_limits<float>::max();
         const int bands=8;
@@ -3503,6 +3552,14 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
 void SlotEditor::mouseDrag(const juce::MouseEvent& e){if(draggingGraph)updateGraphNode(e.position);}
 void SlotEditor::mouseUp(const juce::MouseEvent&){
     if(!draggingGraph)return;
+    if(gestureSuiteParameter>=0) {
+        if(auto* parameter=processor.state.getParameter(
+                "s"+juce::String(slot+1)+"_p"+juce::String(gestureSuiteParameter+1)))
+            parameter->endChangeGesture();
+        gestureSuiteParameter=-1;
+        draggingGraph=false;
+        return;
+    }
     const bool paged=isPagedEQ(processor.slotType(slot));
     for(int k=0;k<2;++k) {
         const int band=gestureEqBand>=0?gestureEqBand:activeEqBand;
