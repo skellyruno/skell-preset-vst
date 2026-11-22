@@ -410,6 +410,10 @@ public:
         editingIdle=false;idle.setVisible(false);
         slot.setMatchPageForScreenshot(page);
     }
+    void setSuiteForScreenshot(int page,bool stylesOpen) {
+        editingIdle=false;idle.setVisible(false);
+        slot.setSuiteForScreenshot(page,stylesOpen);
+    }
     void setMicPanelForScreenshot(bool visible) {
         // A capture of the closed mic panel must not close a completely
         // independent open preset browser scene. Only opening MIC owns
@@ -1504,6 +1508,9 @@ void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSl
 }
 void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
     canvas->setMatchPageForScreenshot(page);
+}
+void SkellPresetAudioProcessorEditor::setSuiteForScreenshot(int page,bool stylesOpen) {
+    canvas->setSuiteForScreenshot(page,stylesOpen);
 }
 void SkellPresetAudioProcessorEditor::setMicPanelForScreenshot(bool visible) {
     canvas->setMicPanelForScreenshot(visible);

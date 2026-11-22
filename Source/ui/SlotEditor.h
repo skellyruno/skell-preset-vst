@@ -134,6 +134,11 @@ public:
     bool testModOrbToggle();
     void setModOrbForScreenshot(bool enabled);
     void setMatchPageForScreenshot(int page) {showMatchPage(page);}
+    void setSuiteForScreenshot(int page,bool stylesOpen) {
+        showSuitePage(page);
+        if(stylesOpen && vocalFeelStyleButton.onClick)
+            vocalFeelStyleButton.onClick();
+    }
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
