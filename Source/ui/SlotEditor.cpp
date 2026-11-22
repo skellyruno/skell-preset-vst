@@ -148,7 +148,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         releaseEmbeddedEditor();
         processor.openHostedVST3Editor(slot);
     };
-    editExternal.setButtonText("OPEN IN WINDOW");
+    editExternal.setButtonText("DETACH UI");
     editExternal.setTooltip("Detach third-party UI into its own window if needed");
     upgradeEq.setTooltip("Convert this classic single-bell EQ into an editable eight-band parametric EQ; previous presets are unchanged.");
     upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
@@ -1476,7 +1476,8 @@ void SlotEditor::resized() {
     installedBrowser.setBounds(85,62,735,385);
     addEqNode.setBounds(74,96,127,26);
     eqNodeMenu.setBounds(610,156,205,241);
-    editExternal.setBounds(714,33,169,32);
+    // Leave the top-right synchronized power dot fully uncovered.
+    editExternal.setBounds(714,33,121,32);
     layoutEmbeddedEditor();
     upgradeEq.setBounds(650,97,212,31);
     modOrbButton.setBounds(764,77,95,23);
@@ -3310,6 +3311,7 @@ bool SlotEditor::testPowerDotSync() {
 }
 bool SlotEditor::testIntegratedEffectLayout() const {
     if(slotPower.getBounds()!=juce::Rectangle<int>(843,22,40,40) ||
+       slotPower.getBounds().intersects(editExternal.getBounds()) ||
        !getLocalBounds().contains(slotPower.getBounds()))return false;
     for(int i=0;i<4;++i) {
         const auto r=knobs[(size_t)i].getBounds();
