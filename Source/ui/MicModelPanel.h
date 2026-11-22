@@ -350,7 +350,7 @@ public:
         g.setColour(Theme::stroke.withAlpha(.8f));
         g.drawLine(16.f,(float)lower-10.f,(float)getWidth()-16.f,(float)lower-10.f,1.f);
         Theme::fittedText(g,"TONAL MODEL / NOT A MEASURED MIC IR",
-            {16,getHeight()-16,getWidth()-55,12},8.2f,Theme::muted,false,
+            {16,getHeight()-13,getWidth()-55,12},8.2f,Theme::muted,false,
              juce::Justification::centredLeft);
         }
         // Resize handle, intentionally inside the panel bounds.
@@ -358,8 +358,8 @@ public:
         const float right=(float)getWidth()-5.f,bottom=(float)getHeight()-5.f;
         for(int k=0;k<3;++k)
             g.drawLine(right-9.f+4.f*k,bottom,right,bottom-9.f+4.f*k,1.f);
-        // Compact vector capsules remain subordinate to the real controls.
-        for(int i=0;i<4;++i) {
+        // The mic-model artwork must never bleed through the independent gate page.
+        if(!gatePage)for(int i=0;i<4;++i) {
             const int cardWidth=(getWidth()-46)/2;
             const float x=26.f+(float)(i%2)*(cardWidth+14);
             const float y=188.f+(float)(i/2)*45.f;
@@ -391,11 +391,14 @@ public:
             && !on() && anyActive();
         gateThreshold.setValue(-54.f,juce::sendNotificationSync);
         const bool mapped=std::abs(threshold->load()+54.f)<.05f;
+        const bool isolated=!input.isVisible() && !enabled.isVisible()
+            && !simulations[0].isVisible() && !amount.isVisible()
+            && gateThreshold.isVisible() && gateRelease.isVisible();
         setPhysical("micGateOn",priorEnabled);
         setPhysical("micGateThreshold",priorThreshold);
         setPhysical("micPreOn",priorModel);
         showPage(false);
-        return switched && mapped && !gatePage && modelTab.isVisible();
+        return switched && mapped && isolated && !gatePage && modelTab.isVisible();
     }
     bool testInputAndBypass() {
         const auto currentOn=on();

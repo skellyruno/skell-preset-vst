@@ -669,7 +669,7 @@ int smoke() {
     return 0;
 }
 
-// Load all four append-only Studio effects in the actual JUCE processor;
+// Exercise all five opt-in Studio effects in the actual JUCE processor;
 // measure host-facing PDC and exercise the real Windows rack signal path.
 int percentDisplaySmoke(){
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
@@ -704,7 +704,8 @@ int studioSmoke() {
         SkellPresetAudioProcessor::StudioEQFX,
         SkellPresetAudioProcessor::StudioLimiterFX,
         SkellPresetAudioProcessor::StudioCompressorFX,
-        SkellPresetAudioProcessor::StudioFastDistFX
+        SkellPresetAudioProcessor::StudioFastDistFX,
+        SkellPresetAudioProcessor::StudioDelayFX
     };
     for(const int type:types){
         processor->setSlotOn(0,false);
@@ -720,6 +721,12 @@ int studioSmoke() {
         }else if(type==SkellPresetAudioProcessor::StudioFastDistFX) {
             processor->setSlotParam(0,0,.7f);
             processor->setSlotParam(0,3,.6f);
+        }else if(type==SkellPresetAudioProcessor::StudioDelayFX) {
+            processor->setSlotParam(0,0,.32f); // ~100 ms free-running echo
+            processor->setSlotParam(0,1,.36f);
+            processor->setSlotParam(0,2,.30f); // true stereo
+            processor->setSlotParam(0,10,.68f); // wet echo
+            processor->setSlotParam(0,11,1.f);  // full dry
         }else{
             processor->setSlotParam(0,0,.89f);
             processor->setSlotParam(0,1,.1f);
@@ -778,6 +785,59 @@ int studioSmoke() {
         std::printf("PASS: Studio ID %d, PDC %d, peak %.4f, change %.4f, state recall\n",
                     type,latency,peak,difference);
     }
+    // Exercise the FRONT-END mic gate through the actual JUCE audio callback.
+    // It must be opt-in, zero-PDC, stereo linked, recallable, and bypass clean.
+    processor->setSlotOn(0,false);
+    processor->setSlotType(0,SkellPresetAudioProcessor::Empty);
+    auto* micGate=processor->state.getParameter("micGateOn");
+    auto* micThreshold=processor->state.getParameter("micGateThreshold");
+    if(!micGate || !micThreshold || processor->slotType(0)!=SkellPresetAudioProcessor::Empty)
+        return 76;
+    micThreshold->setValueNotifyingHost(micThreshold->convertTo0to1(-20.f));
+    if(processor->getLatencySamples()!=0)return 77;
+    auto gateEnergy=[&](float left,float right) {
+        std::array<double,2> energy{};
+        for(int block=0;block<100;++block) {
+            juce::AudioBuffer<float> audio(2,257);
+            for(int n=0;n<257;++n) {
+                audio.setSample(0,n,left);
+                audio.setSample(1,n,right);
+            }
+            juce::MidiBuffer midi;
+            processor->processBlock(audio,midi);
+            if(block>=75)for(int ch=0;ch<2;++ch)
+                for(int n=0;n<257;++n) {
+                    const double sample=audio.getSample(ch,n);
+                    if(!std::isfinite(sample))
+                        return std::array<double,2>{-1.,-1.};
+                    energy[(size_t)ch]+=sample*sample;
+                }
+        }
+        return energy;
+    };
+    micGate->setValueNotifyingHost(micGate->convertTo0to1(1.f));
+    const auto quietGate=gateEnergy(.004f,.004f);
+    // A loud left input must hold the same gate open on a quiet right channel.
+    const auto stereoLinked=gateEnergy(.35f,.005f);
+    micGate->setValueNotifyingHost(micGate->convertTo0to1(0.f));
+    const auto quietBypass=gateEnergy(.004f,.004f);
+    if(quietBypass[1]<.1 || quietGate[1]<0. ||
+       quietGate[1]>=quietBypass[1]*.05 || stereoLinked[1]<.08) {
+        std::fprintf(stderr,"Mic gate audio failed: quiet-on %.6f stereo-linked %.6f bypass %.6f\n",
+                     quietGate[1],stereoLinked[1],quietBypass[1]);
+        return 78;
+    }
+    micGate->setValueNotifyingHost(micGate->convertTo0to1(1.f));
+    juce::MemoryBlock micState;
+    processor->getStateInformation(micState);
+    auto recalledMic=std::make_unique<SkellPresetAudioProcessor>();
+    recalledMic->setStateInformation(micState.getData(),(int)micState.getSize());
+    const auto* gateRestored=recalledMic->state.getRawParameterValue("micGateOn");
+    const auto* thresholdRestored=recalledMic->state.getRawParameterValue("micGateThreshold");
+    if(!gateRestored || gateRestored->load()<.5f ||
+       !thresholdRestored || std::abs(thresholdRestored->load()+20.f)>.05f)
+        return 79;
+    std::puts("PASS: input noise gate bypass, stereo link, zero PDC and host-state recall");
     processor->releaseResources();
     return 0;
 }

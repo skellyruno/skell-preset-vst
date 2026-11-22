@@ -83,6 +83,8 @@ jobs:
           if (-not $renderer) { throw 'Compiled rack audio test executable missing' }
           & $renderer.FullName --studio-smoke
           if ($LASTEXITCODE -ne 0) { throw "Studio rack audio/PDC/state regression failed: $LASTEXITCODE" }
+          & $renderer.FullName --ui-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Real JUCE editor layout/interaction smoke failed: $LASTEXITCODE" }
           & $renderer.FullName --native-trials-smoke
           if ($LASTEXITCODE -ne 0) { throw "Native factory recall/audio/PDC/state regression failed: $LASTEXITCODE" }
           & $renderer.FullName --lowend-override-smoke
