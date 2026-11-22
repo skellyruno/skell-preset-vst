@@ -96,6 +96,8 @@ public:
     bool testLayoutForTest() const {
         if(getWidth()<340 || getHeight()<345)return false;
         const auto bounds=getLocalBounds();
+        const auto heading=juce::Rectangle<int>(31,9,150,30);
+        const auto dragLabel=juce::Rectangle<int>(200,15,getWidth()-243,16);
         const auto resultText=juce::Rectangle<int>(27,112,juce::jmax(110,getWidth()-165),23);
         const auto categoryText=juce::Rectangle<int>(getWidth()-130,115,100,17);
         const auto firstRow=juce::Rectangle<int>(15,108,getWidth()-30,34);
@@ -104,6 +106,7 @@ public:
         return bounds.contains(search.getBounds()) && bounds.contains(firstRow) &&
             bounds.contains(lastRow) && bounds.contains(footer) &&
             !search.getBounds().intersects(firstRow) &&
+            !heading.intersects(dragLabel) &&
             !resultText.intersects(categoryText) &&
             !lastRow.intersects(footer);
     }
@@ -169,8 +172,8 @@ public:
         g.drawRoundedRectangle({1.f,1.f,W-2.f,H-2.f},9.f,1.2f);
         g.setColour(Theme::green);
         g.fillRoundedRectangle(juce::Rectangle<float>(18.f,14.f,3.f,22.f),1.f);
-        Theme::text(g,"EFFECT LIBRARY",{31,9,155,30},17,Theme::white,true);
-        Theme::text(g,"DRAG / RESIZE",{183,15,getWidth()-227,16},9,Theme::muted,
+        Theme::fittedText(g,"EFFECT LIBRARY",{31,9,150,30},16,Theme::white,true);
+        Theme::text(g,"DRAG / RESIZE",{200,15,getWidth()-243,16},9,Theme::muted,
                     false,juce::Justification::centredRight);
         Theme::text(g,"X",{getWidth()-34,9,23,26},15,Theme::muted,true,
                     juce::Justification::centred);

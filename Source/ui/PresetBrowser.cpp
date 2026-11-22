@@ -830,13 +830,13 @@ void PresetBrowser::paint(juce::Graphics&g) {
     g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
     g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),10.f,1.2f);
     g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,67.f,3.f,23.f),1.5f);
-    Theme::text(g,"LIBRARY",{30,73,154,20},12,Theme::white,true);
+    Theme::text(g,detailsOpen?"EDIT DETAILS":"LIBRARY",
+                {30,73,154,20},12,Theme::white,true);
     const auto entries=filtered();
     Theme::text(g,juce::String((int)entries.size())+
         (entries.size()==1?" SOUND":" SOUNDS"),{207,73,246,20},12,Theme::white,true);
     Theme::text(g,"ESC TO CLOSE",{getWidth()-121,75,100,20},10,Theme::muted,false,juce::Justification::centredRight);
     if(!detailsOpen) {
-        Theme::text(g,"COLLECTIONS",{29,86,150,14},9.2f,Theme::muted,true);
         Theme::text(g,"GENRES / MANUAL",{29,246,150,14},9.2f,Theme::muted,true);
         for(int i=0;i<banks.size();++i){
             const auto b=bankBounds(i).toFloat();
@@ -853,7 +853,6 @@ void PresetBrowser::paint(juce::Graphics&g) {
         Theme::text(g,"Choose a sound, then edit its details.",
             {18,401,170,17},9.5f,Theme::muted);
     } else {
-        Theme::text(g,"PRESET DETAILS",{21,86,163,20},12.f,Theme::white,true);
         Theme::text(g,"ARTIST  /  PERSONAL PRESETS",{19,163,166,17},9.5f,Theme::muted,true);
         Theme::text(g,"GENRE  /  MANUAL TAG",{19,275,166,17},9.5f,Theme::muted,true);
         Theme::text(g,"COVER ARTWORK",{19,341,166,17},9.5f,Theme::muted,true);
