@@ -1043,6 +1043,68 @@ void SlotEditor::showLimiterPage(int page) {
     }
     applyKnobReadouts();graphSnapshotValid=false;repaint();
 }
+void SlotEditor::showSuitePage(int page) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::VocalFeelSuiteFX)return;
+    suitePage=juce::jlimit(0,3,page);
+    for(auto& attachment:knobAttachment)attachment.reset();
+    const auto prefix="s"+juce::String(slot+1)+"_";
+    for(int i=0;i<4;++i)
+        knobAttachment[(size_t)i]=
+            std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"p"+juce::String(suitePage*4+i+1),
+                knobs[(size_t)i]);
+    for(int i=0;i<4;++i) {
+        auto& button=suitePageButtons[(size_t)i];
+        button.setColour(juce::TextButton::buttonColourId,
+            i==suitePage?Theme::green.withAlpha(.31f):Theme::panelAlt);
+        button.setColour(juce::TextButton::textColourOffId,
+            i==suitePage?Theme::green:Theme::white);
+    }
+    applyKnobReadouts();graphSnapshotValid=false;repaint();
+}
+void SlotEditor::selectSuiteRecipe(int index) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::VocalFeelSuiteFX
+       || index<0 || index>=(int)skellpreset::dsp::vocalFeelRecipes.size())return;
+    const auto& values=skellpreset::dsp::vocalFeelRecipes[(size_t)index].values;
+    for(int param=0;param<16;++param) {
+        // Source presets preserve input sensitivity and master output.
+        if(param==1||param==15)continue;
+        processor.setSlotParam(slot,param,values[(size_t)param]);
+    }
+    graphSnapshotValid=false;refreshIfChanged();repaint();
+}
+bool SlotEditor::testVocalFeelSuiteUI() {
+    const int originalSlot=slot,originalType=processor.slotType(slot);
+    std::array<float,16> previous{};
+    for(int i=0;i<16;++i)previous[(size_t)i]=processor.getSlotParam(slot,i);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::VocalFeelSuiteFX);
+    processor.setSlotOn(slot,true);select(slot);
+    bool result=suitePage==0 && suitePageButtons[0].isVisible()
+                 && vocalFeelStyleButton.isVisible();
+    showSuitePage(1);
+    result=result && knobs[2].getTextFromValue(.5)=="7.50 kHz";
+    showSuitePage(3);
+    knobs[0].setValue(.73,juce::sendNotificationSync);
+    result=result && std::abs(processor.getSlotParam(slot,12)-.73f)<.015f;
+    vocalFeelStyles.open(-1);
+    result=result && vocalFeelStyles.isVisible() &&
+        vocalFeelStyles.testLayoutForTest();
+    const float beforeSens=processor.getSlotParam(slot,1);
+    const float beforeMaster=processor.getSlotParam(slot,15);
+    vocalFeelStyles.selectForTest(6); // Female Air
+    result=result && !vocalFeelStyles.isVisible() &&
+        std::abs(processor.getSlotParam(slot,0)-1.f)<.002f &&
+        std::abs(processor.getSlotParam(slot,1)-beforeSens)<.002f &&
+        std::abs(processor.getSlotParam(slot,15)-beforeMaster)<.002f;
+    const float beforeAttack=processor.getSlotParam(slot,12);
+    gestureSuiteParameter=12;updateGraphNode({405.f,208.f});
+    gestureSuiteParameter=-1;
+    result=result && std::abs(processor.getSlotParam(slot,12)-beforeAttack)>.01f;
+    processor.setSlotType(slot,originalType);
+    for(int i=0;i<16;++i)processor.setSlotParam(slot,i,previous[(size_t)i]);
+    select(originalSlot);
+    return result;
+}
 void SlotEditor::showDelayPage(int page) {
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioDelayFX)return;
     delayPage=juce::jlimit(0,3,page);
