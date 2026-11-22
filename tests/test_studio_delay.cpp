@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <memory>
+#include <vector>
 
 static std::array<float,16> defaults() {
     return {.49f,.32f,.30f,0.f,0.f,.85f,.1f,0.f,.12f,0.f,.48f,1.f,0.f,.5f,.15f,.1f};
@@ -87,5 +89,33 @@ int main() {
         std::chrono::steady_clock::now()-before).count();
     std::printf("PASS: Studio Delay DSP, 25 ms initial echo, six-second beat sync, feedback safety; %.3f ms / 48k stereo samples, checksum %.6f\n",
                 seconds*1000.,checksum);
+    // Repeatable 48kHz CPU/memory diagnostics, preallocated instances.
+    // These are CI runner measurements, not an FL Studio CPU forecast.
+    for(const int instances:{8,16}) {
+        std::vector<std::unique_ptr<skellpreset::studio::StereoDelay>> fx;
+        fx.reserve((size_t)instances);
+        for(int k=0;k<instances;++k) {
+            auto engine=std::make_unique<skellpreset::studio::StereoDelay>();
+            engine->prepare(48000.);
+            auto setup=defaults();setup[9]=0.f;setup[7]=0.f;
+            engine->set(setup,120.);
+            fx.push_back(std::move(engine));
+        }
+        volatile float checksum=0.f;
+        const auto begin=std::chrono::steady_clock::now();
+        for(int n=0;n<48000;++n)for(auto& e:fx) {
+            const auto y=e->process(.04f,-.06f);
+            checksum=checksum+y[0]*.00001f+y[1]*.00001f;
+        }
+        const double seconds=std::chrono::duration<double>(
+            std::chrono::steady_clock::now()-begin).count();
+        const double memoryMB=(double)instances*2.*
+            (std::ceil(48000.*6.2)+8.+std::ceil(48000.*.013)+2.)*4.
+            /1048576.;
+        std::printf("BENCH: Studio Delay @ 48kHz 128-frame host equivalence: %d instances, one second each, %.3f ms wall/%.2f ms per instance, estimated %.2f MiB delay storage, checksum %.6f\n",
+            instances,seconds*1000.,seconds*1000./instances,memoryMB,
+            (double)checksum);
+        if(!std::isfinite(checksum))return 9;
+    }
     return 0;
 }
