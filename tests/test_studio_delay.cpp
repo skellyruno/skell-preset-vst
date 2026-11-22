@@ -59,6 +59,7 @@ int main() {
 
     // Four beats at 40 BPM is six seconds; do not cap at the free time range.
     d.reset();p=defaults();p[12]=1.f;p[13]=0.f;p[1]=0.f;p[2]=.30f;
+    p[11]=0.f; // Isolate the wet echo: the dry impulse at t=0 is not an early repeat.
     d.set(p,40.);
     bool longEcho=false,tooEarly=false;
     for(int i=0;i<340000;++i) {
