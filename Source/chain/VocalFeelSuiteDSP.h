@@ -111,7 +111,7 @@ public:
         outputSlew=1.f-pole(16.f);
         chainG.fill(0.f);mainG=masterG=1.f;sensG=1.f;
         cached.fill(-5.f);p=vocalFeelNeutral;lastProfile=-1;
-        resetMeters();
+        beginBlock();
         set(vocalFeelNeutral);
     }
     void set(const std::array<float,16>& parameters) noexcept {
