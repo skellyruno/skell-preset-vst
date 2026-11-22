@@ -97,8 +97,10 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     addAndMakeVisible(search);
     addAndMakeVisible(artistEditor);
     addAndMakeVisible(genrePicker);
-    for (auto* button : {&importButton,&exportButton,&artworkButton,&artistButton,&genreButton})
+    for(auto* button:{&importButton,&exportButton,&artworkButton,
+                      &artistButton,&genreButton,&detailsButton})
         addAndMakeVisible(*button);
+    detailsButton.setTooltip("Show artist, genre, and cover controls in a separate clean panel");
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
     exportButton.setTooltip("Save the active chain, slot order, macros and global controls");
     artworkButton.setTooltip("Choose a cover for Alchemist or any selected saved preset");
@@ -113,6 +115,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     loadArtists();
     loadGenres();
     refreshArtwork();
+    detailsButton.onClick=[this]{showDetails(!detailsOpen);};
     importButton.onClick=[this] {chooseImport();};
     exportButton.onClick=[this] {chooseExport();};
     artworkButton.onClick=[this] {chooseArtwork();};
@@ -155,7 +158,8 @@ void PresetBrowser::applyTheme() {
     genrePicker.setColour(juce::ComboBox::textColourId,Theme::white);
     genrePicker.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
     genrePicker.setColour(juce::ComboBox::arrowColourId,Theme::green);
-    for(auto* button:{&importButton,&exportButton,&artworkButton,&artistButton,&genreButton}) {
+    for(auto* button:{&importButton,&exportButton,&artworkButton,
+                       &artistButton,&genreButton,&detailsButton}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panel);
         button->setColour(juce::TextButton::textColourOffId,Theme::white);
     }
@@ -246,17 +250,40 @@ void PresetBrowser::copyToLibrary(const juce::File& source) {
     scanLibrary();
     refreshArtwork();
 }
-void PresetBrowser::open(){scanLibrary();loadFavorites();loadArtists();loadGenres();refreshArtwork();bank=0;scroll=0;hoveredCard=-1;search.setText({},juce::dontSendNotification);setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();}
+void PresetBrowser::open() {
+    scanLibrary();loadFavorites();loadArtists();loadGenres();refreshArtwork();
+    bank=0;scroll=0;hoveredCard=-1;
+    showDetails(false);
+    search.setText({},juce::dontSendNotification);
+    setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();
+}
+void PresetBrowser::showDetails(bool openDetails) {
+    detailsOpen=openDetails;
+    detailsButton.setButtonText(detailsOpen?"BACK TO LIBRARY":"EDIT DETAILS");
+    resized();repaint();
+}
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
-    // Explicit manual genre picker; user preset audio/ZIP state is untouched.
-    genrePicker.setBounds(18,365,106,27);
-    genreButton.setBounds(130,365,54,27);
-    artistEditor.setBounds(18,398,166,25);
-    artistButton.setBounds(18,430,80,26);
-    importButton.setBounds(104,430,80,26);
-    exportButton.setBounds(18,464,166,26);
-    artworkButton.setBounds(18,497,166,26);
+    detailsButton.setBounds(18,detailsOpen?115:371,166,30);
+    // No default-page artist/genre widgets overlapping library navigation.
+    for(auto* control:{static_cast<juce::Component*>(&artistEditor),
+                       static_cast<juce::Component*>(&artistButton),
+                       static_cast<juce::Component*>(&genrePicker),
+                       static_cast<juce::Component*>(&genreButton),
+                       static_cast<juce::Component*>(&artworkButton)})
+        control->setVisible(detailsOpen);
+    if(detailsOpen) {
+        artistEditor.setBounds(18,190,166,29);
+        artistButton.setBounds(18,228,166,29);
+        genrePicker.setBounds(18,302,105,29);
+        genreButton.setBounds(130,302,54,29);
+        artworkButton.setBounds(18,368,166,29);
+        importButton.setBounds(18,440,166,29);
+        exportButton.setBounds(18,481,166,29);
+    } else {
+        importButton.setBounds(18,425,166,30);
+        exportButton.setBounds(18,466,166,30);
+    }
 }
 void PresetBrowser::setChooserActive(bool active) {
     chooserActive=active;
@@ -279,8 +306,10 @@ void PresetBrowser::chooseImport() {
             safe->setChooserActive(false);
             const auto file=chooser.getResult();
             if(file==juce::File{})return;
+            if(safe->onBeforeLoad)safe->onBeforeLoad();
             const auto result=safe->processor.importPreset(file);
             if(result.failed()) {
+                if(safe->onLoadFailed)safe->onLoadFailed();
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot import preset",result.getErrorMessage());
                 return;
             }
@@ -511,32 +540,45 @@ void PresetBrowser::toggleFavorite(int entry) {
     scroll=juce::jlimit(0,std::max(0,(int)filtered().size()-6),scroll);
     repaint();
 }
-bool PresetBrowser::testBrowserLayoutForTest() const {
-    if(getWidth()<620 || getHeight()<530)return false;
-    const auto bounds=getLocalBounds();
-    if(!bounds.contains(search.getBounds()) ||
-       !bounds.contains(genrePicker.getBounds()) ||
-       !bounds.contains(artistEditor.getBounds()) ||
-       !bounds.contains(genreButton.getBounds()) ||
-       !bounds.contains(artistButton.getBounds()) ||
-       !bounds.contains(importButton.getBounds()) ||
-       !bounds.contains(exportButton.getBounds()) ||
-       !bounds.contains(artworkButton.getBounds()))return false;
-    const juce::Component* actions[]{&genrePicker,&genreButton,&artistEditor,
-        &artistButton,&importButton,&exportButton,&artworkButton};
-    for(int i=0;i<7;++i) {
-        const auto row=bankBounds(i);
-        if(!bounds.contains(row))return false;
-        for(auto* action:actions)
-            if(row.intersects(action->getBounds()))return false;
-        for(int j=i+1;j<7;++j)
-            if(row.intersects(bankBounds(j)))return false;
-    }
-    for(int i=0;i<7;++i)
-        for(int j=i+1;j<7;++j)
-            if(actions[i]->getBounds().intersects(actions[j]->getBounds()))
-                return false;
-    return singlePreviewName(deuceIndex)=="DEUCE" &&
+bool PresetBrowser::testBrowserLayoutForTest() {
+    const bool previous=detailsOpen;
+    const auto validPage=[this](bool expanded) {
+        showDetails(expanded);
+        if(getWidth()<620 || getHeight()<530)return false;
+        const auto bounds=getLocalBounds();
+        if(!bounds.contains(search.getBounds()) || !bounds.contains(detailsButton.getBounds()))
+            return false;
+        if(artistEditor.isVisible()!=expanded || artistButton.isVisible()!=expanded ||
+           genrePicker.isVisible()!=expanded || genreButton.isVisible()!=expanded ||
+           artworkButton.isVisible()!=expanded)
+            return false;
+        const juce::Component* actions[]{&detailsButton,&genrePicker,&genreButton,
+            &artistEditor,&artistButton,&importButton,&exportButton,&artworkButton};
+        for(int i=0;i<8;++i) {
+            if(!actions[i]->isVisible())continue;
+            if(!bounds.contains(actions[i]->getBounds()))return false;
+            for(int j=i+1;j<8;++j)
+                if(actions[j]->isVisible() &&
+                   actions[i]->getBounds().intersects(actions[j]->getBounds()))
+                    return false;
+        }
+        for(int i=0;i<7;++i) {
+            const auto category=bankBounds(i);
+            if(!bounds.contains(category))return false;
+            if(!expanded) {
+                for(const auto* action:actions)
+                    if(action->isVisible() && category.intersects(action->getBounds()))
+                        return false;
+                for(int j=i+1;j<7;++j)
+                    if(category.intersects(bankBounds(j)))return false;
+            }
+        }
+        return true;
+    };
+    const bool compact=validPage(false);
+    const bool edit=validPage(true);
+    showDetails(previous);
+    return compact && edit && singlePreviewName(deuceIndex)=="DEUCE" &&
            singlePreviewName(alchemistIndex)=="ALCHEMIST";
 }
 bool PresetBrowser::testMainVocalsPresetFilterForTest() {
@@ -782,7 +824,10 @@ void PresetBrowser::chooseArtwork() {
 }
 void PresetBrowser::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
-    g.setColour(Theme::panel);g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
+    g.setGradientFill(juce::ColourGradient(
+        Theme::panelAlt.withMultipliedBrightness(1.09f),0.f,0.f,
+        Theme::panel,0.f,(float)getHeight(),false));
+    g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
     g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),10.f,1.2f);
     g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,67.f,3.f,23.f),1.5f);
     Theme::text(g,"LIBRARY",{30,73,154,20},12,Theme::white,true);
@@ -790,18 +835,29 @@ void PresetBrowser::paint(juce::Graphics&g) {
     Theme::text(g,juce::String((int)entries.size())+
         (entries.size()==1?" SOUND":" SOUNDS"),{207,73,246,20},12,Theme::white,true);
     Theme::text(g,"ESC TO CLOSE",{getWidth()-121,75,100,20},10,Theme::muted,false,juce::Justification::centredRight);
-    Theme::text(g,"GENRES / MANUAL",{29,246,150,14},9.2f,Theme::muted,true);
-    for(int i=0;i<banks.size();i++){
-        const auto b=bankBounds(i).toFloat();
-        const bool selected=i==bank;
-        g.setColour(selected?Theme::green.withAlpha(.14f):Theme::panel);
-        g.fillRoundedRectangle(b,6.f);
-        g.setColour(selected?Theme::green.withAlpha(.78f):Theme::stroke.withAlpha(.75f));
-        g.drawRoundedRectangle(b.reduced(.5f),6.f,selected?1.25f:1.f);
-        Theme::fittedText(g,banks[i],
-            {29,(int)b.getY()+5,145,20},12.f,
-            selected?Theme::white:Theme::muted,selected,
-            juce::Justification::centredLeft);
+    if(!detailsOpen) {
+        Theme::text(g,"COLLECTIONS",{29,86,150,14},9.2f,Theme::muted,true);
+        Theme::text(g,"GENRES / MANUAL",{29,246,150,14},9.2f,Theme::muted,true);
+        for(int i=0;i<banks.size();++i){
+            const auto b=bankBounds(i).toFloat();
+            const bool selected=i==bank;
+            g.setColour(selected?Theme::green.withAlpha(.14f):Theme::panel);
+            g.fillRoundedRectangle(b,6.f);
+            g.setColour(selected?Theme::green.withAlpha(.78f):Theme::stroke.withAlpha(.75f));
+            g.drawRoundedRectangle(b.reduced(.5f),6.f,selected?1.25f:1.f);
+            Theme::fittedText(g,banks[i],
+                {29,(int)b.getY()+5,145,20},12.f,
+                selected?Theme::white:Theme::muted,selected,
+                juce::Justification::centredLeft);
+        }
+        Theme::text(g,"Choose a sound, then edit its details.",
+            {18,401,170,17},9.5f,Theme::muted);
+    } else {
+        Theme::text(g,"PRESET DETAILS",{21,86,163,20},12.f,Theme::white,true);
+        Theme::text(g,"ARTIST  /  PERSONAL PRESETS",{19,163,166,17},9.5f,Theme::muted,true);
+        Theme::text(g,"GENRE  /  MANUAL TAG",{19,275,166,17},9.5f,Theme::muted,true);
+        Theme::text(g,"COVER ARTWORK",{19,341,166,17},9.5f,Theme::muted,true);
+        Theme::text(g,"IMPORT  /  EXPORT",{19,413,166,17},9.5f,Theme::muted,true);
     }
     // Artist metadata can be assigned to personal presets with the sidebar
     // text field; the actual native preset and host program IDs stay intact.
@@ -824,7 +880,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
             :juce::String(skellpreset::factoryPresets[(size_t)entry].bank);
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
-        g.setColour(Theme::panelAlt);g.fillRoundedRectangle(rect,7.f);
+        g.setColour(itemIndex==hoveredCard?Theme::panelAlt.brighter(.09f):Theme::panelAlt);
+        g.fillRoundedRectangle(rect,7.f);
         const juce::Image tileArt=custom
             ?userArtwork[(size_t)(-entry-1)]
             :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
@@ -856,8 +913,13 @@ void PresetBrowser::paint(juce::Graphics&g) {
             ?activeUserPreset==userPresets[(size_t)(-entry-1)]
             :entry==processor.loadedFactoryPresetIndex();
         const bool hovered=itemIndex==hoveredCard;
-        g.setColour(loaded?Theme::green:hovered?Theme::blue:Theme::stroke);
-        g.drawRoundedRectangle(rect,7,hovered?1.6f:1.f);
+        g.setColour(loaded?Theme::green:hovered?Theme::green.withAlpha(.68f):Theme::stroke);
+        g.drawRoundedRectangle(rect.reduced(.5f),7.f,loaded?1.6f:1.f);
+        if(loaded) {
+            g.setColour(Theme::green.withAlpha(.84f));
+            g.fillRoundedRectangle(rect.getX(),rect.getY()+9.f,2.5f,
+                                   rect.getHeight()-18.f,1.25f);
+        }
         Theme::fittedText(g,itemName,{294,y+7,260,24},15.f,Theme::white,true,
                           juce::Justification::centredLeft);
         const auto bankColour=custom?Theme::green:Theme::blue;
@@ -950,6 +1012,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
 }
 void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;
+    if(onBeforeLoad)onBeforeLoad();
     activeUserPreset=juce::File{};
     const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
     processor.loadFactoryPreset(index);
@@ -966,8 +1029,10 @@ void PresetBrowser::loadUserFromBrowser(int index) {
     if(index<0 || index>=(int)userPresets.size())return;
     const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
     const auto file=userPresets[(size_t)index];
+    if(onBeforeLoad)onBeforeLoad();
     const auto result=processor.importPreset(file);
     if(result.failed()) {
+        if(onLoadFailed)onLoadFailed();
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
             "Cannot load saved preset",result.getErrorMessage());
         return;
@@ -985,7 +1050,7 @@ void PresetBrowser::auditionEntry(int entry) {
     else loadUserFromBrowser(-entry-1);
 }
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
-    if(e.x>=17 && e.x<185){
+    if(!detailsOpen && e.x>=17 && e.x<185){
         for(int index=0;index<banks.size();++index)
             if(bankBounds(index).contains(e.getPosition())) {
                 bank=index;scroll=0;hoveredCard=-1;repaint();return;

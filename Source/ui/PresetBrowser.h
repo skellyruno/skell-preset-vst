@@ -22,7 +22,15 @@ public:
     int visibleFactoryPresetsForTest() const;
     bool canSetCoverForTest() const {return canEditCover();}
     bool testMainVocalsPresetFilterForTest(); // primary whitelist and independent artists/favorites
-    bool testBrowserLayoutForTest() const; // actual categories and action-control bounds
+    bool testBrowserLayoutForTest(); // visible, nonoverlapping controls on both pages
+    void loadFactoryForHistoryTest(int index) {loadFactoryFromBrowser(index);}
+    juce::File historySelection() const {return activeUserPreset;}
+    void restoreHistorySelection(const juce::File& selection) {
+        activeUserPreset=selection;
+        refreshArtwork();
+    }
+    std::function<void()> onBeforeLoad;
+    std::function<void()> onLoadFailed;
     std::function<void()> onClose;
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
@@ -32,7 +40,7 @@ private:
     juce::ComboBox genrePicker;
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
         artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
-        genreButton{"TAG"};
+        genreButton{"TAG"},detailsButton{"EDIT DETAILS"};
     std::unique_ptr<juce::FileChooser> fileChooser;
     bool chooserActive=false;
     void setChooserActive(bool active);
@@ -41,6 +49,8 @@ private:
     void chooseArtwork();
     void refreshArtwork();
     int bank=0,scroll=0,hoveredCard=-1;
+    bool detailsOpen=false;
+    void showDetails(bool open);
     juce::StringArray favoriteKeys; // sidecar only; not in VST3 state or preset ZIP
     juce::StringArray artistKeys,artistNames; // user library sidecar, never audio state
     juce::StringArray genreKeys,genreNames; // manually assigned; never auto-detected
