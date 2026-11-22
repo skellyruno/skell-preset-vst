@@ -25,7 +25,9 @@ public:
     }
     float processGain(float left,float right) noexcept {
         if(!configured)return 1.f;
-        if(!enabled && gain>=.999999f) {
+        // Single-precision IIR steps can become smaller than one float ULP
+        // near unity; snap only once within ~0.004 dB of exact dry.
+        if(!enabled && gain>=.9995f) {
             gain=1.f;envelope=0.f;return 1.f;
         }
         const float a=std::isfinite(left)?std::min(8.f,std::abs(left)):0.f;
@@ -39,6 +41,7 @@ public:
         const float target=1.f-depth*activity;
         const double pole=target<gain?gainAttack:gainRelease;
         gain=(float)(pole*gain+(1.-pole)*target);
+        if(target>=.999999f && gain>=.9995f)gain=1.f;
         return std::clamp(gain,0.f,1.f);
     }
     float currentGain() const noexcept {return gain;}
