@@ -1507,6 +1507,10 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal("output",5.17f);
     setReal("micPreOn",0);setReal("micPreInput",0);
     setReal("micPreTarget",0);setReal("micPreAmount",1);setReal("micPreTrim",.5f);
+    // Factory programs predate the optional front-end gate. An enabled gate
+    // left from a custom rack must never alter any factory preset's audio.
+    setReal("micGateOn",0.f);setReal("micGateThreshold",-45.f);
+    setReal("micGateRelease",160.f);setReal("micGateHold",55.f);
     // Factory switches must reset all serialized macro values, including the
     // currently hidden compatibility slots 5..8, so imported state cannot leak.
     for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);
@@ -1526,6 +1530,10 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
     doc.micPreTarget=juce::jlimit(0,3,(int)value("micPreTarget"));
     doc.micPreAmount=juce::jlimit(0.f,1.f,value("micPreAmount"));
     doc.micPreTrim=juce::jlimit(0.f,1.f,value("micPreTrim"));
+    doc.micGateOn=value("micGateOn")>.5f;
+    doc.micGateThreshold=value("micGateThreshold");
+    doc.micGateRelease=value("micGateRelease");
+    doc.micGateHold=value("micGateHold");
     for(int i=0;i<8;++i)doc.macros[(size_t)i]=value("macro"+juce::String(i+1));
     for(int position=0;position<slotCount;++position){
         auto& dst=doc.slots[(size_t)position];
@@ -1583,6 +1591,12 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     setReal("micPreTarget",(float)doc.micPreTarget);
     setReal("micPreAmount",doc.micPreAmount);
     setReal("micPreTrim",doc.micPreTrim);
+    // The full document is validated before any live parameter changes.
+    // Legacy packages default to gate OFF; modern packages preserve settings.
+    setReal("micGateOn",doc.micGateOn?1.f:0.f);
+    setReal("micGateThreshold",doc.micGateThreshold);
+    setReal("micGateRelease",doc.micGateRelease);
+    setReal("micGateHold",doc.micGateHold);
     for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
     name=doc.name;
     emptyRackIdentity.store(false,std::memory_order_release);

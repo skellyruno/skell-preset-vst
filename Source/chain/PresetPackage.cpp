@@ -1,4 +1,5 @@
 #include "PresetPackage.h"
+#include "EffectRegistry.h"
 #include <cmath>
 #include <memory>
 
@@ -45,14 +46,18 @@ juce::Result validate(const Document& d) {
         || d.micPreInput < 0 || d.micPreInput > 3
         || d.micPreTarget < 0 || d.micPreTarget > 3
         || ! finiteRange(d.micPreAmount,0,1)
-        || ! finiteRange(d.micPreTrim,0,1))
+        || ! finiteRange(d.micPreTrim,0,1)
+        || ! finiteRange(d.micGateThreshold,-80.f,-10.f)
+        || ! finiteRange(d.micGateRelease,20.f,1000.f)
+        || ! finiteRange(d.micGateHold,0.f,250.f))
         return juce::Result::fail("Invalid global parameter range");
     for (const auto v : d.macros)
         if (! finiteRange(v, 0, 1)) return juce::Result::fail("Invalid macro value");
     std::array<bool, slotCount> used {};
     for (const auto& slot : d.slots) {
         if (slot.slotId < 0 || slot.slotId >= slotCount || used[(size_t)slot.slotId]
-            || slot.type < 0 || slot.type > 37 || ! finiteRange(slot.wet, 0, 1))
+            || slot.type < 0 || slot.type >= skellpreset::registry::count()
+            || ! finiteRange(slot.wet, 0, 1))
             return juce::Result::fail("Invalid chain slot");
         used[(size_t)slot.slotId] = true;
         for (const auto v : slot.params)
@@ -85,6 +90,10 @@ juce::var toJson(const Document& d) {
     global->setProperty("micPreTarget", d.micPreTarget);
     global->setProperty("micPreAmount", d.micPreAmount);
     global->setProperty("micPreTrim", d.micPreTrim);
+    global->setProperty("micGateOn", d.micGateOn);
+    global->setProperty("micGateThreshold", d.micGateThreshold);
+    global->setProperty("micGateRelease", d.micGateRelease);
+    global->setProperty("micGateHold", d.micGateHold);
     juce::Array<juce::var> macros;
     for (float value : d.macros) macros.add(value);
     global->setProperty("macros", juce::var(macros));
@@ -159,6 +168,26 @@ juce::Result fromJson(const juce::var& root, Document& out) {
     if (hasJsonProperty(globals,"micPreTrim")
         && !decodeFloat(globals.getProperty("micPreTrim",{}),0,1,candidate.micPreTrim))
         return juce::Result::fail("Invalid mic trim");
+    // The new input gate is an optional v2 extension. Existing packages
+    // without these fields remain OFF with APVTS defaults. Explicit null,
+    // malformed or out-of-range values reject the whole ZIP transactionally.
+    if (hasJsonProperty(globals,"micGateOn")) {
+        const auto enabled=globals.getProperty("micGateOn",{});
+        if(!enabled.isBool())return juce::Result::fail("Invalid mic gate enabled value");
+        candidate.micGateOn=(bool)enabled;
+    }
+    if (hasJsonProperty(globals,"micGateThreshold") &&
+        !decodeFloat(globals.getProperty("micGateThreshold",{}),
+                     -80.f,-10.f,candidate.micGateThreshold))
+        return juce::Result::fail("Invalid mic gate threshold");
+    if (hasJsonProperty(globals,"micGateRelease") &&
+        !decodeFloat(globals.getProperty("micGateRelease",{}),
+                     20.f,1000.f,candidate.micGateRelease))
+        return juce::Result::fail("Invalid mic gate release");
+    if (hasJsonProperty(globals,"micGateHold") &&
+        !decodeFloat(globals.getProperty("micGateHold",{}),
+                     0.f,250.f,candidate.micGateHold))
+        return juce::Result::fail("Invalid mic gate hold");
     // Schema-v2 macros were added as an optional extension. Older v1/v2
     // archives without the property retain neutral 50% host defaults.
     // If present (including explicit null), the array remains strictly
@@ -190,7 +219,8 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         auto& slot=candidate.slots[(size_t)i];
         const auto enabled=item.getProperty("enabled", {});
         if (! decodeInteger(item.getProperty("slotId", {}),0,encodedSlots-1,slot.slotId)
-            || ! decodeInteger(item.getProperty("type", {}),0,37,slot.type)
+            || ! decodeInteger(item.getProperty("type", {}),0,
+                            skellpreset::registry::count()-1,slot.type)
             || ! enabled.isBool()
             || ! decodeFloat(item.getProperty("wet", {}),0,1,slot.wet))
             return juce::Result::fail("Invalid chain metadata");
