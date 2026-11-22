@@ -1690,6 +1690,22 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             }
             if(validProgram)selectedProgram=parsedProgram;
         }
+        // A legacy FL Studio state has no micGateOn entry. Restoring it into
+        // an already-used instance (which may have had a factory gate ON)
+        // must explicitly turn the new gate OFF, not inherit stale state.
+        // A valid explicit micGateOn=1 from a newer session is preserved.
+        bool hasSavedMicGate=false;
+        for(int i=0;i<loaded.getNumChildren();++i)
+            if(loaded.getChild(i).getProperty("id").toString()=="micGateOn") {
+                hasSavedMicGate=true;
+                break;
+            }
+        if(!hasSavedMicGate) {
+            juce::ValueTree offGate(juce::Identifier("PARAM"));
+            offGate.setProperty("id","micGateOn",nullptr);
+            offGate.setProperty("value",0.f,nullptr);
+            loaded.addChild(offGate,-1,nullptr);
+        }
         // Repair untrusted host XML before JUCE copies it into APVTS atomics.
         sanitizeParameterStateValues(loaded, state);
         state.replaceState(loaded);
