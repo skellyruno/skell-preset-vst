@@ -863,6 +863,8 @@ public:
             issues.add("Append-only factory catalog or legacy Alchemist index changed");
         if(!slot.testAllNativeEffectLayoutsForTest())
             issues.add("A native effect editor has clipped/invisible inline controls or popup geometry");
+        if(!slot.testVocalFeelSuiteUI())
+            issues.add("Vocal Feel Suite 16 controls, styles popup, or return automation drag failed");
         // Real stereo audio → APVTS slot 43 → measured GR → exact state
         // snapshot/restore. Never prove a new plugin using UI-only graphics.
         processor.loadFactoryPreset(25); // zero-PDC tracking factory
@@ -901,6 +903,50 @@ public:
             && std::abs(processor.getSlotParam(0,1)-.5f)<.01f;
         if(!validNativeType || !validAudio || !realReduction || !optoRecalled)
             issues.add("Vocal Feel Opto real audio, 0-PDC, GR meter or host state roundtrip failed");
+        // Full Vocal Feel Suite: test the actual native rack processing,
+        // measured five parallel returns, de-esser and opto, then host recall.
+        processor.clearRackToEmpty();
+        processor.setSlotType(0,SkellPresetAudioProcessor::VocalFeelSuiteFX);
+        processor.setSlotOn(0,true);
+        const auto& voiceStyle=skellpreset::dsp::vocalFeelRecipes[9].values;
+        for(int control=0;control<16;++control)
+            processor.setSlotParam(0,control,voiceStyle[(size_t)control]);
+        const bool suiteSelected=processor.slotType(0)==SkellPresetAudioProcessor::VocalFeelSuiteFX
+            && processor.state.getParameter("s1_fxExt11")!=nullptr
+            && processor.getLatencySamples()==0;
+        juce::AudioBuffer<float> suiteSignal(2,256);
+        juce::MidiBuffer suiteMidi;
+        bool suiteFinite=true;
+        for(int block=0;block<160;++block) {
+            for(int sample=0;sample<256;++sample) {
+                const float time=(float)(block*256+sample)/48000.f;
+                const float syllable=((block*256+sample)%15000)<12000?1.f:0.f;
+                const float l=syllable*(.32f*std::sin(juce::MathConstants<float>::twoPi*210.f*time)
+                    +.13f*std::sin(juce::MathConstants<float>::twoPi*8300.f*time));
+                suiteSignal.setSample(0,sample,l);
+                suiteSignal.setSample(1,sample,.77f*l);
+            }
+            processor.processBlock(suiteSignal,suiteMidi);
+            for(int n=0;n<256;++n)
+                suiteFinite=suiteFinite && std::isfinite(suiteSignal.getSample(0,n))
+                                         && std::isfinite(suiteSignal.getSample(1,n));
+        }
+        bool hasLiveReturns=true;
+        for(int chain=0;chain<5;++chain)
+            hasLiveReturns=hasLiveReturns &&
+                processor.getSuiteReturnRms(0,chain)>.00001f;
+        const bool hasLiveDynamics=processor.getSlotGainReductionDb(0)>.05f &&
+            processor.getSlotDeessReductionDb(0)>=0.f;
+        juce::MemoryBlock suiteSaved;
+        processor.getStateInformation(suiteSaved);
+        processor.setSlotType(0,SkellPresetAudioProcessor::Empty);
+        processor.setStateInformation(suiteSaved.getData(),(int)suiteSaved.getSize());
+        const bool suiteRestored=processor.slotType(0)==SkellPresetAudioProcessor::VocalFeelSuiteFX
+            && std::abs(processor.getSlotParam(0,10)-voiceStyle[10])<.01f
+            && std::abs(processor.getSlotParam(0,14)-voiceStyle[14])<.01f;
+        if(!suiteSelected || !suiteFinite || !hasLiveReturns ||
+           !hasLiveDynamics || !suiteRestored)
+            issues.add("Vocal Feel Suite native processBlock, return meters, dynamics, PDC or saved state failed");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
         setParam(processor,"mode",0.f);
