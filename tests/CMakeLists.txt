@@ -161,6 +161,10 @@ target_compile_features(SkellPresetWetDuckTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetWetDuckTest COMMAND SkellPresetWetDuckTest)
 
 # Opt-in Skell Studio-style delay: portable echo, feedback and tempo stress.
+add_executable(SkellPresetLiveSpectrumTest test_live_spectrum.cpp)
+target_compile_features(SkellPresetLiveSpectrumTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetLiveSpectrumTest COMMAND SkellPresetLiveSpectrumTest)
+
 add_executable(SkellPresetVocalFeelRecipesTest test_vocal_feel_recipes.cpp)
 target_compile_features(SkellPresetVocalFeelRecipesTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetVocalFeelRecipesTest COMMAND SkellPresetVocalFeelRecipesTest)

@@ -423,6 +423,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     // Finalize the previous take on the non-realtime preparation path.
     capture.stop();
     liveScope.reset();
+    liveSpectrumInput.reset();liveSpectrumOutput.reset();
     rate=(std::isfinite(sampleRate)&&sampleRate>=8000.)?sampleRate:48000.;
     displayedRate.store(rate,std::memory_order_release);
     hostChunkCapacity=juce::jlimit(64,8192,juce::jmax(512,samplesPerBlock));
@@ -990,6 +991,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 frontR+=(colored[1]-frontR)*micWet;
             }
             const auto original=bypassPdc.process(l,r,blockLatency);
+            // Real pre-rack input spectrum; no fabricated energy curves.
+            liveSpectrumInput.push(frontL,frontR);
             // Front-end tone is upstream of the rack AND its wet/dry blend.
             // Full bypass still returns the original DAW signal unchanged.
             const auto dry=dryPdc.process(frontL,frontR,blockLatency);
@@ -1296,6 +1299,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 (finalR-bypassWork.getSample(1,n))*blend;
             inL[n]=std::isfinite(outputL)?outputL:0.f;
             if(inR)inR[n]=std::isfinite(outputR)?outputR:0.f;
+            liveSpectrumOutput.push(inL[n],inR?inR[n]:inL[n]);
             outPeak=std::max(outPeak,std::max(std::abs(inL[n]),
                 inR?std::abs(inR[n]):0.f));
         }

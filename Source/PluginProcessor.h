@@ -4,6 +4,7 @@
 #include <SkellCore/AdlibFX.h>
 #include "chain/BasicDSP.h"
 #include "chain/LiveAudioScope.h"
+#include "chain/LiveSpectrum.h"
 #include "chain/ClipRecorder.h"
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
@@ -118,6 +119,14 @@ public:
     // Audio producer progress is lock-free; the editor can avoid repainting
     // an unchanged waveform while FL Studio's transport is idle.
     unsigned liveScopeSampleCount() const noexcept {return liveScope.samplesCaptured();}
+    void getLiveSpectrumInput(
+        std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity>& samples) const noexcept {
+        liveSpectrumInput.snapshot(samples);
+    }
+    void getLiveSpectrumOutput(
+        std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity>& samples) const noexcept {
+        liveSpectrumOutput.snapshot(samples);
+    }
     // UI-triggered WAV capture of the processed host channel; never opens a
     // microphone independently or overwrites DAW input/recording settings.
     juce::Result startCapture(const juce::File& path);
@@ -257,6 +266,7 @@ private:
     std::array<std::array<std::atomic<float>,5>,slotCount> suiteReturnRms;
     std::atomic<float> inputPeak{0},outputPeak{0};
     skellpreset::visual::LiveAudioScope liveScope;
+    skellpreset::visual::LiveSpectrumCapture liveSpectrumInput,liveSpectrumOutput;
     skellpreset::capture::ClipRecorder capture;
     double rate=48000;
     std::atomic<double> displayedRate{48000.}; // message-thread PDC readout
