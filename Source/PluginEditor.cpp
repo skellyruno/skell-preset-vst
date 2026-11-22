@@ -306,10 +306,14 @@ public:
             "Switch between the uncluttered sound overview and the full effect rack.");
         if(chain.isVisible() && slot.isVisible()) {
             steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
-                "Wheel scrolls the rack. Drag an effect to change order; double-click to replace it. The smaller microphone icon opens its widget.");
+                "Scroll the rack, drag to reorder, double-click to replace or use + to add a processor. Studio Compressor, Studio Limiter and Studio Delay have dedicated effect controls.");
             steps.emplace_back(&slot,"EDIT A SLOT",
                 "Adjust the selected effect here. Rack slots keep their own independent controls, order and automation.");
         }
+        steps.emplace_back(&chain,"MIC MODEL + NOISE GATE",
+            "Click the rack's MIC icon. MIC MODEL shapes the recorded microphone; NOISE GATE has its own ON switch, threshold, hold and release. Both start independent, and the gate starts OFF.");
+        steps.emplace_back(&idle,"START HERE",
+            "The home deck shows your real output signal. Choose a preset or select any rack slot to begin; the microphone controls are available separately.");
         steps.emplace_back(&powerButton,"POWER / BYPASS",
             "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
         steps.emplace_back(&mix,"BLEND YOUR SOUND",
@@ -519,6 +523,8 @@ public:
             issues.add("Dedicated MIC panel did not open from rack icon");
         if(!micPanel.testInputAndBypass())
             issues.add("Dedicated MIC panel cannot automate target or bypass");
+        if(!micPanel.testNoiseGateAndBypass())
+            issues.add("Mic NOISE GATE tab does not automate threshold or independent bypass");
         chain.triggerMicForTest();
         if(micPanel.isVisible())
             issues.add("Dedicated MIC panel failed to close");
@@ -638,6 +644,8 @@ public:
             issues.add("Alchemist Shape/Calibration tabs do not expose all eight real parameters");
         if(!slot.testStudioLimiterPages())
             issues.add("Studio Limiter pages or dedicated p9 gate floor do not control host DSP");
+        if(!slot.testStudioDelayPages())
+            issues.add("Studio Delay effect pages failed to map p1..p16 host parameters");
         if(!slot.testMicModelCards())
             issues.add("Mic Modeling profile cards failed to update stable host parameters");
         if(!slot.testModOrbToggle())
@@ -993,12 +1001,12 @@ public:
         idle.setBounds(slot.getBounds());
         // Smaller movable mic panel opens on the LEFT; manual drag/resize
         // remains under the user's control and survives editor refresh.
-        constexpr int micWidth=326,micHeight=302;
+        constexpr int micWidth=354,micHeight=363;
         if(!micPanel.hasBeenMoved())
             micPanel.setBounds(rackOnRight?18:238,107,micWidth,micHeight);
         else {
-            const int w=juce::jlimit(310,490,micPanel.getWidth());
-            const int h=juce::jlimit(295,405,micPanel.getHeight());
+            const int w=juce::jlimit(340,490,micPanel.getWidth());
+            const int h=juce::jlimit(345,430,micPanel.getHeight());
             micPanel.setBounds(
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
@@ -1193,7 +1201,7 @@ SkellPresetAudioProcessorEditor::SkellPresetAudioProcessorEditor(SkellPresetAudi
     const float restored=juce::jlimit(.70f,1.25f,(float)processor.state.state.getProperty("uiScale",.70f));
     setSize(juce::roundToInt(Theme::width*restored),juce::roundToInt(Theme::height*restored));
     guidedTour=std::make_unique<skellcore::ui::GuidedTourController>(
-        *this,"skell-preset-vst",1);
+        *this,"skell-preset-vst",2);
     showGuidedTour(true);
 }
 SkellPresetAudioProcessorEditor::~SkellPresetAudioProcessorEditor(){

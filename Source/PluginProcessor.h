@@ -8,6 +8,7 @@
 #include "chain/ModulationFX.h"
 #include "chain/StudioChorusDSP.h"
 #include "chain/StudioNativeDSP.h"
+#include "chain/StudioDelayDSP.h"
 #include "chain/ImportedVocalFX.h"
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
@@ -24,7 +25,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     static constexpr int emptyRackProgramIndex=static_cast<int>(skellpreset::factoryPresets.size());
@@ -151,6 +152,7 @@ private:
         skellpreset::dsp::SpectralPitchFormant studioPitch;
         skellpreset::dsp::StereoSampleDelay pitchDry;
         skellpreset::dsp::Delay delay;
+        skellpreset::studio::StereoDelay studioDelay;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
         skellcore::TruePeakLimiter limiter;
@@ -185,6 +187,7 @@ private:
         std::atomic<float>* extension5=nullptr;
         std::atomic<float>* extension6=nullptr;
         std::atomic<float>* extension7=nullptr;
+        std::atomic<float>* extension8=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
@@ -199,9 +202,14 @@ private:
         std::atomic<float>* target=nullptr;
         std::atomic<float>* amount=nullptr;
         std::atomic<float>* trim=nullptr;
+        std::atomic<float>* gateOn=nullptr;
+        std::atomic<float>* gateThreshold=nullptr;
+        std::atomic<float>* gateRelease=nullptr;
+        std::atomic<float>* gateHold=nullptr;
     } rawMic;
     skellpreset::dsp::MicModelTone micFrontEnd;
-    juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet;
+    skellpreset::dsp::Gate micInputGate;
+    juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet,micGateWet;
     struct RawGlobal {
         std::atomic<float>* mode=nullptr;std::atomic<float>* input=nullptr;
         std::atomic<float>* mix=nullptr;std::atomic<float>* output=nullptr;

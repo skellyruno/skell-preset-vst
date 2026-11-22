@@ -76,6 +76,7 @@ public:
     bool testClassicDynamicsUnits();
     bool testMatchFinishPages();
     bool testStudioLimiterPages();
+    bool testStudioDelayPages();
     bool testMicModelCards();
     bool testModOrbToggle();
     void setModOrbForScreenshot(bool enabled);
@@ -91,9 +92,11 @@ private:
     int activeEqBand=0;
     int matchPage=0; // 0: sound shape / 1: calibration / 2: native reference match
     int limiterPage=0; // local UI pages only; existing p1..p9 host IDs
+    int delayPage=0; // opt-in Studio Delay: 16 controls across four UI pages
     void showEqBank(int firstBand);
     void showMatchPage(int page);
     void showLimiterPage(int page);
+    void showDelayPage(int page);
     void applyKnobReadouts();
     // ComboBox remains as a noninteractive compatibility/synchronization
     // adapter; the user-facing selector is the searchable native overlay.
@@ -128,8 +131,11 @@ private:
     std::array<juce::TextButton,8> eqBandButtons;
     std::array<juce::TextButton,3> matchPageButtons;
     std::array<juce::TextButton,2> limiterPageButtons;
+    std::array<juce::TextButton,4> delayPageButtons;
     juce::Slider studioGateFloor;
+    juce::Slider studioCompKnee;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateFloorAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> studioCompKneeAttachment;
     std::array<SkellHoverPercentKnob,4> knobs;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> eqQAttachment;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,2> eqCutAttachments;

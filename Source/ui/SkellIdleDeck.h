@@ -23,10 +23,10 @@ public:
         g.drawRoundedRectangle(top.reduced(2.f),10.f,1.f);
         Theme::text(g,"SKELL  /  PRESET",{58,58,getWidth()-115,34},
                     23,Theme::white,true);
-        Theme::text(g,"YOUR SOUND, YOUR CHAIN",{58,106,getWidth()-115,27},
-                    13,Theme::green,true);
-        Theme::text(g,"Select an effect on the rack to open its controls.",
-                    {58,146,getWidth()-115,24},13,Theme::muted);
+        Theme::text(g,"BUILD A VOCAL SOUND THAT'S YOURS",{58,106,getWidth()-115,27},
+                    12.5f,Theme::green,true);
+        Theme::text(g,"01  CHOOSE A PRESET       02  SELECT AN EFFECT       03  SHAPE THE SOUND",
+                    {58,146,getWidth()-125,24},11.2f,Theme::muted,true);
         // Two tiny bone dancers react to the REAL processed output level.
         // Animation is UI-thread only and repaints with the existing live
         // waveform timer; silence leaves them still. No fake FFT/DSP work.
@@ -112,11 +112,11 @@ public:
         g.strokePath(signal,juce::PathStrokeType(1.8f,
                      juce::PathStrokeType::curved,
                      juce::PathStrokeType::rounded));
-        Theme::text(g,"LIVE AUDIO  /  NO EFFECT SELECTED",
+        Theme::text(g,"LIVE OUTPUT MONITOR  /  NO EFFECT SELECTED",
                     {64,382,getWidth()-128,22},10.8f,Theme::muted,true);
-        Theme::text(g,"DOUBLE-CLICK A RACK SLOT TO REPLACE AN EFFECT",
+        Theme::text(g,"EDIT RACK  /  CLICK A MODULE TO OPEN ITS CONTROLS",
                     {64,getHeight()-83,getWidth()-128,20},11.4f,Theme::white,true);
-        Theme::text(g,"CLICK + TO ADD A PLUGIN",
+        Theme::text(g,"DOUBLE-CLICK TO REPLACE  /  + TO ADD  /  MIC FOR INPUT CLEANUP",
                     {64,getHeight()-59,getWidth()-128,18},10.5f,Theme::green);
     }
 private:

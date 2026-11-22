@@ -17,7 +17,7 @@
 using skellpreset::registry::effects;
 using skellpreset::visual::LiveAudioScope;
 int main(){
-    static_assert(skellpreset::registry::count()==38);
+    static_assert(skellpreset::registry::count()==39);
     for(int id=0;id<skellpreset::registry::count();++id){
         const auto& effect=skellpreset::registry::at(id);
         SKELL_REQUIRE(effect.id==id);
@@ -39,6 +39,7 @@ int main(){
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(33).name)=="Skelldizer");
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(34).name).find("Studio")!=std::string_view::npos);
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(37).name)=="Studio Fast Dist");
+    SKELL_REQUIRE(std::string_view(skellpreset::registry::at(38).name)=="Studio Delay");
 
     LiveAudioScope scope;
     std::array<float,128> display{};

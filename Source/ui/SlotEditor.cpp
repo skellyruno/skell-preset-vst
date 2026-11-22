@@ -66,6 +66,7 @@ std::array<juce::String,4> titles(int type) {
         case 35:return {"Ceiling","Drive","Comp Thresh","Comp Ratio"};
         case 36:return {"Threshold","Ratio","Attack","Release"};
         case 37:return {"Pre Gain","Threshold","Type A/B","Effect Mix"};
+        case 38:return {"Time","Feedback","Stereo Mode","R/L Offset"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }
@@ -245,12 +246,25 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(button);
         button.setVisible(false);
     }
+    for(int page=0;page<4;++page) {
+        auto& button=delayPageButtons[(size_t)page];
+        button.setButtonText(page==0?"TIME":page==1?"TONE":
+                             page==2?"MOD + MIX":"SYNC + DIFF");
+        button.setTooltip("Studio Delay timing, filtering, feedback and modulation");
+        button.onClick=[this,page]{showDelayPage(page);};
+        addAndMakeVisible(button);button.setVisible(false);
+    }
     studioGateFloor.setSliderStyle(juce::Slider::LinearHorizontal);
     studioGateFloor.setTextBoxStyle(juce::Slider::TextBoxRight,false,54,20);
     studioGateFloor.setScrollWheelEnabled(true);
     studioGateFloor.setTooltip("Studio gate floor: 0% = maximum reduction; 100% = no gate reduction");
     addAndMakeVisible(studioGateFloor);
     studioGateFloor.setVisible(false);
+    studioCompKnee.setSliderStyle(juce::Slider::LinearHorizontal);
+    studioCompKnee.setTextBoxStyle(juce::Slider::TextBoxRight,false,54,20);
+    studioCompKnee.setTooltip("Studio compressor soft-knee intensity (independent p5 automation)");
+    addAndMakeVisible(studioCompKnee);
+    studioCompKnee.setVisible(false);
     for(int index=0;index<2;++index) {
         auto& control=eqCutSliders[(size_t)index];
         control.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -397,6 +411,18 @@ void SlotEditor::applyKnobReadouts() {
                 if(i==2)return juce::String(2.+20.*v,1)+" dB";
                 return juce::String(35.+245.*v,0)+" ms";
             }
+            if(module==SkellPresetAudioProcessor::StudioCompressorFX) {
+                if(i==0) {
+                    const float threshold=skellpreset::studio::detail::level(
+                        juce::roundToInt(v*1000.),7.);
+                    return juce::String(20.f*std::log10(juce::jmax(.001f,threshold)),1)+" dBFS";
+                }
+                if(i==1)return juce::String(1.+.38*(std::pow(51.,v)-1.),1)+":1";
+                if(i==2)return juce::String(skellpreset::studio::detail::timeMs(
+                    juce::roundToInt(v*10000.)),1)+" ms";
+                return juce::String(skellpreset::studio::detail::timeMs(
+                    juce::roundToInt(v*10000.))*2.,1)+" ms";
+            }
             if(module==SkellPresetAudioProcessor::StudioLimiterFX) {
                 const int parameter=limiterPage*4+i;
                 if(parameter==0)
@@ -420,6 +446,29 @@ void SlotEditor::applyKnobReadouts() {
                     return juce::String(skellpreset::studio::detail::timeMs(
                         juce::roundToInt(v*10000.)),1)+" ms";
                 return juce::String(juce::roundToInt(v*100.))+"%";
+            }
+            if(module==SkellPresetAudioProcessor::StudioDelayFX) {
+                const int parameter=delayPage*4+i;
+                switch(parameter) {
+                    case 0:return juce::String(25.*std::pow(80.,v),0)+" ms";
+                    case 1:return juce::String(94.*v,0)+"%";
+                    case 2:return juce::StringArray{"MONO","STEREO","PING PONG","OFF"}[
+                                 juce::jlimit(0,3,(int)(v*3.999))];
+                    case 3:return juce::String(50.*v,1)+" ms";
+                    case 4:return juce::String(12.+1600.*v*v,0)+" Hz";
+                    case 5:return juce::String(400.*std::pow(45.,v),0)+" Hz";
+                    case 6:return juce::String(1.+7.*v,1)+" x";
+                    case 7:return juce::String(100.*v,0)+"%";
+                    case 8:return juce::String(.05+5.*v,2)+" Hz";
+                    case 9:return juce::String(12.*v,1)+" ms";
+                    case 10:case 11:case 14:case 15:return juce::String(100.*v,0)+"%";
+                    case 12:return v>=.5?"ON":"OFF";
+                    case 13: {
+                        constexpr const char* divisions[]{"4 beats","2 beats","1 beat","1/2 beat",
+                            "1/4 beat","1/8 beat","1/16 beat","1/32 beat"};
+                        return divisions[juce::jlimit(0,7,(int)(v*7.999))];
+                    }
+                }
             }
             if(module==SkellPresetAudioProcessor::MicModelFX) {
                 if(i==0)return skellpreset::dsp::MicModelTone::inputName(
@@ -693,9 +742,9 @@ void SlotEditor::applyTheme() {
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
     }
-    for(juce::Slider* s:std::array<juce::Slider*,8>{{
+    for(juce::Slider* s:std::array<juce::Slider*,9>{{
         &eqQSlider,&eqCutSliders[0],&eqCutSliders[1],&studioGateFloor,
-        &knobs[0],&knobs[1],&knobs[2],&knobs[3]}}) {
+        &studioCompKnee,&knobs[0],&knobs[1],&knobs[2],&knobs[3]}}) {
         s->setColour(juce::Slider::rotarySliderFillColourId,Theme::green);
         s->setColour(juce::Slider::rotarySliderOutlineColourId,Theme::stroke);
         s->setColour(juce::Slider::thumbColourId,Theme::white);
@@ -842,6 +891,46 @@ void SlotEditor::showLimiterPage(int page) {
     }
     applyKnobReadouts();graphSnapshotValid=false;repaint();
 }
+void SlotEditor::showDelayPage(int page) {
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioDelayFX)return;
+    delayPage=juce::jlimit(0,3,page);
+    for(auto& attachment:knobAttachment)attachment.reset();
+    const auto prefix="s"+juce::String(slot+1)+"_";
+    for(int i=0;i<4;++i)
+        knobAttachment[(size_t)i]=
+            std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"p"+juce::String(delayPage*4+i+1),
+                knobs[(size_t)i]);
+    for(int i=0;i<4;++i) {
+        auto& button=delayPageButtons[(size_t)i];
+        button.setColour(juce::TextButton::buttonColourId,
+            i==delayPage?Theme::green.withAlpha(.31f):Theme::panelAlt);
+        button.setColour(juce::TextButton::textColourOffId,
+            i==delayPage?Theme::green:Theme::white);
+    }
+    applyKnobReadouts();graphSnapshotValid=false;repaint();
+}
+bool SlotEditor::testStudioDelayPages() {
+    const int physical=slot,oldType=processor.slotType(slot);
+    std::array<float,16> saved{};
+    for(int i=0;i<16;++i)saved[(size_t)i]=processor.getSlotParam(slot,i);
+    processor.setSlotType(physical,SkellPresetAudioProcessor::StudioDelayFX);
+    processor.setSlotOn(physical,true);
+    select(physical);
+    bool ok=delayPage==0 && delayPageButtons[0].isVisible();
+    processor.setSlotParam(physical,12,1.f);
+    processor.setSlotParam(physical,13,.76f);
+    showDelayPage(3);
+    ok=ok && delayPage==3 && knobs[0].getTextFromValue(1.)=="ON" &&
+         knobs[1].getTextFromValue(.76).isNotEmpty();
+    showDelayPage(2);
+    knobs[2].setValue(.61,juce::sendNotificationSync);
+    ok=ok && std::abs(processor.getSlotParam(physical,10)-.61f)<.01f;
+    processor.setSlotType(physical,oldType);
+    for(int i=0;i<16;++i)processor.setSlotParam(physical,i,saved[(size_t)i]);
+    select(physical);
+    return ok;
+}
 bool SlotEditor::testStudioLimiterPages() {
     const int previousType=processor.slotType(slot);
     const int physical=slot;
@@ -952,6 +1041,8 @@ void SlotEditor::select(int newSlot) {
         showMatchPage(0);
     if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioLimiterFX)
         showLimiterPage(0);
+    if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioDelayFX)
+        showDelayPage(0);
     repaint();
 }
 void SlotEditor::refreshIfChanged() {
@@ -1032,8 +1123,9 @@ void SlotEditor::refreshIfChanged() {
     if(type!=lastType){
         // A new effect resets the EQ bank, preserving all saved parameter
         // values while reattaching only the controls visible on this page.
-        eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
+        eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;delayPage=0;
         gateFloorAttachment.reset();
+        studioCompKneeAttachment.reset();
         modOrbView=false;
         modOrbButton.setButtonText("ORB");
         eqQAttachment.reset();
@@ -1058,6 +1150,11 @@ void SlotEditor::refreshIfChanged() {
             showEqBank(activeEqBand);
         else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)
             showMatchPage(0);
+        else if(type==SkellPresetAudioProcessor::StudioCompressorFX)
+            studioCompKneeAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                processor.state,prefix+"p5",studioCompKnee);
+        else if(type==SkellPresetAudioProcessor::StudioDelayFX)
+            showDelayPage(0);
         else if(type==SkellPresetAudioProcessor::StudioLimiterFX) {
             gateFloorAttachment=
                 std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -1070,6 +1167,9 @@ void SlotEditor::refreshIfChanged() {
     if(type==SkellPresetAudioProcessor::StudioLimiterFX && !gateFloorAttachment)
         gateFloorAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             processor.state,prefix+"p9",studioGateFloor);
+    if(type==SkellPresetAudioProcessor::StudioCompressorFX && !studioCompKneeAttachment)
+        studioCompKneeAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            processor.state,prefix+"p5",studioCompKnee);
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
@@ -1092,7 +1192,9 @@ void SlotEditor::refreshIfChanged() {
     syncStudioEqNodeButtons();
     for(auto& button:matchPageButtons)button.setVisible(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX);
     for(auto& button:limiterPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
+    for(auto& button:delayPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioDelayFX);
     studioGateFloor.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
+    studioCompKnee.setVisible(type==SkellPresetAudioProcessor::StudioCompressorFX);
     for(auto& k:knobs){k.setEnabled(!external);k.setVisible(!external);}
     repaint();
 }
@@ -1109,7 +1211,10 @@ void SlotEditor::resized() {
     matchPageButtons[2].setBounds(754,72,112,23);
     limiterPageButtons[0].setBounds(62,106,113,26);
     limiterPageButtons[1].setBounds(183,106,124,26);
+    for(int page=0;page<4;++page)
+        delayPageButtons[(size_t)page].setBounds(45+page*150,106,142,26);
     studioGateFloor.setBounds(548,104,298,27);
+    studioCompKnee.setBounds(548,104,298,27);
     loadExternal.setBounds(542,33,164,32);
     installedBrowser.setBounds(85,62,735,385);
     addEqNode.setBounds(74,96,127,26);
@@ -1446,6 +1551,48 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::amber.withAlpha(.7f));g.drawVerticalLine((int)tx,plot.getY(),plot.getBottom());
         Theme::text(g,"STEADY-STATE TRANSFER  /  "+juce::String(threshold,1)+" dB  /  "+juce::String(ratio,1)+":1",
                     {45,163,670,18},11,Theme::muted,true);
+    } else if(type==SkellPresetAudioProcessor::StudioCompressorFX){
+        // The same static mapping as the adapted Studio RMS compressor.
+        // The real gain also depends on its time-smoothed RMS detector.
+        const float p0=processor.getSlotParam(slot,0);
+        const float p1=processor.getSlotParam(slot,1);
+        const float p4=processor.getSlotParam(slot,4);
+        const float thresholdAmp=skellpreset::studio::detail::level(
+            juce::roundToInt(p0*1000.f),7.);
+        const float threshold=20.f*std::log10(juce::jmax(.001f,thresholdAmp));
+        const float ratio=1.f+.38f*(std::pow(51.f,p1)-1.f);
+        const float slope=1.f/ratio-1.f;
+        const float kneeA=(std::pow(201.f,p4)-1.f)*.005f;
+        const float kneeB=kneeA>1.e-6f?1.f/std::log1p(kneeA):0.f;
+        auto toY=[&](float db){return plot.getBottom()-(db+60.f)/60.f*plot.getHeight();};
+        juce::Path unity,compressed;
+        for(int ix=0;ix<=835;ix+=5) {
+            const float inDb=-60.f+60.f*ix/835.f;
+            const float over=juce::jmax(0.f,inDb-threshold);
+            const float grDb=over<=0.f?0.f:
+                kneeA>1.e-5f?
+                ((std::log1p((over+1.f)*kneeA)*kneeB-1.f)*(slope+1.f)-over:
+                over*slope;
+            const float x=plot.getX()+ix;
+            if(ix==0) {
+                unity.startNewSubPath(x,toY(inDb));
+                compressed.startNewSubPath(x,toY(inDb+grDb));
+            } else {
+                unity.lineTo(x,toY(inDb));
+                compressed.lineTo(x,toY(inDb+grDb));
+            }
+        }
+        g.setColour(Theme::muted.withAlpha(.38f));
+        g.strokePath(unity,juce::PathStrokeType(1.3f));
+        g.setColour(Theme::green);
+        g.strokePath(compressed,juce::PathStrokeType(2.6f));
+        const float tx=plot.getX()+plot.getWidth()*(threshold+60.f)/60.f;
+        g.setColour(Theme::amber.withAlpha(.72f));
+        g.drawVerticalLine((int)tx,plot.getY(),plot.getBottom());
+        Theme::text(g,"STUDIO RMS COMPRESSION  /  "+juce::String(threshold,1)+" dBFS",
+                    {45,163,700,20},12,Theme::green,true);
+        Theme::text(g,"STATIC CURVE / REAL GAIN FOLLOWS ATTACK + RELEASE",
+                    {43,327,790,17},11,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::Gate){
         const float threshold=-75.f+processor.getSlotParam(slot,0)*70.f;
         const float hysteresis=processor.getSlotParam(slot,3)*8.f;
@@ -1532,6 +1679,36 @@ void SlotEditor::paint(juce::Graphics&g) {
                     {45,163,700,20},12,Theme::green,true);
         Theme::text(g,"ECHO ENVELOPE  /  LIVE PEAK MODULATES BRIGHTNESS",
                     {43,326,690,17},10,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::StudioDelayFX) {
+        // Illustrative time-domain echoes only: not a fabricated audio scope.
+        const float seconds=.025f*std::pow(80.f,processor.getSlotParam(slot,0));
+        const float feedback=.94f*processor.getSlotParam(slot,1);
+        const float wet=processor.getSlotParam(slot,10);
+        const bool sync=processor.getSlotParam(slot,12)>=.5f;
+        const int mode=juce::jlimit(0,3,(int)(processor.getSlotParam(slot,2)*3.999f));
+        const juce::StringArray modes{"MONO","TRUE STEREO","PING PONG","OFF"};
+        const float baseline=plot.getCentreY()+11.f;
+        g.setColour(Theme::stroke);
+        g.drawLine(plot.getX()+23.f,baseline,plot.getRight()-24.f,baseline,1.f);
+        for(int tap=0;tap<6;++tap) {
+            const float x=plot.getX()+62.f+tap*132.f;
+            const float magnitude=(tap==0?1.f:wet*std::pow(feedback,(float)(tap-1)));
+            const float height=juce::jmax(3.f,82.f*magnitude);
+            g.setColour((tap&1)?Theme::blue.withAlpha(.65f):
+                                     Theme::green.withAlpha(.75f));
+            g.drawLine(x,baseline-height,x,baseline+height,2.8f);
+            g.fillEllipse(x-3.5f,baseline-height-3.5f,7.f,7.f);
+            Theme::text(g,tap==0?"IN":juce::String(tap),
+                        {(int)x-15,(int)baseline+88,30,18},10,
+                        Theme::muted,false,juce::Justification::centred);
+        }
+        Theme::text(g,"STUDIO DELAY  /  "+modes[mode],
+                    {45,163,620,18},12,Theme::green,true);
+        Theme::text(g,sync?"TEMPO-SYNCED TIMING  /  USE HOST TRANSPORT":
+                        juce::String(seconds*1000.f,0)+" ms  /  FREE TIME",
+                    {45,186,620,18},12,Theme::white);
+        Theme::text(g,"ECHO TAPS ARE A SETTINGS DIAGRAM / NOT LIVE AUDIO",
+                    {43,326,790,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::ExternalVST3) {
         const auto name=processor.hostedVST3Name(slot);
         Theme::text(g,"EXTERNAL VST3 INSERT",{80,185,680,31},25,Theme::green,true);
@@ -2468,12 +2645,23 @@ void SlotEditor::paint(juce::Graphics&g) {
         labels={"Reference On","Level Match","Air Match","Base Gain"};
     if(type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1)
         labels={"Gate Threshold","Release","Attack","Knee"};
+    if(type==SkellPresetAudioProcessor::StudioDelayFX) {
+        constexpr const char* captions[4][4]{
+            {"TIME","FEEDBACK","STEREO MODE","R/L OFFSET"},
+            {"LOW CUT","HIGH CUT","DRIVE","SATURATION"},
+            {"LFO RATE","MOD DEPTH","ECHO WET","DRY LEVEL"},
+            {"TEMPO SYNC","BEAT DIVISION","TONE","DIFFUSION"}
+        };
+        for(int i=0;i<4;++i)labels[(size_t)i]=captions[delayPage][i];
+    }
     if(isPagedEQ(type)) {
         labels={ "B"+juce::String(eqBank+1)+" FREQ", "B"+juce::String(eqBank+1)+" GAIN",
                  "B"+juce::String(eqBank+2)+" FREQ", "B"+juce::String(eqBank+2)+" GAIN" };
     }
     if(type==SkellPresetAudioProcessor::StudioLimiterFX)
         Theme::text(g,"GATE FLOOR",{430,107,116,20},11.5f,Theme::white,true);
+    if(type==SkellPresetAudioProcessor::StudioCompressorFX)
+        Theme::text(g,"SOFT KNEE",{430,107,116,20},11.5f,Theme::white,true);
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
         Theme::fittedText(g,"HOSTED VST3  /  INLINE UI IF SUPPORTED / WINDOW FALLBACK",
             {447,462,424,49},12,Theme::muted,true);

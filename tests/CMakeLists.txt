@@ -154,3 +154,8 @@ add_test(NAME SkellPresetStudioChorusDSPTest COMMAND SkellPresetStudioChorusDSPT
 add_executable(SkellPresetStudioNativeDSPTest test_studio_native_dsp.cpp)
 target_compile_features(SkellPresetStudioNativeDSPTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetStudioNativeDSPTest COMMAND SkellPresetStudioNativeDSPTest)
+
+# Opt-in Skell Studio-style delay: portable echo, feedback and tempo stress.
+add_executable(SkellPresetStudioDelayTest test_studio_delay.cpp)
+target_compile_features(SkellPresetStudioDelayTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetStudioDelayTest COMMAND SkellPresetStudioDelayTest)

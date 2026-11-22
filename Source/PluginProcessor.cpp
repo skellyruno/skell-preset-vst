@@ -84,6 +84,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension5=state.getRawParameterValue(prefix+"fxExt5");
         r.extension6=state.getRawParameterValue(prefix+"fxExt6");
         r.extension7=state.getRawParameterValue(prefix+"fxExt7");
+        r.extension8=state.getRawParameterValue(prefix+"fxExt8");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
@@ -101,6 +102,10 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawMic.target=state.getRawParameterValue("micPreTarget");
     rawMic.amount=state.getRawParameterValue("micPreAmount");
     rawMic.trim=state.getRawParameterValue("micPreTrim");
+    rawMic.gateOn=state.getRawParameterValue("micGateOn");
+    rawMic.gateThreshold=state.getRawParameterValue("micGateThreshold");
+    rawMic.gateRelease=state.getRawParameterValue("micGateRelease");
+    rawMic.gateHold=state.getRawParameterValue("micGateHold");
     rawGlobal.mode=state.getRawParameterValue("mode");
     rawGlobal.input=state.getRawParameterValue("input");
     rawGlobal.mix=state.getRawParameterValue("mix");
@@ -260,6 +265,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
                band<=7);
         }
     }
+    // Mic Noise Gate is independent of the original mic model and starts OFF.
+    // Append all host IDs after the existing Studio EQ and slot parameters.
+    bl("micGateOn","Mic input noise gate active",false);
+    fl("micGateThreshold","Mic input gate threshold", -80.f,-10.f,-45.f);
+    fl("micGateRelease","Mic input gate release (ms)",20.f,1000.f,160.f);
+    fl("micGateHold","Mic input gate hold (ms)",0.f,250.f,55.f);
+    // New independent effect selector: published fxExt7 normalization stays unchanged.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt8",1},
+            "Slot "+juce::String(slot)+" Studio delay effect",
+            juce::StringArray{"None","Studio Delay"},0));
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -278,7 +295,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     harshness.prepare(sampleRate);noiseControl.prepare(sampleRate);
     studioPitch.prepare(sampleRate);
     pitchDry.prepare(skellpreset::dsp::SpectralPitchFormant::latencySamples);
-    delay.prepare(sampleRate);reverb[0].prepare(sampleRate);
+    delay.prepare(sampleRate);studioDelay.prepare(sampleRate);reverb[0].prepare(sampleRate);
     doubler.prepare(sampleRate);limiter.prepare(sampleRate,2);
     limiterDry.prepare(limiter.latencySamples());
     hostDry.prepare(skellpreset::host::HostedVST3::maxTotalLatency);
@@ -354,8 +371,11 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     bypassWork.setSize(2,hostChunkCapacity,false,true);
     for(auto& e:engines)e.prepare(rate);
     micFrontEnd.prepare(rate);
+    micInputGate.prepare(rate);
     micFrontWet.reset(rate,.020);
     micFrontWet.setCurrentAndTargetValue(rawMic.on->load()>.5f?1.f:0.f);
+    micGateWet.reset(rate,.020);
+    micGateWet.setCurrentAndTargetValue(rawMic.gateOn->load()>.5f?1.f:0.f);
     hosted.prepare(rate,hostChunkCapacity);
     const auto lookahead=engines[0].limiter.latencySamples();
     limiterLookahead.store(lookahead,std::memory_order_release);
@@ -410,7 +430,9 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int mic=raw.extension5?juce::jlimit(0,1,(int)raw.extension5->load()):0;
     const int dizer=raw.extension6?juce::jlimit(0,1,(int)raw.extension6->load()):0;
     const int studioNative=raw.extension7?juce::jlimit(0,4,(int)raw.extension7->load()):0;
+    const int studioDelay=raw.extension8?juce::jlimit(0,1,(int)raw.extension8->load()):0;
     if(oldType!=Empty)return oldType;
+    if(studioDelay>0)return (int)StudioFastDistFX+studioDelay;
     if(studioNative>0)return (int)SkelldizerFX+studioNative;
     if(dizer>0)return (int)MicModelFX+dizer;
     if(mic>0)return (int)AlchemistMatchFinishFX+mic;
@@ -426,9 +448,15 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
     const bool newStudio=chosen>SkelldizerFX && slotType(slot)!=chosen;
+    if(chosen<=StudioFastDistFX)setReal(id+"fxExt8",0.f);
     if(chosen<=SkelldizerFX)setReal(id+"fxExt7",0.f);
     if(chosen<=MicModelFX)setReal(id+"fxExt6",0.f);
-    if(chosen>SkelldizerFX) {
+    if(chosen>StudioFastDistFX) {
+        setReal(id+"type",(float)Empty);
+        for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5","fxExt6","fxExt7"})
+            setReal(id+choice,0.f);
+        setReal(id+"fxExt8",(float)(chosen-StudioFastDistFX));
+    } else if(chosen>SkelldizerFX) {
         setReal(id+"type",(float)Empty);
         for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5","fxExt6"})
             setReal(id+choice,0.f);
@@ -509,6 +537,11 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
             setSlotParam(slot,3,0.f);
             setSlotParam(slot,4,0.f);  // optional gate off
             setSlotParam(slot,8,0.f);
+        } else if(chosen==StudioDelayFX) {
+            constexpr float defaults[16]{.49f,.32f,.30f,0.f,0.f,.85f,
+                                         .10f,0.f,.12f,0.f,.48f,1.f,
+                                         0.f,.5f,.15f,.10f};
+            for(int k=0;k<16;++k)setSlotParam(slot,k,defaults[k]);
         } else if(chosen==StudioFastDistFX) {
             setSlotParam(slot,1,1.f);setSlotParam(slot,2,0.f);
             setSlotParam(slot,3,1.f);setSlotParam(slot,4,1.f);
@@ -598,6 +631,11 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     juce::jlimit(0.f,1.f,rawMic.amount->load()),
                     juce::jlimit(0.f,1.f,rawMic.trim->load()));
     micFrontWet.setTargetValue(rawMic.on->load()>.5f?1.f:0.f);
+    micInputGate.threshold=juce::jlimit(-80.f,-10.f,rawMic.gateThreshold->load());
+    micInputGate.release=juce::jlimit(20.f,1000.f,rawMic.gateRelease->load());
+    micInputGate.holdMs=juce::jlimit(0.f,250.f,rawMic.gateHold->load());
+    micInputGate.hysteresisDb=3.f;
+    micGateWet.setTargetValue(rawMic.gateOn->load()>.5f?1.f:0.f);
     const bool delta=rawGlobal.delta->load()>.5f;
     const float macroTone=rawGlobal.macros[0]->load();
     const float macroPunch=rawGlobal.macros[1]->load();
@@ -741,6 +779,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case StudioPitchFormantFX:
                 e.studioPitch.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
+            case StudioDelayFX:
+                e.studioDelay.set(c.p,hostBpm);
+                break;
             case Delay:
                 e.delay.configure((int)(rate*(.055+.85*c.p[0])),c.p[1]*.8f,
                                   500.f+17500.f*c.p[2]);
@@ -800,15 +841,21 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
-            const float micWet=micFrontWet.getNextValue();
+            const float gateWet=micGateWet.getNextValue();
             float frontL=preL,frontR=preR;
-            // Default OFF should be CPU-neutral for legacy FL Studio racks.
-            // Process the input model only while active or during its 20ms
-            // bypass crossfade; no allocations or latency are introduced.
+            // Stereo-linked microphone gate runs before mic coloration.
+            // OFF is bit-identical to the former path, with no added PDC.
+            if(gateWet>1.e-6f) {
+                const float gateGain=micInputGate.processGain(
+                    std::max(std::abs(preL),std::abs(preR)));
+                const float applied=1.f+gateWet*(gateGain-1.f);
+                frontL*=applied;frontR*=applied;
+            }
+            const float micWet=micFrontWet.getNextValue();
             if(micWet>1.e-6f) {
-                const auto colored=micFrontEnd.process(preL,preR);
-                frontL=preL+(colored[0]-preL)*micWet;
-                frontR=preR+(colored[1]-preR)*micWet;
+                const auto colored=micFrontEnd.process(frontL,frontR);
+                frontL+=(colored[0]-frontL)*micWet;
+                frontR+=(colored[1]-frontR)*micWet;
             }
             const auto original=bypassPdc.process(l,r,blockLatency);
             // Front-end tone is upstream of the rack AND its wet/dry blend.
@@ -854,6 +901,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 continue;
             }
             const bool keepTail=c.type==Limiter || c.type==StudioLimiterFX || c.type==Delay ||
+                c.type==StudioDelayFX ||
                 c.type==Reverb || c.type==VoxRackRoom ||
                 c.type==VocalChorusFX || c.type==VocalFlangerFX ||
                 c.type==AdlibThrow || c.type==AdlibDoubler ||
@@ -1024,6 +1072,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=(std::tanh(l*exciterDrive)-std::tanh(l*exciterDrive*.55f))*.4f+l;
                         wetR=(std::tanh(r*exciterDrive)-std::tanh(r*exciterDrive*.55f))*.4f+r;
                         break;
+                    }
+                    case StudioDelayFX: {
+                        const auto y=e.studioDelay.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
                     }
                     case Delay: {
                         const auto y=e.delay.process(l,r);
