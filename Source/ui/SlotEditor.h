@@ -124,6 +124,7 @@ public:
     bool testStudioLimiterPages();
     bool testStudioDelayPages();
     bool testVocalFeelSuiteUI();
+    bool testSuiteSpectrumUIForTest();
     bool testAdlibControls();
     bool testWetSidechainPanel();
     bool testMicModelCards();
@@ -153,6 +154,9 @@ private:
     int delayPage=0; // opt-in Studio Delay: 16 controls across four UI pages
     int suitePage=0; // Vocal Feel Suite: source 16 controls in four pages
     int gestureSuiteParameter=-1; // return p11..p15 graph gestures
+    bool suiteSpectrumView=false;
+    int suiteSpectrumTick=0;
+    skellpreset::visual::LiveSpectrumAnalyzer suiteSpectrumAnalyzer;
     void showEqBank(int firstBand);
     void showMatchPage(int page);
     void showLimiterPage(int page);
@@ -198,6 +202,7 @@ private:
     std::array<juce::TextButton,4> suitePageButtons;
     juce::TextButton vocalFeelStyleButton{"VOICE STYLES  ▼"};
     SkellVocalFeelStyles vocalFeelStyles;
+    juce::TextButton suiteSpectrumButton{"SPECTRUM"};
     juce::Slider studioGateFloor;
     juce::Slider studioCompKnee;
     juce::TextButton duckOpen{"SIDECHAIN"},duckClose{"X"};

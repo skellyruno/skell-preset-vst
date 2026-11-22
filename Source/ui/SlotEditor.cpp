@@ -292,6 +292,18 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     vocalFeelStyles.onChoose=[this](int index){selectSuiteRecipe(index);};
     addAndMakeVisible(vocalFeelStyles);
     vocalFeelStyles.setVisible(false);
+    suiteSpectrumButton.setTooltip(
+        "Show real pre-rack / post-master audio spectra; return mix bars remain on MIX view");
+    suiteSpectrumButton.onClick=[this] {
+        if(processor.slotType(slot)!=SkellPresetAudioProcessor::VocalFeelSuiteFX)return;
+        suiteSpectrumView=!suiteSpectrumView;
+        suiteSpectrumButton.setButtonText(suiteSpectrumView?"RETURN MIX":"SPECTRUM");
+        suiteSpectrumButton.setColour(juce::TextButton::textColourOffId,
+                                      suiteSpectrumView?Theme::green:Theme::white);
+        graphSnapshotValid=false;repaint();
+    };
+    addAndMakeVisible(suiteSpectrumButton);
+    suiteSpectrumButton.setVisible(false);
     for(int page=0;page<4;++page) {
         auto& button=delayPageButtons[(size_t)page];
         button.setButtonText(page==0?"TIME":page==1?"TONE":
@@ -954,6 +966,10 @@ void SlotEditor::applyTheme() {
                                   Theme::green.withAlpha(.16f));
     vocalFeelStyleButton.setColour(juce::TextButton::textColourOffId,Theme::green);
     vocalFeelStyles.repaint();
+    suiteSpectrumButton.setColour(juce::TextButton::buttonColourId,
+                                  suiteSpectrumView?Theme::green.withAlpha(.18f):Theme::panelAlt);
+    suiteSpectrumButton.setColour(juce::TextButton::textColourOffId,
+                                  suiteSpectrumView?Theme::green:Theme::white);
     modOrbButton.setColour(juce::TextButton::buttonColourId,
         modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
     modOrbButton.setColour(juce::TextButton::textColourOffId,
@@ -1117,6 +1133,24 @@ void SlotEditor::selectSuiteRecipe(int index) {
         processor.setSlotParam(slot,param,values[(size_t)param]);
     }
     graphSnapshotValid=false;refreshIfChanged();repaint();
+}
+bool SlotEditor::testSuiteSpectrumUIForTest() {
+    const int original=slot,oldType=processor.slotType(slot);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::VocalFeelSuiteFX);
+    processor.setSlotOn(slot,true);select(slot);
+    const float oldReturn=processor.getSlotParam(slot,10);
+    const bool initiallyHidden=!suiteSpectrumView && suiteSpectrumButton.isVisible();
+    suiteSpectrumButton.onClick();
+    const bool spectrumVisible=suiteSpectrumView &&
+        suiteSpectrumButton.getButtonText()=="RETURN MIX";
+    // Spectrum drawing is presentation only and cannot rewrite a return.
+    updateGraphNode({421.f,246.f});
+    const bool untouched=std::abs(processor.getSlotParam(slot,10)-oldReturn)<.0001f;
+    suiteSpectrumButton.onClick();
+    const bool reenabled=!suiteSpectrumView &&
+        suiteSpectrumButton.getButtonText()=="SPECTRUM";
+    processor.setSlotType(slot,oldType);select(original);
+    return initiallyHidden&&spectrumVisible&&untouched&&reenabled;
 }
 bool SlotEditor::testVocalFeelSuiteUI() {
     const int originalSlot=slot,originalType=processor.slotType(slot);
@@ -1371,6 +1405,8 @@ void SlotEditor::select(int newSlot) {
     eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
     lastPeakLevel=-1;lastGainReductionStep=-1;lastDeessStep=-1;
     lastSuiteLevels.fill(-1);vocalFeelStyles.close();
+    suiteSpectrumView=false;suiteSpectrumTick=0;
+    suiteSpectrumButton.setButtonText("SPECTRUM");
     graphSnapshotValid=false; // never leave the previous slot's power state
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
@@ -1442,6 +1478,14 @@ void SlotEditor::refreshIfChanged() {
     bool changed=!graphSnapshotValid || type!=lastType || powerOn!=lastPowerOn;
     // 0.5 dB steps bound GUI repaints. The meter is measured on the audio
     // callback and published atomically; no synthetic GR animation.
+    if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX && suiteSpectrumView) {
+        // At most 10 spectrum repaints per second with the existing 30Hz UI timer.
+        // The Goertzel transform itself is computed on the GUI paint thread.
+        if(++suiteSpectrumTick>=3) {
+            suiteSpectrumTick=0;
+            repaint(juce::Rectangle<int>(33,151,835,206));
+        }
+    }
     const bool vocalMeter=type==SkellPresetAudioProcessor::VocalFeelOptoFX ||
                           type==SkellPresetAudioProcessor::VocalFeelSuiteFX;
     const int grStep=vocalMeter
@@ -1529,6 +1573,8 @@ void SlotEditor::refreshIfChanged() {
         // values while reattaching only the controls visible on this page.
         eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;delayPage=0;suitePage=0;
         vocalFeelStyles.close();
+        suiteSpectrumView=false;suiteSpectrumTick=0;
+        suiteSpectrumButton.setButtonText("SPECTRUM");
         gateFloorAttachment.reset();
         studioCompKneeAttachment.reset();
         modOrbView=false;
@@ -1605,6 +1651,7 @@ void SlotEditor::refreshIfChanged() {
     for(auto& button:delayPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioDelayFX);
     for(auto& button:suitePageButtons)button.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
     vocalFeelStyleButton.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
+    suiteSpectrumButton.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
     if(type!=SkellPresetAudioProcessor::VocalFeelSuiteFX)vocalFeelStyles.close();
     studioGateFloor.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
     studioCompKnee.setVisible(type==SkellPresetAudioProcessor::StudioCompressorFX);
@@ -1639,6 +1686,7 @@ void SlotEditor::resized() {
     }
     vocalFeelStyleButton.setBounds(626,105,238,29);
     vocalFeelStyles.setBounds(628,139,235,340);
+    suiteSpectrumButton.setBounds(721,161,132,27);
     duckOpen.setBounds(708,106,157,28);
     duckPanel.setBounds(505,136,353,262);
     duckClose.setBounds(318,11,25,23);
@@ -1689,7 +1737,9 @@ bool SlotEditor::testPopupLayoutsForTest() const {
                    suitePageButtons[(size_t)j].getBounds()))return false;
     return modulePicker.testLayoutForTest() &&
            installedBrowser.testLayoutForTest() && eqNodeMenu.testLayoutForTest() &&
-           vocalFeelStyles.testLayoutForTest();
+           vocalFeelStyles.testLayoutForTest() &&
+           getLocalBounds().contains(suiteSpectrumButton.getBounds()) &&
+           !suiteSpectrumButton.getBounds().intersects(vocalFeelStyleButton.getBounds());
 }
 void SlotEditor::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
@@ -1992,6 +2042,48 @@ void SlotEditor::paint(juce::Graphics&g) {
             {47,186,650,21},13,Theme::white);
         Theme::text(g,"ILLUSTRATIVE MAX REDUCTION  /  ACTUAL GAIN IS LEVEL-DEPENDENT",
             {43,327,790,17},11,Theme::muted);
+    } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX && suiteSpectrumView) {
+        // Actual INPUT/OUTPUT spectral values from lock-free audio buffers,
+        // analyzed only on JUCE's message/render thread. No invented peaks.
+        std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity> input{},output{};
+        processor.getLiveSpectrumInput(input);
+        processor.getLiveSpectrumOutput(output);
+        const double sr=processor.preparedAudioRate();
+        const auto inLevels=suiteSpectrumAnalyzer.analyze(input,sr);
+        const auto outLevels=suiteSpectrumAnalyzer.analyze(output,sr);
+        Theme::text(g,"REAL INPUT / OUTPUT SPECTRUM",
+                    {47,162,560,21},13.2f,Theme::green,true);
+        for(int marker=0;marker<5;++marker) {
+            const float y=207.f+marker*28.f;
+            g.setColour(Theme::stroke.withAlpha(.60f));
+            g.drawHorizontalLine((int)y,52.f,845.f);
+        }
+        for(int band=0;band<skellpreset::visual::LiveSpectrumAnalyzer::bands;++band) {
+            const float x=55.f+band*(787.f/35.f);
+            g.setColour(Theme::stroke.withAlpha(.36f));
+            if(band%7==0)g.drawVerticalLine((int)x,209.f,320.f);
+        }
+        juce::Path before,after;
+        for(int band=0;band<skellpreset::visual::LiveSpectrumAnalyzer::bands;++band) {
+            const float x=55.f+band*(787.f/35.f);
+            const auto toY=[](float magnitude){
+                const float db=20.f*std::log10(std::max(magnitude,1.e-6f));
+                return 320.f-112.f*juce::jlimit(0.f,1.f,(db+84.f)/84.f);
+            };
+            const float yIn=toY(inLevels[(size_t)band]);
+            const float yOut=toY(outLevels[(size_t)band]);
+            if(band==0){before.startNewSubPath(x,yIn);after.startNewSubPath(x,yOut);}
+            else {before.lineTo(x,yIn);after.lineTo(x,yOut);}
+        }
+        g.setColour(Theme::blue.withAlpha(.85f));
+        g.strokePath(before,juce::PathStrokeType(1.7f));
+        g.setColour(Theme::green);
+        g.strokePath(after,juce::PathStrokeType(2.2f));
+        Theme::text(g,"INPUT",{47,326,110,18},10.5f,Theme::blue,true);
+        Theme::text(g,"OUTPUT",{171,326,115,18},10.5f,Theme::green,true);
+        Theme::text(g,"REAL 36-BAND SPECTRUM  /  80 Hz—9 kHz  /  GUI-ONLY FFT ALTERNATIVE",
+                    {302,326,550,18},9.5f,Theme::muted,false,
+                    juce::Justification::centredRight);
     } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
         // Actual per-chain RMS from callback-owned DSP: no invented signal
         // graphics. Dragging a bar uses the original p11..p15 automation ID.
@@ -3473,6 +3565,10 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         return;
     }
     if(vocalFeelStyles.isVisible()){vocalFeelStyles.close();return;}
+    // A read-only analyzer must not silently edit the return parameters.
+    if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX &&
+       suiteSpectrumView && juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))
+        return;
     if(type>=SkellPresetAudioProcessor::AdlibChop &&
        type<=SkellPresetAudioProcessor::AdlibSaturate &&
        juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))
