@@ -67,6 +67,8 @@ std::array<juce::String,4> titles(int type) {
         case 36:return {"Threshold","Ratio","Attack","Release"};
         case 37:return {"Pre Gain","Threshold","Type A/B","Effect Mix"};
         case 38:return {"Time","Feedback","Stereo Mode","R/L Offset"};
+        case 39:case 40:case 41:case 42:
+            return {"Amount","Rate","Tone","Mix"};
         default:return {"Control 1","Control 2","Control 3","Control 4"};
     }
 }

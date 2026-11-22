@@ -55,6 +55,15 @@ FetchContent_Declare(SkellWorldPresenceHeaders
     SOURCE_SUBDIR _world_presence_headers_only)
 FetchContent_MakeAvailable(SkellWorldPresenceHeaders)
 
+# Shared JUCE-free AdlibFX effect header at immutable tested revision.
+# Include headers only; do not configure duplicate SkellCore audio targets.
+FetchContent_Declare(SkellAdlibFXHeaders
+    GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
+    GIT_TAG cf2d182a1c4b1b45f97253f5e1b17dd91343aeaa
+    GIT_SHALLOW FALSE
+    SOURCE_SUBDIR _adlib_effect_headers_only)
+FetchContent_MakeAvailable(SkellAdlibFXHeaders)
+
 juce_add_plugin(SkellPreset
     COMPANY_NAME "Skell Audio"
     BUNDLE_ID "audio.skell.preset"
@@ -114,6 +123,7 @@ target_link_libraries(SkellPreset PRIVATE
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
 target_include_directories(SkellPreset PRIVATE "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include")
 target_include_directories(SkellPreset PRIVATE "${skellworldpresenceheaders_SOURCE_DIR}/SkellCore/include")
+target_include_directories(SkellPreset PRIVATE "${skelladlibfxheaders_SOURCE_DIR}/SkellCore/include")
 target_compile_features(SkellPreset PRIVATE cxx_std_17)
 
 if(MSVC)
@@ -161,6 +171,7 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
     add_executable(SkellPresetUIRenderer tests/ui_renderer.cpp)
     target_include_directories(SkellPresetUIRenderer PRIVATE
     "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include"
+    "${skelladlibfxheaders_SOURCE_DIR}/SkellCore/include"
         "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
     # The plugin's include dependencies are PRIVATE, so the renderer also
     # links the two SkellCore interface targets to find Core.h and UI.h.
@@ -188,6 +199,7 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
     add_executable(SkellPresetAlchemistRender tests/render_alchemist_native.cpp)
     target_include_directories(SkellPresetAlchemistRender PRIVATE
         "${skellguidedtourheaders_SOURCE_DIR}/SkellCore/include"
+        "${skelladlibfxheaders_SOURCE_DIR}/SkellCore/include"
         "${CMAKE_CURRENT_BINARY_DIR}/SkellPreset_artefacts/JuceLibraryCode")
     target_compile_definitions(SkellPresetAlchemistRender PRIVATE
         JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)

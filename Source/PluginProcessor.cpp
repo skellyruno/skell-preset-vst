@@ -85,6 +85,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension6=state.getRawParameterValue(prefix+"fxExt6");
         r.extension7=state.getRawParameterValue(prefix+"fxExt7");
         r.extension8=state.getRawParameterValue(prefix+"fxExt8");
+        r.extension9=state.getRawParameterValue(prefix+"fxExt9");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
@@ -277,6 +278,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(slot)+"_fxExt8",1},
             "Slot "+juce::String(slot)+" Studio delay effect",
             juce::StringArray{"None","Studio Delay"},0));
+    // New independent choice generation. Never extend or renormalize fxExt8.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt9",1},
+            "Slot "+juce::String(slot)+" shared Adlib effects",
+            juce::StringArray{"None","Adlib CHOP","Adlib MOTION",
+                              "Adlib FILTER","Adlib SATURATE"},0));
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -286,6 +294,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     width.prepare(sampleRate);threeBand.prepare(sampleRate);
     voxRoom.prepare(sampleRate);voxComp.prepare(sampleRate);
     chorus.prepare(sampleRate);flanger.prepare(sampleRate);ring.prepare(sampleRate);
+    adlibFx.prepare(sampleRate);
     studioEq.prepare(sampleRate);studioComp.prepare(sampleRate);
     studioLimiterComp.prepare(sampleRate);studioGate.prepare(sampleRate);
     studioDist.prepare(sampleRate);
@@ -431,7 +440,9 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int dizer=raw.extension6?juce::jlimit(0,1,(int)raw.extension6->load()):0;
     const int studioNative=raw.extension7?juce::jlimit(0,4,(int)raw.extension7->load()):0;
     const int studioDelay=raw.extension8?juce::jlimit(0,1,(int)raw.extension8->load()):0;
+    const int adlib=raw.extension9?juce::jlimit(0,4,(int)raw.extension9->load()):0;
     if(oldType!=Empty)return oldType;
+    if(adlib>0)return (int)StudioDelayFX+adlib;
     if(studioDelay>0)return (int)StudioFastDistFX+studioDelay;
     if(studioNative>0)return (int)SkelldizerFX+studioNative;
     if(dizer>0)return (int)MicModelFX+dizer;
@@ -448,10 +459,17 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
     const bool newStudio=chosen>SkelldizerFX && slotType(slot)!=chosen;
+    if(chosen<=StudioDelayFX)setReal(id+"fxExt9",0.f);
     if(chosen<=StudioFastDistFX)setReal(id+"fxExt8",0.f);
     if(chosen<=SkelldizerFX)setReal(id+"fxExt7",0.f);
     if(chosen<=MicModelFX)setReal(id+"fxExt6",0.f);
-    if(chosen>StudioFastDistFX) {
+    if(chosen>StudioDelayFX) {
+        setReal(id+"type",(float)Empty);
+        for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4",
+                                "fxExt5","fxExt6","fxExt7","fxExt8"})
+            setReal(id+choice,0.f);
+        setReal(id+"fxExt9",(float)(chosen-StudioDelayFX));
+    } else if(chosen>StudioFastDistFX) {
         setReal(id+"type",(float)Empty);
         for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5","fxExt6","fxExt7"})
             setReal(id+choice,0.f);
@@ -519,6 +537,13 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(newStudio) {
         // First selection only; imported preset parameters restore afterward.
         for(int k=0;k<16;++k)setSlotParam(slot,k,.5f);
+        if(chosen>=AdlibChop && chosen<=AdlibSaturate) {
+            // First selection only; imported presets override these defaults.
+            setSlotParam(slot,0,.65f);
+            setSlotParam(slot,1,.50f);
+            setSlotParam(slot,2,.50f);
+            setSlotParam(slot,3,1.f);
+        }
         if(chosen==StudioEQFX) {
             // Separate nodes on the x-axis instead of stacking 7 identical
             // green dots at 632 Hz when selecting a fresh EQ.
@@ -1062,6 +1087,14 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     case StudioPitchFormantFX: {
                         const auto y=e.studioPitch.process(l,r);
                         wetL=y[0];wetR=y[1];break;
+                    }
+                    case AdlibChop:case AdlibMotion:case AdlibFilter:case AdlibSaturate: {
+                        const auto effectType=static_cast<skellcore::adlibfx::Type>(
+                            c.type-AdlibChop+1);
+                        const skellcore::adlibfx::Parameters params{
+                            effectType,c.p[0],c.p[1],c.p[2],c.p[3],(float)hostBpm};
+                        const auto y=e.adlibFx.process({l,r},params);
+                        wetL=y.left;wetR=y.right;break;
                     }
                     case Saturator: {
                         wetL=std::tanh(l*saturatorDrive*saturatorBlend)/saturatorDenom;
@@ -1745,7 +1778,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
         const auto prefix=slotPrefix(slot);
         for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
                                 "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
-                                "fxExt8","eqLowCut","eqHighCut"})add(prefix+suffix);
+                                "fxExt8","fxExt9","eqLowCut","eqHighCut"})add(prefix+suffix);
         for(int parameter=1;parameter<=16;++parameter)
             add(prefix+"p"+juce::String(parameter));
         for(int band=1;band<=8;++band) {

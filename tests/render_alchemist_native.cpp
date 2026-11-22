@@ -728,7 +728,11 @@ int studioSmoke() {
         SkellPresetAudioProcessor::StudioLimiterFX,
         SkellPresetAudioProcessor::StudioCompressorFX,
         SkellPresetAudioProcessor::StudioFastDistFX,
-        SkellPresetAudioProcessor::StudioDelayFX
+        SkellPresetAudioProcessor::StudioDelayFX,
+        SkellPresetAudioProcessor::AdlibChop,
+        SkellPresetAudioProcessor::AdlibMotion,
+        SkellPresetAudioProcessor::AdlibFilter,
+        SkellPresetAudioProcessor::AdlibSaturate
     };
     for(const int type:types){
         processor->setSlotOn(0,false);
@@ -744,6 +748,12 @@ int studioSmoke() {
         }else if(type==SkellPresetAudioProcessor::StudioFastDistFX) {
             processor->setSlotParam(0,0,.7f);
             processor->setSlotParam(0,3,.6f);
+        }else if(type>=SkellPresetAudioProcessor::AdlibChop &&
+                 type<=SkellPresetAudioProcessor::AdlibSaturate) {
+            processor->setSlotParam(0,0,.88f);
+            processor->setSlotParam(0,1,.90f);
+            processor->setSlotParam(0,2,.22f);
+            processor->setSlotParam(0,3,1.f);
         }else if(type==SkellPresetAudioProcessor::StudioDelayFX) {
             processor->setSlotParam(0,0,.32f); // ~100 ms free-running echo
             processor->setSlotParam(0,1,.36f);

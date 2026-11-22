@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <SkellCore/Core.h>
+#include <SkellCore/AdlibFX.h>
 #include "chain/BasicDSP.h"
 #include "chain/LiveAudioScope.h"
 #include "chain/ClipRecorder.h"
@@ -25,7 +26,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, NumberOfModules };
     static constexpr int slotCount=16;
     static constexpr int defaultSlotCount=10;
     static constexpr int emptyRackProgramIndex=static_cast<int>(skellpreset::factoryPresets.size());
@@ -139,6 +140,7 @@ private:
         skellpreset::studio::FastDist studioDist;
         skellpreset::dsp::VocalFlanger flanger;
         skellpreset::dsp::VocalRingMod ring;
+        skellcore::adlibfx::Processor adlibFx;
         skellpreset::dsp::VocalRider rider;
         skellpreset::dsp::DuckingPingPongDelay duckingDelay;
         skellpreset::dsp::VocalVibrato vibrato;
@@ -188,6 +190,7 @@ private:
         std::atomic<float>* extension6=nullptr;
         std::atomic<float>* extension7=nullptr;
         std::atomic<float>* extension8=nullptr;
+        std::atomic<float>* extension9=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
