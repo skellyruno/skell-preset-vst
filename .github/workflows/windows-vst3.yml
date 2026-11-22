@@ -109,8 +109,10 @@ jobs:
           $info = @(
             'Product: Skell-Preset',
             'Version: 0.7.0',
-            "Commit: ${{ github.sha }}",
+            "PR Source Commit: ${{ github.event.pull_request.head.sha || github.sha }}",
+            "CI Checkout Commit: ${{ github.sha }}",
             "Branch: ${{ github.head_ref || github.ref_name }}",
+            "Workflow Run: ${{ github.run_id }}",
             "Binary SHA256: $hash",
             'Bundle: Skell-Preset.vst3',
             'Unverified installed-copy identity: check DAW plugin path separately'
