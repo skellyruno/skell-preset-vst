@@ -16,6 +16,7 @@ public:
     void setSuiteForScreenshot(int page,bool stylesOpen);
     void setSuiteSpectrumForScreenshot(bool enabled);
     void setMicPanelForScreenshot(bool visible);
+    void setSettingsPanelForScreenshot(bool visible);
     void setModOrbForScreenshot(bool enabled);
     void dockRackForScreenshot(bool right);
     void showHomeForScreenshot();

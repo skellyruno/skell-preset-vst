@@ -305,6 +305,11 @@ int main(int argc, char** argv) {
                     options.scenes.push_back(scene);
                 }
         options.scenes.push_back({"obsidian-guided-tour-70",818,482,0,1,false});
+        // Themed Settings is native JUCE and needs actual local visual
+        // inspection at both small and large host scales, in both skins.
+        options.scenes.push_back({"obsidian-settings-70",818,482,0,0,false});
+        options.scenes.push_back({"obsidian-settings-125",1460,860,0,0,false});
+        options.scenes.push_back({"crimson-settings-70",818,482,2,0,false});
         options.scenes.push_back({"obsidian-mic-panel-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
         options.scenes.push_back({"crimson-deesser-70",818,482,2,1,false});
@@ -564,6 +569,8 @@ int main(int argc, char** argv) {
                 editor.setMatchPageForScreenshot(2);
             editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-digital-bones-70");
             editor.setMicPanelForScreenshot(scene.id=="obsidian-mic-panel-70");
+            editor.setSettingsPanelForScreenshot(scene.id=="obsidian-settings-70" ||
+                scene.id=="obsidian-settings-125" || scene.id=="crimson-settings-70");
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
@@ -608,7 +615,9 @@ int main(int argc, char** argv) {
             {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
             {"obsidian-effect-skelldizer-70","obsidian-effect-mic-modeling-70"},
             {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-digital-bones-70"},
-            {"obsidian-advanced-70","obsidian-mic-panel-70"}
+            {"obsidian-advanced-70","obsidian-mic-panel-70"},
+            {"obsidian-simple-70","obsidian-settings-70"},
+            {"obsidian-settings-70","crimson-settings-70"}
         };
         if(quick4) {
             options.mustDiffer={

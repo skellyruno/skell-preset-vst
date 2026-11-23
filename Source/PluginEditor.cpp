@@ -246,6 +246,7 @@ public:
             if(choice>=1 && choice<=4)
                 sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
         };
+        settingsPanel.onClose=[this]{settings.grabKeyboardFocus();};
         addAndMakeVisible(settingsPanel);
         settingsPanel.setVisible(false);
         record.setButtonText("REC WAV");
@@ -431,6 +432,19 @@ public:
         micPanel.refresh();
         micPanel.setVisible(visible);
         if(visible)micPanel.toFront(true);
+    }
+    void setSettingsPanelForScreenshot(bool visible) {
+        if(visible) {
+            browser.setVisible(false);
+            micPanel.setVisible(false);
+            slot.dismissTransientOverlays();
+            refreshWorldLinkStatus();
+            settingsPanel.open(sizeSelect.getSelectedId()-1);
+        } else {
+            // Scene setup must not leave a stale settings overlay on the
+            // following actual-editor screenshot.
+            settingsPanel.setVisible(false);
+        }
     }
     void setModOrbForScreenshot(bool enabled) {
         editingIdle=false;idle.setVisible(false);
@@ -1693,6 +1707,9 @@ void SkellPresetAudioProcessorEditor::setSuiteSpectrumForScreenshot(bool enabled
 }
 void SkellPresetAudioProcessorEditor::setMicPanelForScreenshot(bool visible) {
     canvas->setMicPanelForScreenshot(visible);
+}
+void SkellPresetAudioProcessorEditor::setSettingsPanelForScreenshot(bool visible) {
+    canvas->setSettingsPanelForScreenshot(visible);
 }
 void SkellPresetAudioProcessorEditor::setModOrbForScreenshot(bool enabled) {
     canvas->setModOrbForScreenshot(enabled);
