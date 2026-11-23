@@ -26,6 +26,18 @@ public:
     bool testBrowserKeyboardForTest(); // roving result focus without triggering audio loads
     bool testBrowserSortingForTest(); // no data mutation during sorting
     bool testCategoryCountsForTest(); // cached library counts track user metadata
+    static constexpr int artworkPaletteIndexForTest(int seed) noexcept {
+        // This exact helper is used by the real paint path. The previous
+        // seed%5 indexed a four-colour palette out of bounds for 4/9/44...
+        return (seed<0?0:seed)%4;
+    }
+    static bool presetCardHitForTest(bool editing,int x,int y,int width) noexcept {
+        // Each visible card is 56px tall, 61px apart. The five-pixel gaps
+        // are never click-to-load regions, nor is the Edit Details overlay.
+        const int relative=y-110;
+        return !editing && x>=207 && x<width-17 &&
+               relative>=0 && relative<6*61 && relative%61<56;
+    }
     void loadFactoryForHistoryTest(int index) {loadFactoryFromBrowser(index);}
     juce::File historySelection() const {return activeUserPreset;}
     void restoreHistorySelection(const juce::File& selection) {

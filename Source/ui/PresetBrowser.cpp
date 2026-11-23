@@ -1224,6 +1224,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
         Theme::text(g,"CATEGORY",{19,264,166,17},10.f,Theme::muted,true);
         Theme::text(g,"CREATE YOUR OWN",{19,335,166,17},10.f,Theme::muted,true);
     }
+    // Don't draw clickable library cards beneath Edit Details input fields.
+    // Children on that page remain visible and keyboard accessible.
+    if(detailsOpen)return;
     // Artist metadata can be assigned to personal presets with the sidebar
     // text field; the actual native preset and host program IDs stay intact.
     for(int i=0;i<6;i++){
@@ -1245,8 +1248,18 @@ void PresetBrowser::paint(juce::Graphics&g) {
             :juce::String(skellpreset::factoryPresets[(size_t)entry].bank);
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
-        g.setColour(itemIndex==hoveredCard?Theme::panelAlt.brighter(.09f):Theme::panelAlt);
+        // Layered smoked-metal row rather than the old flat tile. This
+        // stays a single paint pass and does not fetch images from disk.
+        const bool rowHover=itemIndex==hoveredCard;
+        g.setGradientFill(juce::ColourGradient(
+            Theme::panelAlt.brighter(rowHover?.13f:.065f),
+            rect.getTopLeft(),
+            Theme::panel.darker(rowHover?.04f:.09f),
+            rect.getBottomRight(),false));
         g.fillRoundedRectangle(rect,7.f);
+        g.setColour(Theme::white.withAlpha(rowHover?.10f:.05f));
+        g.drawLine(rect.getX()+84.f,rect.getY()+1.6f,
+                   rect.getRight()-13.f,rect.getY()+1.6f,.7f);
         const juce::Image tileArt=custom
             ?userArtwork[(size_t)(-entry-1)]
             :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
@@ -1260,7 +1273,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         }
         const std::array<juce::Colour,4> accents{{Theme::green,Theme::amber,Theme::pink,Theme::white}};
         const int seed=custom?-entry:entry+1;
-        const auto accent=accents[(size_t)(seed%5)];
+        const auto accent=accents[(size_t)artworkPaletteIndexForTest(seed)];
         const auto cover=juce::Rectangle<float>(215.f,(float)y+5.f,67.f,46.f);
         const juce::Image coverArt=custom
             ?userArtwork[(size_t)(-entry-1)]
@@ -1446,7 +1459,8 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
                 chooseBank(index);grabKeyboardFocus();return;
             }
     }
-    if(e.y>=110&&e.x>=207&&e.y<476){
+    if(!e.mods.isPopupMenu() &&
+       presetCardHitForTest(detailsOpen,e.x,e.y,getWidth())){
         const auto entries=filtered();const int row=(e.y-110)/61;
         if(row>=0&&row<6 && scroll+row<(int)entries.size()){
             keyboardCard=scroll+row;grabKeyboardFocus();
@@ -1460,7 +1474,8 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     }
 }
 void PresetBrowser::mouseMove(const juce::MouseEvent& e){
-    const int candidate=e.x>=207&&e.y>=110&&e.y<476 ? (e.y-110)/61+scroll : -1;
+    const int candidate=presetCardHitForTest(detailsOpen,e.x,e.y,getWidth())
+        ? (e.y-110)/61+scroll : -1;
     const bool onStar=e.x>=getWidth()-77 && e.x<=getWidth()-38;
     if(candidate>=0 && candidate==hoveredCard &&
        (onStar?hoveredStar==candidate:hoveredStar<0))

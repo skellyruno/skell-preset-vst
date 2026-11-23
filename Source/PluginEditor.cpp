@@ -16,8 +16,10 @@
 #include <SkellCore/UI.h>
 #include <SkellCore/WorldLink.h>
 #include <array>
+#include <cmath>
 #include <memory>
 #include <vector>
+#include <limits>
 
 namespace {
 void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical) {
@@ -539,6 +541,52 @@ public:
             issues.add("Module dropdown differs from the actual selected DSP type");
         return issues;
     }
+    // Message-thread-only metering; the audio callback still publishes the
+    // same atomics. Fast attack / ~200ms perceptual release stops strobing.
+    // Nonfinite host/driver readings cannot poison the meter.
+    static float followMeter(float previous,float incoming) noexcept {
+        const float target=std::isfinite(incoming)
+            ?juce::jlimit(0.f,4.f,incoming):0.f;
+        const float old=std::isfinite(previous)
+            ?juce::jlimit(0.f,4.f,previous):0.f;
+        return target>=old?target:juce::jmax(target,old*.84f);
+    }
+    // Normalize the twelve visible bars to an actual -60..0 dBFS scale
+    // instead of losing quiet vocals with a linear 0..1 mapping.
+    static int meterBars(float amplitude) noexcept {
+        if(!std::isfinite(amplitude) || amplitude<=.001f)return 0;
+        const float safe=juce::jlimit(.001f,1.f,amplitude);
+        return juce::jlimit(0,12,
+            (int)std::ceil((20.f*std::log10(safe)+60.f)/5.f));
+    }
+    static bool isMeterOverloaded(float amplitude) noexcept {
+        return std::isfinite(amplitude) && amplitude>=1.f;
+    }
+    static bool testMeterBallistics() noexcept {
+        if(meterBars(0.f)!=0 || meterBars(.001f)!=0 ||
+           meterBars(.01f)!=4 || meterBars(.1f)!=8 ||
+           meterBars(1.f)!=12 || meterBars(2.f)!=12 ||
+           meterBars(std::numeric_limits<float>::quiet_NaN())!=0)
+            return false;
+        float displayed=followMeter(0.f,1.f);
+        if(displayed!=1.f)return false; // immediate transient attack
+        for(int tick=0;tick<16;++tick){
+            const float next=followMeter(displayed,0.f);
+            if(!std::isfinite(next) || next>=displayed || next<0.f)
+                return false;
+            displayed=next;
+        }
+        if(displayed>=.1f)return false;
+        // Overload colour must update even if a 0.98→1.02 transition
+        // leaves all twelve dB-scaled segments illuminated.
+        if(meterBars(.98f)!=12 || meterBars(1.02f)!=12 ||
+           isMeterOverloaded(.98f) || !isMeterOverloaded(1.02f))
+            return false;
+        const float bad=followMeter(
+            std::numeric_limits<float>::infinity(),
+            std::numeric_limits<float>::quiet_NaN());
+        return bad==0.f && followMeter(.1f,.5f)==.5f;
+    }
     juce::StringArray runScreenshotInteractionTests(){
         juce::StringArray issues;
         configureForScreenshot(0,1,false);
@@ -578,6 +626,8 @@ public:
             issues.add("Preset browser custom category controls or cover preview overlap");
         if(!SkellIdleDeck::testStageGeometryForTest())
             issues.add("Skell full-body performer/scope stage clips at compact or enlarged sizes");
+        if(!testMeterBallistics())
+            issues.add("Input/output -60dBFS meter scale, attack, release or NaN guard regressed");
         if(!slot.testHomeReturnHitZonesForTest())
             issues.add("VISUAL return hit area overlaps effect title, graph, knobs or power");
         if(!testEmptyGapReturnRegions())
@@ -587,7 +637,25 @@ public:
         if(!browser.testBrowserSortingForTest())
             issues.add("Preset browser A-Z/Z-A/starred-first sorting changed active preset or failed");
         if(!browser.testCategoryCountsForTest())
-            issues.add("Cached category counts diverge from saved presets, Ad-libs, artists or favorites");
+            issues.add("Cached category counts diverge from saved presets, artists or favorites");
+        if(PresetBrowser::artworkPaletteIndexForTest(0)!=0 ||
+           PresetBrowser::artworkPaletteIndexForTest(1)!=1 ||
+           PresetBrowser::artworkPaletteIndexForTest(3)!=3 ||
+           PresetBrowser::artworkPaletteIndexForTest(4)!=0 ||
+           PresetBrowser::artworkPaletteIndexForTest(9)!=1 ||
+           PresetBrowser::artworkPaletteIndexForTest(44)!=0 ||
+           PresetBrowser::artworkPaletteIndexForTest(45)!=1 ||
+           PresetBrowser::artworkPaletteIndexForTest(-1)!=0)
+            issues.add("Preset artwork palette index can escape the four-colour array");
+        if(!PresetBrowser::presetCardHitForTest(false,250,110,650) ||
+           !PresetBrowser::presetCardHitForTest(false,632,140,650) ||
+           !PresetBrowser::presetCardHitForTest(false,250,415,650) ||
+           PresetBrowser::presetCardHitForTest(true,250,140,650) ||
+           PresetBrowser::presetCardHitForTest(false,206,140,650) ||
+           PresetBrowser::presetCardHitForTest(false,633,140,650) ||
+           PresetBrowser::presetCardHitForTest(false,250,167,650) ||
+           PresetBrowser::presetCardHitForTest(false,250,471,650))
+            issues.add("Preset cards are selectable through Edit Details, outside edges or row gaps");
         if(processor.presetName()!="Alchemist" ||
            processor.getProgramName(skellpreset::alchemist::factoryIndex)!="Alchemist" ||
            processor.getProgramName(skellpreset::deuce_v25::factoryIndex)!="Deuce")
@@ -1074,13 +1142,19 @@ public:
         }
         Theme::text(g,"IN",{26,646,42,18},11,Theme::muted,true);
         Theme::text(g,"OUT",{214,646,48,18},11,Theme::muted,true);
-        const float inPeak=juce::jlimit(0.f,1.f,processor.getInputPeak());
-        const float outPeak=juce::jlimit(0.f,1.f,processor.getOutputPeak());
+        const int inputBars=meterBars(displayedInputPeak);
+        const int outputBars=meterBars(displayedOutputPeak);
         for(int ix=0;ix<12;++ix){
-            g.setColour(ix<12.f*inPeak?Theme::green:Theme::stroke);
-            g.fillRect(68+ix*10,651,7,11);
-            g.setColour(ix<12.f*outPeak?Theme::green:Theme::stroke);
-            g.fillRect(263+ix*10,651,7,11);
+            const auto lit=ix>=9?Theme::amber:Theme::green;
+            const bool inActive=ix<inputBars,outActive=ix<outputBars;
+            g.setColour(inActive?(ix==11&&isMeterOverloaded(displayedInputPeak)
+                ?Theme::red:lit).withAlpha(.88f):
+                Theme::stroke.withAlpha(.39f));
+            g.fillRoundedRectangle((float)(68+ix*10),651.f,7.f,11.f,1.4f);
+            g.setColour(outActive?(ix==11&&isMeterOverloaded(displayedOutputPeak)
+                ?Theme::red:lit).withAlpha(.88f):
+                Theme::stroke.withAlpha(.39f));
+            g.fillRoundedRectangle((float)(263+ix*10),651.f,7.f,11.f,1.4f);
         }
         // Hardware dials show the true physical gain and mix readouts.
         // The actual gain stages operate in dB; only dry/wet uses %.
@@ -1324,10 +1398,20 @@ public:
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
         if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
-        const int inLevel=juce::jlimit(0,12,(int)(processor.getInputPeak()*12.f));
-        const int outLevel=juce::jlimit(0,12,(int)(processor.getOutputPeak()*12.f));
-        if(inLevel!=lastInputMeter){lastInputMeter=inLevel;repaint(juce::Rectangle<int>(68,649,125,20));}
-        if(outLevel!=lastOutputMeter){lastOutputMeter=outLevel;repaint(juce::Rectangle<int>(263,649,125,20));}
+        displayedInputPeak=followMeter(displayedInputPeak,processor.getInputPeak());
+        displayedOutputPeak=followMeter(displayedOutputPeak,processor.getOutputPeak());
+        const int inputBars=meterBars(displayedInputPeak);
+        const int outputBars=meterBars(displayedOutputPeak);
+        const bool inputOverloaded=isMeterOverloaded(displayedInputPeak);
+        const bool outputOverloaded=isMeterOverloaded(displayedOutputPeak);
+        if(inputBars!=lastInputMeter || inputOverloaded!=lastInputOverload){
+            lastInputMeter=inputBars;lastInputOverload=inputOverloaded;
+            repaint(juce::Rectangle<int>(68,649,125,20));
+        }
+        if(outputBars!=lastOutputMeter || outputOverloaded!=lastOutputOverload){
+            lastOutputMeter=outputBars;lastOutputOverload=outputOverloaded;
+            repaint(juce::Rectangle<int>(263,649,125,20));
+        }
         const bool armed=processor.isCapturing();
         // Avoid invalidating the capture button 30 times per second when its
         // state has not changed; scope and meters still repaint as needed.
@@ -1503,6 +1587,8 @@ private:
     int selectedTheme=Theme::Obsidian,previousMode=1;
     bool rackOnRight=false,editingIdle=true;
     int lastInputMeter=-1,lastOutputMeter=-1;
+    float displayedInputPeak=0.f,displayedOutputPeak=0.f;
+    bool lastInputOverload=false,lastOutputOverload=false;
     bool lastMicOn=false;
     int lastRecordingState=-1;
     unsigned lastScopeSampleCount=~0u;
