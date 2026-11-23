@@ -51,7 +51,7 @@ private:
     void chooseExport();
     void chooseArtwork();
     void refreshArtwork();
-    int bank=0,scroll=0,hoveredCard=-1,keyboardCard=-1;
+    int bank=0,scroll=0,hoveredCard=-1,hoveredStar=-1,keyboardCard=-1;
     float browserWheelCarry=0.f;
     bool detailsOpen=false;
     void showDetails(bool open);

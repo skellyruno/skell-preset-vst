@@ -75,7 +75,7 @@ void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
 }
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.setMultiLine(false);
-    search.setTextToShowWhenEmpty("Search presets, artists or artist:name",Theme::muted);
+    search.setTextToShowWhenEmpty("Search sounds / artist:name / genre:name",Theme::muted);
     artistEditor.setMultiLine(false);
     artistEditor.setTextToShowWhenEmpty("Artist for selected preset",Theme::muted);
     artistEditor.setTooltip("Type an artist name for your selected personal preset, then press SET ARTIST");
@@ -87,7 +87,10 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     search.onTextChange=[this]{
         scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();
     };
-    search.onEscapeKey=[this]{setVisible(false);if(onClose)onClose();};
+    search.onEscapeKey=[this]{
+        if(detailsOpen)showDetails(false);
+        else {setVisible(false);if(onClose)onClose();}
+    };
     // Enter auditions the first filtered result without dismissing the browser.
     search.onReturnKey=[this]{
         const auto entries=filtered();
@@ -163,7 +166,10 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     };
     addCategoryButton.onClick=[this] {
         const auto label=categoryEditor.getText().trim();
-        if(label.isEmpty() || label.length()>32 || label.containsAnyOf("\r\n\t\\/:*?\"<>|")){
+        if(label.isEmpty() || label.length()>32 ||
+           label.equalsIgnoreCase("All genres") ||
+           label.equalsIgnoreCase("Uncategorized") ||
+           label.containsAnyOf("\r\n\t\\/:*?\"<>|")){
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
                 "Invalid category","Use at most 32 characters, with no path separators.");
             return;
@@ -195,7 +201,7 @@ void PresetBrowser::applyTheme() {
     search.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
     search.setColour(juce::TextEditor::textColourId,Theme::white);
     search.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
-    search.setTextToShowWhenEmpty("Search presets, artists or artist:name",Theme::muted);
+    search.setTextToShowWhenEmpty("Search sounds / artist:name / genre:name",Theme::muted);
     artistEditor.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
     artistEditor.setColour(juce::TextEditor::textColourId,Theme::white);
     artistEditor.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
@@ -724,6 +730,7 @@ void PresetBrowser::toggleFavorite(int entry) {
         return;
     }
     scroll=juce::jlimit(0,std::max(0,(int)filtered().size()-6),scroll);
+    hoveredCard=-1;hoveredStar=-1;
     repaint();
 }
 bool PresetBrowser::testBrowserSortingForTest(){
@@ -1182,6 +1189,23 @@ void PresetBrowser::paint(juce::Graphics&g) {
     Theme::text(g,detailsOpen?"EDIT DETAILS":"LIBRARY",
                 {30,73,154,20},12,Theme::white,true);
     const auto entries=filtered();
+    int adlibsCount=0,artistCount=0,favoriteCount=0;
+    for(int i=0;i<alchemistIndex;++i){
+        if(juce::String(skellpreset::factoryPresets[(size_t)i].bank)
+              .equalsIgnoreCase("Adlibs")){
+            ++adlibsCount;
+            if(isFavorite(i))++favoriteCount;
+        }
+    }
+    if(isFavorite(alchemistIndex))++favoriteCount;
+    if(isFavorite(deuceIndex))++favoriteCount;
+    for(int i=0;i<(int)userPresets.size();++i){
+        if(genreForUser(i).equalsIgnoreCase("Ad-libs"))++adlibsCount;
+        if(artistForUser(i).isNotEmpty())++artistCount;
+        if(isFavorite(-i-1))++favoriteCount;
+    }
+    const std::array<int,5> categoryCounts{{
+        2,adlibsCount,(int)userPresets.size(),artistCount,favoriteCount}};
     Theme::text(g,juce::String((int)entries.size())+
         (entries.size()==1?" SOUND":" SOUNDS"),{207,73,246,20},12,Theme::white,true);
     if(detailsOpen)
@@ -1197,9 +1221,13 @@ void PresetBrowser::paint(juce::Graphics&g) {
             g.setColour(selected?Theme::green.withAlpha(.78f):Theme::stroke.withAlpha(.75f));
             g.drawRoundedRectangle(b.reduced(.5f),6.f,selected?1.25f:1.f);
             Theme::fittedText(g,banks[i],
-                {29,(int)b.getY()+5,145,20},12.f,
+                {29,(int)b.getY()+5,112,20},12.f,
                 selected?Theme::white:Theme::muted,selected,
                 juce::Justification::centredLeft);
+            Theme::text(g,juce::String(categoryCounts[(size_t)i]),
+                {149,(int)b.getY()+6,28,18},10.f,
+                selected?Theme::green:Theme::muted,true,
+                juce::Justification::centredRight);
         }
     } else {
         Theme::text(g,"ARTIST",{19,159,166,17},10.f,Theme::muted,true);
@@ -1297,7 +1325,13 @@ void PresetBrowser::paint(juce::Graphics&g) {
             else star.lineTo(x,yy);
         }
         star.closeSubPath();
-        g.setColour(favorite?Theme::green:Theme::muted.withAlpha(.8f));
+        if(hoveredStar==itemIndex){
+            g.setColour(Theme::green.withAlpha(.16f));
+            g.fillEllipse(starX-15.f,starY-15.f,30.f,30.f);
+        }
+        g.setColour(favorite?Theme::green:
+            hoveredStar==itemIndex?Theme::green.withAlpha(.9f):
+            Theme::muted.withAlpha(.8f));
         if(favorite)g.fillPath(star);
         else g.strokePath(star,juce::PathStrokeType(1.3f));
         if(loaded){g.setColour(Theme::green);g.fillEllipse((float)getWidth()-29.f,(float)y+25.f,6.f,6.f);}
@@ -1432,11 +1466,20 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
 void PresetBrowser::mouseMove(const juce::MouseEvent& e){
     const int candidate=e.x>=207&&e.y>=110&&e.y<476 ? (e.y-110)/61+scroll : -1;
     const int next=candidate>=0&&candidate<(int)filtered().size()?candidate:-1;
-    if(next!=hoveredCard){hoveredCard=next;repaint();}
+    const bool onStar=e.x>=getWidth()-77 && e.x<=getWidth()-38;
+    const int nextStar=onStar?next:-1;
+    if(next!=hoveredCard || nextStar!=hoveredStar){
+        hoveredCard=next;hoveredStar=nextStar;repaint();
+    }
+    setTooltip(nextStar>=0?"Toggle favorite. Does not load or change this sound.":
+               next>=0?"Load this preset. Your current sound can be undone.":
+               "Click a category, choose a genre or search for a saved sound.");
     setMouseCursor(next>=0?juce::MouseCursor::PointingHandCursor
                           :juce::MouseCursor::NormalCursor);
 }
-void PresetBrowser::mouseExit(const juce::MouseEvent&){hoveredCard=-1;repaint();}
+void PresetBrowser::mouseExit(const juce::MouseEvent&){
+    hoveredCard=-1;hoveredStar=-1;repaint();
+}
 void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel){
     if(detailsOpen || e.x<197 || e.y<102 || e.y>486 ||
        !std::isfinite(wheel.deltaY) || wheel.deltaY==0.f)return;
