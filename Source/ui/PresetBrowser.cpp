@@ -644,8 +644,15 @@ void PresetBrowser::loadFavorites() {
     if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>65536)return;
     for(auto key:juce::StringArray::fromLines(file.loadFileAsString())) {
         key=key.trim().toLowerCase();
+        bool safeFactory=key=="factory:43" || key=="factory:46";
+        if(!safeFactory && key.startsWith("factory:")){
+            const auto index=key.substring(8).getIntValue();
+            safeFactory=index>=0 && index<alchemistIndex &&
+                juce::String(skellpreset::factoryPresets[(size_t)index].bank)
+                    .equalsIgnoreCase("Adlibs");
+        }
         if(key.length()>0 && key.length()<260 &&
-           (key.startsWith("user:") || key=="factory:43" || key=="factory:46") &&
+           (key.startsWith("user:") || safeFactory) &&
            !key.containsChar('\r') && !favoriteKeys.contains(key,true))
             favoriteKeys.add(key);
         if(favoriteKeys.size()>=512)break;
@@ -737,8 +744,14 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     bank=1;
     const auto adlibs=filtered();
     const bool onlyAdlibs=std::all_of(adlibs.begin(),adlibs.end(),
-        [this](int entry){return entry<0 &&
-            genreForUser(-entry-1).equalsIgnoreCase("Ad-libs");});
+        [this](int entry){
+            if(entry<0)return genreForUser(-entry-1).equalsIgnoreCase("Ad-libs");
+            return entry<alchemistIndex &&
+                juce::String(skellpreset::factoryPresets[(size_t)entry].bank)
+                    .equalsIgnoreCase("Adlibs");
+        });
+    const bool originalAdlibsVisible=std::any_of(adlibs.begin(),adlibs.end(),
+        [](int entry){return entry>=0 && entry<alchemistIndex;});
     bank=2;
     const auto personal=filtered();
     const bool onlyUser=std::all_of(personal.begin(),personal.end(),
@@ -752,7 +765,10 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const auto fav=filtered();
     const bool onlyFavorites=std::all_of(fav.begin(),fav.end(),
         [this](int entry){return isFavorite(entry) &&
-           (entry<0 || entry==alchemistIndex || entry==deuceIndex);});
+           (entry<0 || entry==alchemistIndex || entry==deuceIndex ||
+               (entry<alchemistIndex &&
+                juce::String(skellpreset::factoryPresets[(size_t)entry].bank)
+                    .equalsIgnoreCase("Adlibs")));});
 
     // Synthetic entry never writes into user files or personal sidecars.
     const int injected=(int)userPresets.size();
@@ -820,7 +836,7 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
             genreFilter.setSelectedId(genreFilter.getItemId(i),juce::dontSendNotification);
     bank=previousBank;scroll=previousScroll;
     search.setText(previousQuery,juce::dontSendNotification);
-    return banks.size()==5 && factoryNames && onlyAdlibs && onlyUser &&
+    return banks.size()==5 && factoryNames && onlyAdlibs && originalAdlibsVisible && onlyUser &&
         onlyArtists && onlyFavorites && artistQuery && favoriteQuery &&
         personalQuery && adlibQuery && genreFiltering && customFilter;
 }
@@ -847,6 +863,34 @@ std::vector<int> PresetBrowser::filtered() const {
                 found=juce::String("skell audio").containsIgnoreCase(
                     q.fromFirstOccurrenceOf(":",false,false).trim());
             if(q.startsWith("artist:") || q.startsWith("genre:") ||
+               q.startsWith("match:"))found=false;
+            if(q.startsWith("fav:")){
+                const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
+                found=term.isEmpty() || name.containsIgnoreCase(term);
+            }
+            if(favoritesOnly && !isFavorite(i))found=false;
+            if(found)list.push_back(i);
+        }
+    }
+    // The original approved Adlibs bank is visible under its OWN section,
+    // never mixed into the two-sound Main Vocals shortlist. Preserve every
+    // existing factory index and exclude all 43+ experimental candidates.
+    if(bank==1 || (bank==4 && !genreActive)) {
+        for(int i=0;i<alchemistIndex;++i){
+            const auto& item=skellpreset::factoryPresets[(size_t)i];
+            if(!juce::String(item.bank).equalsIgnoreCase("Adlibs"))continue;
+            const juce::String name(item.name),desc(item.description);
+            bool found=q.isEmpty() || name.containsIgnoreCase(q) ||
+                       desc.containsIgnoreCase(q) || juce::String("Adlibs").containsIgnoreCase(q);
+            if(q.startsWith("bank:"))
+                found=juce::String("Adlibs").containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("tag:"))
+                found=desc.containsIgnoreCase(q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("author:"))
+                found=juce::String("skell audio").containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("genre:") || q.startsWith("artist:") ||
                q.startsWith("match:"))found=false;
             if(q.startsWith("fav:")){
                 const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
