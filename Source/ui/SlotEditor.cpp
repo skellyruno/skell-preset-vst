@@ -79,6 +79,7 @@ std::array<juce::String,4> titles(int type) {
 }
 SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     processor(p),modulePicker(p),installedBrowser(p) {
+    setWantsKeyboardFocus(true);
     for(int i=0;i<names.size();i++)moduleBox.addItem(names[i],i+1);
     moduleBox.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
     moduleBox.setColour(juce::ComboBox::textColourId,Theme::white);
@@ -93,6 +94,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         graphSnapshotValid=false;
         refreshIfChanged();
     };
+    slotPower.setWantsKeyboardFocus(true);
     addAndMakeVisible(slotPower);
     modulePicker.onSelect=[this](int type){
         const bool wasEmpty=processor.slotType(slot)==SkellPresetAudioProcessor::Empty;
@@ -258,6 +260,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         button.setTooltip(page==0?"Ceiling, drive and compression":
                                   "Gate threshold, release, attack and knee");
         button.onClick=[this,page]{showLimiterPage(page);};
+        button.setWantsKeyboardFocus(true);
         addAndMakeVisible(button);
         button.setVisible(false);
     }
@@ -268,6 +271,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         button.setButtonText(captions[page]);
         button.setTooltip("Vocal Feel Suite: 16 real parameters across four pages");
         button.onClick=[this,page]{showSuitePage(page);};
+        button.setWantsKeyboardFocus(true);
         addAndMakeVisible(button);button.setVisible(false);
     }
     vocalFeelStyleButton.setTooltip("Eleven vocal styles; preserve your Sens and Master levels");
@@ -310,6 +314,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
                              page==2?"MOD + MIX":"SYNC + DIFF");
         button.setTooltip("Studio Delay timing, filtering, feedback and modulation");
         button.onClick=[this,page]{showDelayPage(page);};
+        button.setWantsKeyboardFocus(true);
         addAndMakeVisible(button);button.setVisible(false);
     }
     studioGateFloor.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -3196,6 +3201,19 @@ void SlotEditor::paint(juce::Graphics&g) {
                 g.setColour(i<2?Theme::green:Theme::blue);
                 g.drawEllipse(sx-4.5f,sy-4.5f,9.f,9.f,1.7f);
             }
+            const auto axisLabels=titles(type);
+            const std::array<juce::Rectangle<int>,4> axisAreas{{
+                {(int)cx-94,(int)(cy-radius)-25,188,18},
+                {(int)(cx+radius)+9,(int)cy-10,156,20},
+                {(int)cx-94,(int)(cy+radius)+9,188,17},
+                {(int)(cx-radius)-169,(int)cy-10,155,20}
+            }};
+            for(int i=0;i<4;++i)
+                Theme::fittedText(g,axisLabels[(size_t)i].toUpperCase(),
+                    axisAreas[(size_t)i],10.f,Theme::muted,false,
+                    i==1?juce::Justification::centredLeft:
+                    i==3?juce::Justification::centredRight:
+                         juce::Justification::centred);
             Theme::fittedText(g,processor.moduleName(type).toUpperCase(),
                 {60,169,700,24},14.f,Theme::green,true);
             Theme::text(g,"CONTROL MAP  /  DRAG XY DOT",
@@ -3627,6 +3645,109 @@ bool SlotEditor::addStudioEqNodeAt(juce::Point<float> point){
     }
     return false; // Already at eight real filters
 }
+bool SlotEditor::keyPressed(const juce::KeyPress& key) {
+    const int code=key.getKeyCode();
+    if(code==juce::KeyPress::escapeKey) {
+        const bool hadOverlay=modulePicker.isVisible() ||
+            installedBrowser.isVisible() || vocalFeelStyles.isVisible() ||
+            eqNodeMenu.isVisible() || duckPanel.isVisible();
+        if(hadOverlay)dismissTransientOverlays();
+        return hadOverlay;
+    }
+    if(key.getModifiers().isCommandDown() && (code=='F'||code=='f')) {
+        if(!modulePicker.isVisible())openModulePicker();
+        return true;
+    }
+    if(key.getModifiers().isAnyModifierKeyDown())return false;
+    const int type=processor.slotType(slot);
+    int currentPage=0,maxPages=0;
+    if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
+        currentPage=suitePage;maxPages=4;
+    } else if(type==SkellPresetAudioProcessor::StudioDelayFX){
+        currentPage=delayPage;maxPages=4;
+    } else if(type==SkellPresetAudioProcessor::StudioLimiterFX){
+        currentPage=limiterPage;maxPages=2;
+    } else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX){
+        currentPage=matchPage;maxPages=3;
+    } else if(isPagedEQ(type)) {
+        // Studio EQ has seven bands and a final overlapping B6+B7 page.
+        currentPage=type==SkellPresetAudioProcessor::StudioEQFX &&
+                    eqBank>=5?3:eqBank/2;
+        maxPages=4;
+    }
+    if(maxPages==0)return false;
+    int destination=-1;
+    if(code>='1' && code<='4')destination=code-'1';
+    else if(code==juce::KeyPress::leftKey)
+        destination=(currentPage+maxPages-1)%maxPages;
+    else if(code==juce::KeyPress::rightKey)
+        destination=(currentPage+1)%maxPages;
+    if(destination<0 || destination>=maxPages)return false;
+    if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX)
+        showSuitePage(destination);
+    else if(type==SkellPresetAudioProcessor::StudioDelayFX)
+        showDelayPage(destination);
+    else if(type==SkellPresetAudioProcessor::StudioLimiterFX)
+        showLimiterPage(destination);
+    else if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX)
+        showMatchPage(destination);
+    else if(isPagedEQ(type))
+        showEqBank(2*destination);
+    graphSnapshotValid=false;repaint();
+    return true;
+}
+bool SlotEditor::testEffectPageShortcutsForTest() {
+    const int previousType=processor.slotType(slot);
+    const int previousSlot=slot;
+    bool okay=true;
+    const juce::ModifierKeys plain;
+    const juce::KeyPress right(juce::KeyPress::rightKey,plain,0);
+    const juce::KeyPress left(juce::KeyPress::leftKey,plain,0);
+    constexpr int types[]{
+        SkellPresetAudioProcessor::VocalFeelSuiteFX,
+        SkellPresetAudioProcessor::StudioDelayFX,
+        SkellPresetAudioProcessor::StudioLimiterFX,
+        SkellPresetAudioProcessor::AlchemistMatchFinishFX,
+        SkellPresetAudioProcessor::EightBandToneFX,
+        SkellPresetAudioProcessor::StudioEQFX
+    };
+    for(const int type:types) {
+        processor.setSlotType(previousSlot,type);
+        select(previousSlot);
+        const int maxPages=type==SkellPresetAudioProcessor::StudioLimiterFX?2:
+            type==SkellPresetAudioProcessor::AlchemistMatchFinishFX?3:4;
+        okay=okay && keyPressed(right);
+        const int afterRight=type==SkellPresetAudioProcessor::VocalFeelSuiteFX?suitePage:
+            type==SkellPresetAudioProcessor::StudioDelayFX?delayPage:
+            type==SkellPresetAudioProcessor::StudioLimiterFX?limiterPage:
+            type==SkellPresetAudioProcessor::AlchemistMatchFinishFX?matchPage:
+            type==SkellPresetAudioProcessor::StudioEQFX && eqBank>=5?3:eqBank/2;
+        okay=okay && afterRight==1 && keyPressed(left);
+        const int afterLeft=type==SkellPresetAudioProcessor::VocalFeelSuiteFX?suitePage:
+            type==SkellPresetAudioProcessor::StudioDelayFX?delayPage:
+            type==SkellPresetAudioProcessor::StudioLimiterFX?limiterPage:
+            type==SkellPresetAudioProcessor::AlchemistMatchFinishFX?matchPage:
+            type==SkellPresetAudioProcessor::StudioEQFX && eqBank>=5?3:eqBank/2;
+        okay=okay && afterLeft==0;
+        okay=okay && keyPressed(juce::KeyPress('1'+maxPages-1,plain,0));
+        const int afterLast=type==SkellPresetAudioProcessor::VocalFeelSuiteFX?suitePage:
+            type==SkellPresetAudioProcessor::StudioDelayFX?delayPage:
+            type==SkellPresetAudioProcessor::StudioLimiterFX?limiterPage:
+            type==SkellPresetAudioProcessor::AlchemistMatchFinishFX?matchPage:
+            type==SkellPresetAudioProcessor::StudioEQFX && eqBank>=5?3:eqBank/2;
+        okay=okay && afterLast==maxPages-1;
+        const bool fourthHandled=keyPressed(juce::KeyPress('4',plain,0));
+        okay=okay && fourthHandled==(maxPages==4);
+    }
+    processor.setSlotType(previousSlot,previousType);
+    select(previousSlot);
+    const juce::ModifierKeys command(juce::ModifierKeys::commandModifier);
+    okay=okay && keyPressed(juce::KeyPress('F',command,0));
+    okay=okay && modulePicker.isVisible();
+    okay=okay && keyPressed(juce::KeyPress(juce::KeyPress::escapeKey,plain,0));
+    okay=okay && !modulePicker.isVisible();
+    return okay && processor.slotType(previousSlot)==previousType;
+}
 void SlotEditor::mouseDoubleClick(const juce::MouseEvent& e){
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioEQFX)return;
     // A second mouse-down can precede this callback. Close the pending
@@ -3686,6 +3807,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         return;
     }
     draggingGraph=true;
+    grabKeyboardFocus(); // only the graph, never steal slider text-entry focus
     if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
         gestureSuiteParameter=juce::jlimit(10,14,10+(int)((e.x-49.f)/163.f));
         if(auto* parameter=processor.state.getParameter(

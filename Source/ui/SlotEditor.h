@@ -65,6 +65,10 @@ public:
         g.setColour(on && isEnabled()?Theme::green.brighter(pressed?0.f:.18f):
                     Theme::muted.withAlpha(.55f));
         g.fillEllipse(cx-5.f,cy-5.f,10.f,10.f);
+        if(hasKeyboardFocus(true)) {
+            g.setColour(Theme::blue.withAlpha(.92f));
+            g.drawEllipse(cx-12.f,cy-12.f,24.f,24.f,1.5f);
+        }
     }
 private:
     bool on=false;
@@ -149,6 +153,8 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
+    bool keyPressed(const juce::KeyPress&) override;
+    bool testEffectPageShortcutsForTest();
 private:
     SkellPresetAudioProcessor& processor;
     int slot=0;
