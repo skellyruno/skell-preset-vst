@@ -172,6 +172,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
         if(label.isEmpty() || label.length()>32 ||
            label.equalsIgnoreCase("All genres") ||
            label.equalsIgnoreCase("Uncategorized") ||
+           label.equalsIgnoreCase("Untagged") ||
            label.containsAnyOf("\r\n\t\\/:*?\"<>|")){
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
                 "Invalid category","Use at most 32 characters, with no path separators.");
@@ -1073,7 +1074,7 @@ std::vector<int> PresetBrowser::filtered() const {
             if(bank==1 && !genre.equalsIgnoreCase("Ad-libs"))found=false;
             if(bank==3 && artist.isEmpty())found=false;
             if(bank>=2 && genreActive &&
-               (selectedGenre.equalsIgnoreCase("Untagged")
+               (genreFilter.getSelectedId()==2
                     ?genre.isNotEmpty():!genre.equalsIgnoreCase(selectedGenre)))
                 found=false;
             if(favoritesOnly && !isFavorite(-i-1))found=false;

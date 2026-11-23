@@ -41,8 +41,8 @@ public:
             const auto v=layoutFor(dims[0],dims[1]);
             if(!v.valid || v.artScale<=0.f ||
                v.scope.getX()<0.f || v.scope.getY()<0.f ||
-               v.scope.getRight()>(float)dims.first ||
-               v.scope.getBottom()>(float)dims.second ||
+               v.scope.getRight()>(float)dims[0] ||
+               v.scope.getBottom()>(float)dims[1] ||
                v.artX<0.f || v.artY<0.f)return false;
         }
         return !layoutFor(0,0).valid;
