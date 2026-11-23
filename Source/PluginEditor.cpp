@@ -732,9 +732,16 @@ public:
             issues.add("Settings button did not open its themed overlay");
         if(!settingsPanel.hasWorldLinkControlForTest())
             issues.add("Optional SkellWorld presence control is missing from themed Settings");
-        if(!settingsPanel.testKeyboardNavigationForTest() ||
-           !settingsPanel.hasKeyboardFocus(false))
-            issues.add("Settings keyboard navigation or focus-on-open regressed");
+        if(!settingsPanel.testKeyboardNavigationForTest())
+            issues.add("Settings keyboard navigation between scale cards and presence regressed");
+        // Exercise Escape directly; focus-grabbing is verified by native
+        // screenshots because a CI smoke editor may not have a window peer.
+        if(!settingsPanel.keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)) ||
+           settingsPanel.isVisible())
+            issues.add("Settings panel did not dismiss with Escape");
+        settings.onClick();
+        if(!settingsPanel.isVisible())
+            issues.add("Settings button did not reopen its themed overlay");
         settings.onClick();
         if(settingsPanel.isVisible())
             issues.add("Settings button did not close its themed overlay");

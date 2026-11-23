@@ -14,7 +14,7 @@ public:
 
     SkellSettingsPanel() {
         setWantsKeyboardFocus(true);
-        setTooltip("Arrow keys choose a control; Enter applies; Escape closes");
+        setHelpText("Arrow keys choose a control; Enter applies; Escape closes");
     }
     void select(int index) { selected=juce::jlimit(0,3,index);repaint(); }
     void open(int index) {
