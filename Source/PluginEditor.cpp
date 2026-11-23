@@ -610,6 +610,8 @@ public:
             issues.add("Dedicated MIC panel cannot automate target or bypass");
         if(!micPanel.testNoiseGateAndBypass())
             issues.add("Mic NOISE GATE tab does not automate threshold or independent bypass");
+        if(!micPanel.testCompactGeometryForTest())
+            issues.add("Movable MIC panel overlaps controls at minimum/default/expanded dimensions");
         chain.triggerMicForTest();
         if(micPanel.isVisible())
             issues.add("Dedicated MIC panel failed to close");

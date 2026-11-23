@@ -361,7 +361,7 @@ public:
             simulations[(size_t)i].setBounds(12+(i%2)*(cardWidth+12),
                                              148+(i/2)*37,cardWidth,32);
         amount.setBounds(77,235,w-89,25);
-        trim.setBounds(77,269,w-89,25);
+        trim.setBounds(77,263,w-89,25);
         gateEnabled.setBounds(w-79,88,62,27);
         gateAdvanced.setBounds(12,88,82,27);
         if(advancedGate) {
@@ -412,7 +412,7 @@ public:
                           {getWidth()-117,125,100,16},10.f,Theme::green,true,
                           juce::Justification::centredRight);
         Theme::text(g,"AMOUNT",{13,238,62,18},10.6f,Theme::white,true);
-        Theme::text(g,"TRIM",{13,272,60,18},10.6f,Theme::white,true);
+        Theme::text(g,"TRIM",{13,266,60,18},10.6f,Theme::white,true);
         Theme::fittedText(g,"TONAL PROFILE / ZERO ADDED LATENCY",
             {13,getHeight()-16,getWidth()-36,12},8.1f,Theme::muted,false);
         }
@@ -427,6 +427,52 @@ public:
     bool keyPressed(const juce::KeyPress& key) override {
         if(key==juce::KeyPress::escapeKey){close.onClick();return true;}
         return false;
+    }
+    bool testCompactGeometryForTest() {
+        const auto oldBounds=getBounds();
+        const bool oldGate=gatePage,oldAdvanced=advancedGate;
+        bool okay=true;
+        constexpr int sizes[3][2]{{312,308},{324,320},{440,400}};
+        for(const auto& dims:sizes){
+            setSize(dims[0],dims[1]);
+            showPage(false);
+            const auto area=getLocalBounds();
+            for(const auto* component:{static_cast<const juce::Component*>(&input),
+                static_cast<const juce::Component*>(&amount),
+                static_cast<const juce::Component*>(&trim),
+                static_cast<const juce::Component*>(&modelTab),
+                static_cast<const juce::Component*>(&gateTab),
+                static_cast<const juce::Component*>(&close)})
+                okay=okay && area.contains(component->getBounds());
+            for(const auto& button:simulations)
+                okay=okay && area.contains(button.getBounds()) &&
+                    !button.getBounds().intersects(trim.getBounds()) &&
+                    !button.getBounds().intersects(amount.getBounds());
+            okay=okay && !amount.getBounds().intersects(trim.getBounds()) &&
+                trim.getBottom()<getHeight()-16;
+            showPage(true);
+            advancedGate=false;updateGateVisibility();resized();
+            okay=okay && gateThreshold.isVisible() &&
+                gateRelease.isVisible() && !gateDepth.isVisible() &&
+                !gateAttack.isVisible() && !gateHold.isVisible() &&
+                !gateHysteresis.isVisible() &&
+                !gateThreshold.getBounds().intersects(gateRelease.getBounds());
+            advancedGate=true;updateGateVisibility();resized();
+            const juce::Slider* advanced[]{
+                &gateThreshold,&gateAttack,&gateHold,
+                &gateRelease,&gateHysteresis,&gateDepth};
+            for(int i=0;i<6;++i){
+                const auto rect=advanced[i]->getBounds();
+                okay=okay && advanced[i]->isVisible() &&
+                    area.contains(rect) && rect.getBottom()<getHeight()-16;
+                for(int j=i+1;j<6;++j)
+                    okay=okay && !rect.intersects(advanced[j]->getBounds());
+            }
+        }
+        advancedGate=oldAdvanced;
+        setBounds(oldBounds);
+        showPage(oldGate);
+        return okay;
     }
     bool testNoiseGateAndBypass() {
         const auto* gateParameter=processor.state.getRawParameterValue("micGateOn");

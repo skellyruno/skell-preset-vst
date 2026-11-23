@@ -909,13 +909,24 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     for(int i=0;i<alchemistIndex;++i)
         if(juce::String(skellpreset::factoryPresets[(size_t)i].bank)
               .equalsIgnoreCase("Adlibs"))++expectedAdlibs;
-    const bool factorySubmenu=expectedAdlibs>0 &&
-        (int)adlibs.size()==expectedAdlibs &&
-        std::all_of(adlibs.begin(),adlibs.end(),[](int entry){
-            return entry>=0 && entry<alchemistIndex &&
+    // Test the factory subset independently: a real user's library may
+    // already contain saved Ad-libs presets, which belong in this submenu.
+    // Never require that user's valid saved presets to be absent.
+    int factoryEntries=0;
+    bool validSubmenu=true;
+    for(const int entry:adlibs) {
+        if(entry>=0) {
+            ++factoryEntries;
+            validSubmenu=validSubmenu && entry<alchemistIndex &&
                 juce::String(skellpreset::factoryPresets[(size_t)entry].bank)
-                   .equalsIgnoreCase("Adlibs");
-        });
+                    .equalsIgnoreCase("Adlibs");
+        } else {
+            validSubmenu=validSubmenu &&
+                genreForUser(-entry-1).equalsIgnoreCase("Ad-libs");
+        }
+    }
+    const bool factorySubmenu=expectedAdlibs>0 &&
+        factoryEntries==expectedAdlibs && validSubmenu;
     mainAdlibs=false;
     bank=1;
     const auto personal=filtered();

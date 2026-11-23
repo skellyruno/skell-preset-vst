@@ -447,10 +447,13 @@ void SlotEditor::applyKnobReadouts() {
     };
     studioGateFloor.updateText();
     eqQSlider.textFromValueFunction=[this](double normalized) {
+        // The dedicated label above already says BAND N WIDTH/Q.
+        // Redundant "WIDTH 0.63" could not fit the 59px text box and
+        // was visibly truncated in the user's real Studio EQ screenshot.
         if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioEQFX)
-            return "WIDTH "+juce::String(normalized,2);
+            return juce::String(normalized,2);
         const float q=skellpreset::dsp::EightBandTone::qFromNormalized((float)normalized);
-        return "Q "+juce::String(q,2);
+        return juce::String(q,2);
     };
     eqQSlider.valueFromTextFunction=[this](const juce::String& text) {
         if(processor.slotType(slot)==SkellPresetAudioProcessor::StudioEQFX)
@@ -4167,7 +4170,9 @@ bool SlotEditor::testKnobReadouts() {
     return processor.slotType(slot)==SkellPresetAudioProcessor::EightBandToneFX
         && frequency.containsIgnoreCase("Hz")
         && gain.containsIgnoreCase("dB")
-        && bandwidth.startsWithIgnoreCase("Q ");
+        && bandwidth.isNotEmpty() && bandwidth.length()<=5 &&
+           eqQSlider.valueFromTextFunction &&
+           std::abs(eqQSlider.valueFromTextFunction(bandwidth)-.5)<.015;
 }
 
 bool SlotEditor::testStudioEqGraphDoubleClick() {
@@ -4238,7 +4243,9 @@ bool SlotEditor::testStudioEqSeventhBand() {
         && std::abs(processor.getSlotParam(physical,10)-previousSix)<1.e-5f
         && std::abs(processor.getSlotParam(physical,12)-previousSeven)>.05f
         && width && std::abs(width->load()-.63f)<.015f
-        && eqQSlider.getTextFromValue(.63).startsWithIgnoreCase("WIDTH");
+        && eqQSlider.getTextFromValue(.63)=="0.63" &&
+           eqQSlider.valueFromTextFunction &&
+           std::abs(eqQSlider.valueFromTextFunction("0.63")-.63)<.01;
     return page && controls;
 }
 
