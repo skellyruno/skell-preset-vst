@@ -97,11 +97,12 @@ public:
     }
     bool testHomeReturnHitZonesForTest() const noexcept {
         const auto target=homeReturnBounds();
-        return target.contains({361,18}) &&
-            !target.contains({45,44}) && !target.contains({105,205}) &&
-            !target.intersects({33,151,835,206}) &&
-            !target.intersects({168,411,257,30}) &&
-            !target.intersects({843,22,40,40});
+        return target.contains(juce::Point<int>{361,18}) &&
+            !target.contains(juce::Point<int>{45,44}) &&
+            !target.contains(juce::Point<int>{105,205}) &&
+            !target.intersects(juce::Rectangle<int>{33,151,835,206}) &&
+            !target.intersects(juce::Rectangle<int>{168,411,257,30}) &&
+            !target.intersects(juce::Rectangle<int>{843,22,40,40});
     }
     void paint(juce::Graphics&) override;
     void resized() override;
