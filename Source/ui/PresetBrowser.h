@@ -23,6 +23,7 @@ public:
     bool canSetCoverForTest() const {return canEditCover();}
     bool testMainVocalsPresetFilterForTest(); // primary whitelist and independent artists/favorites
     bool testBrowserLayoutForTest(); // visible, nonoverlapping controls on both pages
+    bool testBrowserKeyboardForTest(); // roving result focus without triggering audio loads
     void loadFactoryForHistoryTest(int index) {loadFactoryFromBrowser(index);}
     juce::File historySelection() const {return activeUserPreset;}
     void restoreHistorySelection(const juce::File& selection) {
@@ -49,9 +50,12 @@ private:
     void chooseExport();
     void chooseArtwork();
     void refreshArtwork();
-    int bank=0,scroll=0,hoveredCard=-1;
+    int bank=0,scroll=0,hoveredCard=-1,keyboardCard=-1;
+    float browserWheelCarry=0.f;
     bool detailsOpen=false;
     void showDetails(bool open);
+    void chooseBank(int index);
+    void focusCard(int index);
     juce::StringArray favoriteKeys; // sidecar only; not in VST3 state or preset ZIP
     juce::StringArray artistKeys,artistNames; // user library sidecar, never audio state
     juce::StringArray genreKeys,genreNames; // manually assigned; never auto-detected

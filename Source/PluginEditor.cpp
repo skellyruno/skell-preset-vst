@@ -575,7 +575,9 @@ public:
         if(!browser.testMainVocalsPresetFilterForTest())
             issues.add("Main Vocals, My Presets, Artists, Favorites or manual genre filter regressed");
         if(!browser.testBrowserLayoutForTest())
-            issues.add("Preset browser genre buttons, seven banks or cover preview layout overlap");
+            issues.add("Preset browser custom category controls or cover preview overlap");
+        if(!browser.testBrowserKeyboardForTest())
+            issues.add("Preset browser keyboard focus, pagination, bank selection or restoration failed");
         if(processor.presetName()!="Alchemist" ||
            processor.getProgramName(skellpreset::alchemist::factoryIndex)!="Alchemist" ||
            processor.getProgramName(skellpreset::deuce_v25::factoryIndex)!="Deuce")

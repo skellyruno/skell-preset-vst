@@ -142,7 +142,9 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
                 return;
             }
     };
-    genreFilter.onChange=[this]{scroll=0;hoveredCard=-1;repaint();};
+    genreFilter.onChange=[this]{
+        scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();
+    };
     addCategoryButton.onClick=[this] {
         const auto label=categoryEditor.getText().trim();
         if(label.isEmpty() || label.length()>32 || label.containsAnyOf("\r\n\t\\/:*?\"<>|")){
@@ -290,7 +292,7 @@ bool PresetBrowser::copyToLibrary(const juce::File& source) {
 void PresetBrowser::open() {
     scanLibrary();loadFavorites();loadArtists();
     loadCustomCategories();refreshGenreChoices();loadGenres();refreshArtwork();
-    bank=0;scroll=0;hoveredCard=-1;
+    bank=0;scroll=0;hoveredCard=-1;keyboardCard=-1;
     genreFilter.setSelectedId(1,juce::dontSendNotification);
     showDetails(false);
     search.setText({},juce::dontSendNotification);
@@ -299,7 +301,24 @@ void PresetBrowser::open() {
 void PresetBrowser::showDetails(bool openDetails) {
     detailsOpen=openDetails;
     detailsButton.setButtonText(detailsOpen?"BACK TO LIBRARY":"EDIT DETAILS");
+    if(!detailsOpen)grabKeyboardFocus();
     resized();repaint();
+}
+void PresetBrowser::chooseBank(int index){
+    if(index<0 || index>=banks.size())return;
+    bank=index;scroll=0;hoveredCard=-1;keyboardCard=-1;
+    // Main Vocals and Ad-libs are explicit sounds, never silently filtered
+    // away by a prior custom genre dropdown selection.
+    if(bank<=1)genreFilter.setSelectedId(1,juce::dontSendNotification);
+    repaint();
+}
+void PresetBrowser::focusCard(int index){
+    const int count=(int)filtered().size();
+    if(count<=0){keyboardCard=-1;scroll=0;repaint();return;}
+    keyboardCard=juce::jlimit(0,count-1,index);
+    if(keyboardCard<scroll)scroll=keyboardCard;
+    if(keyboardCard>=scroll+6)scroll=keyboardCard-5;
+    hoveredCard=-1;repaint();
 }
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
@@ -681,6 +700,48 @@ void PresetBrowser::toggleFavorite(int entry) {
     }
     scroll=juce::jlimit(0,std::max(0,(int)filtered().size()-6),scroll);
     repaint();
+}
+bool PresetBrowser::testBrowserKeyboardForTest(){
+    // Synthetic library entries are never loaded or written to disk.
+    const int oldBank=bank,oldScroll=scroll,oldHover=hoveredCard,
+        oldFocus=keyboardCard;
+    const auto oldSearch=search.getText();
+    const auto oldFilter=genreFilter.getText();
+    const bool oldDetails=detailsOpen;
+    const auto oldCount=userPresets.size();
+    showDetails(false);
+    chooseBank(2); // My Presets includes user entries without touching factory
+    genreFilter.setSelectedId(1,juce::dontSendNotification);
+    search.setText("__skell_keynav_probe_",juce::dontSendNotification);
+    for(int i=0;i<12;++i)
+        userPresets.push_back(juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getChildFile("__skell_keynav_probe_"+juce::String(i)+".skellpreset"));
+    const bool visible=filtered().size()==12;
+    focusCard(0);
+    const auto unmodified=juce::ModifierKeys();
+    keyPressed(juce::KeyPress(juce::KeyPress::downKey,unmodified));
+    const bool down=keyboardCard==1 && scroll==0;
+    keyPressed(juce::KeyPress(juce::KeyPress::endKey,unmodified));
+    const bool end=keyboardCard==11 && scroll==6;
+    keyPressed(juce::KeyPress(juce::KeyPress::pageUpKey,unmodified));
+    const bool pageUp=keyboardCard==5 && scroll==5;
+    keyPressed(juce::KeyPress(juce::KeyPress::homeKey,unmodified));
+    const bool home=keyboardCard==0 && scroll==0;
+    keyPressed(juce::KeyPress(juce::KeyPress::leftKey,unmodified));
+    const bool left=bank==1;
+    keyPressed(juce::KeyPress(juce::KeyPress::rightKey,unmodified));
+    const bool right=bank==2;
+    userPresets.resize(oldCount);
+    bank=oldBank;scroll=oldScroll;hoveredCard=oldHover;
+    keyboardCard=oldFocus;
+    search.setText(oldSearch,juce::dontSendNotification);
+    genreFilter.setSelectedId(1,juce::dontSendNotification);
+    for(int i=0;i<genreFilter.getNumItems();++i)
+        if(genreFilter.getItemText(i)==oldFilter)
+            genreFilter.setSelectedId(genreFilter.getItemId(i),juce::dontSendNotification);
+    showDetails(oldDetails);
+    repaint();
+    return visible && down && end && pageUp && home && left && right;
 }
 bool PresetBrowser::testBrowserLayoutForTest() {
     const bool oldDetails=detailsOpen;
@@ -1116,8 +1177,18 @@ void PresetBrowser::paint(juce::Graphics&g) {
             ?activeUserPreset==userPresets[(size_t)(-entry-1)]
             :entry==processor.loadedFactoryPresetIndex();
         const bool hovered=itemIndex==hoveredCard;
-        g.setColour(loaded?Theme::green:hovered?Theme::green.withAlpha(.68f):Theme::stroke);
-        g.drawRoundedRectangle(rect.reduced(.5f),7.f,loaded?1.6f:1.f);
+        const bool focused=itemIndex==keyboardCard;
+        g.setColour(loaded?Theme::green:
+                    focused?Theme::blue.withAlpha(.92f):
+                    hovered?Theme::green.withAlpha(.68f):Theme::stroke);
+        g.drawRoundedRectangle(rect.reduced(.5f),7.f,
+                               loaded?1.6f:focused?1.6f:1.f);
+        if(focused){
+            // Stable focus indicator without obscuring the artwork/name.
+            g.setColour(Theme::blue.withAlpha(.90f));
+            g.fillRoundedRectangle(rect.getX()+2.f,rect.getY()+10.f,2.3f,
+                                   rect.getHeight()-20.f,1.f);
+        }
         if(loaded) {
             g.setColour(Theme::green.withAlpha(.84f));
             g.fillRoundedRectangle(rect.getX(),rect.getY()+9.f,2.5f,
@@ -1212,7 +1283,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
         g.fillRoundedRectangle(juce::Rectangle<float>((float)getWidth()-12.f,railTop,3.f,railHeight),1.5f);
         g.setColour(Theme::green.withAlpha(.85f));
         g.fillRoundedRectangle(juce::Rectangle<float>((float)getWidth()-12.f,thumbY,3.f,thumbHeight),1.5f);
-        Theme::text(g,"SCROLL TO SEE MORE",{260,getHeight()-20,300,16},10,Theme::muted);
+        Theme::text(g,"WHEEL / PAGE DOWN TO SEE MORE",{260,getHeight()-20,300,16},
+                    10,Theme::muted);
     }
 }
 void PresetBrowser::loadFactoryFromBrowser(int index) {
@@ -1258,12 +1330,13 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(!detailsOpen && e.x>=17 && e.x<185){
         for(int index=0;index<banks.size();++index)
             if(bankBounds(index).contains(e.getPosition())) {
-                bank=index;scroll=0;hoveredCard=-1;repaint();return;
+                chooseBank(index);grabKeyboardFocus();return;
             }
     }
     if(e.y>=110&&e.x>=207&&e.y<476){
         const auto entries=filtered();const int row=(e.y-110)/61;
         if(row>=0&&row<6 && scroll+row<(int)entries.size()){
+            keyboardCard=scroll+row;grabKeyboardFocus();
             const int entry=entries[(size_t)(scroll+row)];
             if(e.x>=getWidth()-77 && e.x<=getWidth()-38)
                 toggleFavorite(entry);
@@ -1282,12 +1355,68 @@ void PresetBrowser::mouseMove(const juce::MouseEvent& e){
 }
 void PresetBrowser::mouseExit(const juce::MouseEvent&){hoveredCard=-1;repaint();}
 void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel){
-    if(e.x<197 || e.y<102 || e.y>486)return;
+    if(detailsOpen || e.x<197 || e.y<102 || e.y>486 ||
+       !std::isfinite(wheel.deltaY) || wheel.deltaY==0.f)return;
     const int maxScroll=std::max(0,(int)filtered().size()-6);
-    const int next=juce::jlimit(0,maxScroll,scroll+(wheel.deltaY<0?2:-2));
+    // One row per traditional wheel tick, so categories do not jump past
+    // results; trackpads use small accumulated deltas on the message thread.
+    browserWheelCarry=juce::jlimit(-1.f,1.f,
+        (browserWheelCarry*wheel.deltaY<0.f?0.f:browserWheelCarry)+wheel.deltaY);
+    if(std::abs(browserWheelCarry)<.18f)return;
+    const int direction=browserWheelCarry<0.f?1:-1;
+    browserWheelCarry=0.f;
+    const int next=juce::jlimit(0,maxScroll,scroll+direction);
     if(scroll!=next){scroll=next;hoveredCard=-1;repaint();}
 }
 bool PresetBrowser::keyPressed(const juce::KeyPress& key){
-    if(key==juce::KeyPress::escapeKey){setVisible(false);if(onClose)onClose();return true;}
+    if(key==juce::KeyPress::escapeKey){
+        if(detailsOpen){showDetails(false);return true;}
+        setVisible(false);if(onClose)onClose();return true;
+    }
+    const bool command=key.getModifiers().isCommandDown();
+    const int code=key.getKeyCode();
+    if(command && (code=='F' || code=='f')){
+        search.grabKeyboardFocus();
+        search.selectAll();
+        return true;
+    }
+    if(detailsOpen)return false;
+    const auto entries=filtered();
+    if(code==juce::KeyPress::leftKey || code==juce::KeyPress::rightKey){
+        const int next=juce::jlimit(0,banks.size()-1,
+            bank+(code==juce::KeyPress::leftKey?-1:1));
+        chooseBank(next);
+        return true;
+    }
+    if(code==juce::KeyPress::upKey || code==juce::KeyPress::downKey){
+        focusCard((keyboardCard<0?0:keyboardCard)+
+            (code==juce::KeyPress::upKey?-1:1));
+        return true;
+    }
+    if(code==juce::KeyPress::homeKey){
+        focusCard(0);return true;
+    }
+    if(code==juce::KeyPress::endKey){
+        focusCard((int)entries.size()-1);return true;
+    }
+    if(code==juce::KeyPress::pageUpKey ||
+       code==juce::KeyPress::pageDownKey){
+        const int next=(keyboardCard<0?0:keyboardCard)+
+            (code==juce::KeyPress::pageUpKey?-6:6);
+        focusCard(next);
+        return true;
+    }
+    if(code==juce::KeyPress::returnKey){
+        if(entries.empty())return true;
+        const int index=juce::jlimit(0,(int)entries.size()-1,
+            keyboardCard<0?0:keyboardCard);
+        auditionEntry(entries[(size_t)index]);
+        return true;
+    }
+    if(code==juce::KeyPress::spaceKey){
+        if(keyboardCard>=0 && keyboardCard<(int)entries.size())
+            toggleFavorite(entries[(size_t)keyboardCard]);
+        return true;
+    }
     return false;
 }
