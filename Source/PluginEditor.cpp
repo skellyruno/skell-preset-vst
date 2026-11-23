@@ -70,8 +70,8 @@ public:
             slot.openModulePicker();
         };
 
-        undo.setButtonText("UNDO");
-        redo.setButtonText("REDO");
+        undo.setButtonText(juce::String::charToString(0x21B6));
+        redo.setButtonText(juce::String::charToString(0x21B7));
         undo.setTooltip("Undo a preset load (Ctrl+Z). New edits and external hosted VST3s are not in history yet.");
         redo.setTooltip("Redo a preset load (Ctrl+Y or Ctrl+Shift+Z)");
         style(undo);style(redo);
@@ -1024,7 +1024,7 @@ public:
                     10.3f,Theme::muted,true);
         // UI edition marker belongs with the title, not an isolated LIVE
         // badge. Binary package version stays 0.7.0 for old host projects.
-        Theme::text(g,"V 0.1",{282,30,64,18},11.f,
+        Theme::text(g,"V 0.1",{279,56,61,16},10.f,
                     Theme::green.withAlpha(.86f),true);
         Theme::text(g,"PRESET",{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());

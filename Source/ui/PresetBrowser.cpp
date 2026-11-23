@@ -7,14 +7,13 @@
 #include <array>
 
 namespace {
-const juce::StringArray banks{"Main Vocals","My Presets","Artists","Favorites",
-                              "Rage","Indie","R&B"};
+const juce::StringArray banks{"Main Vocals","Ad-libs","My Presets","Artists","Favorites"};
 constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
 constexpr int deuceIndex=skellpreset::deuce_v25::factoryIndex;
 // One shared geometry model for painting, click hit-testing and UI regression.
 // The three genres have a visible MANUAL heading and never overlap controls.
 juce::Rectangle<int> bankBounds(int index) noexcept {
-    return {17,index<4?109+index*34:264+(index-4)*32,168,30};
+    return {17,109+index*38,168,33};
 }
 juce::String singlePreviewName(int entry) {
     if(entry==alchemistIndex)return "ALCHEMIST";
@@ -80,12 +79,10 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     artistEditor.setMultiLine(false);
     artistEditor.setTextToShowWhenEmpty("Artist for selected preset",Theme::muted);
     artistEditor.setTooltip("Type an artist name for your selected personal preset, then press SET ARTIST");
-    genrePicker.addItem("Uncategorized",1);
-    genrePicker.addItem("Rage",2);
-    genrePicker.addItem("Indie",3);
-    genrePicker.addItem("R&B",4);
-    genrePicker.setSelectedId(1,juce::dontSendNotification);
-    genrePicker.setTooltip("Manual category to assign to the selected personal preset. Never auto-tags.");
+    genrePicker.setTooltip("Assign a category to the selected saved preset, never automatically.");
+    genreFilter.setTooltip("Filter your saved presets by genre/category.");
+    categoryEditor.setTextToShowWhenEmpty("New category name",Theme::muted);
+    categoryEditor.setTooltip("Create your own library category; presets and automation stay unchanged.");
     applyTheme();
     search.onTextChange=[this]{scroll=0;hoveredCard=-1;repaint();};
     search.onEscapeKey=[this]{setVisible(false);if(onClose)onClose();};
@@ -97,8 +94,10 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     addAndMakeVisible(search);
     addAndMakeVisible(artistEditor);
     addAndMakeVisible(genrePicker);
+    addAndMakeVisible(genreFilter);
+    addAndMakeVisible(categoryEditor);
     for(auto* button:{&importButton,&exportButton,&artworkButton,
-                      &artistButton,&genreButton,&detailsButton})
+                      &artistButton,&genreButton,&detailsButton,&addCategoryButton})
         addAndMakeVisible(*button);
     detailsButton.setTooltip("Show artist, genre, and cover controls in a separate clean panel");
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
@@ -107,12 +106,15 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     artworkButton.setEnabled(false);
     artistButton.setEnabled(false);
     artistButton.setTooltip("Save an artist label to the selected personal preset. Does not modify its .skellpreset file.");
-    genreButton.setTooltip("Manually assign/clear Rage, Indie or R&B. No automatic classification or DSP change.");
+    genreButton.setTooltip("Manually tag your personal preset with a genre, Ad-libs or custom category.");
+    addCategoryButton.setTooltip("Add a new category to the user library; no audio or preset ZIP changes.");
     genreButton.setEnabled(false);
     reloadAlchemistArtwork();
     scanLibrary();
     loadFavorites();
     loadArtists();
+    loadCustomCategories();
+    refreshGenreChoices();
     loadGenres();
     refreshArtwork();
     detailsButton.onClick=[this]{showDetails(!detailsOpen);};
@@ -132,16 +134,42 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     artistEditor.onReturnKey=[this]{if(artistButton.isEnabled())artistButton.triggerClick();};
     genreButton.onClick=[this] {
         if(!activeUserPreset.existsAsFile())return;
+        const auto label=genrePicker.getSelectedId()>1
+            ?genrePicker.getText():juce::String{};
         for(int i=0;i<(int)userPresets.size();++i)
             if(userPresets[(size_t)i]==activeUserPreset) {
-                const juce::StringArray categories{"","Rage","Indie","R&B"};
-                const int choice=juce::jlimit(0,3,genrePicker.getSelectedId()-1);
-                if(setGenreForUser(i,categories[choice])) {
-                    scroll=0;hoveredCard=-1;repaint();
-                }
+                if(setGenreForUser(i,label)){scroll=0;hoveredCard=-1;repaint();}
                 return;
             }
     };
+    genreFilter.onChange=[this]{scroll=0;hoveredCard=-1;repaint();};
+    addCategoryButton.onClick=[this] {
+        const auto label=categoryEditor.getText().trim();
+        if(label.isEmpty() || label.length()>32 || label.containsAnyOf("\r\n\t\\/:*?\"<>|")){
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                "Invalid category","Use at most 32 characters, with no path separators.");
+            return;
+        }
+        if(!isKnownCategory(label)){
+            if(customCategories.size()>=64)return;
+            customCategories.add(label);
+            if(!saveCustomCategories()){
+                customCategories.removeString(label,true);
+                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                    "Category not saved","Check your preset library folder permissions.");
+                return;
+            }
+        }
+        refreshGenreChoices();
+        for(int i=0;i<genrePicker.getNumItems();++i)
+            if(genrePicker.getItemText(i).equalsIgnoreCase(label))
+                genrePicker.setSelectedId(genrePicker.getItemId(i),juce::dontSendNotification);
+        categoryEditor.clear();
+        if(activeUserPreset.existsAsFile() && genreButton.isEnabled())
+            genreButton.triggerClick();
+        repaint();
+    };
+    categoryEditor.onReturnKey=[this]{addCategoryButton.triggerClick();};
     setWantsKeyboardFocus(true);
 }
 void PresetBrowser::applyTheme() {
@@ -158,11 +186,21 @@ void PresetBrowser::applyTheme() {
     genrePicker.setColour(juce::ComboBox::textColourId,Theme::white);
     genrePicker.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
     genrePicker.setColour(juce::ComboBox::arrowColourId,Theme::green);
+    genreFilter.setColour(juce::ComboBox::backgroundColourId,Theme::plot);
+    genreFilter.setColour(juce::ComboBox::textColourId,Theme::white);
+    genreFilter.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
+    genreFilter.setColour(juce::ComboBox::arrowColourId,Theme::green);
+    categoryEditor.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
+    categoryEditor.setColour(juce::TextEditor::textColourId,Theme::white);
+    categoryEditor.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
     for(auto* button:{&importButton,&exportButton,&artworkButton,
-                       &artistButton,&genreButton,&detailsButton}) {
+                       &artistButton,&genreButton,&detailsButton,&addCategoryButton}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panel);
         button->setColour(juce::TextButton::textColourOffId,Theme::white);
     }
+    exportButton.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.22f));
+    detailsButton.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.12f));
+    addCategoryButton.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.12f));
     repaint();
 }
 juce::File PresetBrowser::libraryDirectory() const {
@@ -251,8 +289,10 @@ void PresetBrowser::copyToLibrary(const juce::File& source) {
     refreshArtwork();
 }
 void PresetBrowser::open() {
-    scanLibrary();loadFavorites();loadArtists();loadGenres();refreshArtwork();
+    scanLibrary();loadFavorites();loadArtists();
+    loadCustomCategories();refreshGenreChoices();loadGenres();refreshArtwork();
     bank=0;scroll=0;hoveredCard=-1;
+    genreFilter.setSelectedId(1,juce::dontSendNotification);
     showDetails(false);
     search.setText({},juce::dontSendNotification);
     setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();
@@ -264,25 +304,30 @@ void PresetBrowser::showDetails(bool openDetails) {
 }
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-38,42);
-    detailsButton.setBounds(18,detailsOpen?115:371,166,30);
-    // No default-page artist/genre widgets overlapping library navigation.
+    detailsButton.setBounds(18,detailsOpen?112:386,166,30);
     for(auto* control:{static_cast<juce::Component*>(&artistEditor),
                        static_cast<juce::Component*>(&artistButton),
                        static_cast<juce::Component*>(&genrePicker),
                        static_cast<juce::Component*>(&genreButton),
+                       static_cast<juce::Component*>(&categoryEditor),
+                       static_cast<juce::Component*>(&addCategoryButton),
                        static_cast<juce::Component*>(&artworkButton)})
         control->setVisible(detailsOpen);
-    if(detailsOpen) {
-        artistEditor.setBounds(18,190,166,29);
-        artistButton.setBounds(18,228,166,29);
-        genrePicker.setBounds(18,302,105,29);
-        genreButton.setBounds(130,302,54,29);
-        artworkButton.setBounds(18,368,166,29);
-        importButton.setBounds(18,440,166,29);
-        exportButton.setBounds(18,481,166,29);
-    } else {
-        importButton.setBounds(18,425,166,30);
-        exportButton.setBounds(18,466,166,30);
+    genreFilter.setVisible(!detailsOpen);
+    if(detailsOpen){
+        artistEditor.setBounds(18,184,166,29);
+        artistButton.setBounds(18,221,166,29);
+        genrePicker.setBounds(18,289,107,29);
+        genreButton.setBounds(132,289,52,29);
+        categoryEditor.setBounds(18,359,166,29);
+        addCategoryButton.setBounds(18,393,166,29);
+        artworkButton.setBounds(18,429,166,29);
+        importButton.setBounds(18,464,166,28);
+        exportButton.setBounds(18,498,166,28);
+    }else{
+        genreFilter.setBounds(18,332,166,32);
+        importButton.setBounds(18,433,166,30);
+        exportButton.setBounds(18,476,166,30);
     }
 }
 void PresetBrowser::setChooserActive(bool active) {
@@ -294,6 +339,8 @@ void PresetBrowser::setChooserActive(bool active) {
     artistEditor.setEnabled(!active && activeUserPreset.existsAsFile());
     genreButton.setEnabled(!active && activeUserPreset.existsAsFile());
     genrePicker.setEnabled(!active && activeUserPreset.existsAsFile());
+    addCategoryButton.setEnabled(!active);
+    categoryEditor.setEnabled(!active);
 }
 void PresetBrowser::chooseImport() {
     if(chooserActive)return;
@@ -371,6 +418,65 @@ juce::File PresetBrowser::genresFile() const {
     // factory programs, automation or .skellpreset archives.
     return libraryDirectory().getParentDirectory().getChildFile("GenreTags.txt");
 }
+juce::File PresetBrowser::categoriesFile() const {
+    return libraryDirectory().getParentDirectory().getChildFile("UserCategories.txt");
+}
+bool PresetBrowser::isKnownCategory(const juce::String& label) const {
+    return label.equalsIgnoreCase("Rage") ||
+           label.equalsIgnoreCase("Indie") ||
+           label.equalsIgnoreCase("R&B") ||
+           label.equalsIgnoreCase("Ad-libs") ||
+           label.equalsIgnoreCase("All genres") ||
+           label.equalsIgnoreCase("Uncategorized") ||
+           customCategories.contains(label,true);
+}
+void PresetBrowser::loadCustomCategories() {
+    customCategories.clear();
+    const auto file=categoriesFile();
+    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>8192)return;
+    for(auto name:juce::StringArray::fromLines(file.loadFileAsString())) {
+        name=name.trim();
+        if(name.isEmpty() || name.length()>32 ||
+           name.containsAnyOf("\r\n\t\\/:*?\"<>|") ||
+           isKnownCategory(name))continue;
+        customCategories.add(name);
+        if(customCategories.size()>=64)break;
+    }
+}
+bool PresetBrowser::saveCustomCategories() const {
+    const auto file=categoriesFile();
+    if(file.getParentDirectory().createDirectory().failed())return false;
+    juce::TemporaryFile pending(file);
+    if(!pending.getFile().replaceWithText(customCategories.joinIntoString("\n")+"\n"))
+        return false;
+    return pending.overwriteTargetFileWithTemporary();
+}
+void PresetBrowser::refreshGenreChoices() {
+    const auto previousTag=genrePicker.getText();
+    const auto previousFilter=genreFilter.getText();
+    genrePicker.clear(juce::dontSendNotification);
+    genreFilter.clear(juce::dontSendNotification);
+    genrePicker.addItem("Uncategorized",1);
+    genreFilter.addItem("All genres",1);
+    for(const auto* label:{"Rage","Indie","R&B","Ad-libs"}){
+        const int id=genrePicker.getNumItems()+1;
+        genrePicker.addItem(label,id);
+        genreFilter.addItem(label,id);
+    }
+    for(const auto& label:customCategories){
+        const int id=genrePicker.getNumItems()+1;
+        genrePicker.addItem(label,id);
+        genreFilter.addItem(label,id);
+    }
+    auto lookup=[](const juce::ComboBox& picker,const juce::String& label){
+        for(int i=0;i<picker.getNumItems();++i)
+            if(picker.getItemText(i).equalsIgnoreCase(label))
+                return picker.getItemId(i);
+        return 1;
+    };
+    genrePicker.setSelectedId(lookup(genrePicker,previousTag),juce::dontSendNotification);
+    genreFilter.setSelectedId(lookup(genreFilter,previousFilter),juce::dontSendNotification);
+}
 juce::String PresetBrowser::genreForUser(int index) const {
     if(index<0 || index>=(int)userPresets.size())return {};
     const int pos=genreKeys.indexOf(favoriteKey(-index-1),true);
@@ -387,7 +493,7 @@ void PresetBrowser::loadGenres() {
         const auto label=line.substring(tab+1).trim();
         if(!key.startsWith("user:") || key.length()>260 ||
            key.containsAnyOf("\r\n\t") || genreKeys.contains(key,true) ||
-           (label!="Rage" && label!="Indie" && label!="R&B"))continue;
+           !isKnownCategory(label))continue;
         genreKeys.add(key);genreNames.add(label);
         if(genreKeys.size()>=200)break;
     }
@@ -405,7 +511,7 @@ bool PresetBrowser::saveGenres() const {
 }
 bool PresetBrowser::setGenreForUser(int index,const juce::String& label) {
     if(index<0 || index>=(int)userPresets.size() ||
-       (label.isNotEmpty() && label!="Rage" && label!="Indie" && label!="R&B"))
+       (label.isNotEmpty() && !isKnownCategory(label)))
         return false;
     const auto key=favoriteKey(-index-1);
     if(key.isEmpty())return false;
@@ -541,138 +647,163 @@ void PresetBrowser::toggleFavorite(int entry) {
     repaint();
 }
 bool PresetBrowser::testBrowserLayoutForTest() {
-    const bool previous=detailsOpen;
-    const auto validPage=[this](bool expanded) {
+    const bool oldDetails=detailsOpen;
+    const auto validate=[this](bool expanded){
         showDetails(expanded);
         if(getWidth()<620 || getHeight()<530)return false;
         const auto bounds=getLocalBounds();
-        if(!bounds.contains(search.getBounds()) || !bounds.contains(detailsButton.getBounds()))
-            return false;
-        if(artistEditor.isVisible()!=expanded || artistButton.isVisible()!=expanded ||
-           genrePicker.isVisible()!=expanded || genreButton.isVisible()!=expanded ||
-           artworkButton.isVisible()!=expanded)
-            return false;
-        const juce::Component* actions[]{&detailsButton,&genrePicker,&genreButton,
-            &artistEditor,&artistButton,&importButton,&exportButton,&artworkButton};
-        for(int i=0;i<8;++i) {
-            if(!actions[i]->isVisible())continue;
-            if(!bounds.contains(actions[i]->getBounds()))return false;
-            for(int j=i+1;j<8;++j)
-                if(actions[j]->isVisible() &&
-                   actions[i]->getBounds().intersects(actions[j]->getBounds()))
+        if(!bounds.contains(search.getBounds()) ||
+           !bounds.contains(detailsButton.getBounds()))return false;
+        if(artistEditor.isVisible()!=expanded ||
+           artistButton.isVisible()!=expanded ||
+           genrePicker.isVisible()!=expanded ||
+           genreButton.isVisible()!=expanded ||
+           artworkButton.isVisible()!=expanded ||
+           categoryEditor.isVisible()!=expanded ||
+           addCategoryButton.isVisible()!=expanded ||
+           genreFilter.isVisible()==expanded)return false;
+        const std::array<const juce::Component*,11> widgets{{
+            &detailsButton,&genrePicker,&genreButton,&artistEditor,
+            &artistButton,&importButton,&exportButton,&artworkButton,
+            &categoryEditor,&addCategoryButton,&genreFilter}};
+        for(size_t i=0;i<widgets.size();++i){
+            if(!widgets[i]->isVisible())continue;
+            if(!bounds.contains(widgets[i]->getBounds()))return false;
+            for(size_t j=i+1;j<widgets.size();++j)
+                if(widgets[j]->isVisible() &&
+                   widgets[i]->getBounds().intersects(widgets[j]->getBounds()))
                     return false;
         }
-        for(int i=0;i<7;++i) {
+        for(int i=0;i<banks.size();++i) {
             const auto category=bankBounds(i);
             if(!bounds.contains(category))return false;
             if(!expanded) {
-                for(const auto* action:actions)
-                    if(action->isVisible() && category.intersects(action->getBounds()))
-                        return false;
-                for(int j=i+1;j<7;++j)
+                for(const auto* widget:widgets)
+                    if(widget->isVisible() &&
+                       category.intersects(widget->getBounds()))return false;
+                for(int j=i+1;j<banks.size();++j)
                     if(category.intersects(bankBounds(j)))return false;
             }
         }
         return true;
     };
-    const bool compact=validPage(false);
-    const bool edit=validPage(true);
-    showDetails(previous);
-    return compact && edit && singlePreviewName(deuceIndex)=="DEUCE" &&
+    const bool library=validate(false),details=validate(true);
+    showDetails(oldDetails);
+    return library && details && singlePreviewName(deuceIndex)=="DEUCE" &&
            singlePreviewName(alchemistIndex)=="ALCHEMIST";
 }
 bool PresetBrowser::testMainVocalsPresetFilterForTest() {
-    const int previousBank=bank, previousScroll=scroll;
-    const auto query=search.getText();
+    const int previousBank=bank,previousScroll=scroll;
+    const auto previousQuery=search.getText();
+    const auto previousFilter=genreFilter.getText();
+    const auto oldArtistKeys=artistKeys,oldArtists=artistNames;
+    const auto oldGenreKeys=genreKeys,oldGenres=genreNames;
+    const auto oldFavoriteKeys=favoriteKeys,oldCategories=customCategories;
     search.setText({},juce::dontSendNotification);
-
-    bank=0; // Main Vocals
-    const auto mainVocals=filtered();
-    const bool exactMainVocals=mainVocals.size()==2
-        && mainVocals[0]==alchemistIndex
-        && mainVocals[1]==deuceIndex;
-
-    bank=1; // My Presets remains a separate user-owned library.
+    genreFilter.setSelectedId(1,juce::dontSendNotification);
+    bank=0;
+    const auto main=filtered();
+    const bool factoryNames=main.size()==2 &&
+        main[0]==alchemistIndex && main[1]==deuceIndex;
+    bank=1;
+    const auto adlibs=filtered();
+    const bool onlyAdlibs=std::all_of(adlibs.begin(),adlibs.end(),
+        [this](int entry){return entry<0 &&
+            genreForUser(-entry-1).equalsIgnoreCase("Ad-libs");});
+    bank=2;
     const auto personal=filtered();
-    const bool onlyUserPresets=std::all_of(personal.begin(),personal.end(),
+    const bool onlyUser=std::all_of(personal.begin(),personal.end(),
         [](int entry){return entry<0;});
+    bank=3;
+    const auto artists=filtered();
+    const bool onlyArtists=std::all_of(artists.begin(),artists.end(),
+        [this](int entry){return entry<0 &&
+            artistForUser(-entry-1).isNotEmpty();});
+    bank=4;
+    const auto fav=filtered();
+    const bool onlyFavorites=std::all_of(fav.begin(),fav.end(),
+        [this](int entry){return isFavorite(entry) &&
+           (entry<0 || entry==alchemistIndex || entry==deuceIndex);});
 
-    bank=2; // Artists only shows user presets carrying an artist label.
-    const auto artistPresets=filtered();
-    const bool onlyTagged=std::all_of(artistPresets.begin(),artistPresets.end(),
-        [this](int entry){return entry<0 && artistForUser(-entry-1).isNotEmpty();});
-
-    bank=3; // Favorites include user presets and the two whitelisted factories.
-    const auto favorites=filtered();
-    const bool onlyFavorites=std::all_of(favorites.begin(),favorites.end(),
-        [this](int entry) {return isFavorite(entry) &&
-            (entry<0 || entry==alchemistIndex || entry==deuceIndex);});
-    bool onlyManualGenres=true;
-    for(int category=4;category<=6;++category) {
-        bank=category;
-        const auto genreEntries=filtered();
-        for(const int entry:genreEntries)
-            if(entry>=0 || genreForUser(-entry-1)!=banks[category])
-                onlyManualGenres=false;
-    }
-    // In-memory synthetic library entry: no user files or sidecars written.
-    // This catches an empty Artists/Favorites view that would otherwise make
-    // the category checks trivially pass, even when search is broken.
-    const auto oldKeys=artistKeys,oldNames=artistNames,oldFavorites=favoriteKeys;
-    const auto oldGenreKeys=genreKeys,oldGenreNames=genreNames;
+    // Synthetic entry never writes into user files or personal sidecars.
     const int injected=(int)userPresets.size();
     userPresets.push_back(juce::File::getSpecialLocation(juce::File::tempDirectory)
-        .getChildFile("__skell_artist_filter_probe__.skellpreset"));
-    const auto key=favoriteKey(-injected-1);
-    artistKeys.add(key);artistNames.add("__skell_artist_unique_probe__");
+        .getChildFile("__skell_filter_probe__.skellpreset"));
+    const int entry=-injected-1;
+    const auto key=favoriteKey(entry);
+    artistKeys.add(key);artistNames.add("__skell_unique_artist__");
     favoriteKeys.add(key);
-    bank=2;
-    search.setText("artist:__skell_artist_unique_probe__",juce::dontSendNotification);
-    const auto artistHits=filtered();
-    const bool artistQueryWorks=std::find(artistHits.begin(),artistHits.end(),-injected-1)!=artistHits.end();
     bank=3;
-    search.setText("fav:__skell_artist_filter_probe__",juce::dontSendNotification);
-    const auto favoriteHits=filtered();
-    const bool favoriteQueryWorks=std::find(favoriteHits.begin(),favoriteHits.end(),-injected-1)!=favoriteHits.end();
+    search.setText("artist:__skell_unique_artist__",juce::dontSendNotification);
+    const auto artistsFound=filtered();
+    const bool artistQuery=std::find(artistsFound.begin(),artistsFound.end(),entry)!=artistsFound.end();
+    bank=4;
+    search.setText("fav:__skell_filter_probe__",juce::dontSendNotification);
+    const auto favoritesFound=filtered();
+    const bool favoriteQuery=std::find(favoritesFound.begin(),favoritesFound.end(),entry)!=favoritesFound.end();
+    bank=2;
+    search.setText("__skell_filter_probe__",juce::dontSendNotification);
+    const auto personalFound=filtered();
+    const bool personalQuery=std::find(personalFound.begin(),personalFound.end(),entry)!=personalFound.end();
+    search.setText({},juce::dontSendNotification);
+    genreKeys.add(key);genreNames.add("Ad-libs");
     bank=1;
-    search.setText("__skell_artist_filter_probe__",juce::dontSendNotification);
-    const auto personalHits=filtered();
-    const bool personalQueryWorks=std::find(personalHits.begin(),personalHits.end(),-injected-1)!=personalHits.end();
-    bool manualGenreFilteringWorks=true;
-    for(int category=4;category<=6;++category) {
-        genreKeys.clear();genreNames.clear();
-        genreKeys.add(key);genreNames.add(banks[category]);
+    const auto adlibFound=filtered();
+    const bool adlibQuery=std::find(adlibFound.begin(),adlibFound.end(),entry)!=adlibFound.end();
+    bank=2;
+    bool genreFiltering=true;
+    const juce::StringArray known{"Rage","Indie","R&B"};
+    for(const auto& label:known) {
+        genreNames.set(genreNames.size()-1,label);
+        int id=1;
+        for(int i=0;i<genreFilter.getNumItems();++i)
+            if(genreFilter.getItemText(i)==label)id=genreFilter.getItemId(i);
+        genreFilter.setSelectedId(id,juce::dontSendNotification);
+        const auto results=filtered();
+        if(std::find(results.begin(),results.end(),entry)==results.end())
+            genreFiltering=false;
+        search.setText("genre:"+label,juce::dontSendNotification);
+        const auto queryResults=filtered();
+        if(std::find(queryResults.begin(),queryResults.end(),entry)==queryResults.end())
+            genreFiltering=false;
         search.setText({},juce::dontSendNotification);
-        bank=category;
-        const auto items=filtered();
-        if(items.size()!=1 || items[0]!=-injected-1)
-            manualGenreFilteringWorks=false;
-        search.setText("genre:"+banks[category],juce::dontSendNotification);
-        const auto searched=filtered();
-        if(searched.size()!=1 || searched[0]!=-injected-1)
-            manualGenreFilteringWorks=false;
     }
-    genreKeys.clear();genreNames.clear();
-    bank=4;search.setText({},juce::dontSendNotification);
-    const bool untaggedNotAutoAssigned=filtered().empty();
+    customCategories.add("__skell_custom_probe__");
+    refreshGenreChoices();
+    genreNames.set(genreNames.size()-1,"__skell_custom_probe__");
+    int customId=1;
+    for(int i=0;i<genreFilter.getNumItems();++i)
+        if(genreFilter.getItemText(i)=="__skell_custom_probe__")
+            customId=genreFilter.getItemId(i);
+    genreFilter.setSelectedId(customId,juce::dontSendNotification);
+    const auto customResults=filtered();
+    const bool customFilter=customId>1 &&
+        std::find(customResults.begin(),customResults.end(),entry)!=customResults.end();
+    genreNames.remove(genreNames.size()-1);
+    genreKeys.remove(genreKeys.size()-1);
     userPresets.pop_back();
-    artistKeys=oldKeys;artistNames=oldNames;favoriteKeys=oldFavorites;
-    genreKeys=oldGenreKeys;genreNames=oldGenreNames;
-    bank=previousBank;
-    scroll=previousScroll;
-    search.setText(query,juce::dontSendNotification);
-    return banks.size()==7 && exactMainVocals && onlyUserPresets &&
-           onlyTagged && onlyFavorites && onlyManualGenres && artistQueryWorks &&
-           favoriteQueryWorks && personalQueryWorks &&
-           manualGenreFilteringWorks && untaggedNotAutoAssigned;
+    artistKeys=oldArtistKeys;artistNames=oldArtists;
+    genreKeys=oldGenreKeys;genreNames=oldGenres;
+    favoriteKeys=oldFavoriteKeys;customCategories=oldCategories;
+    refreshGenreChoices();
+    for(int i=0;i<genreFilter.getNumItems();++i)
+        if(genreFilter.getItemText(i)==previousFilter)
+            genreFilter.setSelectedId(genreFilter.getItemId(i),juce::dontSendNotification);
+    bank=previousBank;scroll=previousScroll;
+    search.setText(previousQuery,juce::dontSendNotification);
+    return banks.size()==5 && factoryNames && onlyAdlibs && onlyUser &&
+        onlyArtists && onlyFavorites && artistQuery && favoriteQuery &&
+        personalQuery && adlibQuery && genreFiltering && customFilter;
 }
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
     const auto q=search.getText().toLowerCase().trim();
-    const bool favoriteFilter=bank==3 || q.startsWith("fav:");
+    const bool favoritesOnly=bank==4 || q.startsWith("fav:");
+    const bool genreActive=genreFilter.getSelectedId()>1;
+    const auto selectedGenre=genreFilter.getText();
 
-    if(bank==0 || bank==3) {
-        // Preserve the owner's exact Alchemist/Deuce-only factory whitelist.
+    if((bank==0 || bank==4) && (!genreActive || bank==0)) {
+        // Keep the exact approved factory whitelist; no hidden trial sounds.
         for(const int i:{alchemistIndex,deuceIndex}) {
             if(i<0 || i>=(int)skellpreset::factoryPresets.size())continue;
             const auto& item=skellpreset::factoryPresets[(size_t)i];
@@ -686,12 +817,13 @@ std::vector<int> PresetBrowser::filtered() const {
             if(q.startsWith("author:"))
                 found=juce::String("skell audio").containsIgnoreCase(
                     q.fromFirstOccurrenceOf(":",false,false).trim());
-            if(q.startsWith("artist:") || q.startsWith("match:"))found=false;
-            if(q.startsWith("fav:")) {
+            if(q.startsWith("artist:") || q.startsWith("genre:") ||
+               q.startsWith("match:"))found=false;
+            if(q.startsWith("fav:")){
                 const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
                 found=term.isEmpty() || name.containsIgnoreCase(term);
             }
-            if(favoriteFilter && !isFavorite(i))found=false;
+            if(favoritesOnly && !isFavorite(i))found=false;
             if(found)list.push_back(i);
         }
     }
@@ -702,7 +834,7 @@ std::vector<int> PresetBrowser::filtered() const {
             const auto genre=genreForUser(i);
             bool found=q.isEmpty() || label.containsIgnoreCase(q) ||
                        artist.containsIgnoreCase(q) || genre.containsIgnoreCase(q) ||
-                       (bank==1 && juce::String("My Presets").containsIgnoreCase(q));
+                       (bank==2 && juce::String("My Presets").containsIgnoreCase(q));
             if(q.startsWith("artist:"))
                 found=artist.isNotEmpty() && artist.containsIgnoreCase(
                     q.fromFirstOccurrenceOf(":",false,false).trim());
@@ -710,7 +842,7 @@ std::vector<int> PresetBrowser::filtered() const {
                 found=genre.isNotEmpty() && genre.containsIgnoreCase(
                     q.fromFirstOccurrenceOf(":",false,false).trim());
             if(q.startsWith("bank:"))
-                found=bank==1 && juce::String("My Presets").containsIgnoreCase(
+                found=bank==2 && juce::String("My Presets").containsIgnoreCase(
                     q.fromFirstOccurrenceOf(":",false,false).trim());
             if(q.startsWith("fav:")) {
                 const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
@@ -719,17 +851,16 @@ std::vector<int> PresetBrowser::filtered() const {
             }
             if(q.startsWith("author:") || q.startsWith("match:") ||
                q.startsWith("tag:"))found=false;
-            if(bank==2 && artist.isEmpty())found=false;
-            if(bank>=4 && genre!=banks[bank])found=false;
-            if(favoriteFilter && !isFavorite(-i-1))found=false;
+            if(bank==1 && !genre.equalsIgnoreCase("Ad-libs"))found=false;
+            if(bank==3 && artist.isEmpty())found=false;
+            if(bank>=2 && genreActive && !genre.equalsIgnoreCase(selectedGenre))found=false;
+            if(favoritesOnly && !isFavorite(-i-1))found=false;
             if(found)list.push_back(-i-1);
         }
-        if(bank==2) {
-            // Group a personal artist's sounds together, stable by filename.
+        if(bank==3)
             std::stable_sort(list.begin(),list.end(),[this](int a,int b){
                 return artistForUser(-a-1).compareIgnoreCase(artistForUser(-b-1))<0;
             });
-        }
     }
     return list;
 }
@@ -746,8 +877,11 @@ void PresetBrowser::refreshArtwork() {
     juce::String genre;
     for(int i=0;i<(int)userPresets.size();++i)
         if(userPresets[(size_t)i]==activeUserPreset) {genre=genreForUser(i);break;}
-    genrePicker.setSelectedId(genre=="Rage"?2:genre=="Indie"?3:genre=="R&B"?4:1,
-                              juce::dontSendNotification);
+    int genreId=1;
+    for(int i=0;i<genrePicker.getNumItems();++i)
+        if(genrePicker.getItemText(i).equalsIgnoreCase(genre))
+            genreId=genrePicker.getItemId(i);
+    genrePicker.setSelectedId(genreId,juce::dontSendNotification);
     // 128x96 thumbnails are only for cards; never scale them to wallpaper.
     selectedUserBackdrop={};
     if(activeUserPreset.existsAsFile()) {
@@ -837,7 +971,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         (entries.size()==1?" SOUND":" SOUNDS"),{207,73,246,20},12,Theme::white,true);
     Theme::text(g,"ESC TO CLOSE",{getWidth()-121,75,100,20},10,Theme::muted,false,juce::Justification::centredRight);
     if(!detailsOpen) {
-        Theme::text(g,"GENRES / MANUAL",{29,246,150,14},9.2f,Theme::muted,true);
+        Theme::text(g,"CATEGORIES",{19,312,166,16},10.2f,Theme::muted,true);
         for(int i=0;i<banks.size();++i){
             const auto b=bankBounds(i).toFloat();
             const bool selected=i==bank;
@@ -850,13 +984,10 @@ void PresetBrowser::paint(juce::Graphics&g) {
                 selected?Theme::white:Theme::muted,selected,
                 juce::Justification::centredLeft);
         }
-        Theme::text(g,"Choose a sound, then edit its details.",
-            {18,401,170,17},9.5f,Theme::muted);
     } else {
-        Theme::text(g,"ARTIST  /  PERSONAL PRESETS",{19,163,166,17},9.5f,Theme::muted,true);
-        Theme::text(g,"GENRE  /  MANUAL TAG",{19,275,166,17},9.5f,Theme::muted,true);
-        Theme::text(g,"COVER ARTWORK",{19,341,166,17},9.5f,Theme::muted,true);
-        Theme::text(g,"IMPORT  /  EXPORT",{19,413,166,17},9.5f,Theme::muted,true);
+        Theme::text(g,"ARTIST",{19,159,166,17},10.f,Theme::muted,true);
+        Theme::text(g,"CATEGORY",{19,264,166,17},10.f,Theme::muted,true);
+        Theme::text(g,"CREATE YOUR OWN",{19,335,166,17},10.f,Theme::muted,true);
     }
     // Artist metadata can be assigned to personal presets with the sidebar
     // text field; the actual native preset and host program IDs stay intact.
@@ -984,17 +1115,19 @@ void PresetBrowser::paint(juce::Graphics&g) {
     }
     if(entries.empty()) {
         Theme::text(g,bank==3?"NO FAVORITES YET":
-            bank==2?"NO ARTIST PRESETS YET":
-            bank>=4?"NO "+banks[bank].toUpperCase()+" PRESETS YET":"NO MATCHING PRESETS",
+            bank==3?"NO ARTIST PRESETS YET":
+            bank==1?"NO AD-LIB PRESETS YET":
+            genreFilter.getSelectedId()>1?"NO PRESETS IN "+genreFilter.getText().toUpperCase():
+            "NO MATCHING PRESETS",
             {246,222,350,40},15,Theme::muted,true);
+        if(bank==4)
+            Theme::text(g,"Star a sound to save it here.",
+                {246,255,385,23},11,Theme::muted);
         if(bank==3)
-            Theme::text(g,"Star a factory or personal preset to save it here.",
+            Theme::text(g,"Set an artist in Edit Details to group saved sounds.",
                 {246,255,385,23},11,Theme::muted);
-        if(bank==2)
-            Theme::text(g,"Load a personal preset and assign its artist at left.",
-                {246,255,385,23},11,Theme::muted);
-        if(bank>=4)
-            Theme::text(g,"Choose a personal preset and use TAG to assign its category.",
+        if(bank==1)
+            Theme::text(g,"Tag a personal preset as Ad-libs in Edit Details.",
                 {246,255,385,23},11,Theme::muted);
     }
     if((int)entries.size()>6){

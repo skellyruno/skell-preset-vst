@@ -36,11 +36,12 @@ public:
     std::function<void()> onCoverChanged;
 private:
     SkellPresetAudioProcessor& processor;
-    juce::TextEditor search,artistEditor;
-    juce::ComboBox genrePicker;
+    juce::TextEditor search,artistEditor,categoryEditor;
+    juce::ComboBox genrePicker,genreFilter;
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
         artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
-        genreButton{"TAG"},detailsButton{"EDIT DETAILS"};
+        genreButton{"TAG"},detailsButton{"EDIT DETAILS"},
+        addCategoryButton{"ADD CATEGORY"};
     std::unique_ptr<juce::FileChooser> fileChooser;
     bool chooserActive=false;
     void setChooserActive(bool active);
@@ -54,6 +55,7 @@ private:
     juce::StringArray favoriteKeys; // sidecar only; not in VST3 state or preset ZIP
     juce::StringArray artistKeys,artistNames; // user library sidecar, never audio state
     juce::StringArray genreKeys,genreNames; // manually assigned; never auto-detected
+    juce::StringArray customCategories; // user-owned local sidecar, not a preset
     std::vector<juce::File> userPresets;
     std::vector<juce::Image> userArtwork; // UI-thread thumbnail cache, no filesystem in paint()
     juce::Image alchemistArtwork; // editable factory cover, stored separately
@@ -76,6 +78,11 @@ private:
     void loadGenres();
     bool saveGenres() const;
     bool setGenreForUser(int index,const juce::String& label);
+    juce::File categoriesFile() const;
+    void loadCustomCategories();
+    bool saveCustomCategories() const;
+    void refreshGenreChoices();
+    bool isKnownCategory(const juce::String& label) const;
     juce::File libraryDirectory() const;
     juce::File activeArtworkDestination() const;
     bool canEditCover() const;

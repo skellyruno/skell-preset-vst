@@ -5,119 +5,121 @@
 #include <array>
 #include <cmath>
 
-// Default Advanced view when no effect is selected. The only moving visual
-// is a real 128-sample waveform published by the audio DSP. No fake FFT,
-// no animation timer, no audio allocations, no effect or state modification.
+// Native, theme-aware skull sculpture and measured output waveform.
+// Audio capture remains in the processor; artwork is GUI-thread-only.
 class SkellIdleDeck final : public juce::Component {
 public:
-    explicit SkellIdleDeck(SkellPresetAudioProcessor& p):processor(p){
-        // Swallow empty-deck mouse clicks. Passing them through would mutate
-        // the hidden SlotEditor's XY graph even while NO effect is selected.
+    explicit SkellIdleDeck(SkellPresetAudioProcessor& p):processor(p) {
+        // The inactive editor beneath this deck must not receive graph clicks.
         setInterceptsMouseClicks(true,false);
     }
-    void paint(juce::Graphics& g) override {
+    void paint(juce::Graphics&g) override {
         Theme::selectFor(processor.state);
+        const float w=(float)getWidth(),h=(float)getHeight(),cx=w*.5f;
         Theme::panelBox(g,getLocalBounds().toFloat(),9.f);
-        const auto top=getLocalBounds().toFloat().reduced(24.f);
-        g.setColour(Theme::green.withAlpha(.14f));
-        g.drawRoundedRectangle(top.reduced(2.f),10.f,1.f);
-        Theme::text(g,"SKELL  /  PRESET",{58,58,getWidth()-115,34},
-                    23,Theme::white,true);
-        Theme::text(g,"BUILD A VOCAL SOUND THAT'S YOURS",{58,106,getWidth()-115,27},
-                    12.5f,Theme::green,true);
-        Theme::text(g,"01  CHOOSE A PRESET       02  SELECT AN EFFECT       03  SHAPE THE SOUND",
-                    {58,146,getWidth()-125,24},11.2f,Theme::muted,true);
-        // Two tiny bone dancers react to the REAL processed output level.
-        // Animation is UI-thread only and repaints with the existing live
-        // waveform timer; silence leaves them still. No fake FFT/DSP work.
-        // The peak meter can retain the most recent processing block even
-        // when the 128-sample live waveform is idle (seen in real Quick4).
-        // Distinguish a historical last peak from a currently live trace.
         std::array<float,128> wave{};
         processor.getLiveWaveform(wave);
         float waveformPeak=0.f;
-        for(float sample:wave)
-            if(std::isfinite(sample))
-                waveformPeak=juce::jmax(waveformPeak,std::abs(sample));
-        const bool signalNow=waveformPeak>.0005f;
-        const float measuredPeak=processor.getOutputPeak();
-        const float peak=std::isfinite(measuredPeak)
-            ?juce::jmax(0.f,measuredPeak):0.f;
-        const float activity=signalNow?juce::jlimit(0.f,1.f,peak*2.4f):0.f;
-        const float seconds=(float)(juce::Time::getMillisecondCounterHiRes()*.001);
-        auto dancer=[&](float x,float phase){
-            const float swing=std::sin(seconds*6.2f+phase)*activity;
-            const float bounce=std::abs(std::sin(seconds*5.3f+phase))*activity*6.f;
-            const float y=137.f-bounce;
-            g.setColour(Theme::green.withAlpha(.11f+.12f*activity));
-            g.fillEllipse(x-20.f,y-13.f,40.f,102.f);
-            g.setColour(Theme::white.withAlpha(.80f));
-            g.fillEllipse(x-10.f,y,20.f,22.f);
-            g.setColour(Theme::bg);
-            g.fillEllipse(x-6.2f,y+8.f,4.5f,6.f);
-            g.fillEllipse(x+1.7f,y+8.f,4.5f,6.f);
-            g.fillEllipse(x-1.3f,y+13.5f,2.6f,3.5f);
-            g.setColour(Theme::white.withAlpha(.87f));
-            g.drawLine(x,y+22.f,x,y+53.f,2.7f);
-            for(int k=0;k<3;++k)
-                g.drawLine(x-7.f,y+31.f+k*6.f,x+7.f,y+31.f+k*6.f,1.3f);
-            g.drawLine(x-7.f,y+32.f,x-17.f-8.f*swing,y+49.f-5.f*swing,2.2f);
-            g.drawLine(x+7.f,y+32.f,x+17.f+8.f*swing,y+49.f+5.f*swing,2.2f);
-            g.drawLine(x,y+53.f,x-12.f-8.f*swing,y+76.f,2.4f);
-            g.drawLine(x,y+53.f,x+12.f+8.f*swing,y+76.f,2.4f);
-            g.setColour(Theme::green.withAlpha(.8f));
-            g.fillEllipse(x-16.f-8.f*swing,y+46.f-5.f*swing,4.f,4.f);
-            g.fillEllipse(x+14.f+8.f*swing,y+46.f+5.f*swing,4.f,4.f);
-        };
-        dancer((float)getWidth()-178.f,0.f);
-        dancer((float)getWidth()-97.f,1.5f);
-        Theme::text(g,"BONE MOTION / LIVE AUDIO",
-                    {getWidth()-295,109,265,17},9.8f,Theme::green.withAlpha(.85f),
-                    true,juce::Justification::centred);
-        const auto plot=juce::Rectangle<float>(62.f,217.f,getWidth()-124.f,152.f);
-        g.setColour(Theme::plot);
-        g.fillRoundedRectangle(plot,9.f);
-        g.setColour(Theme::stroke.withAlpha(.70f));
-        g.drawRoundedRectangle(plot,9.f,1.f);
-        // Scope has true amplitude data; draw restrained hardware-grid
-        // divisions and a measured digital peak readout in its empty top.
-        g.setColour(Theme::stroke.withAlpha(.27f));
-        for(int division=1;division<8;++division)
-            g.drawVerticalLine((int)(plot.getX()+plot.getWidth()*division/8.f),
-                               plot.getY()+9.f,plot.getBottom()-9.f);
-        g.setColour(Theme::stroke.withAlpha(.82f));
-        g.drawLine(plot.getX()+8.f,plot.getCentreY(),
-                   plot.getRight()-8.f,plot.getCentreY(),.6f);
-        Theme::text(g,signalNow?"OUTPUT PEAK  /  LIVE":
-                          (peak>1.e-6f?"OUTPUT PEAK  /  LAST":"OUTPUT PEAK  /  IDLE"),
-                    {getWidth()-324,229,243,18},11.f,
-                    Theme::muted,true,juce::Justification::centredRight);
-        const juce::String peakReadout=peak<1.e-6f
-            ?juce::String("-INF dBFS")
-            :juce::String(20.f*std::log10(peak),1)+" dBFS";
-        Theme::fittedText(g,peakReadout,{getWidth()-338,251,257,38},
-                         30.f,Theme::white,true,juce::Justification::centredRight);
-        Theme::text(g,signalNow?"SIGNAL ACTIVE":"SIGNAL IDLE",
-                    {82,237,189,20},12.f,
-                    signalNow?Theme::green:Theme::muted,true);
-        juce::Path signal;
-        for(int i=0;i<128;++i) {
-            const float v=juce::jlimit(-1.f,1.f,wave[(size_t)i]);
-            const float x=plot.getX()+12.f+(plot.getWidth()-24.f)*i/127.f;
-            const float y=plot.getCentreY()-v*(plot.getHeight()*.42f);
-            if(i==0)signal.startNewSubPath(x,y);
-            else signal.lineTo(x,y);
+        for(const auto v:wave)
+            if(std::isfinite(v))waveformPeak=juce::jmax(waveformPeak,std::abs(v));
+        const bool live=waveformPeak>.0005f;
+        const float reported=processor.getOutputPeak();
+        const float peak=std::isfinite(reported)?juce::jmax(0.f,reported):0.f;
+        const float activity=live?juce::jlimit(0.f,1.f,waveformPeak*3.f):0.f;
+        const auto accent=Theme::green;
+        const auto bone=Theme::white;
+        g.setColour(Theme::plot.withAlpha(.70f));
+        g.fillRoundedRectangle({26.f,24.f,w-52.f,h-48.f},12.f);
+        g.setColour(accent.withAlpha(.13f));
+        for(int i=0;i<4;++i) {
+            const float radius=120.f+38.f*i;
+            g.drawEllipse(cx-radius,215.f-radius*.74f,
+                          radius*2.f,radius*1.8f,.85f);
         }
-        g.setColour(Theme::green.withAlpha(.96f));
-        g.strokePath(signal,juce::PathStrokeType(1.8f,
-                     juce::PathStrokeType::curved,
-                     juce::PathStrokeType::rounded));
-        Theme::text(g,"LIVE OUTPUT MONITOR  /  NO EFFECT SELECTED",
-                    {64,382,getWidth()-128,22},10.8f,Theme::muted,true);
-        Theme::text(g,"EDIT RACK  /  CLICK A MODULE TO OPEN ITS CONTROLS",
-                    {64,getHeight()-83,getWidth()-128,20},11.4f,Theme::white,true);
-        Theme::text(g,"DOUBLE-CLICK TO REPLACE  /  + TO ADD  /  MIC FOR INPUT CLEANUP",
-                    {64,getHeight()-59,getWidth()-128,18},10.5f,Theme::green);
+        g.setColour(accent.withAlpha(.12f));
+        g.drawVerticalLine((int)cx,45.f,h-37.f);
+
+        // Anatomical skull, mandible, shoulder bones and ribs are drawn as
+        // scalable JUCE paths: no text-heavy tutorial or random fake spectrum.
+        {
+            juce::Graphics::ScopedSaveState saved(g);
+            g.addTransform(juce::AffineTransform::translation(cx-120.f,39.f));
+            juce::Path head;
+            head.startNewSubPath(120.f,29.f);
+            head.cubicTo(45.f,29.f,31.f,82.f,40.f,137.f);
+            head.cubicTo(44.f,158.f,58.f,173.f,76.f,183.f);
+            head.lineTo(78.f,211.f);
+            head.quadraticTo(120.f,240.f,162.f,211.f);
+            head.lineTo(164.f,183.f);
+            head.cubicTo(183.f,173.f,197.f,158.f,200.f,137.f);
+            head.cubicTo(209.f,82.f,195.f,29.f,120.f,29.f);
+            head.closeSubPath();
+            g.setColour(accent.withAlpha(.09f+.32f*activity));
+            g.fillEllipse(29.f,22.f,182.f,225.f);
+            g.setColour(bone.withAlpha(.84f));
+            g.fillPath(head);
+            g.setColour(Theme::bg);
+            g.fillEllipse(56.f,132.f,55.f,48.f);
+            g.fillEllipse(129.f,132.f,55.f,48.f);
+            juce::Path nose;
+            nose.startNewSubPath(120.f,177.f);
+            nose.lineTo(107.f,199.f);
+            nose.lineTo(133.f,199.f);nose.closeSubPath();
+            g.fillPath(nose);
+            g.fillRoundedRectangle(85.f,208.f,70.f,5.f,2.f);
+            for(int k=0;k<7;++k)
+                g.drawLine(89.f+10.f*k,212.f,89.f+10.f*k,230.f,1.5f);
+            g.setColour(accent.withAlpha(.50f+.38f*activity));
+            g.drawLine(45.f,110.f,64.f,73.f,1.5f);
+            g.drawLine(178.f,84.f,196.f,106.f,1.f);
+            g.setColour(bone.withAlpha(.70f));
+            g.drawLine(120.f,246.f,120.f,337.f,4.f);
+            juce::Path clavicle;
+            clavicle.startNewSubPath(120.f,269.f);
+            clavicle.cubicTo(87.f,261.f,75.f,282.f,33.f,294.f);
+            clavicle.startNewSubPath(120.f,269.f);
+            clavicle.cubicTo(153.f,261.f,165.f,282.f,207.f,294.f);
+            g.strokePath(clavicle,juce::PathStrokeType(4.f,
+                juce::PathStrokeType::curved));
+            for(int k=0;k<4;++k){
+                const float y=289.f+16.f*k;
+                juce::Path ribs;
+                ribs.startNewSubPath(120.f,y);
+                ribs.cubicTo(78.f,y-13.f,52.f,y-5.f,58.f,y+18.f);
+                ribs.startNewSubPath(120.f,y);
+                ribs.cubicTo(162.f,y-13.f,188.f,y-5.f,182.f,y+18.f);
+                g.setColour(bone.withAlpha(.50f+.05f*k));
+                g.strokePath(ribs,juce::PathStrokeType(2.7f,
+                    juce::PathStrokeType::curved));
+            }
+        }
+
+        const juce::Rectangle<float> scope{50.f,h-113.f,w-100.f,71.f};
+        g.setColour(Theme::plot.withAlpha(.85f));
+        g.fillRoundedRectangle(scope,10.f);
+        g.setColour(accent.withAlpha(.24f));
+        g.drawRoundedRectangle(scope,10.f,1.f);
+        g.setColour(Theme::stroke.withAlpha(.55f));
+        g.drawLine(scope.getX()+8.f,scope.getCentreY(),
+                   scope.getRight()-8.f,scope.getCentreY(),.7f);
+        juce::Path waveform;
+        for(int i=0;i<128;++i) {
+            const float v=std::isfinite(wave[(size_t)i])
+                ?juce::jlimit(-1.f,1.f,wave[(size_t)i]):0.f;
+            const float x=scope.getX()+11.f+(scope.getWidth()-22.f)*i/127.f;
+            const float y=scope.getCentreY()-v*scope.getHeight()*.42f;
+            if(i==0)waveform.startNewSubPath(x,y);
+            else waveform.lineTo(x,y);
+        }
+        g.setColour(accent.withAlpha(.96f));
+        g.strokePath(waveform,juce::PathStrokeType(1.9f,
+            juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        Theme::text(g,live?"LIVE":"IDLE",{65,46,91,22},
+                    11.f,live?accent:Theme::muted,true);
+        const auto db=peak<1.e-6f?juce::String("-INF")
+            :juce::String(20.f*std::log10(peak),1);
+        Theme::text(g,db+" dBFS",{getWidth()-181,46,130,22},
+                    11.f,Theme::muted,true,juce::Justification::centredRight);
     }
 private:
     SkellPresetAudioProcessor& processor;
