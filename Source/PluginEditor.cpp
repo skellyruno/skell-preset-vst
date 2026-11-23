@@ -576,6 +576,8 @@ public:
             issues.add("Main Vocals, My Presets, Artists, Favorites or manual genre filter regressed");
         if(!browser.testBrowserLayoutForTest())
             issues.add("Preset browser custom category controls or cover preview overlap");
+        if(!SkellIdleDeck::testStageGeometryForTest())
+            issues.add("Skell skull/scope stage clips or overlaps at compact, default or enlarged sizes");
         if(!browser.testBrowserKeyboardForTest())
             issues.add("Preset browser keyboard focus, pagination, bank selection or restoration failed");
         if(!browser.testBrowserSortingForTest())
