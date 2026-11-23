@@ -264,6 +264,21 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         addAndMakeVisible(button);
         button.setVisible(false);
     }
+    limiterMore.setTooltip("Reveal additional original limiter settings. Saved presets and automation stay unchanged.");
+    limiterMore.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
+    limiterMore.setColour(juce::TextButton::textColourOffId,Theme::green);
+    limiterMore.onClick=[this]{
+        limiterDetailsVisible=!limiterDetailsVisible;
+        limiterMore.setButtonText(limiterDetailsVisible?"LESS":"MORE");
+        limiterMore.setColour(juce::TextButton::buttonColourId,
+            limiterDetailsVisible?Theme::green.withAlpha(.20f):Theme::panelAlt);
+        limiterMore.setColour(juce::TextButton::textColourOffId,
+            limiterDetailsVisible?Theme::green:Theme::white);
+        updateLimiterCompactVisibility();
+        repaint();
+    };
+    addAndMakeVisible(limiterMore);
+    limiterMore.setVisible(false);
     for(int page=0;page<4;++page) {
         auto& button=suitePageButtons[(size_t)page];
         constexpr const char* captions[]{"VOICE + TONE","DE-ESS + COMP",
@@ -960,6 +975,10 @@ void SlotEditor::applyTheme() {
     duckClose.setColour(juce::TextButton::textColourOffId,Theme::white);
     duckOn.setColour(juce::ToggleButton::textColourId,Theme::white);
     duckPanel.repaint();
+    limiterMore.setColour(juce::TextButton::buttonColourId,
+        limiterDetailsVisible?Theme::green.withAlpha(.20f):Theme::panelAlt);
+    limiterMore.setColour(juce::TextButton::textColourOffId,
+        limiterDetailsVisible?Theme::green:Theme::white);
     for(int page=0;page<4;++page) {
         auto& button=suitePageButtons[(size_t)page];
         button.setColour(juce::TextButton::buttonColourId,
@@ -1090,6 +1109,18 @@ void SlotEditor::showMatchPage(int page) {
     graphSnapshotValid=false;
     repaint();
 }
+void SlotEditor::updateLimiterCompactVisibility() {
+    const bool limiter=processor.slotType(slot)==SkellPresetAudioProcessor::StudioLimiterFX;
+    limiterMore.setVisible(limiter);
+    if(!limiter)return;
+    // The first two real controls remain on the face. The other two and
+    // ninth gate-floor control are available under MORE, never deleted
+    // from the APVTS or factory preset state.
+    knobs[2].setVisible(limiterDetailsVisible);
+    knobs[3].setVisible(limiterDetailsVisible);
+    studioGateFloor.setVisible(limiterDetailsVisible);
+    limiterMore.setButtonText(limiterDetailsVisible?"LESS":"MORE");
+}
 void SlotEditor::showLimiterPage(int page) {
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioLimiterFX)return;
     limiterPage=juce::jlimit(0,1,page);
@@ -1107,7 +1138,9 @@ void SlotEditor::showLimiterPage(int page) {
         button.setColour(juce::TextButton::textColourOffId,
             i==limiterPage?Theme::green:Theme::white);
     }
-    applyKnobReadouts();graphSnapshotValid=false;repaint();
+    applyKnobReadouts();
+    updateLimiterCompactVisibility();
+    graphSnapshotValid=false;repaint();
 }
 void SlotEditor::showSuitePage(int page) {
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::VocalFeelSuiteFX)return;
@@ -1331,6 +1364,8 @@ bool SlotEditor::testAdlibControls() {
 bool SlotEditor::testStudioLimiterPages() {
     const int previousType=processor.slotType(slot);
     const int physical=slot;
+    const bool savedLimiterDetails=limiterDetailsVisible;
+    limiterDetailsVisible=false;
     std::array<float,9> original{};
     for(int i=0;i<9;++i)original[(size_t)i]=processor.getSlotParam(slot,i);
     processor.setSlotType(slot,SkellPresetAudioProcessor::StudioLimiterFX);
@@ -1339,7 +1374,13 @@ bool SlotEditor::testStudioLimiterPages() {
     processor.setSlotParam(slot,5,.61f);
     select(slot);
     const bool first=limiterPage==0 && limiterPageButtons[0].isVisible() &&
-        studioGateFloor.isVisible() && std::abs(knobs[0].getValue()-.89)<.01 &&
+        limiterMore.isVisible() && !studioGateFloor.isVisible() &&
+        knobs[0].isVisible() && knobs[1].isVisible() &&
+        !knobs[2].isVisible() && !knobs[3].isVisible() &&
+        std::abs(knobs[0].getValue()-.89)<.01;
+    limiterMore.onClick();
+    const bool expanded=studioGateFloor.isVisible() &&
+        knobs[2].isVisible() && knobs[3].isVisible() &&
         knobs[2].getTextFromValue(1.).contains("dBFS") &&
         knobs[3].getTextFromValue(0.)=="1.0:1" &&
         knobs[3].getTextFromValue(1.)=="20.0:1";
@@ -1359,10 +1400,15 @@ bool SlotEditor::testStudioLimiterPages() {
     const bool controlled=std::abs(processor.getSlotParam(slot,4)-.36f)<.01f;
     studioGateFloor.setValue(.44,juce::sendNotificationSync);
     const bool floor=std::abs(processor.getSlotParam(slot,8)-.44f)<.01f;
+    limiterMore.onClick();
+    const bool collapsedAgain=!knobs[2].isVisible() &&
+        !studioGateFloor.isVisible();
     processor.setSlotType(physical,previousType);
     for(int i=0;i<9;++i)processor.setSlotParam(physical,i,original[(size_t)i]);
+    limiterDetailsVisible=savedLimiterDetails;
     select(physical);
-    return first&&second&&noHiddenMutation&&controlled&&floor;
+    updateLimiterCompactVisibility();
+    return first&&expanded&&second&&noHiddenMutation&&controlled&&floor&&collapsedAgain;
 }
 bool SlotEditor::testMatchFinishPages() {
     processor.setSlotType(0,SkellPresetAudioProcessor::AlchemistMatchFinishFX);
@@ -1658,6 +1704,7 @@ void SlotEditor::refreshIfChanged() {
     syncStudioEqNodeButtons();
     for(auto& button:matchPageButtons)button.setVisible(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX);
     for(auto& button:limiterPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
+    limiterMore.setVisible(type==SkellPresetAudioProcessor::StudioLimiterFX);
     for(auto& button:delayPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioDelayFX);
     for(auto& button:suitePageButtons)button.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
     vocalFeelStyleButton.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
@@ -1675,6 +1722,7 @@ void SlotEditor::refreshIfChanged() {
             ?juce::String("Reserved automation parameter; no audible DSP")
             :titles(type)[(size_t)i]+" / drag, wheel, or type a value");
     }
+    updateLimiterCompactVisibility();
     repaint();
 }
 void SlotEditor::resized() {
@@ -1690,6 +1738,7 @@ void SlotEditor::resized() {
     matchPageButtons[2].setBounds(754,72,112,23);
     limiterPageButtons[0].setBounds(62,106,113,26);
     limiterPageButtons[1].setBounds(183,106,124,26);
+    limiterMore.setBounds(319,106,78,26);
     for(int page=0;page<4;++page) {
         delayPageButtons[(size_t)page].setBounds(45+page*150,106,142,26);
         suitePageButtons[(size_t)page].setBounds(45+page*144,106,136,27);
@@ -1740,6 +1789,15 @@ bool SlotEditor::testPopupLayoutsForTest() const {
     for(const auto* child:duckControls)
         if(!duckPanel.getLocalBounds().contains(child->getBounds()))return false;
     if(vocalFeelStyleButton.getBounds().intersects(suitePageButtons[3].getBounds()))
+        return false;
+    const auto metadata=juce::Rectangle<int>{47,383,811,17};
+    const auto graph=juce::Rectangle<int>{33,151,835,206};
+    if(!bounds.contains(metadata) || metadata.intersects(graph) ||
+       metadata.intersects(knobs[0].getBounds()) ||
+       limiterMore.getBounds().intersects(limiterPageButtons[0].getBounds()) ||
+       limiterMore.getBounds().intersects(limiterPageButtons[1].getBounds()) ||
+       !bounds.contains(limiterMore.getBounds()) ||
+       eqQSlider.getBounds().intersects(eqBandButtons[7].getBounds()))
         return false;
     for(int i=0;i<4;++i)
         for(int j=i+1;j<4;++j)
@@ -3344,6 +3402,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(type!=SkellPresetAudioProcessor::Empty &&
        type!=SkellPresetAudioProcessor::ExternalVST3) {
         for(int k=0;k<4;++k) {
+            if(!knobs[(size_t)k].isVisible())continue;
             const float x=156.f+(k%2)*430.f;
             const float y=406.f+(k/2)*57.f;
             const juce::Rectangle<float> card{x,y,276.f,42.f};
@@ -3461,13 +3520,18 @@ void SlotEditor::paint(juce::Graphics&g) {
                      " dB  /  "+juce::String(1.f+11.f*processor.getSlotParam(slot,1),1)+
                      ":1  /  "+juce::String(18.f*processor.getSlotParam(slot,2),1)+" dB KNEE";
     }
-    // 8-band EQ owns the 96..148px header for its band selectors and
-    // filter controls. Don't draw duplicate effect headings over them.
-    if(effectTitle.isNotEmpty() && type!=SkellPresetAudioProcessor::EightBandToneFX){
-        const int titleWidth=SkellPresetAudioProcessor::supportsWetSidechain(type)
-            ?645:730;
-        Theme::fittedText(g,effectTitle,{47,103,titleWidth,22},14,Theme::green,true);
-        Theme::fittedText(g,effectDetail,{47,128,755,18},12,Theme::muted);
+    // The module name is already the main heading at y=29. Repeating an
+    // uppercase effect title at y=103 overlapped EQ band tabs, the Q slider,
+    // limiter/delay page selectors and the sidechain control (reported by
+    // the real Studio EQ screenshot). ALL effects instead share one quiet
+    // secondary hint in the dedicated 380–402px metadata lane BELOW the
+    // 151–357px live graph and ABOVE the 411px parameter controls.
+    if(effectDetail.isNotEmpty()) {
+        Theme::fittedText(g,effectDetail,{47,383,811,17},10.f,
+                          Theme::muted,false,juce::Justification::centredLeft);
+    } else if(effectTitle.isNotEmpty()) {
+        Theme::fittedText(g,effectTitle,{47,383,811,17},10.f,
+                          Theme::muted,false,juce::Justification::centredLeft);
     }
     if(type==SkellPresetAudioProcessor::Compressor ||
        type==SkellPresetAudioProcessor::Gate ||
@@ -3486,7 +3550,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(isPagedEQ(type)) {
         Theme::text(g,"BAND "+juce::String(activeEqBand+1)+
                     (type==SkellPresetAudioProcessor::StudioEQFX?" WIDTH":" Q"),
-                    {680,96,172,17},11,Theme::green,true);
+                    {680,96,172,17},10.5f,Theme::green,true);
         if(type==SkellPresetAudioProcessor::EightBandToneFX) {
             Theme::text(g,"LOW CUT",{20,127,55,16},10.5f,Theme::amber,true);
             Theme::text(g,"HIGH CUT",{342,127,80,16},10.5f,Theme::amber,true);

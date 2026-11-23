@@ -70,8 +70,11 @@ private:
     bool categoryCountsDirty=true;
     void refreshCategoryCounts();
     bool detailsOpen=false;
+    bool mainAdlibs=false; // subcategory nested under Main Vocals, not a bank/dropdown
+    int adlibsCount=0; // cached on message thread with other category counts
     void showDetails(bool open);
     void chooseBank(int index);
+    void chooseAdlibs();
     void focusCard(int index);
     juce::StringArray favoriteKeys; // sidecar only; not in VST3 state or preset ZIP
     juce::StringArray artistKeys,artistNames; // user library sidecar, never audio state

@@ -7,15 +7,18 @@
 #include <array>
 
 namespace {
-// Retired dedicated Ad-libs factory page; preserve every historical preset ID.
+// Direct Main Vocals > Adlibs submenu: no fifth top-level library bank.
+ // Historical factory IDs and personal genre tags remain unchanged.
 const juce::StringArray banks{"Main Vocals","My Presets","Artists","Favorites"};
 constexpr int alchemistIndex=skellpreset::alchemist::factoryIndex;
 constexpr int deuceIndex=skellpreset::deuce_v25::factoryIndex;
 // One shared geometry model for painting, click hit-testing and UI regression.
 // The three genres have a visible MANUAL heading and never overlap controls.
 juce::Rectangle<int> bankBounds(int index) noexcept {
-    return {17,109+index*38,168,33};
+    // Reserve one indented 33px row beneath Main Vocals for ADLIBS.
+    return {17,109+(index==0?0:38+index*38),168,33};
 }
+juce::Rectangle<int> adlibsBounds() noexcept {return {30,147,155,31};}
 juce::String singlePreviewName(int entry) {
     if(entry==alchemistIndex)return "ALCHEMIST";
     if(entry==deuceIndex)return "DEUCE";
@@ -325,7 +328,7 @@ bool PresetBrowser::copyToLibrary(const juce::File& source) {
 void PresetBrowser::open() {
     scanLibrary();loadFavorites();loadArtists();
     loadCustomCategories();refreshGenreChoices();loadGenres();refreshArtwork();
-    bank=0;scroll=0;hoveredCard=-1;keyboardCard=-1;
+    bank=0;mainAdlibs=false;scroll=0;hoveredCard=-1;keyboardCard=-1;
     genreFilter.setSelectedId(1,juce::dontSendNotification);
     // Preserve the user's in-session display sort without saving DAW state.
     showDetails(false);
@@ -342,9 +345,16 @@ void PresetBrowser::showDetails(bool openDetails) {
 }
 void PresetBrowser::chooseBank(int index){
     if(index<0 || index>=banks.size())return;
-    bank=index;scroll=0;hoveredCard=-1;keyboardCard=-1;
+    bank=index;mainAdlibs=false;
+    scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
     // Factory Main Vocals are not hidden by a previous user genre filter.
     if(bank==0)genreFilter.setSelectedId(1,juce::dontSendNotification);
+    repaint();
+}
+void PresetBrowser::chooseAdlibs(){
+    bank=0;mainAdlibs=true;
+    scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
+    genreFilter.setSelectedId(1,juce::dontSendNotification);
     repaint();
 }
 void PresetBrowser::focusCard(int index){
@@ -548,7 +558,11 @@ void PresetBrowser::refreshGenreChoices() {
     for(const auto* label:{"Rage","Indie","R&B","Ad-libs"}){
         const int id=genrePicker.getNumItems()+1;
         genrePicker.addItem(label,id);
-        genreFilter.addItem(label,id+1);
+        // Adlibs is navigated directly under Main Vocals. Keep its
+        // existing Edit Details genre tag for personal preset migration,
+        // but do not duplicate the sound in the filter dropdown.
+        if(juce::String(label)!="Ad-libs")
+            genreFilter.addItem(label,id+1);
     }
     for(const auto& label:customCategories){
         const int id=genrePicker.getNumItems()+1;
@@ -746,6 +760,7 @@ void PresetBrowser::toggleFavorite(int entry) {
 }
 bool PresetBrowser::testBrowserSortingForTest(){
     const int oldBank=bank,oldScroll=scroll,oldMode=sortPicker.getSelectedId();
+    const bool oldMainAdlibs=mainAdlibs;
     const auto oldQuery=search.getText();
     const auto oldFilter=genreFilter.getText();
     const auto oldFavorites=favoriteKeys;
@@ -774,13 +789,14 @@ bool PresetBrowser::testBrowserSortingForTest(){
         if(genreFilter.getItemText(i)==oldFilter)
             genreFilter.setSelectedId(genreFilter.getItemId(i),juce::dontSendNotification);
     sortPicker.setSelectedId(oldMode,juce::dontSendNotification);
-    bank=oldBank;scroll=oldScroll;repaint();
+    bank=oldBank;mainAdlibs=oldMainAdlibs;scroll=oldScroll;repaint();
     return asc && desc && starred;
 }
 bool PresetBrowser::testBrowserKeyboardForTest(){
     // Synthetic library entries are never loaded or written to disk.
     const int oldBank=bank,oldScroll=scroll,oldHover=hoveredCard,
         oldFocus=keyboardCard;
+    const bool oldMainAdlibs=mainAdlibs;
     const auto oldSearch=search.getText();
     const auto oldFilter=genreFilter.getText();
     const bool oldDetails=detailsOpen;
@@ -808,8 +824,8 @@ bool PresetBrowser::testBrowserKeyboardForTest(){
     keyPressed(juce::KeyPress(juce::KeyPress::rightKey,unmodified,0));
     const bool right=bank==1;
     userPresets.resize(oldCount);
-    bank=oldBank;scroll=oldScroll;hoveredCard=oldHover;
-    keyboardCard=oldFocus;
+    bank=oldBank;mainAdlibs=oldMainAdlibs;
+    scroll=oldScroll;hoveredCard=oldHover;keyboardCard=oldFocus;
     search.setText(oldSearch,juce::dontSendNotification);
     genreFilter.setSelectedId(1,juce::dontSendNotification);
     for(int i=0;i<genreFilter.getNumItems();++i)
@@ -851,9 +867,11 @@ bool PresetBrowser::testBrowserLayoutForTest() {
                    widgets[i]->getBounds().intersects(widgets[j]->getBounds()))
                     return false;
         }
+        if(!bounds.contains(adlibsBounds()))return false;
         for(int i=0;i<banks.size();++i) {
             const auto category=bankBounds(i);
             if(!bounds.contains(category))return false;
+            if(category.intersects(adlibsBounds()))return false;
             if(!expanded) {
                 for(const auto* widget:widgets)
                     if(widget->isVisible() &&
@@ -871,6 +889,8 @@ bool PresetBrowser::testBrowserLayoutForTest() {
 }
 bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const int oldBank=bank,oldScroll=scroll;
+    const bool oldMainAdlibs=mainAdlibs;
+    mainAdlibs=false;
     const auto oldQuery=search.getText();
     const auto oldFilter=genreFilter.getText();
     const auto oldArtistKeys=artistKeys,oldArtists=artistNames;
@@ -883,6 +903,20 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const auto main=filtered();
     const bool approvedOnly=main.size()==2 &&
         main[0]==alchemistIndex && main[1]==deuceIndex;
+    mainAdlibs=true;
+    const auto adlibs=filtered();
+    int expectedAdlibs=0;
+    for(int i=0;i<alchemistIndex;++i)
+        if(juce::String(skellpreset::factoryPresets[(size_t)i].bank)
+              .equalsIgnoreCase("Adlibs"))++expectedAdlibs;
+    const bool factorySubmenu=expectedAdlibs>0 &&
+        (int)adlibs.size()==expectedAdlibs &&
+        std::all_of(adlibs.begin(),adlibs.end(),[](int entry){
+            return entry>=0 && entry<alchemistIndex &&
+                juce::String(skellpreset::factoryPresets[(size_t)entry].bank)
+                   .equalsIgnoreCase("Adlibs");
+        });
+    mainAdlibs=false;
     bank=1;
     const auto personal=filtered();
     const bool personalOnly=std::all_of(personal.begin(),personal.end(),
@@ -897,8 +931,11 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const auto favorites=filtered();
     const bool favoritesOnly=std::all_of(favorites.begin(),favorites.end(),
         [this](int entry){
-            return isFavorite(entry) &&
-                (entry<0 || entry==alchemistIndex || entry==deuceIndex);
+            if(!isFavorite(entry))return false;
+            return entry<0 || entry==alchemistIndex || entry==deuceIndex ||
+                (entry>=0 && entry<alchemistIndex &&
+                 juce::String(skellpreset::factoryPresets[(size_t)entry].bank)
+                     .equalsIgnoreCase("Adlibs"));
         });
 
     // A saved user preset may still have an Ad-libs genre tag. Removing
@@ -924,15 +961,22 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const auto favoriteHits=filtered();
     const bool favoritePreserved=std::find(favoriteHits.begin(),
         favoriteHits.end(),entry)!=favoriteHits.end();
-    bank=1;search.setText({},juce::dontSendNotification);
-    int tagId=1;
-    for(int i=0;i<genreFilter.getNumItems();++i)
-        if(genreFilter.getItemText(i)=="Ad-libs")
-            tagId=genreFilter.getItemId(i);
-    genreFilter.setSelectedId(tagId,juce::dontSendNotification);
+    bank=0;mainAdlibs=true;
+    search.setText({},juce::dontSendNotification);
+    genreFilter.setSelectedId(1,juce::dontSendNotification);
     const auto tagged=filtered();
-    const bool taggedPreserved=tagId>1 &&
-        std::find(tagged.begin(),tagged.end(),entry)!=tagged.end();
+    const bool taggedPreserved=std::find(tagged.begin(),tagged.end(),entry)
+        !=tagged.end();
+    mainAdlibs=false;bank=1;
+    // The editable personal tag remains in Edit Details, but Adlibs
+    // is no longer a genre-filter dropdown duplicate.
+    bool tagEditable=false,filterDuplicate=false;
+    for(int i=0;i<genrePicker.getNumItems();++i)
+        tagEditable=tagEditable ||
+            genrePicker.getItemText(i).equalsIgnoreCase("Ad-libs");
+    for(int i=0;i<genreFilter.getNumItems();++i)
+        filterDuplicate=filterDuplicate ||
+            genreFilter.getItemText(i).equalsIgnoreCase("Ad-libs");
 
     bool knownGenres=true;
     for(const auto& name:juce::StringArray{"Rage","Indie","R&B"}) {
@@ -971,12 +1015,13 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     for(int i=0;i<genreFilter.getNumItems();++i)
         if(genreFilter.getItemText(i)==oldFilter)
             genreFilter.setSelectedId(genreFilter.getItemId(i),juce::dontSendNotification);
-    bank=oldBank;scroll=oldScroll;
+    bank=oldBank;mainAdlibs=oldMainAdlibs;scroll=oldScroll;
     search.setText(oldQuery,juce::dontSendNotification);
     categoryCountsDirty=true;
-    return banks.size()==4 && approvedOnly && personalOnly &&
-        artistsOnly && favoritesOnly && personalPreserved &&
+    return banks.size()==4 && approvedOnly && factorySubmenu &&
+        personalOnly && artistsOnly && favoritesOnly && personalPreserved &&
         artistPreserved && favoritePreserved && taggedPreserved &&
+        tagEditable && !filterDuplicate &&
         knownGenres && customPreserved && untaggedPreserved;
 }
 std::vector<int> PresetBrowser::filtered() const {
@@ -986,8 +1031,8 @@ std::vector<int> PresetBrowser::filtered() const {
     const bool genreActive=genreFilter.getSelectedId()>1;
     const auto selectedGenre=genreFilter.getText();
 
-    if((bank==0 || bank==3) && (!genreActive || bank==0)) {
-        // Keep the exact approved factory whitelist; no hidden trial sounds.
+    if((bank==0 && !mainAdlibs || bank==3) && (!genreActive || bank==0)) {
+        // Only Alchemist and Deuce appear in the Main lead-vocal list.
         for(const int i:{alchemistIndex,deuceIndex}) {
             if(i<0 || i>=(int)skellpreset::factoryPresets.size())continue;
             const auto& item=skellpreset::factoryPresets[(size_t)i];
@@ -1011,8 +1056,55 @@ std::vector<int> PresetBrowser::filtered() const {
             if(found)list.push_back(i);
         }
     }
-    // Historical factory Adlibs sounds remain in the binary for old projects
-    // but are not offered in the four-section preset browser.
+    // A direct, indented ADLIBS section lives UNDER Main Vocals. Factory
+    // program indices remain exactly as released; no preset file changes.
+    // Favorites can also display explicitly starred factory Adlibs.
+    if((bank==0 && mainAdlibs) || (bank==3 && !genreActive)){
+        for(int i=0;i<alchemistIndex;++i){
+            const auto& item=skellpreset::factoryPresets[(size_t)i];
+            if(!juce::String(item.bank).equalsIgnoreCase("Adlibs"))continue;
+            const juce::String name(item.name),description(item.description);
+            bool found=q.isEmpty() || name.containsIgnoreCase(q) ||
+                description.containsIgnoreCase(q) ||
+                juce::String("Adlibs").containsIgnoreCase(q);
+            if(q.startsWith("bank:"))
+                found=juce::String("Adlibs").containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("artist:") || q.startsWith("genre:") ||
+               q.startsWith("author:") || q.startsWith("match:"))found=false;
+            if(q.startsWith("fav:")){
+                const auto term=q.fromFirstOccurrenceOf(":",false,false).trim();
+                found=term.isEmpty() || name.containsIgnoreCase(term);
+            }
+            if(favoritesOnly && !isFavorite(i))found=false;
+            if(found)list.push_back(i);
+        }
+    }
+    // Existing personal sounds tagged Ad-libs also appear directly beneath
+    // Main Vocals. The original user tag is read-only here and remains
+    // editable under Edit Details > Category, not via a genre filter.
+    if(bank==0 && mainAdlibs){
+        for(int i=0;i<(int)userPresets.size();++i){
+            if(!genreForUser(i).equalsIgnoreCase("Ad-libs"))continue;
+            const auto label=userPresets[(size_t)i].getFileNameWithoutExtension();
+            const auto artist=artistForUser(i);
+            bool found=q.isEmpty() || label.containsIgnoreCase(q) ||
+                artist.containsIgnoreCase(q) ||
+                juce::String("Adlibs").containsIgnoreCase(q);
+            if(q.startsWith("artist:"))
+                found=artist.containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("bank:"))
+                found=juce::String("Adlibs").containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("genre:"))
+                found=juce::String("Ad-libs").containsIgnoreCase(
+                    q.fromFirstOccurrenceOf(":",false,false).trim());
+            if(q.startsWith("fav:") || q.startsWith("tag:") ||
+               q.startsWith("match:"))found=false;
+            if(found)list.push_back(-i-1);
+        }
+    }
     if(bank>=1) {
         for(int i=0;i<(int)userPresets.size();++i) {
             const auto label=userPresets[(size_t)i].getFileNameWithoutExtension();
@@ -1165,10 +1257,18 @@ void PresetBrowser::chooseArtwork() {
 }
 void PresetBrowser::refreshCategoryCounts(){
     int artists=0,favorites=0;
+    adlibsCount=0;
     if(isFavorite(alchemistIndex))++favorites;
     if(isFavorite(deuceIndex))++favorites;
+    for(int i=0;i<alchemistIndex;++i){
+        if(!juce::String(skellpreset::factoryPresets[(size_t)i].bank)
+               .equalsIgnoreCase("Adlibs"))continue;
+        ++adlibsCount;
+        if(isFavorite(i))++favorites;
+    }
     for(int i=0;i<(int)userPresets.size();++i){
         if(artistForUser(i).isNotEmpty())++artists;
+        if(genreForUser(i).equalsIgnoreCase("Ad-libs"))++adlibsCount;
         if(isFavorite(-i-1))++favorites;
     }
     categoryCounts={{2,(int)userPresets.size(),artists,favorites}};
@@ -1177,10 +1277,16 @@ void PresetBrowser::refreshCategoryCounts(){
 bool PresetBrowser::testCategoryCountsForTest(){
     refreshCategoryCounts();
     const int size=(int)userPresets.size();
+    int factoryAdlibs=0;
+    for(int i=0;i<alchemistIndex;++i)
+        if(juce::String(skellpreset::factoryPresets[(size_t)i].bank)
+               .equalsIgnoreCase("Adlibs"))++factoryAdlibs;
     return !categoryCountsDirty && categoryCounts[0]==2 &&
         categoryCounts[1]==size &&
         categoryCounts[2]>=0 && categoryCounts[2]<=size &&
-        categoryCounts[3]>=0 && categoryCounts[3]<=size+2;
+        categoryCounts[3]>=0 && categoryCounts[3]<=size+2+factoryAdlibs &&
+        adlibsCount>=factoryAdlibs &&
+        adlibsCount<=factoryAdlibs+size;
 }
 void PresetBrowser::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
@@ -1205,7 +1311,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         Theme::text(g,"CATEGORIES",{19,312,166,16},10.2f,Theme::muted,true);
         for(int i=0;i<banks.size();++i){
             const auto b=bankBounds(i).toFloat();
-            const bool selected=i==bank;
+            const bool selected=i==bank && (i!=0 || !mainAdlibs);
             g.setColour(selected?Theme::green.withAlpha(.14f):Theme::panel);
             g.fillRoundedRectangle(b,6.f);
             g.setColour(selected?Theme::green.withAlpha(.78f):Theme::stroke.withAlpha(.75f));
@@ -1219,6 +1325,21 @@ void PresetBrowser::paint(juce::Graphics&g) {
                 selected?Theme::green:Theme::muted,true,
                 juce::Justification::centredRight);
         }
+        const auto sub=adlibsBounds().toFloat();
+        g.setColour(mainAdlibs?Theme::green.withAlpha(.15f):
+                              Theme::panelAlt.withAlpha(.47f));
+        g.fillRoundedRectangle(sub,5.f);
+        g.setColour(mainAdlibs?Theme::green.withAlpha(.68f):
+                              Theme::stroke.withAlpha(.45f));
+        g.drawRoundedRectangle(sub.reduced(.5f),5.f,.85f);
+        g.setColour(Theme::green.withAlpha(mainAdlibs?.85f:.26f));
+        g.drawLine(33.f,147.f,33.f,162.f,1.f);
+        g.drawLine(33.f,162.f,41.f,162.f,1.f);
+        Theme::text(g,"ADLIBS",{46,152,91,19},10.7f,
+            mainAdlibs?Theme::white:Theme::muted,mainAdlibs);
+        Theme::text(g,juce::String(adlibsCount),{144,153,29,17},
+            10.f,mainAdlibs?Theme::green:Theme::muted,true,
+            juce::Justification::centredRight);
     } else {
         Theme::text(g,"ARTIST",{19,159,166,17},10.f,Theme::muted,true);
         Theme::text(g,"CATEGORY",{19,264,166,17},10.f,Theme::muted,true);
@@ -1454,6 +1575,9 @@ void PresetBrowser::auditionEntry(int entry) {
 }
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(!detailsOpen && e.x>=17 && e.x<185){
+        if(adlibsBounds().contains(e.getPosition())){
+            chooseAdlibs();grabKeyboardFocus();return;
+        }
         for(int index=0;index<banks.size();++index)
             if(bankBounds(index).contains(e.getPosition())) {
                 chooseBank(index);grabKeyboardFocus();return;

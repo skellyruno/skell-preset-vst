@@ -77,12 +77,12 @@ public:
             refresh();
         };
         addAndMakeVisible(gateEnabled);
-        gateAdvanced.setButtonText("MORE CONTROLS");
+        gateAdvanced.setButtonText("MORE");
         gateAdvanced.setTooltip("Show attack, hold and hysteresis without changing their stored values");
         gateAdvanced.onClick=[this]{
             advancedGate=!advancedGate;
             updateGateVisibility();
-            if(getWidth()>=340 && getHeight()>=345)resized();
+            if(getWidth()>=312 && getHeight()>=308)resized();
             repaint();
         };
         addAndMakeVisible(gateAdvanced);
@@ -200,17 +200,17 @@ public:
         updateGateVisibility();
         // Constructor calls showPage() before JUCE assigns panel bounds.
         // Never set negative slider widths during zero-size startup.
-        if(getWidth()>=340 && getHeight()>=345)resized();
+        if(getWidth()>=312 && getHeight()>=308)resized();
         refresh();
     }
     void updateGateVisibility() {
         gateThreshold.setVisible(gatePage);
         gateRelease.setVisible(gatePage);
-        gateDepth.setVisible(gatePage);
+        gateDepth.setVisible(gatePage && advancedGate);
         gateAttack.setVisible(gatePage && advancedGate);
         gateHold.setVisible(gatePage && advancedGate);
         gateHysteresis.setVisible(gatePage && advancedGate);
-        gateAdvanced.setButtonText(advancedGate?"LESS CONTROLS":"MORE CONTROLS");
+        gateAdvanced.setButtonText(advancedGate?"LESS":"MORE");
     }
     bool hasBeenMoved() const noexcept {return movedByUser;}
     void visibilityChanged() override {
@@ -235,9 +235,9 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override {
         if(resizing) {
             if(auto* parent=getParentComponent()){
-                const int w=juce::jlimit(340,juce::jmin(490,parent->getWidth()-12),
+                const int w=juce::jlimit(312,juce::jmin(440,parent->getWidth()-12),
                     resizeStart.getWidth()+e.getDistanceFromDragStartX());
-                const int h=juce::jlimit(345,juce::jmin(430,parent->getHeight()-12),
+                const int h=juce::jlimit(308,juce::jmin(400,parent->getHeight()-12),
                     resizeStart.getHeight()+e.getDistanceFromDragStartY());
                 const int x=juce::jlimit(0,parent->getWidth()-w,resizeStart.getX());
                 const int y=juce::jlimit(0,parent->getHeight()-h,resizeStart.getY());
@@ -348,31 +348,32 @@ public:
     }
     void resized() override {
         const int w=getWidth();
-        close.setBounds(w-35,9,25,25);
-        enabled.setBounds(w-102,9,57,25);
-        modelTab.setBounds(16,51,(w-42)/2,28);
-        gateTab.setBounds(22+(w-42)/2,51,(w-42)/2,28);
-        input.setBounds(16,106,w-32,29);
-        sourceMenu.setBounds(16,139,w-32,118);
-        const int cardWidth=(w-46)/2;
+        // Compact 324x320 default; source/model remains movable and resizable.
+        // All advanced controls retain their original APVTS attachments.
+        close.setBounds(w-32,7,23,23);
+        enabled.setBounds(w-91,7,51,23);
+        modelTab.setBounds(12,38,(w-28)/2,26);
+        gateTab.setBounds(16+(w-28)/2,38,(w-28)/2,26);
+        input.setBounds(12,90,w-24,27);
+        sourceMenu.setBounds(12,120,w-24,115);
+        const int cardWidth=(w-36)/2;
         for(int i=0;i<4;++i)
-            simulations[(size_t)i].setBounds(16+(i%2)*(cardWidth+14),
-                                              171+(i/2)*45,cardWidth,38);
-        const int lower=juce::jmax(266,getHeight()-84);
-        amount.setBounds(85,lower,w-101,25);
-        trim.setBounds(85,lower+40,w-101,25);
-        gateEnabled.setBounds(w-92,105,64,29);
-        gateAdvanced.setBounds(16,105,142,29);
+            simulations[(size_t)i].setBounds(12+(i%2)*(cardWidth+12),
+                                             148+(i/2)*37,cardWidth,32);
+        amount.setBounds(77,235,w-89,25);
+        trim.setBounds(77,269,w-89,25);
+        gateEnabled.setBounds(w-79,88,62,27);
+        gateAdvanced.setBounds(12,88,82,27);
         if(advancedGate) {
-            juce::Slider* knobs[]{&gateThreshold,&gateAttack,&gateHold,
-                                  &gateRelease,&gateHysteresis,&gateDepth};
-            for(int i=0;i<6;++i)knobs[i]->setBounds(114,143+29*i,w-130,25);
+            juce::Slider* controls[]{&gateThreshold,&gateAttack,&gateHold,
+                                    &gateRelease,&gateHysteresis,&gateDepth};
+            for(int i=0;i<6;++i)
+                controls[i]->setBounds(102,129+27*i,w-114,24);
         } else {
-            gateThreshold.setBounds(114,164,w-130,30);
-            gateRelease.setBounds(114,214,w-130,30);
-            gateDepth.setBounds(114,264,w-130,30);
-            for(auto* slider:{&gateAttack,&gateHold,&gateHysteresis})
-                slider->setBounds(0,0,0,0);
+            gateThreshold.setBounds(102,149,w-114,27);
+            gateRelease.setBounds(102,198,w-114,27);
+            for(auto* control:{&gateAttack,&gateHold,&gateHysteresis,&gateDepth})
+                control->setBounds(0,0,0,0);
         }
     }
     void paint(juce::Graphics& g) override {
@@ -380,65 +381,48 @@ public:
         Theme::panelBox(g,getLocalBounds().toFloat(),10.f);
         g.setColour(Theme::green.withAlpha(.62f));
         g.fillRoundedRectangle({13.f,13.f,3.f,17.f},1.f);
-        Theme::text(g,"MIC INPUT  /  FRONT-END",{25,9,getWidth()-143,27},15.5f,Theme::white,true);
-        Theme::text(g,"INPUT STUDIO  /  DRAG TO MOVE",{17,36,getWidth()-34,14},9.4f,Theme::muted);
+        Theme::text(g,"MIC  /  INPUT STUDIO",{22,7,getWidth()-135,23},
+                    13.4f,Theme::white,true);
+        // The title bar itself is draggable; avoid redundant caption text
+        // colliding with the source label in this compact layout.
         if(gatePage){
-            Theme::fittedText(g,"STEREO-LINKED  /  ZERO ADDED LATENCY",
-                {17,85,getWidth()-34,16},10.3f,Theme::muted,true);
             if(advancedGate) {
                 constexpr const char* labels[]{"THRESHOLD","ATTACK","HOLD",
-                                               "RELEASE","HYSTERESIS","REDUCTION"};
+                                               "RELEASE","HYSTERESIS","DEPTH"};
                 for(int i=0;i<6;++i)
-                    Theme::fittedText(g,labels[i],{17,144+29*i,94,22},
-                        10.6f,Theme::white,true,
-                        juce::Justification::centredLeft);
+                    Theme::fittedText(g,labels[i],{14,129+27*i,84,23},
+                        10.f,Theme::white,true);
             } else {
-                constexpr const char* labels[]{"THRESHOLD","RELEASE","REDUCTION"};
-                for(int i=0;i<3;++i)
-                    Theme::fittedText(g,labels[i],{17,167+50*i,94,22},
-                        11.3f,Theme::white,true,
-                        juce::Justification::centredLeft);
+                Theme::text(g,"THRESHOLD",{14,150,87,22},10.5f,
+                            Theme::white,true);
+                Theme::text(g,"RELEASE",{14,199,87,22},10.5f,
+                            Theme::white,true);
             }
-            Theme::fittedText(g,"NO AUTO MODE / ADVANCED SETTINGS PRESERVED",
-                {16,getHeight()-27,getWidth()-44,16},9.f,Theme::muted);
+            Theme::fittedText(g,"ADVANCED SETTINGS PRESERVED",
+                {13,getHeight()-17,getWidth()-26,13},8.5f,Theme::muted);
         } else {
-        Theme::text(g,"INPUT MICROPHONE",{16,87,188,18},11.5f,Theme::white,true);
+        Theme::text(g,"SOURCE",{13,75,100,14},10.3f,Theme::muted,true);
         const juce::StringArray descriptions{
             "FLAT","WARM","FOCUS","AIR"};
         const auto* rawTarget=processor.state.getRawParameterValue("micPreTarget");
         const int target=rawTarget?juce::jlimit(0,3,(int)rawTarget->load()):0;
-        // The old target description at y=212 covered AMOUNT at compact
-        // heights. Keep active-model feedback beside SIMULATE instead.
-        Theme::text(g,"MODEL",{16,151,80,18},11.5f,Theme::white,true);
-        Theme::fittedText(g,descriptions[target]+" MODEL",
-                          {getWidth()-153,151,132,18},11.4f,Theme::green,true,
+        Theme::text(g,"MODEL",{13,125,72,16},10.3f,
+                    Theme::muted,true);
+        Theme::fittedText(g,descriptions[target],
+                          {getWidth()-117,125,100,16},10.f,Theme::green,true,
                           juce::Justification::centredRight);
-        const int lower=juce::jmax(266,getHeight()-84);
-        Theme::text(g,"AMOUNT",{16,lower,70,23},11.4f,Theme::white,true);
-        Theme::text(g,"TRIM",{16,lower+40,62,23},11.4f,Theme::white,true);
-        g.setColour(Theme::stroke.withAlpha(.8f));
-        g.drawLine(16.f,(float)lower-10.f,(float)getWidth()-16.f,(float)lower-10.f,1.f);
-        Theme::fittedText(g,"TONAL MODEL / NOT A MEASURED MIC IR",
-            {16,getHeight()-13,getWidth()-55,12},8.2f,Theme::muted,false,
-             juce::Justification::centredLeft);
+        Theme::text(g,"AMOUNT",{13,238,62,18},10.6f,Theme::white,true);
+        Theme::text(g,"TRIM",{13,272,60,18},10.6f,Theme::white,true);
+        Theme::fittedText(g,"TONAL PROFILE / ZERO ADDED LATENCY",
+            {13,getHeight()-16,getWidth()-36,12},8.1f,Theme::muted,false);
         }
         // Resize handle, intentionally inside the panel bounds.
         g.setColour(Theme::green.withAlpha(.7f));
         const float right=(float)getWidth()-5.f,bottom=(float)getHeight()-5.f;
         for(int k=0;k<3;++k)
             g.drawLine(right-9.f+4.f*k,bottom,right,bottom-9.f+4.f*k,1.f);
-        // The mic-model artwork must never bleed through the independent gate page.
-        if(!gatePage)for(int i=0;i<4;++i) {
-            const int cardWidth=(getWidth()-46)/2;
-            const float x=26.f+(float)(i%2)*(cardWidth+14);
-            const float y=188.f+(float)(i/2)*45.f;
-            const auto* p=processor.state.getRawParameterValue("micPreTarget");
-            const bool selected=p && (int)p->load()==i;
-            g.setColour(selected?Theme::green.withAlpha(.78f):Theme::muted);
-            g.drawRoundedRectangle(x,y-9.f,11.f,20.f,5.f,1.1f);
-            g.drawLine(x+5.5f,y+11.f,x+5.5f,y+17.f,1.f);
-            g.drawLine(x+1.5f,y+17.f,x+9.5f,y+17.f,1.f);
-        }
+        // Selected model buttons provide the state. No extra decorative
+        // microphones are painted behind the compact interactive controls.
     }
     bool keyPressed(const juce::KeyPress& key) override {
         if(key==juce::KeyPress::escapeKey){close.onClick();return true;}
@@ -460,9 +444,10 @@ public:
             && !on() && anyActive();
         gateThreshold.setValue(-54.f,juce::sendNotificationSync);
         const bool mapped=std::abs(threshold->load()+54.f)<.05f;
-        const bool simple=gatePage && gateAdvanced.isVisible()
+        const bool simple=gatePage && gateAdvanced.isVisible() &&
+            gateAdvanced.getButtonText()=="MORE"
             && gateThreshold.isVisible() && gateRelease.isVisible()
-            && gateDepth.isVisible() && !gateAttack.isVisible()
+            && !gateDepth.isVisible() && !gateAttack.isVisible()
             && !gateHold.isVisible() && !gateHysteresis.isVisible();
         gateAdvanced.onClick();
         const bool expanded=advancedGate && gateAttack.isVisible()
@@ -471,12 +456,12 @@ public:
             && gateDepth.isVisible();
         const juce::Slider* sliders[]{&gateThreshold,&gateAttack,&gateHold,
                                       &gateRelease,&gateHysteresis,&gateDepth};
-        bool noOverlaps=getHeight()>=345 && getWidth()>=340;
+        bool noOverlaps=getHeight()>=308 && getWidth()>=312;
         for(int i=0;i<6;++i) {
             const auto bounds=sliders[i]->getBounds();
             noOverlaps=noOverlaps && getLocalBounds().contains(bounds) &&
-                bounds.getBottom()<=getHeight()-27 && bounds.getX()>=110 &&
-                bounds.getWidth()>=160 &&
+                bounds.getBottom()<=getHeight()-12 && bounds.getX()>=100 &&
+                bounds.getWidth()>=175 &&
                 !bounds.intersects(gateEnabled.getBounds()) &&
                 !bounds.intersects(gateAdvanced.getBounds());
             for(int j=i+1;j<6;++j)

@@ -176,6 +176,8 @@ private:
     int activeEqBand=0;
     int matchPage=0; // 0: sound shape / 1: calibration / 2: native reference match
     int limiterPage=0; // local UI pages only; existing p1..p9 host IDs
+    bool limiterDetailsVisible=false; // UI-only MORE/Less, no state/automation change
+    void updateLimiterCompactVisibility();
     int delayPage=0; // opt-in Studio Delay: 16 controls across four UI pages
     int suitePage=0; // Vocal Feel Suite: source 16 controls in four pages
     int gestureSuiteParameter=-1; // return p11..p15 graph gestures
@@ -223,6 +225,7 @@ private:
     std::array<juce::TextButton,8> eqBandButtons;
     std::array<juce::TextButton,3> matchPageButtons;
     std::array<juce::TextButton,2> limiterPageButtons;
+    juce::TextButton limiterMore{"MORE"};
     std::array<juce::TextButton,4> delayPageButtons;
     std::array<juce::TextButton,4> suitePageButtons;
     juce::TextButton vocalFeelStyleButton{"VOICE STYLES  ▼"};

@@ -490,6 +490,13 @@ public:
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
                     issues.add("Overlapping top-bar controls " + juce::String((int)i)
                                + " / " + juce::String((int)j));
+        if(undo.getWidth()>34 || redo.getWidth()>34 ||
+           undo.getHeight()>32 || redo.getHeight()>32)
+            issues.add("Undo and Redo icons have become oversized again");
+        if(!micPanel.hasBeenMoved() &&
+           (micPanel.getWidth()>330 || micPanel.getHeight()>325 ||
+            micPanel.getWidth()<312 || micPanel.getHeight()<308))
+            issues.add("Compact draggable MIC popup is no longer sized correctly");
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
         if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
         if(!settingsPanel.testLayoutForTest())
@@ -1121,8 +1128,10 @@ public:
                     10.3f,Theme::muted,true);
         // UI edition marker belongs with the title, not an isolated LIVE
         // badge. Binary package version stays 0.7.0 for old host projects.
-        Theme::text(g,"V 0.1",{279,56,61,16},10.f,
-                    Theme::green.withAlpha(.86f),true);
+        // Tuck the UI edition marker immediately under the final T in
+        // PRESET; the actual VST3 binary version stays unchanged.
+        Theme::text(g,"v.01",{231,56,45,14},9.5f,
+                    Theme::green.withAlpha(.83f),true);
         Theme::text(g,"PRESET",{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
@@ -1278,12 +1287,12 @@ public:
         idle.setBounds(slot.getBounds());
         // Smaller movable mic panel opens on the LEFT; manual drag/resize
         // remains under the user's control and survives editor refresh.
-        constexpr int micWidth=354,micHeight=363;
+        constexpr int micWidth=324,micHeight=320;
         if(!micPanel.hasBeenMoved())
             micPanel.setBounds(rackOnRight?18:238,107,micWidth,micHeight);
         else {
-            const int w=juce::jlimit(340,490,micPanel.getWidth());
-            const int h=juce::jlimit(345,430,micPanel.getHeight());
+            const int w=juce::jlimit(312,440,micPanel.getWidth());
+            const int h=juce::jlimit(308,400,micPanel.getHeight());
             micPanel.setBounds(
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
@@ -1293,8 +1302,8 @@ public:
         viewSwitch.setBounds(796,27,176,37);
         // Bounded message-thread preset history in the top bar.
         // The two small actions never obscure the Power / Settings group.
-        undo.setBounds(978,28,41,36);
-        redo.setBounds(1023,28,41,36);
+        undo.setBounds(984,31,32,30);
+        redo.setBounds(1025,31,32,30);
         micButton.setBounds(0,0,44,36);
         micButton.setVisible(false);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
