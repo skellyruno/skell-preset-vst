@@ -25,6 +25,7 @@ public:
     bool testBrowserLayoutForTest(); // visible, nonoverlapping controls on both pages
     bool testBrowserKeyboardForTest(); // roving result focus without triggering audio loads
     bool testBrowserSortingForTest(); // no data mutation during sorting
+    bool testCategoryCountsForTest(); // cached library counts track user metadata
     void loadFactoryForHistoryTest(int index) {loadFactoryFromBrowser(index);}
     juce::File historySelection() const {return activeUserPreset;}
     void restoreHistorySelection(const juce::File& selection) {
@@ -53,6 +54,9 @@ private:
     void refreshArtwork();
     int bank=0,scroll=0,hoveredCard=-1,hoveredStar=-1,keyboardCard=-1;
     float browserWheelCarry=0.f;
+    std::array<int,5> categoryCounts{};
+    bool categoryCountsDirty=true;
+    void refreshCategoryCounts();
     bool detailsOpen=false;
     void showDetails(bool open);
     void chooseBank(int index);

@@ -17,7 +17,21 @@ public:
     void mouseExit(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
     bool keyPressed(const juce::KeyPress&) override;
-    void setSelectedSlot(int s) {selected=s;repaint();}
+    void setSelectedSlot(int s) {
+        selected=s;
+        // External preset/slot selection should reveal its rack position,
+        // without firing onSelection again or renumbering automation IDs.
+        if(s>=0) {
+            for(int row=0;row<processor.activeSlotCount();++row)
+                if(processor.slotIdAt(row)==s){
+                    if(row<scrollOffset)scrollOffset=row;
+                    if(row>=scrollOffset+visibleRows)
+                        scrollOffset=row-visibleRows+1;
+                    break;
+                }
+        }
+        visualSnapshotValid=false;repaint();
+    }
     void setScreenshotScrollOffset(int offset) {
         scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),offset);
         visualSnapshotValid=false;repaint();
@@ -28,6 +42,7 @@ public:
     bool testRackKeyboardNavigation();
     bool testWheelRegions();
     bool testRackRailNavigation();
+    bool testProgrammaticSelectionReveal();
     bool testRemoveExtraSlot();
     // Local Quick4 captures the ACTUAL custom right-click menu, including
     // the bottom Remove from Rack action. No mock popup is drawn.

@@ -582,6 +582,8 @@ public:
             issues.add("Preset browser keyboard focus, pagination, bank selection or restoration failed");
         if(!browser.testBrowserSortingForTest())
             issues.add("Preset browser A-Z/Z-A/starred-first sorting changed active preset or failed");
+        if(!browser.testCategoryCountsForTest())
+            issues.add("Cached category counts diverge from saved presets, Ad-libs, artists or favorites");
         if(processor.presetName()!="Alchemist" ||
            processor.getProgramName(skellpreset::alchemist::factoryIndex)!="Alchemist" ||
            processor.getProgramName(skellpreset::deuce_v25::factoryIndex)!="Deuce")
@@ -696,6 +698,8 @@ public:
             issues.add("Rack effect, side scrollbar, shift and wet hit zones overlap");
         if(!chain.testRackRailNavigation())
             issues.add("Rack scrollbar dragging changed physical effect order or limits");
+        if(!chain.testProgrammaticSelectionReveal())
+            issues.add("External rack selection failed to reveal its physical effect without reordering");
         if(!chain.testWheelReordersPhysicalEffect())
             issues.add("Effect-face wheel did not move the same physical FX up/down without changing wet");
         if(!chain.testRackKeyboardNavigation())

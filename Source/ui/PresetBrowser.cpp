@@ -85,7 +85,9 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     categoryEditor.setTooltip("Create your own library category; presets and automation stay unchanged.");
     applyTheme();
     search.onTextChange=[this]{
-        scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();
+        scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
+        clearSearchButton.setEnabled(search.getText().isNotEmpty());
+        repaint();
     };
     search.onEscapeKey=[this]{
         if(detailsOpen)showDetails(false);
@@ -120,6 +122,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     artistButton.setEnabled(false);
     artistButton.setTooltip("Save an artist label to the selected personal preset. Does not modify its .skellpreset file.");
     clearSearchButton.setTooltip("Clear the search phrase without changing the selected category.");
+    clearSearchButton.setEnabled(false);
     clearSearchButton.onClick=[this] {
         search.clear();
         search.grabKeyboardFocus();
@@ -238,6 +241,7 @@ juce::File PresetBrowser::libraryDirectory() const {
         .getChildFile("Presets");
 }
 void PresetBrowser::scanLibrary() {
+    categoryCountsDirty=true;
     userPresets.clear();
     const auto folder=libraryDirectory();
     if(folder.createDirectory().failed())return;
@@ -321,9 +325,11 @@ void PresetBrowser::open() {
     loadCustomCategories();refreshGenreChoices();loadGenres();refreshArtwork();
     bank=0;scroll=0;hoveredCard=-1;keyboardCard=-1;
     genreFilter.setSelectedId(1,juce::dontSendNotification);
-    sortPicker.setSelectedId(1,juce::dontSendNotification);
+    // Preserve the user's in-session display sort without saving DAW state.
     showDetails(false);
     search.setText({},juce::dontSendNotification);
+    clearSearchButton.setEnabled(false);
+    categoryCountsDirty=true;
     setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();
 }
 void PresetBrowser::showDetails(bool openDetails) {
@@ -537,15 +543,16 @@ void PresetBrowser::refreshGenreChoices() {
     genreFilter.clear(juce::dontSendNotification);
     genrePicker.addItem("Uncategorized",1);
     genreFilter.addItem("All genres",1);
+    genreFilter.addItem("Untagged",2);
     for(const auto* label:{"Rage","Indie","R&B","Ad-libs"}){
         const int id=genrePicker.getNumItems()+1;
         genrePicker.addItem(label,id);
-        genreFilter.addItem(label,id);
+        genreFilter.addItem(label,id+1);
     }
     for(const auto& label:customCategories){
         const int id=genrePicker.getNumItems()+1;
         genrePicker.addItem(label,id);
-        genreFilter.addItem(label,id);
+        genreFilter.addItem(label,id+1);
     }
     auto lookup=[](const juce::ComboBox& picker,const juce::String& label){
         for(int i=0;i<picker.getNumItems();++i)
@@ -609,6 +616,7 @@ bool PresetBrowser::setGenreForUser(int index,const juce::String& label) {
             "Category not saved","Check the Skell Preset library folder permissions.");
         return false;
     }
+    categoryCountsDirty=true;
     return true;
 }
 juce::File PresetBrowser::artistsFile() const {
@@ -676,6 +684,7 @@ bool PresetBrowser::setArtistForUser(int index,const juce::String& input) {
             "Artist not saved","Check the Skell Preset library folder permissions.");
         return false;
     }
+    categoryCountsDirty=true;
     return true;
 }
 juce::String PresetBrowser::favoriteKey(int entry) const {
@@ -731,6 +740,7 @@ void PresetBrowser::toggleFavorite(int entry) {
     }
     scroll=juce::jlimit(0,std::max(0,(int)filtered().size()-6),scroll);
     hoveredCard=-1;hoveredStar=-1;
+    categoryCountsDirty=true;
     repaint();
 }
 bool PresetBrowser::testBrowserSortingForTest(){
@@ -956,6 +966,11 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
         std::find(customResults.begin(),customResults.end(),entry)!=customResults.end();
     genreNames.remove(genreNames.size()-1);
     genreKeys.remove(genreKeys.size()-1);
+    bank=2;search.setText({},juce::dontSendNotification);
+    genreFilter.setSelectedId(2,juce::dontSendNotification);
+    const auto untaggedResults=filtered();
+    const bool untaggedFilter=std::find(untaggedResults.begin(),
+        untaggedResults.end(),entry)!=untaggedResults.end();
     userPresets.pop_back();
     artistKeys=oldArtistKeys;artistNames=oldArtists;
     genreKeys=oldGenreKeys;genreNames=oldGenres;
@@ -968,7 +983,8 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     search.setText(previousQuery,juce::dontSendNotification);
     return banks.size()==5 && factoryNames && onlyAdlibs && originalAdlibsVisible && onlyUser &&
         onlyArtists && onlyFavorites && artistQuery && favoriteQuery &&
-        personalQuery && adlibQuery && genreFiltering && customFilter;
+        personalQuery && adlibQuery && genreFiltering &&
+        customFilter && untaggedFilter;
 }
 std::vector<int> PresetBrowser::filtered() const {
     std::vector<int> list;
@@ -1056,7 +1072,10 @@ std::vector<int> PresetBrowser::filtered() const {
                q.startsWith("tag:"))found=false;
             if(bank==1 && !genre.equalsIgnoreCase("Ad-libs"))found=false;
             if(bank==3 && artist.isEmpty())found=false;
-            if(bank>=2 && genreActive && !genre.equalsIgnoreCase(selectedGenre))found=false;
+            if(bank>=2 && genreActive &&
+               (selectedGenre.equalsIgnoreCase("Untagged")
+                    ?genre.isNotEmpty():!genre.equalsIgnoreCase(selectedGenre)))
+                found=false;
             if(favoritesOnly && !isFavorite(-i-1))found=false;
             if(found)list.push_back(-i-1);
         }
@@ -1178,6 +1197,41 @@ void PresetBrowser::chooseArtwork() {
             if(safe->onCoverChanged)safe->onCoverChanged();
         });
 }
+void PresetBrowser::refreshCategoryCounts(){
+    int adlibs=0,artists=0,favorites=0;
+    for(int i=0;i<alchemistIndex;++i){
+        if(juce::String(skellpreset::factoryPresets[(size_t)i].bank)
+              .equalsIgnoreCase("Adlibs")){
+            ++adlibs;
+            if(isFavorite(i))++favorites;
+        }
+    }
+    if(isFavorite(alchemistIndex))++favorites;
+    if(isFavorite(deuceIndex))++favorites;
+    for(int i=0;i<(int)userPresets.size();++i){
+        if(genreForUser(i).equalsIgnoreCase("Ad-libs"))++adlibs;
+        if(artistForUser(i).isNotEmpty())++artists;
+        if(isFavorite(-i-1))++favorites;
+    }
+    categoryCounts={{2,adlibs,(int)userPresets.size(),artists,favorites}};
+    categoryCountsDirty=false;
+}
+bool PresetBrowser::testCategoryCountsForTest(){
+    refreshCategoryCounts();
+    const int size=(int)userPresets.size();
+    const int factoryAdlibs=(int)std::count_if(
+        skellpreset::factoryPresets.begin(),
+        skellpreset::factoryPresets.begin()+alchemistIndex,
+        [](const auto& item){
+            return juce::String(item.bank).equalsIgnoreCase("Adlibs");
+        });
+    return !categoryCountsDirty && categoryCounts[0]==2 &&
+        categoryCounts[2]==size && categoryCounts[1]>=factoryAdlibs &&
+        categoryCounts[1]<=factoryAdlibs+size &&
+        categoryCounts[3]>=0 && categoryCounts[3]<=size &&
+        categoryCounts[4]>=0 &&
+        categoryCounts[4]<=factoryAdlibs+2+size;
+}
 void PresetBrowser::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
     g.setGradientFill(juce::ColourGradient(
@@ -1189,23 +1243,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
     Theme::text(g,detailsOpen?"EDIT DETAILS":"LIBRARY",
                 {30,73,154,20},12,Theme::white,true);
     const auto entries=filtered();
-    int adlibsCount=0,artistCount=0,favoriteCount=0;
-    for(int i=0;i<alchemistIndex;++i){
-        if(juce::String(skellpreset::factoryPresets[(size_t)i].bank)
-              .equalsIgnoreCase("Adlibs")){
-            ++adlibsCount;
-            if(isFavorite(i))++favoriteCount;
-        }
-    }
-    if(isFavorite(alchemistIndex))++favoriteCount;
-    if(isFavorite(deuceIndex))++favoriteCount;
-    for(int i=0;i<(int)userPresets.size();++i){
-        if(genreForUser(i).equalsIgnoreCase("Ad-libs"))++adlibsCount;
-        if(artistForUser(i).isNotEmpty())++artistCount;
-        if(isFavorite(-i-1))++favoriteCount;
-    }
-    const std::array<int,5> categoryCounts{{
-        2,adlibsCount,(int)userPresets.size(),artistCount,favoriteCount}};
+    // Cache library counts on the UI thread: no O(N × sidecar tags)
+    // recount on every hover repaint or every mouse movement.
+    if(categoryCountsDirty)refreshCategoryCounts();
     Theme::text(g,juce::String((int)entries.size())+
         (entries.size()==1?" SOUND":" SOUNDS"),{207,73,246,20},12,Theme::white,true);
     if(detailsOpen)
@@ -1375,19 +1415,27 @@ void PresetBrowser::paint(juce::Graphics&g) {
         }
     }
     if(entries.empty()) {
-        Theme::text(g,bank==4?"NO FAVORITES YET":
+        const bool searched=search.getText().trim().isNotEmpty();
+        const bool filteredGenre=genreFilter.getSelectedId()>1;
+        const juce::String title=searched?"NO SEARCH MATCHES":
+            filteredGenre?(genreFilter.getText()=="Untagged"
+                ?"NO UNTAGGED SOUNDS":
+                 "NO "+genreFilter.getText().toUpperCase()+" SOUNDS"):
+            bank==4?"NO FAVORITES YET":
             bank==3?"NO ARTIST PRESETS YET":
-            bank==1?"NO AD-LIB PRESETS YET":
-            genreFilter.getSelectedId()>1?"NO PRESETS IN "+genreFilter.getText().toUpperCase():
-            "NO MATCHING PRESETS",
-            {246,222,350,40},15,Theme::muted,true);
-        if(bank==4)
+            bank==1?"NO AD-LIB PRESETS YET":"NO MATCHING PRESETS";
+        Theme::fittedText(g,title,{246,222,355,40},
+                          15.f,Theme::muted,true);
+        if(searched || filteredGenre)
+            Theme::text(g,"Clear the search or change the category.",
+                {246,255,380,23},11,Theme::muted);
+        else if(bank==4)
             Theme::text(g,"Star a sound to save it here.",
                 {246,255,385,23},11,Theme::muted);
-        if(bank==3)
+        else if(bank==3)
             Theme::text(g,"Set an artist in Edit Details to group saved sounds.",
                 {246,255,385,23},11,Theme::muted);
-        if(bank==1)
+        else if(bank==1)
             Theme::text(g,"Tag a personal preset as Ad-libs in Edit Details.",
                 {246,255,385,23},11,Theme::muted);
     }
@@ -1400,8 +1448,10 @@ void PresetBrowser::paint(juce::Graphics&g) {
         g.fillRoundedRectangle(juce::Rectangle<float>((float)getWidth()-12.f,railTop,3.f,railHeight),1.5f);
         g.setColour(Theme::green.withAlpha(.85f));
         g.fillRoundedRectangle(juce::Rectangle<float>((float)getWidth()-12.f,thumbY,3.f,thumbHeight),1.5f);
-        Theme::text(g,"WHEEL / PAGE DOWN TO SEE MORE",{260,getHeight()-20,300,16},
-                    10,Theme::muted);
+        Theme::fittedText(g,"SHOWING "+juce::String(scroll+1)+" - "+
+            juce::String(std::min(scroll+6,(int)entries.size()))+
+            " OF "+juce::String((int)entries.size())+"  /  WHEEL TO SCROLL",
+            {260,getHeight()-20,310,16},10.f,Theme::muted);
     }
 }
 void PresetBrowser::loadFactoryFromBrowser(int index) {
@@ -1465,17 +1515,20 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
 }
 void PresetBrowser::mouseMove(const juce::MouseEvent& e){
     const int candidate=e.x>=207&&e.y>=110&&e.y<476 ? (e.y-110)/61+scroll : -1;
-    const int next=candidate>=0&&candidate<(int)filtered().size()?candidate:-1;
     const bool onStar=e.x>=getWidth()-77 && e.x<=getWidth()-38;
+    if(candidate>=0 && candidate==hoveredCard &&
+       (onStar?hoveredStar==candidate:hoveredStar<0))
+        return; // avoid a full filtered/sorted library scan per mouse pixel
+    const int next=candidate>=0&&candidate<(int)filtered().size()?candidate:-1;
     const int nextStar=onStar?next:-1;
     if(next!=hoveredCard || nextStar!=hoveredStar){
         hoveredCard=next;hoveredStar=nextStar;repaint();
+        setTooltip(nextStar>=0?"Toggle favorite. Does not load or change this sound.":
+                   next>=0?"Load this preset. Your current sound can be undone.":
+                   "Click a category, choose a genre or search for a saved sound.");
+        setMouseCursor(next>=0?juce::MouseCursor::PointingHandCursor
+                              :juce::MouseCursor::NormalCursor);
     }
-    setTooltip(nextStar>=0?"Toggle favorite. Does not load or change this sound.":
-               next>=0?"Load this preset. Your current sound can be undone.":
-               "Click a category, choose a genre or search for a saved sound.");
-    setMouseCursor(next>=0?juce::MouseCursor::PointingHandCursor
-                          :juce::MouseCursor::NormalCursor);
 }
 void PresetBrowser::mouseExit(const juce::MouseEvent&){
     hoveredCard=-1;hoveredStar=-1;repaint();

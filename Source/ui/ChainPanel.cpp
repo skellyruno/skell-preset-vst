@@ -881,6 +881,19 @@ bool ChainPanel::testWheelRegions(){
            wheelRegionAt(165,y,true)==0 &&
            wheelRegionAt(100,5,false)==0;
 }
+bool ChainPanel::testProgrammaticSelectionReveal(){
+    if(processor.activeSlotCount()<=visibleRows)return false;
+    const int oldSelection=selected,oldScroll=scrollOffset;
+    const int last=processor.activeSlotCount()-1;
+    const int target=processor.slotIdAt(last);
+    scrollOffset=0;
+    setSelectedSlot(target);
+    const bool revealed=selected==target &&
+        last>=scrollOffset && last<scrollOffset+visibleRows;
+    scrollOffset=oldScroll;selected=oldSelection;
+    visualSnapshotValid=false;repaint();
+    return revealed;
+}
 bool ChainPanel::testRackRailNavigation(){
     const int count=processor.activeSlotCount();
     if(count<=visibleRows)return false;
