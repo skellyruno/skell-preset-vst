@@ -13,7 +13,11 @@ namespace skellpreset::studio {
 class StereoDelay final {
 public:
     void prepare(double sampleRate) {
-        sr=std::clamp(sampleRate,8000.,384000.);
+        // Hosts may issue a zero, NaN, infinite or negative sample rate
+        // during device transitions. Never convert a NaN buffer size to
+        // size_t or allocate unbounded delay history.
+        sr=std::clamp(std::isfinite(sampleRate) && sampleRate>0.
+            ?sampleRate:48000.,8000.,384000.);
         const auto capacity=static_cast<std::size_t>(std::ceil(sr*6.2))+8;
         for(auto& line:history)line.assign(capacity,0.f);
         const auto diffuserSize=static_cast<std::size_t>(std::ceil(sr*.013))+2;
@@ -29,17 +33,28 @@ public:
         // The first callback must honor the selected time immediately.
         // Subsequent automation ramps remain pitch-continuous over 25 ms.
         configured=false;
+        cachedBpm=-1.;
+        cachedParameters.fill(-1.f);
     }
     // p[0..15] are normalized host controls, read once per callback.
     void set(const std::array<float,16>& p,double bpm) noexcept {
-        auto get=[&](int i){return std::isfinite(p[static_cast<std::size_t>(i)])
-            ?std::clamp(p[static_cast<std::size_t>(i)],0.f,1.f):0.f;};
+        // Skips repeated pow/exp/tanh per block for unchanged host values.
+        // Transport BPM is part of the key: tempo automation never freezes.
+        // Cache the *sanitized* normalized values, not NaN-bit patterns.
+        std::array<float,16> next{};
+        for(std::size_t i=0;i<next.size();++i)
+            next[i]=std::isfinite(p[i])?std::clamp(p[i],0.f,1.f):0.f;
+        const double safeBpm=std::clamp(std::isfinite(bpm)?bpm:120.,40.,260.);
+        if(configured && cachedBpm==safeBpm && cachedParameters==next)
+            return;
+        cachedParameters=next;
+        cachedBpm=safeBpm;
+        auto get=[&](int i){return next[static_cast<std::size_t>(i)];};
         double time=0.025*std::pow(80.,get(0));
         if(get(12)>=.5f) {
             constexpr std::array<double,8> beats{{4.,2.,1.,.5,.25,.125,.0625,.03125}};
             const int index=std::clamp(static_cast<int>(get(13)*7.999f),0,7);
-            time=(60./std::clamp(std::isfinite(bpm)?bpm:120.,40.,260.))
-                *beats[static_cast<std::size_t>(index)];
+            time=(60./safeBpm)*beats[static_cast<std::size_t>(index)];
         }
         const double offset=.05*get(3);
         targetL=std::clamp(time*sr,1.,sr*6.10);
@@ -127,6 +142,8 @@ private:
     double sr=48000.,targetL=12000.,targetR=12000.,delayL=12000.,delayR=12000.;
     double phase=0.,lfoRate=.25,modDepth=0.,glide=.001;
     std::array<std::vector<float>,2> history,diffuser;
+    std::array<float,16> cachedParameters{};
+    double cachedBpm=-1.;
     std::array<float,2> filterLow{},filterHigh{};
     std::size_t write=0,diffWrite=0;
     float feedback=.25f,lowPole=.5f,highPole=.99f,drive=1.f,shapeDenom=.76f;

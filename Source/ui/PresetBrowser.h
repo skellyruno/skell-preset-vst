@@ -5,7 +5,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
-class PresetBrowser final:public juce::Component {
+class PresetBrowser final:public juce::Component,public juce::SettableTooltipClient {
 public:
     explicit PresetBrowser(SkellPresetAudioProcessor&);
     void paint(juce::Graphics&) override;

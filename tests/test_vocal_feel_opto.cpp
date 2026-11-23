@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 using skellpreset::dsp::VocalFeelOpto;
 constexpr double pi=3.14159265358979323846;
 static std::array<double,3> measure(double sr,float amount,float colour,float voice,float mix,bool stereo=false) {
@@ -63,6 +64,50 @@ int main(){
                     assert(std::isfinite(y[0])&&std::isfinite(y[1]));
                 }
             }
+    // Reapplying unchanged host values at each buffer boundary must not
+    // disturb compressor envelopes or change its stereo transfer curve.
+    for(double rate:{44100.,48000.,96000.}) {
+        VocalFeelOpto once,repeated;
+        once.prepare(rate);repeated.prepare(rate);
+        once.set(.81f,.5f,.62f,.73f);
+        repeated.set(.81f,.5f,.62f,.73f);
+        for(int n=0;n<(int)(rate*.35);++n){
+            if(n%64==0)repeated.set(.81f,.5f,.62f,.73f);
+            const float x=.4f*std::sin((float)(n*.037));
+            const auto a=once.process(x,-x*.71f);
+            const auto b=repeated.process(x,-x*.71f);
+            assert(a[0]==b[0]&&a[1]==b[1]);
+        }
+        // A new sample-rate prepare invalidates coefficients safely.
+        once.prepare(48000.);repeated.prepare(48000.);
+        once.set(.81f,.5f,.62f,.73f);
+        repeated.set(.81f,.5f,.62f,.73f);
+        for(int n=0;n<4096;++n){
+            if(n%64==0)repeated.set(.81f,.5f,.62f,.73f);
+            const auto a=once.process(.12f,-.08f);
+            const auto b=repeated.process(.12f,-.08f);
+            assert(a==b);
+        }
+    }
+    // NaN/Inf/oversized inputs and automation must stay finite without
+    // modifying normal audio at sensible vocal recording levels.
+    {
+        VocalFeelOpto defensive;
+        defensive.prepare(48000.);
+        defensive.set(std::numeric_limits<float>::quiet_NaN(),
+                      std::numeric_limits<float>::infinity(),-10.f,5.f);
+        const auto zero=defensive.process(std::numeric_limits<float>::quiet_NaN(),
+                                          std::numeric_limits<float>::infinity());
+        assert(zero[0]==0.f&&zero[1]==0.f);
+        defensive.set(1.f,.9f,.5f,1.f);
+        for(int n=0;n<20000;++n){
+            const auto z=defensive.process(n%2?1.e20f:-1.e20f,
+                                           n%3?1.e20f:-1.e20f);
+            assert(std::isfinite(z[0])&&std::isfinite(z[1]));
+            assert(std::abs(z[0])<=9.f && std::abs(z[1])<=9.f);
+            assert(std::isfinite(defensive.gainReductionDb()));
+        }
+    }
     std::array<VocalFeelOpto,10> engines;
     for(auto& fx:engines){fx.prepare(48000.);fx.set(.5f,.5f,.5f,.65f);}
     auto begin=std::chrono::steady_clock::now();float checksum=0.f;

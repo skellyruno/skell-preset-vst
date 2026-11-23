@@ -11,14 +11,22 @@ class VocalFeelOpto final {
 public:
     void prepare(double sampleRate) noexcept {
         fs=std::clamp(std::isfinite(sampleRate)?sampleRate:48000.,8000.,192000.);
-        reset();set(amount,colour,voice,blend);
+        reset();
+        coefficientsReady=false; // sample-rate changes need fresh poles
+        set(amount,colour,voice,blend);
     }
     void reset() noexcept {
         detectorL=detectorR=warmL=warmR=0.f;
         envelope=fastGr=slowGr=memory=reportedGr=0.f;
     }
     void set(float a,float c,float v,float b) noexcept {
-        amount=unit(a);colour=unit(c);voice=unit(v);blend=unit(b);
+        const float nextAmount=unit(a),nextColour=unit(c);
+        const float nextVoice=unit(v),nextBlend=unit(b);
+        if(coefficientsReady && nextAmount==amount &&
+           nextColour==colour && nextVoice==voice && nextBlend==blend)
+            return; // prevent 6 exponential coefficient calculations per audio block
+        amount=nextAmount;colour=nextColour;voice=nextVoice;blend=nextBlend;
+        coefficientsReady=true;
         profile=voice<.25f?0:voice<.75f?1:2;
         constexpr float cutoffs[]{80.f,65.f,105.f};
         lowPole=1.f-std::exp(-6.28318530718f*cutoffs[profile]/(float)fs);
@@ -30,8 +38,11 @@ public:
         ratioSlope=1.f-1.f/(1.f+2.5f*amount);
     }
     std::array<float,2> process(float inputL,float inputR) noexcept {
-        const float l=std::isfinite(inputL)?inputL:0.f;
-        const float r=std::isfinite(inputR)?inputR:0.f;
+        // Extremely hot upstream plugin signals cannot poison envelope
+        // squares, coefficient state or the next silent vocal block.
+        // In-range samples (including ±1 stereo) are bit-identical.
+        const float l=std::isfinite(inputL)?std::clamp(inputL,-8.f,8.f):0.f;
+        const float r=std::isfinite(inputR)?std::clamp(inputR,-8.f,8.f):0.f;
         if(amount<=0.f||blend<=0.f){reportedGr=0.f;return {l,r};}
         detectorL+=lowPole*(l-detectorL);
         detectorR+=lowPole*(r-detectorR);
@@ -109,5 +120,6 @@ private:
     float detectorL=0.f,detectorR=0.f,warmL=0.f,warmR=0.f;
     float envelope=0.f,fastGr=0.f,slowGr=0.f,memory=0.f,reportedGr=0.f;
     int profile=1;
+    bool coefficientsReady=false;
 };
 } // namespace skellpreset::dsp

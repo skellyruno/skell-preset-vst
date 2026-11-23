@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <limits>
 #include <vector>
 
 static std::array<float,16> defaults() {
@@ -75,6 +76,87 @@ int main() {
     for(int i=0;i<48000;++i) {
         const auto y=d.process(.15f,-.15f);
         if(!std::isfinite(y[0])||!std::isfinite(y[1]))return 8;
+    }
+    // Ten targeted compatibility/protection checks, no old presets or
+    // automation parameters are changed. Each stress engine is self-owned.
+    for(const double badRate:{0.,-44100.,
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::infinity()}) {
+        skellpreset::studio::StereoDelay guarded;
+        guarded.prepare(badRate);
+        auto bad=defaults();
+        guarded.set(bad,120.);
+        for(int n=0;n<1024;++n) {
+            const auto y=guarded.process(n==0?.3f:0.f,-.3f);
+            if(!require(std::isfinite(y[0]) && std::isfinite(y[1]),
+                        "invalid host sample rate does not poison delay state"))
+                return 10;
+        }
+    }
+    // Repeated identical callback updates must not restart time ramps or
+    // alter samples versus the original single-set processing.
+    for(double rate:{44100.,48000.,96000.}) {
+        skellpreset::studio::StereoDelay once,everyBlock;
+        once.prepare(rate);everyBlock.prepare(rate);
+        auto controls=defaults();
+        controls[1]=.81f;controls[2]=.56f;controls[7]=.55f;
+        controls[8]=.41f;controls[9]=.2f;controls[15]=.33f;
+        controls[12]=1.f;controls[13]=.42f;
+        once.set(controls,123.);everyBlock.set(controls,123.);
+        for(int n=0;n<(int)(rate*.6);++n) {
+            if(n%128==0)everyBlock.set(controls,123.);
+            const float x=.24f*std::sin((float)(n*.013));
+            const auto a=once.process(x,-.71f*x);
+            const auto b=everyBlock.process(x,-.71f*x);
+            if(!require(a==b,"identical settings do not alter delay output"))
+                return 11;
+        }
+        // Tempo changes invalidate the cache; repeated updates do not.
+        controls[12]=1.f;controls[13]=.8f;
+        once.set(controls,64.);
+        everyBlock.set(controls,64.);
+        for(int n=0;n<4096;++n) {
+            if(n%128==0)everyBlock.set(controls,64.);
+            const auto a=once.process(n==0?1.f:0.f,0.f);
+            const auto b=everyBlock.process(n==0?1.f:0.f,0.f);
+            if(!require(a==b,"tempo update preserves sample-exact parity"))
+                return 12;
+        }
+        // Reset must invalidate the previous cache, so the first echo
+        // immediately honors the newly set tempo/time without stale state.
+        once.reset();everyBlock.reset();
+        controls[0]=0.f;controls[12]=0.f;
+        controls[1]=0.f;controls[7]=0.f;controls[9]=0.f;
+        controls[10]=1.f;controls[11]=0.f;controls[15]=0.f;
+        once.set(controls,120.);everyBlock.set(controls,120.);
+        const int initial=(int)std::round(rate*.025);
+        bool audible=false;
+        for(int n=0;n<initial+3;++n) {
+            const auto a=once.process(n==0?1.f:0.f,0.f);
+            const auto b=everyBlock.process(n==0?1.f:0.f,0.f);
+            if(!require(a==b,"reset restores parity"))return 13;
+            if(n>=initial-1 && a[0]>.1f)audible=true;
+        }
+        if(!require(audible,"reset honors first programmed delay time"))
+            return 14;
+    }
+    // Nonfinite or out-of-range automation and BPM never produce NaN audio.
+    {
+        skellpreset::studio::StereoDelay hostile;
+        hostile.prepare(48000.);
+        auto controls=defaults();
+        controls[0]=std::numeric_limits<float>::quiet_NaN();
+        controls[1]=std::numeric_limits<float>::infinity();
+        controls[7]=-9.f;controls[9]=5.f;
+        hostile.set(controls,std::numeric_limits<double>::quiet_NaN());
+        for(int n=0;n<48000;++n) {
+            if(n%256==0)hostile.set(controls,std::numeric_limits<double>::infinity());
+            const auto a=hostile.process(n==0?1.f:0.f,0.f,
+                n%9==0?std::numeric_limits<float>::quiet_NaN():.5f);
+            if(!require(std::isfinite(a[0])&&std::isfinite(a[1]) &&
+                        std::abs(a[0])<=8.f&&std::abs(a[1])<=8.f,
+                        "hostile automation remains finite"))return 15;
+        }
     }
     // Diagnostic CPU cost only (no flaky CI timing threshold).
     // Deliberately exercise non-modulated, non-saturated live default path.
