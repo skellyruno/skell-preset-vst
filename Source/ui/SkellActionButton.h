@@ -38,8 +38,36 @@ public:
         const auto buttonCaption=getButtonText();
         const bool historySymbol=buttonCaption.length()==1 &&
             (buttonCaption[0]==0x21B6 || buttonCaption[0]==0x21B7);
-        const float fontSize=historySymbol?21.f:
-            getWidth()<=36?13.f:getWidth()<=92?11.6f:12.3f;
+        if(historySymbol) {
+            // Crisp, custom vector history arrows instead of platform
+            // font glyphs that render too thin or off-centre at 70% scaling.
+            const bool reverse=buttonCaption[0]==0x21B7;
+            const float cx=bounds.getCentreX(),cy=bounds.getCentreY();
+            juce::Graphics::ScopedSaveState saved(g);
+            if(reverse)
+                g.addTransform(juce::AffineTransform::scale(-1.f,1.f)
+                    .translated(2.f*cx,0.f));
+            juce::Path arc;
+            arc.startNewSubPath(cx+10.2f,cy+7.f);
+            arc.cubicTo(cx+14.8f,cy-7.f,cx+2.f,cy-10.6f,cx-6.8f,cy-5.f);
+            arc.cubicTo(cx-10.f,cy-3.f,cx-10.8f,cy-1.f,cx-11.2f,cy+1.f);
+            g.setColour(enabled?(over?accent:Theme::white):Theme::muted.withAlpha(.34f));
+            g.strokePath(arc,juce::PathStrokeType(2.35f,
+                juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            juce::Path arrow;
+            arrow.startNewSubPath(cx-14.f,cy-5.5f);
+            arrow.lineTo(cx-4.6f,cy-2.1f);
+            arrow.lineTo(cx-13.0f,cy+4.9f);
+            arrow.closeSubPath();
+            g.fillPath(arrow);
+            if(hasKeyboardFocus(true)){
+                g.setColour(accent.withAlpha(.85f));
+                g.drawRoundedRectangle(bounds.reduced(2.5f),4.f,1.25f);
+            }
+            return;
+        }
+        const float fontSize=getWidth()<=36?13.f:
+            getWidth()<=92?11.6f:12.3f;
         g.setFont(Theme::font(fontSize,true));
         g.drawFittedText(getButtonText(),getLocalBounds().reduced(7,4),
                          juce::Justification::centred,1,.82f);

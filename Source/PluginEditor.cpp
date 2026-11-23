@@ -36,7 +36,7 @@ public:
         addAndMakeVisible(chain);addAndMakeVisible(slot);
         addAndMakeVisible(idle);
         chain.setSelectedSlot(-1);
-        themeButton.onClick=[this] {setTheme((selectedTheme+1)%3);};
+        themeButton.onClick=[this] {setTheme(Theme::nextVariant(selectedTheme));};
         help.setButtonText("?");
         help.setTooltip("Replay the Skell-Preset guided tour");
         style(help);addAndMakeVisible(help);
@@ -577,7 +577,11 @@ public:
         if(!browser.testBrowserLayoutForTest())
             issues.add("Preset browser custom category controls or cover preview overlap");
         if(!SkellIdleDeck::testStageGeometryForTest())
-            issues.add("Skell skull/scope stage clips or overlaps at compact, default or enlarged sizes");
+            issues.add("Skell full-body performer/scope stage clips at compact or enlarged sizes");
+        if(!slot.testHomeReturnHitZonesForTest())
+            issues.add("VISUAL return hit area overlaps effect title, graph, knobs or power");
+        if(!testEmptyGapReturnRegions())
+            issues.add("Blank gap/top/bottom Home return zones leak into module or rack controls");
         if(!browser.testBrowserKeyboardForTest())
             issues.add("Preset browser keyboard focus, pagination, bank selection or restoration failed");
         if(!browser.testBrowserSortingForTest())
@@ -679,8 +683,13 @@ public:
         undoStates.clear();redoStates.clear();pendingHistory.reset();updateHistoryButtons();
         const int beforeTheme=selectedTheme;
         themeButton.onClick();
-        if(selectedTheme!=(beforeTheme+1)%3)
-            issues.add("Skell mark click didn't cycle themes immediately");
+        if(selectedTheme!=Theme::nextVariant(beforeTheme))
+            issues.add("Microphone skeleton theme button did not advance to the other dark skin");
+        themeButton.onClick();
+        if(selectedTheme!=beforeTheme)
+            issues.add("Theme button did not round-trip Obsidian/Crimson");
+        if(Theme::clampVariant(Theme::Cream)!=Theme::Obsidian)
+            issues.add("Removed cream skin must load old theme=1 states as Obsidian");
         setTheme(beforeTheme);
         dockRack(true);
         if(chain.getX()<=slot.getX()
@@ -1344,8 +1353,37 @@ public:
                 repaint(juce::Rectangle<int>(79,300,1000,34));
         }
     }
+    // The rack and effect face never contain an implicit click-away area:
+    // only the empty lane separating those boxes or the slim top/bottom
+    // breathing room is a Home hit target. This callback receives only
+    // clicks that passed through all child components.
+    bool isEmptyGapReturn(juce::Point<int> point) const noexcept {
+        const int laneLeft=rackOnRight?slot.getRight():chain.getRight();
+        const int laneRight=rackOnRight?chain.getX():slot.getX();
+        const bool between=(point.x>laneLeft+1 && point.x<laneRight-1 &&
+                            point.y>=chain.getY() && point.y<chain.getBottom());
+        const bool above=(point.x>=14 && point.x<Theme::width-14 &&
+                          point.y>=78 && point.y<89);
+        const bool below=(point.x>=14 && point.x<Theme::width-14 &&
+                          point.y>=627 && point.y<635);
+        return between || above || below;
+    }
+    bool testEmptyGapReturnRegions() const noexcept {
+        const int left=rackOnRight?slot.getRight():chain.getRight();
+        const int right=rackOnRight?chain.getX():slot.getX();
+        return right-left>=12 &&
+            isEmptyGapReturn({(left+right)/2,chain.getY()+190}) &&
+            isEmptyGapReturn({700,82}) &&
+            isEmptyGapReturn({700,630}) &&
+            !isEmptyGapReturn(chain.getBounds().getCentre()) &&
+            !isEmptyGapReturn(slot.getBounds().getCentre()) &&
+            !isEmptyGapReturn({1000,50}) &&
+            !isEmptyGapReturn({600,500});
+    }
     void mouseDown(const juce::MouseEvent& e)override {
         const auto point=e.getEventRelativeTo(this).getPosition();
+        const bool overlayWasVisible=micPanel.isVisible() ||
+            browser.isVisible() || settingsPanel.isVisible();
         const auto micTrigger=juce::Rectangle<int>(chain.getX()+158,chain.getY()+5,42,38);
         if(micPanel.isVisible() && !micPanel.getBounds().contains(point)
            && !micTrigger.contains(point))
@@ -1356,6 +1394,11 @@ public:
         if(settingsPanel.isVisible() && !settingsPanel.getBounds().contains(point)
            && !settings.getBounds().contains(point))
             settingsPanel.close();
+        const int current=(int)processor.state.getRawParameterValue("mode")->load();
+        if(!overlayWasVisible && !e.mods.isPopupMenu() &&
+           current==1 && !editingIdle && isEmptyGapReturn(point) &&
+           chain.onClearSelection)
+            chain.onClearSelection();
     }
     bool keyPressed(const juce::KeyPress& key)override{
         if(key==juce::KeyPress::escapeKey && micPanel.isVisible()) {

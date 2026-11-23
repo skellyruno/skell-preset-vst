@@ -159,7 +159,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
     addAndMakeVisible(upgradeEq);
     upgradeEq.setVisible(false);
-    modOrbButton.setTooltip("Show a modulation parameter orb; press GRAPH to return");
+    modOrbButton.setTooltip("Digital Bones: actual modulation controls and post-FX activity; press GRAPH to return.");
     addAndMakeVisible(modOrbButton);
     modOrbButton.setVisible(false);
     modOrbButton.onClick=[this]{setModOrbForScreenshot(!modOrbView);};
@@ -1588,7 +1588,7 @@ void SlotEditor::refreshIfChanged() {
         gateFloorAttachment.reset();
         studioCompKneeAttachment.reset();
         modOrbView=false;
-        modOrbButton.setButtonText("ORB");
+        modOrbButton.setButtonText("BONES");
         eqQAttachment.reset();
         for(auto& attachment:eqCutAttachments)attachment.reset();
         if(isPagedEQ(type)) {
@@ -1756,16 +1756,44 @@ void SlotEditor::paint(juce::Graphics&g) {
     // ONE uninterrupted studio effect face. Controls and graph are inside
     // it; the former second box and duplicate knob panel are gone.
     Theme::panelBox(g,{0,0,906.f,535.f},9.f);
-    for(float sx:{12.f,894.f})for(float sy:{13.f,521.f}){
-        g.setColour(Theme::bg);g.fillEllipse(sx-2.5f,sy-2.5f,5.f,5.f);
-        g.setColour(Theme::stroke);g.drawEllipse(sx-2.5f,sy-2.5f,5.f,5.f,1.f);
+    for(float x:{12.f,894.f})for(float y:{13.f,521.f}){
+        // Square studio hardware rivets, no decorative ellipse ornaments.
+        g.setColour(Theme::bg);g.fillRoundedRectangle(x-2.5f,y-2.5f,5.f,5.f,.65f);
+        g.setColour(Theme::stroke);g.drawLine(x-2.f,y-2.f,x+2.f,y+2.f,.9f);
     }
     const int type=processor.slotType(slot);
+    const auto family=juce::String(skellpreset::registry::at(type).category);
+    const auto familyAccent=family.equalsIgnoreCase("Dynamics")?Theme::amber:
+        family.equalsIgnoreCase("Motion")?Theme::pink:
+        family.equalsIgnoreCase("Space")?Theme::blue:
+        family.equalsIgnoreCase("Pitch")?Theme::blue:
+        family.equalsIgnoreCase("Vocal")?Theme::green:
+        family.equalsIgnoreCase("External")?Theme::muted:Theme::green;
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     const auto hostedName=type==SkellPresetAudioProcessor::ExternalVST3
         ?processor.hostedVST3Name(slot):juce::String{};
     Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleName(type),
                       {21,29,500,38},25,Theme::white,true);
+    // Explicit blank-space exit, separated from every title/graph gesture.
+    // This is deliberately small and calm; clicking elsewhere on the rack
+    // does not unexpectedly switch screens.
+    if(type!=SkellPresetAudioProcessor::ExternalVST3) {
+        const auto back=homeReturnBounds().toFloat();
+        g.setColour(homeHover?Theme::green.withAlpha(.14f):Theme::panelAlt);
+        g.fillRoundedRectangle(back,4.f);
+        g.setColour(homeHover?Theme::green.withAlpha(.85f):
+                    Theme::stroke.withAlpha(.75f));
+        g.drawRoundedRectangle(back.reduced(.5f),4.f,1.f);
+        g.setColour(homeHover?Theme::green:Theme::muted);
+        juce::Path pointer;
+        pointer.startNewSubPath(back.getX()+18.f,back.getCentreY()-4.f);
+        pointer.lineTo(back.getX()+13.f,back.getCentreY());
+        pointer.lineTo(back.getX()+18.f,back.getCentreY()+4.f);
+        g.strokePath(pointer,juce::PathStrokeType(1.5f));
+        Theme::text(g,"VISUAL",{(int)back.getX()+24,(int)back.getY()+2,
+                    (int)back.getWidth()-28,18},10.3f,
+                    homeHover?Theme::white:Theme::muted,true);
+    }
     // The hosted editor has its own top action buttons. Do not paint the
     // native selector prompt, category chip or signal dots underneath those
     // controls; it clips the third-party view at small UI scales.
@@ -1781,7 +1809,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                 :juce::String(skellpreset::registry::at(type).category).toUpperCase();
         // Compact category, no extra header card competing with effects.
         Theme::fittedText(g,category,{516,70,296,21},10.8f,
-                          Theme::green.withAlpha(.88f),true,
+                          familyAccent.withAlpha(.92f),true,
                           juce::Justification::centredRight);
         // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
         // vertebrae respond to the signal while leaving parameter graphs readable.
@@ -1803,7 +1831,17 @@ void SlotEditor::paint(juce::Graphics&g) {
     
     }
     const auto plot=juce::Rectangle<float>(33,151,835,206);
-    g.setColour(Theme::plot);g.fillRoundedRectangle(plot,6);
+    g.setGradientFill(juce::ColourGradient(
+        Theme::plot,plot.getTopLeft(),
+        Theme::panelAlt.darker(.28f),plot.getBottomRight(),false));
+    g.fillRoundedRectangle(plot,6.f);
+    g.setColour(familyAccent.withAlpha(.31f));
+    g.drawRoundedRectangle(plot.reduced(.6f),6.f,1.1f);
+    // Distinct instrument families use the same precise clickable graph
+    // bounds, but restrained different structural accents.
+    g.setColour(familyAccent.withAlpha(.35f));
+    g.fillRoundedRectangle(plot.getX()+2.f,plot.getY()+12.f,
+                           2.3f,plot.getHeight()-24.f,1.f);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
     constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
     if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser || type==SkellPresetAudioProcessor::EightBandToneFX) {
@@ -2285,13 +2323,22 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::amber);
         g.drawVerticalLine((int)boundary,plot.getY()+34.f,plot.getBottom()-18.f);
         const float baseY=plot.getCentreY()+11.f;
-        for(int echo=0;echo<4;++echo) {
-            const float amplitude=std::pow(feedback,(float)echo);
+        for(int echo=0;echo<4;++echo){
+            const float strength=std::pow(feedback,(float)echo);
             const float cx=plot.getX()+470.f+echo*97.f;
-            const float radius=10.f+22.f*amplitude;
-            g.setColour(Theme::green.withAlpha(.25f+.65f*amplitude));
-            g.drawEllipse(cx-radius,baseY-radius,2.f*radius,2.f*radius,2.f);
-            g.fillEllipse(cx-4.f,baseY-4.f,8.f,8.f);
+            const float height=12.f+32.f*strength;
+            const float width=14.f+23.f*strength;
+            // Signed echo slices, not circular orbit animation.
+            juce::Path slice;
+            slice.startNewSubPath(cx-width*.5f,baseY);
+            slice.lineTo(cx,baseY-height);
+            slice.lineTo(cx+width*.5f,baseY);
+            slice.lineTo(cx,baseY+height);
+            slice.closeSubPath();
+            g.setColour(Theme::green.withAlpha(.17f+.24f*strength));
+            g.fillPath(slice);
+            g.setColour(Theme::green.withAlpha(.28f+.58f*strength));
+            g.strokePath(slice,juce::PathStrokeType(1.8f));
         }
         Theme::text(g,"PHRASE CAPTURE",{70,172,350,18},12,Theme::blue,true);
         Theme::text(g,manual?"MANUAL THROW / LIVE TRIGGER":
@@ -2397,47 +2444,41 @@ void SlotEditor::paint(juce::Graphics&g) {
         const float y0=plot.getY()+20.f, y1=plot.getBottom()-27.f;
         const float w=x1-x0, h=y1-y0;
         if(isModulationOrbEffect(type) && modOrbView) {
-            // This orb represents MODULATION parameters (rate, depth, stereo).
-            // It never pretends to contain measured FFT or actual LFO phase.
-            const float rate=processor.getSlotParam(slot,0);
-            const float depth=processor.getSlotParam(slot,1);
-            const float stereo=processor.getSlotParam(slot,2);
+            // Digital Bones is the only alternate modulation visualization.
+            // Each vertebra follows a REAL normalized control value; its
+            // illumination follows measured post-FX peak, not fake FFT/LFO
+            // phase. No orbit rings, globe ellipses, or generated movement.
+            const auto axes=titles(type);
             const float peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
-            const float cx=430.f,cy=251.f,radius=88.f;
-            g.setColour(Theme::green.withAlpha(.04f+.045f*peak));
-            g.fillEllipse(cx-radius,cy-radius,radius*2.f,radius*2.f);
-            for(int k=-4;k<=4;++k) {
-                const float phi=(float)k*juce::MathConstants<float>::pi/10.f;
-                const float rx=radius*std::cos(phi);
-                g.setColour(Theme::muted.withAlpha(.13f));
-                g.drawEllipse(cx-rx,cy-radius,rx*2.f,radius*2.f,.9f);
-                const float dy=(float)k/5.f*radius;
-                const float latitudeHalfWidth=std::sqrt(1.f-(float)(k*k)/25.f)*radius;
-                g.drawEllipse(cx-latitudeHalfWidth,cy+dy-7.f,
-                              latitudeHalfWidth*2.f,14.f,.6f);
+            const float left=130.f,top=196.f,spacing=170.f;
+            for(int control=0;control<4;++control) {
+                const float value=juce::jlimit(0.f,1.f,
+                    processor.getSlotParam(slot,control));
+                const float centre=left+control*spacing;
+                Theme::fittedText(g,axes[(size_t)control].toUpperCase(),
+                    {(int)(centre-68.f),167,136,20},10.8f,Theme::muted,
+                    true,juce::Justification::centred);
+                for(int vertebra=0;vertebra<13;++vertebra) {
+                    const float y=top+vertebra*10.9f;
+                    const bool filled=(float)(12-vertebra)/12.f<=value;
+                    const float span=13.f+4.f*std::sin((float)vertebra*.35f);
+                    const auto ink=filled?
+                        Theme::green.withAlpha(.35f+.55f*peak):
+                        Theme::stroke.withAlpha(.70f);
+                    g.setColour(Theme::panelAlt);
+                    g.fillRoundedRectangle(centre-span-6.f,y-1.f,
+                                           (span+6.f)*2.f,8.7f,3.f);
+                    g.setColour(ink);
+                    g.fillRoundedRectangle(centre-span,y,span*2.f,5.7f,2.f);
+                    g.fillRoundedRectangle(centre-span-4.f,y+1.f,5.f,5.f,2.f);
+                    g.fillRoundedRectangle(centre+span-1.f,y+1.f,5.f,5.f,2.f);
+                }
+                Theme::text(g,juce::String(juce::roundToInt(value*100.f))+"%",
+                    {(int)(centre-58.f),326,116,17},10.5f,Theme::white,true,
+                    juce::Justification::centred);
             }
-            for(int k=0;k<12;++k) {
-                const float phase=(float)k/12.f*juce::MathConstants<float>::twoPi;
-                const float displacement=(.72f+.19f*depth*
-                    std::sin(phase*(1.f+2.f*rate)+stereo*3.f))*radius;
-                const float x=cx+displacement*std::cos(phase);
-                const float y=cy+displacement*std::sin(phase);
-                const float dot=2.4f+depth*2.7f;
-                g.setColour(Theme::green.withAlpha(.29f+.56f*depth));
-                g.fillEllipse(x-dot,y-dot,dot*2.f,dot*2.f);
-            }
-            g.setColour(Theme::green.withAlpha(.2f+.55f*peak));
-            g.drawEllipse(cx-radius-4.f,cy-radius-4.f,2.f*radius+8.f,
-                          2.f*radius+8.f,1.f+peak*1.7f);
-            Theme::text(g,"MODULATION ORB",{579,183,270,23},12,Theme::green,true);
-            Theme::text(g,"RATE  "+juce::String(juce::roundToInt(rate*100.f)),
-                {579,220,250,21},12,Theme::white);
-            Theme::text(g,"DEPTH "+juce::String(juce::roundToInt(depth*100.f)),
-                {579,247,250,21},12,Theme::white);
-            Theme::text(g,"STEREO "+juce::String(juce::roundToInt(stereo*100.f)),
-                {579,274,250,21},12,Theme::white);
-            Theme::text(g,"VISUAL PROFILE / NOT LIVE LFO PHASE",
-                {579,322,275,19},9,Theme::muted);
+            Theme::text(g,"DIGITAL BONES  /  CONTROL VALUES + REAL FX PEAK",
+                        {50,342,700,13},10.f,Theme::muted);
         } else if(type==SkellPresetAudioProcessor::StudioEQFX) {
             // Use a separate UI-only instance of the same seven-band plain EQ.
             // Never read the filter states owned by the audio thread.
@@ -3159,65 +3200,115 @@ void SlotEditor::paint(juce::Graphics&g) {
             Theme::fittedText(g,title,{55,172,735,22},12.5f,Theme::green,true);
             Theme::text(g,"CONTROL RESPONSE / NOT LIVE AUDIO",
                         {55,327,735,18},10.f,Theme::muted);
+        } else if(type==SkellPresetAudioProcessor::StudioFastDistFX) {
+            // Real processor function, rendered with an isolated UI instance
+            // of the same 20-curve lookup, never the live DSP state.
+            skellpreset::studio::FastDist displayDist;
+            displayDist.prepare(processor.preparedAudioRate());
+            displayDist.set(processor.getSlotParam(slot,0),
+                            processor.getSlotParam(slot,1),
+                            processor.getSlotParam(slot,2),
+                            processor.getSlotParam(slot,3),
+                            processor.getSlotParam(slot,4));
+            juce::Path neutral,response;
+            const float xLeft=plot.getX()+27.f;
+            const float xRight=plot.getRight()-27.f;
+            const float centre=plot.getCentreY();
+            for(int index=0;index<=180;++index){
+                const float sample=-1.f+2.f*index/180.f;
+                const float shaped=juce::jlimit(-1.f,1.f,
+                    displayDist.sample(sample));
+                const float px=xLeft+(xRight-xLeft)*index/180.f;
+                const float cleanY=centre-sample*plot.getHeight()*.39f;
+                const float outputY=centre-shaped*plot.getHeight()*.39f;
+                if(index==0){
+                    neutral.startNewSubPath(px,cleanY);
+                    response.startNewSubPath(px,outputY);
+                } else {
+                    neutral.lineTo(px,cleanY);
+                    response.lineTo(px,outputY);
+                }
+            }
+            g.setColour(Theme::muted.withAlpha(.45f));
+            g.strokePath(neutral,juce::PathStrokeType(1.4f));
+            g.setColour(Theme::amber.withAlpha(.91f));
+            g.strokePath(response,juce::PathStrokeType(2.9f,
+                juce::PathStrokeType::curved));
+            Theme::text(g,"STUDIO FAST DIST / ACTUAL DSP TRANSFER",
+                        {53,167,650,23},12,Theme::amber,true);
+            Theme::text(g,"DIM = DRY  /  GOLD = PROCESSED  /  INPUT -1 TO +1",
+                        {53,326,720,18},10,Theme::muted);
         } else if(type!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
-            // Every formerly text-only native effect now has a truthful,
-            // automatable four-parameter contour: four radial values are
-            // the actual p1..p4 sliders, NOT an invented audio spectrum.
-            // The original XY dot, drag gestures and host IDs remain active.
-            const std::array<float,4> parameters{{
-                processor.getSlotParam(slot,0),processor.getSlotParam(slot,1),
-                processor.getSlotParam(slot,2),processor.getSlotParam(slot,3)}};
-            const float cx=plot.getCentreX(),cy=plot.getCentreY();
-            const float radius=juce::jmin(plot.getWidth()*.15f,plot.getHeight()*.38f);
-            const float angles[]{-juce::MathConstants<float>::halfPi,0.f,
-                juce::MathConstants<float>::halfPi,juce::MathConstants<float>::pi};
-            for(int ring=1;ring<=3;++ring){
-                const float r=radius*(float)ring/3.f;
-                g.setColour(Theme::stroke.withAlpha(.23f));
-                g.drawEllipse(cx-r,cy-r,2.f*r,2.f*r,.8f);
+            // Clear, family-specific instrument controls instead of the
+            // same old radar and concentric ellipse chart on every fallback.
+            // Values are REAL p1..p4, never invented frequency/audio data.
+            const auto category=juce::String(skellpreset::registry::at(type).category);
+            const bool space=category.equalsIgnoreCase("Space");
+            const bool dynamics=category.equalsIgnoreCase("Dynamics");
+            const bool motion=category.equalsIgnoreCase("Motion");
+            const bool tone=category.equalsIgnoreCase("Tone") ||
+                            category.equalsIgnoreCase("Pitch");
+            const auto accent=space?Theme::blue:
+                dynamics?Theme::amber:motion?Theme::pink:
+                tone?Theme::green:Theme::white;
+            const auto controls=titles(type);
+            const float baseline=plot.getBottom()-38.f;
+            const float controlTop=plot.getY()+53.f;
+            const float travel=baseline-controlTop;
+            for(int index=0;index<4;++index){
+                const float x=plot.getX()+131.f+index*186.f;
+                const float value=juce::jlimit(0.f,1.f,
+                    processor.getSlotParam(slot,index));
+                const float height=travel*(.03f+.97f*value);
+                g.setColour(Theme::panelAlt);
+                g.fillRoundedRectangle(x-23.f,controlTop,46.f,travel,5.f);
+                // Four different graphic families, consistent positions:
+                // Space = echo steps, Motion = alternating motion planes,
+                // Dynamics = threshold ladder, Tone = rising bar.
+                if(space) {
+                    for(int k=0;k<6;++k){
+                        const float y=baseline-(k+1)*travel/7.f;
+                        const float width=35.f-k*3.f;
+                        g.setColour(accent.withAlpha(y>baseline-height?.87f:.13f));
+                        g.fillRoundedRectangle(x-width*.5f,y,width,5.f,1.8f);
+                    }
+                } else if(motion){
+                    for(int k=0;k<8;++k){
+                        const float y=controlTop+10.f+k*travel/8.f;
+                        g.setColour(accent.withAlpha(y>=baseline-height?.79f:.13f));
+                        g.drawLine(x-14.f+(k%2)*8.f,y,
+                                   x+14.f-(k%2)*8.f,y,2.9f);
+                    }
+                } else if(dynamics){
+                    for(int k=0;k<7;++k){
+                        const float y=baseline-k*travel/7.f;
+                        g.setColour(accent.withAlpha(y>=baseline-height?.78f:.12f));
+                        g.fillRoundedRectangle(x-18.f,y-4.f,36.f,5.f,1.5f);
+                    }
+                } else {
+                    g.setColour(accent.withAlpha(.16f));
+                    g.fillRoundedRectangle(x-13.f,controlTop,26.f,travel,4.f);
+                    g.setColour(accent.withAlpha(.83f));
+                    g.fillRoundedRectangle(x-13.f,baseline-height,
+                                           26.f,height,4.f);
+                }
+                const float marker=baseline-height;
+                juce::Path pointer;
+                pointer.startNewSubPath(x-28.f,marker);
+                pointer.lineTo(x-35.f,marker+5.f);
+                pointer.lineTo(x-35.f,marker-5.f);
+                pointer.closeSubPath();
+                g.setColour(accent);g.fillPath(pointer);
+                Theme::fittedText(g,controls[(size_t)index].toUpperCase(),
+                    {(int)x-79,170,158,18},10.f,Theme::muted,true,
+                    juce::Justification::centred);
+                Theme::text(g,juce::String(juce::roundToInt(value*100.f))+"%",
+                    {(int)x-65,327,130,18},11.f,Theme::white,true,
+                    juce::Justification::centred);
             }
-            juce::Path shape;
-            for(int i=0;i<4;++i){
-                const float r=radius*(.12f+.88f*parameters[(size_t)i]);
-                const float sx=cx+std::cos(angles[i])*r;
-                const float sy=cy+std::sin(angles[i])*r;
-                g.setColour(Theme::stroke.withAlpha(.46f));
-                g.drawLine(cx,cy,cx+std::cos(angles[i])*radius,
-                           cy+std::sin(angles[i])*radius,.9f);
-                if(i==0)shape.startNewSubPath(sx,sy);
-                else shape.lineTo(sx,sy);
-            }
-            shape.closeSubPath();
-            g.setColour(Theme::green.withAlpha(.18f));
-            g.fillPath(shape);
-            g.setColour(Theme::green.withAlpha(.90f));
-            g.strokePath(shape,juce::PathStrokeType(2.6f,
-                juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-            for(int i=0;i<4;++i){
-                const float r=radius*(.12f+.88f*parameters[(size_t)i]);
-                const float sx=cx+std::cos(angles[i])*r;
-                const float sy=cy+std::sin(angles[i])*r;
-                g.setColour(Theme::plot);g.fillEllipse(sx-4.5f,sy-4.5f,9.f,9.f);
-                g.setColour(i<2?Theme::green:Theme::blue);
-                g.drawEllipse(sx-4.5f,sy-4.5f,9.f,9.f,1.7f);
-            }
-            const auto axisLabels=titles(type);
-            const std::array<juce::Rectangle<int>,4> axisAreas{{
-                {(int)cx-94,(int)(cy-radius)-25,188,18},
-                {(int)(cx+radius)+9,(int)cy-10,156,20},
-                {(int)cx-94,(int)(cy+radius)+9,188,17},
-                {(int)(cx-radius)-169,(int)cy-10,155,20}
-            }};
-            for(int i=0;i<4;++i)
-                Theme::fittedText(g,axisLabels[(size_t)i].toUpperCase(),
-                    axisAreas[(size_t)i],10.f,Theme::muted,false,
-                    i==1?juce::Justification::centredLeft:
-                    i==3?juce::Justification::centredRight:
-                         juce::Justification::centred);
-            Theme::fittedText(g,processor.moduleName(type).toUpperCase(),
-                {60,169,700,24},14.f,Theme::green,true);
-            Theme::text(g,"CONTROL MAP  /  DRAG XY DOT",
-                {60,326,390,18},10.f,Theme::muted);
+            Theme::fittedText(g,category.toUpperCase()+
+                " / LIVE AUTOMATION PARAMETERS",
+                {52,153,730,16},10.f,accent,true);
         }
         // Non-EQ modules share the two-axis universal marker.
         if(!isPagedEQ(type) &&
@@ -3233,15 +3324,37 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::green.withAlpha(.24f));
         g.drawVerticalLine((int)markerX,y0,y1);
         g.drawHorizontalLine((int)markerY,x0,x1);
-        g.setColour(Theme::plot);
-        g.fillEllipse(markerX-6.f,markerY-6.f,12.f,12.f);
+        juce::Path handle;
+        handle.startNewSubPath(markerX,markerY-7.f);
+        handle.lineTo(markerX+7.f,markerY);
+        handle.lineTo(markerX,markerY+7.f);
+        handle.lineTo(markerX-7.f,markerY);
+        handle.closeSubPath();
+        g.setColour(Theme::plot);g.fillPath(handle);
         g.setColour(Theme::green);
-        g.drawEllipse(markerX-6.f,markerY-6.f,12.f,12.f,2.4f);
+        g.strokePath(handle,juce::PathStrokeType(2.2f));
         }
     } else {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }
     g.restoreState();
+    // Four native parameter cards remain integrated with the effect editor.
+    // Position is constant for muscle memory; tint and labels distinguish
+    // Space, Motion, Dynamics, Tone, Pitch and Vocal effects.
+    if(type!=SkellPresetAudioProcessor::Empty &&
+       type!=SkellPresetAudioProcessor::ExternalVST3) {
+        for(int k=0;k<4;++k) {
+            const float x=156.f+(k%2)*430.f;
+            const float y=406.f+(k/2)*57.f;
+            const juce::Rectangle<float> card{x,y,276.f,42.f};
+            g.setColour(Theme::panelAlt.withAlpha(.78f));
+            g.fillRoundedRectangle(card,6.f);
+            g.setColour(Theme::stroke.withAlpha(.58f));
+            g.drawRoundedRectangle(card.reduced(.5f),6.f,.8f);
+            g.setColour(familyAccent.withAlpha(.39f));
+            g.fillRoundedRectangle(x+3.f,y+9.f,2.5f,24.f,1.f);
+        }
+    }
     // The graph is deliberately clipped to its plot rectangle. Titles and
     // numeric legends belong ABOVE it, after restoring the Graphics clip,
     // or they become invisible at the default 70% scale.
@@ -3583,7 +3696,7 @@ bool SlotEditor::testMicModelCards() {
 }
 void SlotEditor::setModOrbForScreenshot(bool enabled) {
     modOrbView=enabled;
-    modOrbButton.setButtonText(modOrbView?"GRAPH":"ORB");
+    modOrbButton.setButtonText(modOrbView?"GRAPH":"BONES");
     modOrbButton.setColour(juce::TextButton::buttonColourId,
         modOrbView?Theme::green.withAlpha(.22f):Theme::panelAlt);
     modOrbButton.setColour(juce::TextButton::textColourOffId,
@@ -3599,7 +3712,7 @@ bool SlotEditor::testModOrbToggle() {
     modOrbButton.onClick();
     const bool on=modOrbView && modOrbButton.getButtonText()=="GRAPH";
     modOrbButton.onClick();
-    const bool off=!modOrbView && modOrbButton.getButtonText()=="ORB";
+    const bool off=!modOrbView && modOrbButton.getButtonText()=="BONES";
     processor.setSlotType(slot,previousType);
     select(slot);
     return on && off;
@@ -3755,11 +3868,25 @@ void SlotEditor::mouseDoubleClick(const juce::MouseEvent& e){
     if(draggingGraph)mouseUp(e);
     addStudioEqNodeAt(e.position);
 }
+void SlotEditor::mouseMove(const juce::MouseEvent& e) {
+    const bool hovered=processor.slotType(slot)!=
+        SkellPresetAudioProcessor::ExternalVST3 &&
+        homeReturnBounds().contains(e.getPosition());
+    if(homeHover!=hovered){
+        homeHover=hovered;
+        repaint(homeReturnBounds().expanded(2));
+    }
+    setMouseCursor(hovered?juce::MouseCursor::PointingHandCursor:
+                           juce::MouseCursor::NormalCursor);
+}
+void SlotEditor::mouseExit(const juce::MouseEvent&) {
+    if(homeHover){homeHover=false;repaint(homeReturnBounds().expanded(2));}
+    setMouseCursor(juce::MouseCursor::NormalCursor);
+}
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
-    // Clicking the inactive part of the effect deck returns to the Skell
-    // home panel. Real knobs/graph/editor child components still intercept.
-    if(e.y<68 && e.x<390 && !e.mods.isPopupMenu()) {
+    if(type!=SkellPresetAudioProcessor::ExternalVST3 &&
+       !e.mods.isPopupMenu() && homeReturnBounds().contains(e.getPosition())) {
         if(onBackgroundClick)onBackgroundClick();
         return;
     }

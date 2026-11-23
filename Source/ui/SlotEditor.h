@@ -91,7 +91,18 @@ public:
 class SlotEditor final:public juce::Component {
 public:
     explicit SlotEditor(SkellPresetAudioProcessor& p);
-    std::function<void()> onBackgroundClick; // blank effect-deck click -> home
+    std::function<void()> onBackgroundClick; // intentional VISUAL top button
+    static juce::Rectangle<int> homeReturnBounds() noexcept {
+        return {325,7,145,23}; // free header margin; never graph or knobs
+    }
+    bool testHomeReturnHitZonesForTest() const noexcept {
+        const auto target=homeReturnBounds();
+        return target.contains({361,18}) &&
+            !target.contains({45,44}) && !target.contains({105,205}) &&
+            !target.intersects({33,151,835,206}) &&
+            !target.intersects({168,411,257,30}) &&
+            !target.intersects({843,22,40,40});
+    }
     void paint(juce::Graphics&) override;
     void resized() override;
     void select(int newSlot);
@@ -150,6 +161,8 @@ public:
             suiteSpectrumButton.onClick();
     }
     void mouseDown(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
@@ -229,6 +242,7 @@ private:
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,2> eqCutAttachments;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> knobAttachment;
     bool draggingGraph=false;
+    bool homeHover=false; // UI-only; never audio state
     int gestureEqBand=-1; // same parameter IDs receive begin/end gestures
     bool graphSnapshotValid=false;
     int lastType=-1;

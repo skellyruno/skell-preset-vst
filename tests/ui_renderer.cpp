@@ -25,7 +25,9 @@ constexpr std::array<View, 4> views {{
     {"simple", 0, false},
     {"bypass", 3, false}
 }};
-constexpr std::array<const char*, 3> themes {{"obsidian", "cream", "crimson"}};
+constexpr std::array<const char*, 2> themes {{"obsidian", "crimson"}};
+// Keep the persistent numeric IDs stable (0/2; retired 1 remains reserved).
+constexpr std::array<int,2> themeIds {{0,2}};
 constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
@@ -295,7 +297,7 @@ int main(int argc, char** argv) {
                     skellcore::ui::headless::Scene scene;
                     scene.id = juce::String(themes[(size_t)theme]) + "-" + view.name + "-"
                         + juce::String(juce::roundToInt(scale * 100.f));
-                    scene.theme = theme;
+                    scene.theme = themeIds[(size_t)theme];
                     scene.mode = view.mode;
                     scene.browser = view.browser;
                     scene.width = juce::roundToInt(1168.f * scale);
@@ -305,7 +307,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-guided-tour-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-mic-panel-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
-        options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
+        options.scenes.push_back({"crimson-deesser-70",818,482,2,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-external-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-wet-dot-70",818,482,0,1,false});
@@ -376,13 +378,13 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-vocal-suite-output-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-vocal-suite-style-picker-125",1460,860,0,1,false});
         options.scenes.push_back({"obsidian-vocal-suite-spectrum-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-effect-chorus-orb-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-chorus-digital-bones-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
                                   818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-reference-70",
                                   818,482,0,1,false});
         if(quick4) {
-            // Opt-in four actual-editor views; the original full 110-scene
+            // Opt-in four actual-editor views; the complete current two-theme
             // matrix and its independent regressions remain available.
             options.scenes={
                 {"obsidian-simple-100",1168,688,0,0,false},
@@ -406,7 +408,7 @@ int main(int argc, char** argv) {
                 while(processor.activeSlotCount()<16)processor.appendRackSlot();
                 processor.setSlotType(15,SkellPresetAudioProcessor::DeEsser);
                 processor.setSlotOn(15,true);
-            } else if(scene.id=="cream-deesser-70") {
+            } else if(scene.id=="crimson-deesser-70") {
                 processor.loadFactoryPreset(24); // Skell Vocal Polish
             } else if(scene.id=="obsidian-live-70") {
                 processor.loadFactoryPreset(25); // Skell Live Lead, 0 PDC
@@ -465,7 +467,7 @@ int main(int argc, char** argv) {
                 const auto& recipe=skellpreset::dsp::vocalFeelRecipes[1].values;
                 for(int k=0;k<16;++k)
                     processor.setSlotParam(0,k,recipe[(size_t)k]);
-            } else if(scene.id=="obsidian-effect-chorus-orb-70") {
+            } else if(scene.id=="obsidian-effect-chorus-digital-bones-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::VocalChorusFX);
                 processor.setSlotOn(0,true);
@@ -517,7 +519,7 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr,"Guided tour did not show in real-editor render\\n");
             if(scene.id=="obsidian-expanded-70")
                 editor.selectRackSlotForScreenshot(15,6);
-            else if(scene.id=="cream-deesser-70")
+            else if(scene.id=="crimson-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
             else if(scene.id=="obsidian-effect-alchemist-match-finish-70"
                     || scene.id=="obsidian-effect-alchemist-calibration-70"
@@ -560,7 +562,7 @@ int main(int argc, char** argv) {
                 editor.setMatchPageForScreenshot(1);
             if(scene.id=="obsidian-effect-alchemist-reference-70")
                 editor.setMatchPageForScreenshot(2);
-            editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-orb-70");
+            editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-digital-bones-70");
             editor.setMicPanelForScreenshot(scene.id=="obsidian-mic-panel-70");
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
@@ -568,10 +570,9 @@ int main(int argc, char** argv) {
             {"obsidian-advanced-70", "obsidian-preset-browser-70"},
             {"obsidian-advanced-70", "obsidian-simple-70"},
             {"obsidian-advanced-70", "obsidian-bypass-70"},
-            {"obsidian-advanced-70", "cream-advanced-70"},
-            {"cream-advanced-70", "crimson-advanced-70"},
+            {"obsidian-advanced-70", "crimson-advanced-70"},
             {"obsidian-advanced-70", "obsidian-expanded-70"},
-            {"cream-advanced-70", "cream-deesser-70"},
+            {"crimson-advanced-70", "crimson-deesser-70"},
             {"obsidian-advanced-70", "obsidian-live-70"},
             {"obsidian-effect-saturator-70", "obsidian-effect-reverb-70"},
             {"obsidian-effect-delay-70", "obsidian-effect-adlib-throw-70"},
@@ -606,7 +607,7 @@ int main(int argc, char** argv) {
              "obsidian-effect-alchemist-reference-70"},
             {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
             {"obsidian-effect-skelldizer-70","obsidian-effect-mic-modeling-70"},
-            {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-orb-70"},
+            {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-digital-bones-70"},
             {"obsidian-advanced-70","obsidian-mic-panel-70"}
         };
         if(quick4) {
@@ -623,9 +624,10 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != (quick4?4:110)) {
+        const int expectedScenes=quick4?4:(int)options.scenes.size();
+        if (report.captured != expectedScenes) {
             std::fprintf(stderr,"Expected %d PNGs, captured %d\n",
-                         quick4?4:110,report.captured);
+                         expectedScenes,report.captured);
             ++failures;
         }
 
@@ -670,10 +672,10 @@ int main(int argc, char** argv) {
         }
         if(!quick4)processor.loadFactoryPreset(0); // Full-matrix legacy baseline only.
         // Quick4 captures exactly the 4 current-source real editor scenes.
-        // Full audits keep the old six-view overview.
+        // Full audits show only the two supported dark themes.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
         juce::Image overview(juce::Image::RGB,2*thumbnailWidth,
-                             (quick4?2:3)*thumbnailHeight,true);
+                             (quick4?2:(int)themes.size())*thumbnailHeight,true);
         juce::Graphics g(overview);
         if(quick4) {
             // Use the exact four previously saved PNGs. Re-rendering the
@@ -695,7 +697,8 @@ int main(int argc, char** argv) {
         } else {
             for(int theme=0;theme<(int)themes.size();++theme)
                 for(int column=0;column<2;++column) {
-                    editor.configureForScreenshot(theme,views[(size_t)column].mode,
+                    editor.configureForScreenshot(themeIds[(size_t)theme],
+                                                  views[(size_t)column].mode,
                                                   views[(size_t)column].browser);
                     const auto capture=skellcore::ui::headless::capture(
                         editor,thumbnailWidth,thumbnailHeight);
@@ -864,7 +867,7 @@ int main(int argc, char** argv) {
             editor.configureForScreenshot(0,1,false);
             editor.selectRackSlotForScreenshot(0,0);
             // The rack menu was previously never photographed, so clipped
-            // bottom actions could pass the 110-scene audit unnoticed.
+            // bottom actions could pass the full UI-scene audit unnoticed.
             if(!editor.openRackContextMenuForScreenshot(0)) {
                 std::fprintf(stderr,"Real rack context menu out of bounds\n");
                 ++failures;

@@ -504,7 +504,9 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     }
     const int index=rowAt(e.y);
     if(index<0 || e.x<10 || e.x>206) {
-        if(!e.mods.isPopupMenu() && onClearSelection)onClearSelection();
+        // Dead rack space is for scrolling/dragging the rack, not a hidden
+        // return-to-home shortcut. Only a deliberate blank gap or the
+        // VISUAL control should leave the current effect editor.
         return;
     }
     const auto slot=processor.slotIdAt(index);

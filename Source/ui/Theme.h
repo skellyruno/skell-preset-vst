@@ -6,6 +6,8 @@
 // theme persisted by its own processor before drawing.
 namespace Theme {
 constexpr int width=1168, height=688;
+// Keep saved numeric IDs stable. Cream=1 remains a legacy read value,
+ // but is no longer an offered theme. Existing projects render in Obsidian.
 enum Variant { Obsidian=0, Cream=1, Crimson=2 };
 inline thread_local int current = Obsidian;
 inline thread_local juce::Colour bg       {0xff020404};
@@ -21,19 +23,17 @@ inline thread_local juce::Colour amber    {0xffffbc62};
 inline thread_local juce::Colour red      {0xffff4a4a};
 inline thread_local juce::Colour plot     {0xff040707};
 
-inline int clampVariant(int v) noexcept { return v >= Obsidian && v <= Crimson ? v : Obsidian; }
+inline int clampVariant(int v) noexcept {
+    return v==Crimson ? Crimson : Obsidian; // legacy Cream=1 -> Obsidian
+}
+inline int nextVariant(int currentVariant) noexcept {
+    return clampVariant(currentVariant)==Obsidian ? Crimson : Obsidian;
+}
 inline void select(int v) {
     v=clampVariant(v);
     if (current==v) return;
     current=v;
-    if (v==Cream) {
-        bg=juce::Colour(0xffeee8dd); panel=juce::Colour(0xfffffaf0);
-        panelAlt=juce::Colour(0xfff0e8db); stroke=juce::Colour(0xffcbc0ae);
-        green=juce::Colour(0xff286c54); blue=juce::Colour(0xff557c75);
-        pink=juce::Colour(0xffa34c66); white=juce::Colour(0xff292d29);
-        muted=juce::Colour(0xff756f66); amber=juce::Colour(0xffa66a24);
-        red=juce::Colour(0xffb83b43); plot=juce::Colour(0xfff7f1e8);
-    } else if(v==Crimson) {
+    if(v==Crimson) {
         bg=juce::Colour(0xff0e0a0c); panel=juce::Colour(0xff1b1317);
         panelAlt=juce::Colour(0xff291b22); stroke=juce::Colour(0xff55313d);
         green=juce::Colour(0xffff3a55); blue=juce::Colour(0xffe68e9e);
@@ -68,7 +68,7 @@ inline void panelBox(juce::Graphics& g,juce::Rectangle<float> box,float radius=1
     if(box.getWidth()>35.f && box.getHeight()>22.f) {
         const float inset=std::min(16.f,radius+5.f);
         const float x0=box.getX()+inset,x1=box.getRight()-inset;
-        g.setColour(white.withAlpha(current==Cream?.085f:.048f));
+        g.setColour(white.withAlpha(.048f));
         g.drawLine(x0,box.getY()+1.4f,x1,box.getY()+1.4f,.7f);
         g.setColour(bg.withAlpha(.31f));
         g.drawLine(x0,box.getBottom()-1.1f,x1,box.getBottom()-1.1f,.7f);
