@@ -9,7 +9,6 @@ on:
         type: choice
         options:
           - retarget-pr
-          - merge-pr
           - close-pr
           - prune-merged-branches
           - delete-branch
@@ -92,17 +91,9 @@ jobs:
               ;;
 
             merge-pr)
-              if [[ -z "$PR_NUMBER" ]]; then
-                echo "pr_number is required" >&2
-                exit 1
-              fi
-              is_draft=$(gh pr view "$PR_NUMBER" --json isDraft --jq '.isDraft')
-              if [[ "$is_draft" == "true" ]]; then
-                echo "Marking draft PR #$PR_NUMBER ready for review..."
-                gh pr ready "$PR_NUMBER"
-              fi
-              echo "Merging PR #$PR_NUMBER via --$MERGE_METHOD..."
-              gh pr merge "$PR_NUMBER" "--$MERGE_METHOD" --delete-branch
+              # Old workflow dispatch requests must fail closed too.
+              echo "Automatic merging disabled. Review and verify PR gates before manually merging." >&2
+              exit 1
               ;;
 
             close-pr)
@@ -118,11 +109,30 @@ jobs:
               ;;
 
             delete-branch)
-              if [[ -z "$BRANCH_NAME" || "$BRANCH_NAME" == "main" ]]; then
-                echo "Valid non-main branch_name is required" >&2
+              if [[ -z "$BRANCH_NAME" ]]; then
+                echo "branch_name is required" >&2
                 exit 1
               fi
-              echo "Deleting remote branch '$BRANCH_NAME'..."
+              case "$BRANCH_NAME" in
+                main|master|prod|production|release|stable|prod/*|production/*|release/*|stable/*|hotfix/*)
+                  echo "Protected branch name: $BRANCH_NAME" >&2
+                  exit 1 ;;
+              esac
+              git fetch --prune origin
+              if ! git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_NAME"; then
+                echo "Remote branch not found: $BRANCH_NAME" >&2
+                exit 1
+              fi
+              if gh pr list --state open --limit 100 --json headRefName,baseRefName \
+                  --jq '.[] | .headRefName, .baseRefName' | grep -Fxq -- "$BRANCH_NAME"; then
+                echo "An open PR references this branch: $BRANCH_NAME" >&2
+                exit 1
+              fi
+              if ! git merge-base --is-ancestor "origin/$BRANCH_NAME" origin/main; then
+                echo "Unmerged branch; refusing deletion: $BRANCH_NAME" >&2
+                exit 1
+              fi
+              echo "Deleting already-merged branch '$BRANCH_NAME'..."
               git push origin --delete "$BRANCH_NAME"
               ;;
 
@@ -151,6 +161,10 @@ jobs:
 
               to_delete=()
               for b in "${candidates[@]}"; do
+                case "$b" in
+                  main|master|prod|production|release|stable|prod/*|production/*|release/*|stable/*|hotfix/*)
+                    continue ;;
+                esac
                 skip=false
                 for p in "${protected[@]}"; do
                   if [[ "$b" == "$p" ]]; then
