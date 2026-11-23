@@ -24,6 +24,7 @@ public:
     bool testMainVocalsPresetFilterForTest(); // primary whitelist and independent artists/favorites
     bool testBrowserLayoutForTest(); // visible, nonoverlapping controls on both pages
     bool testBrowserKeyboardForTest(); // roving result focus without triggering audio loads
+    bool testBrowserSortingForTest(); // no data mutation during sorting
     void loadFactoryForHistoryTest(int index) {loadFactoryFromBrowser(index);}
     juce::File historySelection() const {return activeUserPreset;}
     void restoreHistorySelection(const juce::File& selection) {
@@ -38,11 +39,11 @@ public:
 private:
     SkellPresetAudioProcessor& processor;
     juce::TextEditor search,artistEditor,categoryEditor;
-    juce::ComboBox genrePicker,genreFilter;
+    juce::ComboBox genrePicker,genreFilter,sortPicker;
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
         artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
         genreButton{"TAG"},detailsButton{"EDIT DETAILS"},
-        addCategoryButton{"ADD CATEGORY"};
+        addCategoryButton{"ADD CATEGORY"},clearSearchButton{"CLEAR"};
     std::unique_ptr<juce::FileChooser> fileChooser;
     bool chooserActive=false;
     void setChooserActive(bool active);

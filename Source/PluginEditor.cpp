@@ -578,6 +578,8 @@ public:
             issues.add("Preset browser custom category controls or cover preview overlap");
         if(!browser.testBrowserKeyboardForTest())
             issues.add("Preset browser keyboard focus, pagination, bank selection or restoration failed");
+        if(!browser.testBrowserSortingForTest())
+            issues.add("Preset browser A-Z/Z-A/starred-first sorting changed active preset or failed");
         if(processor.presetName()!="Alchemist" ||
            processor.getProgramName(skellpreset::alchemist::factoryIndex)!="Alchemist" ||
            processor.getProgramName(skellpreset::deuce_v25::factoryIndex)!="Deuce")

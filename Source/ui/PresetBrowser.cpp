@@ -84,7 +84,9 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     categoryEditor.setTextToShowWhenEmpty("New category name",Theme::muted);
     categoryEditor.setTooltip("Create your own library category; presets and automation stay unchanged.");
     applyTheme();
-    search.onTextChange=[this]{scroll=0;hoveredCard=-1;repaint();};
+    search.onTextChange=[this]{
+        scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();
+    };
     search.onEscapeKey=[this]{setVisible(false);if(onClose)onClose();};
     // Enter auditions the first filtered result without dismissing the browser.
     search.onReturnKey=[this]{
@@ -95,9 +97,17 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     addAndMakeVisible(artistEditor);
     addAndMakeVisible(genrePicker);
     addAndMakeVisible(genreFilter);
+    addAndMakeVisible(sortPicker);
+    sortPicker.addItem("Name  A-Z",1);
+    sortPicker.addItem("Name  Z-A",2);
+    sortPicker.addItem("Starred first",3);
+    sortPicker.setSelectedId(1,juce::dontSendNotification);
+    sortPicker.setTooltip("Change display order, never rename presets or modify audio.");
+    sortPicker.onChange=[this]{scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();};
     addAndMakeVisible(categoryEditor);
     for(auto* button:{&importButton,&exportButton,&artworkButton,
-                      &artistButton,&genreButton,&detailsButton,&addCategoryButton})
+                      &artistButton,&genreButton,&detailsButton,&addCategoryButton,
+                      &clearSearchButton})
         addAndMakeVisible(*button);
     detailsButton.setTooltip("Show artist, genre, and cover controls in a separate clean panel");
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
@@ -106,6 +116,12 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     artworkButton.setEnabled(false);
     artistButton.setEnabled(false);
     artistButton.setTooltip("Save an artist label to the selected personal preset. Does not modify its .skellpreset file.");
+    clearSearchButton.setTooltip("Clear the search phrase without changing the selected category.");
+    clearSearchButton.onClick=[this] {
+        search.clear();
+        search.grabKeyboardFocus();
+        scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();
+    };
     genreButton.setTooltip("Manually tag your personal preset with a genre, Ad-libs or custom category.");
     addCategoryButton.setTooltip("Add a new category to the user library; no audio or preset ZIP changes.");
     genreButton.setEnabled(false);
@@ -192,11 +208,16 @@ void PresetBrowser::applyTheme() {
     genreFilter.setColour(juce::ComboBox::textColourId,Theme::white);
     genreFilter.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
     genreFilter.setColour(juce::ComboBox::arrowColourId,Theme::green);
+    sortPicker.setColour(juce::ComboBox::backgroundColourId,Theme::plot);
+    sortPicker.setColour(juce::ComboBox::textColourId,Theme::white);
+    sortPicker.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
+    sortPicker.setColour(juce::ComboBox::arrowColourId,Theme::green);
     categoryEditor.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
     categoryEditor.setColour(juce::TextEditor::textColourId,Theme::white);
     categoryEditor.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
     for(auto* button:{&importButton,&exportButton,&artworkButton,
-                       &artistButton,&genreButton,&detailsButton,&addCategoryButton}) {
+                       &artistButton,&genreButton,&detailsButton,&addCategoryButton,
+                       &clearSearchButton}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panel);
         button->setColour(juce::TextButton::textColourOffId,Theme::white);
     }
@@ -294,6 +315,7 @@ void PresetBrowser::open() {
     loadCustomCategories();refreshGenreChoices();loadGenres();refreshArtwork();
     bank=0;scroll=0;hoveredCard=-1;keyboardCard=-1;
     genreFilter.setSelectedId(1,juce::dontSendNotification);
+    sortPicker.setSelectedId(1,juce::dontSendNotification);
     showDetails(false);
     search.setText({},juce::dontSendNotification);
     setVisible(true);toFront(true);search.grabKeyboardFocus();repaint();
@@ -321,7 +343,10 @@ void PresetBrowser::focusCard(int index){
     hoveredCard=-1;repaint();
 }
 void PresetBrowser::resized(){
-    search.setBounds(19,17,getWidth()-38,42);
+    search.setBounds(19,17,getWidth()-111,42);
+    clearSearchButton.setBounds(getWidth()-86,22,66,31);
+    sortPicker.setVisible(!detailsOpen);
+    sortPicker.setBounds(getWidth()-169,69,150,29);
     detailsButton.setBounds(18,detailsOpen?112:386,166,30);
     for(auto* control:{static_cast<juce::Component*>(&artistEditor),
                        static_cast<juce::Component*>(&artistButton),
@@ -701,6 +726,39 @@ void PresetBrowser::toggleFavorite(int entry) {
     scroll=juce::jlimit(0,std::max(0,(int)filtered().size()-6),scroll);
     repaint();
 }
+bool PresetBrowser::testBrowserSortingForTest(){
+    const int oldBank=bank,oldScroll=scroll,oldMode=sortPicker.getSelectedId();
+    const auto oldQuery=search.getText();
+    const auto oldFilter=genreFilter.getText();
+    const auto oldFavorites=favoriteKeys;
+    const auto oldCount=userPresets.size();
+    bank=2;scroll=0;
+    genreFilter.setSelectedId(1,juce::dontSendNotification);
+    search.setText("__skell_sort_probe__",juce::dontSendNotification);
+    const auto folder=juce::File::getSpecialLocation(juce::File::tempDirectory);
+    userPresets.push_back(folder.getChildFile("zz__skell_sort_probe__.skellpreset"));
+    userPresets.push_back(folder.getChildFile("aa__skell_sort_probe__.skellpreset"));
+    const int big=-((int)oldCount)-1,small=big-1;
+    sortPicker.setSelectedId(1,juce::dontSendNotification);
+    const auto az=filtered();
+    const bool asc=az.size()==2 && az[0]==small && az[1]==big;
+    sortPicker.setSelectedId(2,juce::dontSendNotification);
+    const auto za=filtered();
+    const bool desc=za.size()==2 && za[0]==big && za[1]==small;
+    favoriteKeys.add(favoriteKey(big));
+    sortPicker.setSelectedId(3,juce::dontSendNotification);
+    const auto stars=filtered();
+    const bool starred=stars.size()==2 && stars[0]==big;
+    userPresets.resize(oldCount);favoriteKeys=oldFavorites;
+    search.setText(oldQuery,juce::dontSendNotification);
+    genreFilter.setSelectedId(1,juce::dontSendNotification);
+    for(int i=0;i<genreFilter.getNumItems();++i)
+        if(genreFilter.getItemText(i)==oldFilter)
+            genreFilter.setSelectedId(genreFilter.getItemId(i),juce::dontSendNotification);
+    sortPicker.setSelectedId(oldMode,juce::dontSendNotification);
+    bank=oldBank;scroll=oldScroll;repaint();
+    return asc && desc && starred;
+}
 bool PresetBrowser::testBrowserKeyboardForTest(){
     // Synthetic library entries are never loaded or written to disk.
     const int oldBank=bank,oldScroll=scroll,oldHover=hoveredCard,
@@ -750,7 +808,11 @@ bool PresetBrowser::testBrowserLayoutForTest() {
         if(getWidth()<620 || getHeight()<530)return false;
         const auto bounds=getLocalBounds();
         if(!bounds.contains(search.getBounds()) ||
-           !bounds.contains(detailsButton.getBounds()))return false;
+           !bounds.contains(clearSearchButton.getBounds()) ||
+           search.getBounds().intersects(clearSearchButton.getBounds()) ||
+           !bounds.contains(sortPicker.getBounds()) ||
+           !bounds.contains(detailsButton.getBounds()) ||
+           sortPicker.isVisible()==expanded)return false;
         if(artistEditor.isVisible()!=expanded ||
            artistButton.isVisible()!=expanded ||
            genrePicker.isVisible()!=expanded ||
@@ -996,6 +1058,25 @@ std::vector<int> PresetBrowser::filtered() const {
                 return artistForUser(-a-1).compareIgnoreCase(artistForUser(-b-1))<0;
             });
     }
+    // Display sorting changes only this temporary list. The original
+    // files, factory program order, APVTS IDs and saved patch are untouched.
+    if(bank==1 || bank==2 || bank==4){
+        const int mode=sortPicker.getSelectedId();
+        const auto label=[this](int entry){
+            return entry>=0
+                ?juce::String(skellpreset::factoryPresets[(size_t)entry].name)
+                :userPresets[(size_t)(-entry-1)].getFileNameWithoutExtension();
+        };
+        std::stable_sort(list.begin(),list.end(),
+            [this,mode,&label](int a,int b){
+                if(mode==3){
+                    const bool favA=isFavorite(a),favB=isFavorite(b);
+                    if(favA!=favB)return favA;
+                }
+                const int difference=label(a).compareIgnoreCase(label(b));
+                return mode==2?difference>0:difference<0;
+            });
+    }
     return list;
 }
 void PresetBrowser::refreshArtwork() {
@@ -1103,7 +1184,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
     const auto entries=filtered();
     Theme::text(g,juce::String((int)entries.size())+
         (entries.size()==1?" SOUND":" SOUNDS"),{207,73,246,20},12,Theme::white,true);
-    Theme::text(g,"ESC TO CLOSE",{getWidth()-121,75,100,20},10,Theme::muted,false,juce::Justification::centredRight);
+    if(detailsOpen)
+        Theme::text(g,"ESC TO RETURN",{getWidth()-175,75,151,20},
+            10,Theme::muted,false,juce::Justification::centredRight);
     if(!detailsOpen) {
         Theme::text(g,"CATEGORIES",{19,312,166,16},10.2f,Theme::muted,true);
         for(int i=0;i<banks.size();++i){
