@@ -19,10 +19,11 @@ public:
     void select(int index) { selected=juce::jlimit(0,3,index);repaint(); }
     void open(int index) {
         select(index);
-        focusedTarget=selected;
+        focusedTarget=selected;hoveredTarget=-1;
         setVisible(true);toFront(true);grabKeyboardFocus();
     }
     void close() {
+        hoveredTarget=-1;
         setVisible(false);
         if(auto* parent=getParentComponent())parent->grabKeyboardFocus();
         if(onClose)onClose();
@@ -83,6 +84,29 @@ public:
         // static popover thirty times a second when nothing has changed.
         if(next!=worldLinkLabel){worldLinkLabel=next;repaint();}
     }
+    // The exact same targets drive hover, clicks and hit-area regression.
+    int hitTargetForTest(juce::Point<int> p) const noexcept {
+        if(juce::Rectangle<int>(getWidth()-47,10,37,40).contains(p))return 5;
+        for(int i=0;i<4;++i)
+            if(juce::Rectangle<int>(25+(i%2)*177,119+(i/2)*47,166,39).contains(p))
+                return i;
+        if(juce::Rectangle<int>(25,239,getWidth()-50,39).contains(p))return 4;
+        return -1;
+    }
+    void mouseMove(const juce::MouseEvent& e) override {
+        const int next=hitTargetForTest(e.getPosition());
+        if(next==hoveredTarget)return;
+        hoveredTarget=next;
+        setMouseCursor(juce::MouseCursor(next>=0?
+            juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor));
+        repaint(); // only on actual target transitions
+    }
+    void mouseExit(const juce::MouseEvent&) override {
+        if(hoveredTarget<0)return;
+        hoveredTarget=-1;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
+        repaint();
+    }
     bool testLayoutForTest() const noexcept {
         const auto bounds=getLocalBounds();
         if(getWidth()<388 || getHeight()<326)return false;
@@ -102,7 +126,14 @@ public:
                     25+(j%2)*177,119+(j/2)*47,166,39)))
                     return false;
         }
-        return true;
+        for(int i=0;i<4;++i) {
+            const int x=25+(i%2)*177,y=119+(i/2)*47;
+            if(hitTargetForTest({x+83,y+19})!=i ||
+               hitTargetForTest({x+166,y+19})==i)return false;
+        }
+        return hitTargetForTest({getWidth()-29,30})==5 &&
+               hitTargetForTest({getWidth()/2,258})==4 &&
+               hitTargetForTest({getWidth()/2,224})==-1;
     }
     bool hasWorldLinkControlForTest() const noexcept {
         return worldLinkLabel.isNotEmpty() && (bool)onWorldLinkToggle;
@@ -113,8 +144,15 @@ public:
         g.setColour(Theme::green);
         g.fillRoundedRectangle(juce::Rectangle<float>(18.f,17.f,4.f,24.f),2.f);
         Theme::text(g,"SKELL SETTINGS",{33,12,getWidth()-98,34},19,Theme::white,true);
-        Theme::text(g,"X",{getWidth()-41,12,22,30},17,Theme::muted,true,
-                    juce::Justification::centred);
+        // Crisp vector close glyph, matching the metal action buttons.
+        const auto closeFace=juce::Rectangle<float>((float)getWidth()-45.f,11.f,34.f,36.f);
+        g.setColour(hoveredTarget==5?Theme::panelAlt.brighter(.22f):Theme::panelAlt);
+        g.fillRoundedRectangle(closeFace,6.f);
+        g.setColour(hoveredTarget==5?Theme::green:Theme::stroke);
+        g.drawRoundedRectangle(closeFace.reduced(.5f),6.f,1.f);
+        g.setColour(hoveredTarget==5?Theme::white:Theme::muted);
+        g.drawLine((float)getWidth()-34.f,24.f,(float)getWidth()-23.f,35.f,1.6f);
+        g.drawLine((float)getWidth()-23.f,24.f,(float)getWidth()-34.f,35.f,1.6f);
         g.setColour(Theme::stroke);
         g.drawLine(20.f,53.f,(float)getWidth()-20.f,53.f,.9f);
         Theme::text(g,"INTERFACE SCALE",{25,65,getWidth()-50,23},12,Theme::green,true);
@@ -126,9 +164,12 @@ public:
             const auto r=juce::Rectangle<float>((float)x,(float)y,166.f,39.f);
             const bool active=i==selected;
             const bool focused=hasKeyboardFocus(false) && focusedTarget==i;
-            g.setColour(active?Theme::green.withAlpha(.21f):Theme::panelAlt);
+            const bool hovered=hoveredTarget==i;
+            g.setColour(active?Theme::green.withAlpha(.21f):
+                        hovered?Theme::panelAlt.brighter(.18f):Theme::panelAlt);
             g.fillRoundedRectangle(r,7.f);
-            g.setColour(active?Theme::green:Theme::stroke);
+            g.setColour(active?Theme::green:
+                        hovered?Theme::muted.withAlpha(.82f):Theme::stroke);
             g.drawRoundedRectangle(r.reduced(.5f),7.f,1.15f);
             if(focused){
                 g.setColour(Theme::white.withAlpha(.88f));
@@ -142,10 +183,11 @@ public:
                     {25,214,getWidth()-50,18},10,Theme::green,true);
         const auto linkButton=juce::Rectangle<float>(25.f,239.f,
                                                        (float)getWidth()-50.f,39.f);
-        g.setColour(Theme::panelAlt);
+        g.setColour(hoveredTarget==4?Theme::panelAlt.brighter(.18f):Theme::panelAlt);
         g.fillRoundedRectangle(linkButton,7.f);
         g.setColour(worldLinkLabel.startsWith("LEAVE")
-                    ?Theme::green:Theme::stroke);
+                    ?Theme::green:
+                    hoveredTarget==4?Theme::muted.withAlpha(.82f):Theme::stroke);
         g.drawRoundedRectangle(linkButton.reduced(.5f),7.f,1.15f);
         if(hasKeyboardFocus(false) && focusedTarget==4){
             g.setColour(Theme::white.withAlpha(.88f));
@@ -160,22 +202,20 @@ public:
                     {25,306,getWidth()-50,17},10.f,Theme::muted);
     }
     void mouseDown(const juce::MouseEvent& e) override {
-        if(e.x>=getWidth()-47 && e.y<50) {close();return;}
-        for(int i=0;i<4;++i) {
-            const int x=25+(i%2)*177, y=119+(i/2)*47;
-            if(juce::Rectangle<int>(x,y,166,39).contains(e.getPosition())){
-                select(i);
-                if(onSizeChange)onSizeChange(i+1);
-                close();
-                return;
-            }
-        }
-        if(juce::Rectangle<int>(25,239,getWidth()-50,39).contains(e.getPosition())) {
+        const int target=hitTargetForTest(e.getPosition());
+        if(target==5){close();return;}
+        if(target>=0 && target<4){
+            focusedTarget=target;
+            select(target);
+            if(onSizeChange)onSizeChange(target+1);
+            close();
+        } else if(target==4) {
+            focusedTarget=target;
             if(onWorldLinkToggle)onWorldLinkToggle();
-            return;
+            repaint();
         }
     }
 private:
-    int selected=0,focusedTarget=0;
+    int selected=0,focusedTarget=0,hoveredTarget=-1;
     juce::String worldLinkLabel{"JOIN SKELLWORLD  |  PRESENCE ONLY"};
 };

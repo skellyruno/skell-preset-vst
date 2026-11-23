@@ -2,6 +2,7 @@
 #include "Theme.h"
 #include "../chain/EffectRegistry.h"
 #include <cmath>
+#include <cstdio>
 #include <limits>
 namespace {
 bool isPagedEQ(int type) noexcept {
@@ -4106,10 +4107,43 @@ bool SlotEditor::testAllNativeEffectLayoutsForTest() {
         processor.setSlotType(probeSlot,type);
         processor.setSlotOn(probeSlot,type!=SkellPresetAudioProcessor::Empty);
         select(probeSlot);
-        clean=clean && testIntegratedEffectLayout() && testPopupLayoutsForTest();
+        const bool geometryOK=testIntegratedEffectLayout();
+        const bool popupsOK=testPopupLayoutsForTest();
+        if(!geometryOK || !popupsOK){
+            std::fprintf(stderr,"Native UI geometry failure: type=%d geometry=%d popup=%d\n",
+                         type,(int)geometryOK,(int)popupsOK);
+            clean=false;
+        }
         const bool hasControl=type!=SkellPresetAudioProcessor::Empty;
-        for(const auto& control:knobs)
-            if(control.isVisible()!=hasControl)clean=false;
+        const bool compactLimiter=type==SkellPresetAudioProcessor::StudioLimiterFX;
+        // The Studio Limiter hides p3/p4 until MORE is pressed. The old
+        // all-four-visible assertion incorrectly rejected the approved UI.
+        for(size_t index=0;index<knobs.size();++index) {
+            const bool expected=hasControl &&
+                (!compactLimiter || index<2 || limiterDetailsVisible);
+            if(knobs[index].isVisible()!=expected) {
+                std::fprintf(stderr,"Native UI knob visibility: type=%d knob=%zu expected=%d actual=%d\n",
+                             type,index,(int)expected,(int)knobs[index].isVisible());
+                clean=false;
+            }
+        }
+        if(compactLimiter){
+            const bool wasExpanded=limiterDetailsVisible;
+            if(!wasExpanded)limiterMore.onClick();
+            const bool expanded=limiterDetailsVisible &&
+                limiterMore.isVisible() && studioGateFloor.isVisible() &&
+                knobs[0].isVisible() && knobs[1].isVisible() &&
+                knobs[2].isVisible() && knobs[3].isVisible() &&
+                testIntegratedEffectLayout() && testPopupLayoutsForTest();
+            if(!wasExpanded)limiterMore.onClick();
+            const bool restored=wasExpanded ||
+                (!limiterDetailsVisible && !knobs[2].isVisible() &&
+                 !knobs[3].isVisible() && !studioGateFloor.isVisible());
+            if(!expanded || !restored){
+                std::fprintf(stderr,"Native Studio Limiter MORE drawer regression\n");
+                clean=false;
+            }
+        }
         if(!clean)break;
     }
     // This method is only used from the headless UI smoke, immediately
