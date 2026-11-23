@@ -111,7 +111,10 @@ namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
     } else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
     g.strokePath(p,juce::PathStrokeType(1.8f));
 }}
-ChainPanel::ChainPanel(SkellPresetAudioProcessor& p):processor(p) {}
+ChainPanel::ChainPanel(SkellPresetAudioProcessor& p):processor(p) {
+    setWantsKeyboardFocus(true);
+    setTooltip("Wheel on effect: move it. Side rail: scroll rack. Shift + wheel: scroll anywhere.");
+}
 float ChainPanel::slotWet(int physicalSlot) const noexcept {
     if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount)return 0.f;
     const auto* value=processor.state.getRawParameterValue(
@@ -323,18 +326,24 @@ void ChainPanel::paint(juce::Graphics& g) {
         const float railY=(float)rowStart,railH=(float)visibleRows*rowStep-4.f;
         const float thumbH=railH*(float)visibleRows/(float)active;
         const float y=railY+(railH-thumbH)*(float)scrollOffset/(float)(active-visibleRows);
-        g.setColour(Theme::stroke.withAlpha(.8f));
-        g.fillRoundedRectangle(208.f,railY,4.f,railH,2.f);
-        g.setColour(Theme::green.withAlpha(.80f));
-        g.fillRoundedRectangle(208.f,y,4.f,thumbH,2.f);
+        g.setColour(Theme::panelAlt.brighter(.08f));
+        g.fillRoundedRectangle(205.f,railY,8.f,railH,3.f);
+        g.setColour((railHovered || railDragging ? Theme::green : Theme::stroke)
+            .withAlpha(.62f));
+        g.drawRoundedRectangle(205.f,railY,8.f,railH,3.f,.85f);
+        g.setColour(Theme::green.withAlpha(railDragging?1.f:railHovered?.92f:.67f));
+        g.fillRoundedRectangle(205.f,y,8.f,thumbH,3.f);
     }
     const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
     g.setColour(active==16?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::text(g,"SCROLL RACK  |  WHEEL ON WET = MIX",
-        {13,511,193,18},10.0f,Theme::muted,false,juce::Justification::centred);
+    Theme::fittedText(g,moveNotice.isNotEmpty()?moveNotice:
+        juce::String("FX WHEEL: MOVE  /  SIDE: SCROLL"),
+        {10,511,200,18},9.8f,
+        moveNotice.isNotEmpty()?Theme::green:Theme::muted,false,
+        juce::Justification::centred);
     if(contextOpen) {
         const auto bounds=juce::Rectangle<float>(7.f,(float)contextTop,202.f,218.f);
         g.setColour(Theme::bg.withAlpha(.98f));g.fillRoundedRectangle(bounds,8.f);
@@ -408,9 +417,9 @@ void ChainPanel::selectContextAction(int index) {
     const int physical=contextSlot,position=contextPosition();
     contextOpen=false;contextHover=-1;
     if(position<0)return;
-    if(index==2 && position>0)processor.reorderSlot(position,position-1);
+    if(index==2 && position>0)movePhysicalSlot(physical,position-1);
     if(index==3 && position+1<processor.activeSlotCount())
-        processor.reorderSlot(position,position+1);
+        movePhysicalSlot(physical,position+1);
     if(index==4)toggleSlotPower(physical);
     if(index==5) {
         processor.setSlotOn(physical,false);
@@ -459,6 +468,24 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
         else {contextOpen=false;contextHover=-1;repaint();}
         return;
     }
+    // Rail clicks/drag move only the viewport; no audio order changes.
+    if(!e.mods.isPopupMenu() && processor.activeSlotCount()>visibleRows &&
+       e.x>=205 && e.x<getWidth() &&
+       e.y>=rowStart && e.y<rowStart+visibleRows*rowStep-4) {
+        const float railTop=(float)rowStart;
+        const float railHeight=(float)(visibleRows*rowStep-4);
+        const float thumbHeight=railHeight*(float)visibleRows/
+            (float)processor.activeSlotCount();
+        const float thumbY=railTop+
+            (railHeight-thumbHeight)*(float)scrollOffset/
+            (float)(processor.activeSlotCount()-visibleRows);
+        railGrabOffset=(float)e.y>=thumbY && (float)e.y<=thumbY+thumbHeight
+            ?(float)e.y-thumbY:thumbHeight*.5f;
+        railDragging=true;railHovered=true;
+        moveNotice={};
+        grabKeyboardFocus();
+        moveRailTo(e.y);return;
+    }
     if(e.x>=158 && e.x<=200 && e.y>=5 && e.y<43) {
         if(!e.mods.isPopupMenu() && onMicRequest)onMicRequest();
         return;
@@ -496,9 +523,11 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
         return;
     }
     selected=slot;if(onSelection)onSelection(slot);
+    grabKeyboardFocus();
     pendingFrom=index;dragFrom=dragTo=-1;dragging=false;pressPoint=e.getPosition();repaint();
 }
 void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
+    if(railDragging) {moveRailTo(e.y);return;}
     if(wetDragSlot>=0) {
         const float delta=(float)(pressPoint.y-e.y)*.008f
                         +(float)(e.x-pressPoint.x)*.003f;
@@ -523,6 +552,10 @@ void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
     }
 }
 void ChainPanel::mouseUp(const juce::MouseEvent& e) {
+    if(railDragging){
+        railDragging=false;
+        railHovered=e.x>=205 && e.x<getWidth();repaint();return;
+    }
     if(wetDragSlot>=0) {
         if(auto* p=processor.state.getParameter("s"+juce::String(wetDragSlot+1)+"_wet"))
             p->endChangeGesture();
@@ -562,6 +595,15 @@ void ChainPanel::mouseDoubleClick(const juce::MouseEvent& e) {
     selectAndReplace(row);
 }
 void ChainPanel::mouseMove(const juce::MouseEvent& e) {
+    const bool nextRail=processor.activeSlotCount()>visibleRows &&
+        e.x>=205 && e.x<getWidth() &&
+        e.y>=rowStart && e.y<rowStart+visibleRows*rowStep-4;
+    if(railHovered!=nextRail){railHovered=nextRail;repaint();}
+    if(nextRail && !contextOpen){
+        setTooltip("Rack scrollbar: wheel to scroll, click track to jump, drag thumb to navigate. Effect order stays unchanged.");
+        setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
+        return;
+    }
     if(contextOpen) {
         const int hovered=(e.x>=13&&e.x<204&&e.y>=contextTop+30&&
             e.y<contextTop+30+7*26)?(e.y-contextTop-30)/26:-1;
@@ -572,6 +614,11 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
     }
     const int next=(e.x>=10 && e.x<=206)?rowAt(e.y):-1;
     const int hoveredPhysical=next>=0?processor.slotIdAt(next):-1;
+    if(wheelTargetSlot>=0 &&
+       (std::abs(e.x-lastWheelX)>12 || std::abs(e.y-lastWheelY)>10)) {
+        wheelTargetSlot=-1;
+        effectWheelCarry=0.f;
+    } // pointer movement, not a reordered row, ends the wheel latch
     const int nextWet=(hoveredPhysical>=0 &&
                        processor.slotType(hoveredPhysical)!=SkellPresetAudioProcessor::Empty &&
                        e.x>=wetControlLeft && e.x<=wetControlRight)?hoveredPhysical:-1;
@@ -602,17 +649,169 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         const auto hosted=processor.slotType(physical)==SkellPresetAudioProcessor::ExternalVST3
             ?processor.hostedVST3Name(physical):juce::String{};
         setTooltip((hosted.isNotEmpty()?hosted+" / ":"")+
-            "Click to edit / wheel over effect to scroll / drag to reorder");
+            "Click to edit / wheel: move effect / Shift+wheel: scroll rack / drag: reorder");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(add)setMouseCursor(juce::MouseCursor::PointingHandCursor);
     else setMouseCursor(juce::MouseCursor::NormalCursor);
 }
 void ChainPanel::mouseExit(const juce::MouseEvent&) {
-    hoveredRow=-1;hoveredWetSlot=-1;
+    hoveredRow=-1;hoveredWetSlot=-1;railHovered=false;wheelTargetSlot=-1;
     setMouseCursor(juce::MouseCursor::NormalCursor);
     repaint();
 }
 
+// Move the chosen PHYSICAL slot ID, never rename/rewrite its APVTS values.
+bool ChainPanel::movePhysicalSlot(int physical,int destination){
+    if(physical<0 || physical>=SkellPresetAudioProcessor::slotCount ||
+       processor.slotType(physical)==SkellPresetAudioProcessor::Empty)return false;
+    int from=-1;
+    for(int i=0;i<processor.activeSlotCount();++i)
+        if(processor.slotIdAt(i)==physical){from=i;break;}
+    if(from<0 || destination<0 || destination>=processor.activeSlotCount() ||
+       from==destination)return false;
+    processor.reorderSlot(from,destination);
+    selectPhysical(physical);
+    moveNotice=juce::String("FX ")+juce::String(from+1)+"  "+
+        (destination<from?"UP":"DOWN")+"  "+juce::String(destination+1);
+    visualSnapshotValid=false;
+    repaint();
+    return true;
+}
+void ChainPanel::selectPhysical(int physical){
+    int position=-1;
+    for(int i=0;i<processor.activeSlotCount();++i)
+        if(processor.slotIdAt(i)==physical){position=i;break;}
+    if(position<0)return;
+    // Keep the moved/keyboard-selected effect in the visible eight-row view.
+    if(position<scrollOffset)scrollOffset=position;
+    if(position>=scrollOffset+visibleRows)
+        scrollOffset=position-visibleRows+1;
+    clampScroll();
+    selected=physical;
+    if(onSelection)onSelection(physical);
+    hoveredWetSlot=-1;
+    visualSnapshotValid=false;
+    repaint();
+}
+void ChainPanel::moveRailTo(int y){
+    const int count=processor.activeSlotCount();
+    if(count<=visibleRows)return;
+    const float height=(float)(visibleRows*rowStep-4);
+    const float thumbHeight=height*(float)visibleRows/(float)count;
+    const float travel=height-thumbHeight;
+    if(travel<=0.f)return;
+    const float position=((float)y-(float)rowStart-railGrabOffset)/travel;
+    const int next=juce::jlimit(0,count-visibleRows,
+        juce::roundToInt(position*(float)(count-visibleRows)));
+    if(scrollOffset!=next){
+        scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
+        visualSnapshotValid=false;
+        repaint();
+    }
+}
+// 0 = scroll viewport, 1 = reorder FX, 2 = automate wet.
+// Track/side/power/gutter = scroll; center body = reorder; wet knob = wet.
+int ChainPanel::wheelRegionAt(int x,int y,bool shift) const{
+    if(shift)return 0;
+    const int row=rowAt(y);
+    if(row<0)return 0;
+    if(x>=wetControlLeft && x<=wetControlRight)return 2;
+    if(x>=10 && x<wetControlLeft)return 1;
+    return 0;
+}
+void ChainPanel::applyEffectWheel(int physical,float deltaY){
+    if(!std::isfinite(deltaY) || deltaY==0.f)return;
+    const double now=juce::Time::getMillisecondCounterHiRes();
+    // Latch the PHYSICAL effect throughout a single trackpad/wheel gesture.
+    // Otherwise moving the face out from under the cursor accidentally
+    // starts moving its replacement row in the opposite direction.
+    if(wheelTargetSlot!=physical || now-lastWheelEventMs>360.){
+        wheelTargetSlot=physical;effectWheelCarry=0.f;
+    }
+    lastWheelEventMs=now;
+    if(effectWheelCarry*deltaY<0.f)effectWheelCarry=0.f;
+    effectWheelCarry=juce::jlimit(-1.f,1.f,effectWheelCarry+deltaY);
+    // Half a conventional mouse-wheel step is enough, but tiny trackpad
+    // deltas must accumulate instead of unintentionally shuffling the rack.
+    if(std::abs(effectWheelCarry)<.45f)return;
+    effectWheelCarry=0.f;
+    int position=-1;
+    for(int i=0;i<processor.activeSlotCount();++i)
+        if(processor.slotIdAt(i)==physical){position=i;break;}
+    if(position<0)return;
+    const int next=position+(deltaY<0.f?1:-1);
+    movePhysicalSlot(physical,next);
+}
+bool ChainPanel::keyPressed(const juce::KeyPress& key){
+    if(key.getKeyCode()==juce::KeyPress::escapeKey){
+        if(contextOpen){
+            contextOpen=false;contextHover=-1;repaint();return true;
+        }
+        return false;
+    }
+    const bool command=key.getModifiers().isCommandDown();
+    const bool shift=key.getModifiers().isShiftDown();
+    int position=-1;
+    for(int i=0;i<processor.activeSlotCount();++i)
+        if(processor.slotIdAt(i)==selected){position=i;break;}
+    if(position<0 && processor.activeSlotCount()>0)position=0;
+    if(position<0)return false;
+    const int code=key.getKeyCode();
+    if(code==juce::KeyPress::upKey || code==juce::KeyPress::downKey){
+        const int delta=code==juce::KeyPress::upKey?-1:1;
+        if(command){
+            movePhysicalSlot(processor.slotIdAt(position),position+delta);
+        } else if(shift){
+            applyWheelDelta(delta<0?.5f:-.5f);
+        } else {
+            const int next=juce::jlimit(0,processor.activeSlotCount()-1,
+                position+delta);
+            selectPhysical(processor.slotIdAt(next));
+        }
+        return true;
+    }
+    if(code==juce::KeyPress::homeKey || code==juce::KeyPress::endKey){
+        const int target=code==juce::KeyPress::homeKey
+            ?0:processor.activeSlotCount()-1;
+        if(command && shift)
+            movePhysicalSlot(processor.slotIdAt(position),target);
+        else if(!command)
+            selectPhysical(processor.slotIdAt(target));
+        return true;
+    }
+    if(code==juce::KeyPress::pageUpKey ||
+       code==juce::KeyPress::pageDownKey){
+        const int delta=code==juce::KeyPress::pageUpKey
+            ?-(visibleRows-1):visibleRows-1;
+        scrollOffset=juce::jlimit(0,
+            juce::jmax(0,processor.activeSlotCount()-visibleRows),
+            scrollOffset+delta);
+        moveNotice={};hoveredRow=-1;visualSnapshotValid=false;repaint();
+        return true;
+    }
+    if(code==juce::KeyPress::returnKey){
+        selectPhysical(processor.slotIdAt(position));
+        return true;
+    }
+    if(command && (code=='R' || code=='r')){
+        selectAndReplace(position);return true;
+    }
+    if(command && (code=='B' || code=='b')){
+        toggleSlotPower(processor.slotIdAt(position));return true;
+    }
+    if(command && code=='0'){
+        const int physical=processor.slotIdAt(position);
+        const auto name="s"+juce::String(physical+1)+"_wet";
+        if(processor.slotType(physical)!=SkellPresetAudioProcessor::Empty)
+            if(auto* parameter=processor.state.getParameter(name)){
+                parameter->beginChangeGesture();
+                setSlotWet(physical,1.f);
+                parameter->endChangeGesture();
+            }
+        return true;
+    }
+    return false;
+}
 void ChainPanel::applyWheelDelta(float deltaY) {
     if(deltaY==0.f)return;
     if(railWheelCarry*deltaY<0.f)railWheelCarry=0.f;
@@ -624,6 +823,7 @@ void ChainPanel::applyWheelDelta(float deltaY) {
     const int next=juce::jlimit(0,
         juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset+direction);
     if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
+        moveNotice={};
         visualSnapshotValid=false;repaint();}
 }
 void ChainPanel::applyWetWheel(int physical,float deltaY) {
@@ -645,12 +845,129 @@ void ChainPanel::applyWetWheel(int physical,float deltaY) {
 void ChainPanel::mouseWheelMove(const juce::MouseEvent& event,
                                 const juce::MouseWheelDetails& wheel) {
     if(contextOpen){contextOpen=false;contextHover=-1;repaint();}
+    if(wetDragSlot>=0 || dragging || dockingDrag || railDragging)return;
+    const int region=wheelRegionAt(event.x,event.y,event.mods.isShiftDown());
     const int row=rowAt(event.y);
-    if(row>=0 && event.x>=wetControlLeft && event.x<=wetControlRight) {
+    if(region==2 && row>=0){
+        wheelTargetSlot=-1;
         applyWetWheel(processor.slotIdAt(row),wheel.deltaY);
         return;
     }
+    if(region==1 && row>=0){
+        // Hold the moving effect by its permanent ID until the trackpad
+        // gesture ends, despite the next row appearing under the pointer.
+        const double now=juce::Time::getMillisecondCounterHiRes();
+        const bool samePointer=std::abs(event.x-lastWheelX)<=12 &&
+                               std::abs(event.y-lastWheelY)<=10;
+        const int physical=wheelTargetSlot>=0 &&
+            now-lastWheelEventMs<360. && samePointer
+            ?wheelTargetSlot:processor.slotIdAt(row);
+        lastWheelX=event.x;lastWheelY=event.y;
+        applyEffectWheel(physical,wheel.deltaY);
+        return;
+    }
+    wheelTargetSlot=-1;effectWheelCarry=0.f;
+    moveNotice={};
     applyWheelDelta(wheel.deltaY);
+}
+bool ChainPanel::testWheelRegions(){
+    // The three controls must remain independent at the first rack row.
+    const int y=rowStart+rowHeight/2;
+    return wheelRegionAt(100,y,false)==1 &&
+           wheelRegionAt(165,y,false)==2 &&
+           wheelRegionAt(193,y,false)==0 &&
+           wheelRegionAt(209,y,false)==0 &&
+           wheelRegionAt(100,y,true)==0 &&
+           wheelRegionAt(165,y,true)==0 &&
+           wheelRegionAt(100,5,false)==0;
+}
+bool ChainPanel::testRackRailNavigation(){
+    const int count=processor.activeSlotCount();
+    if(count<=visibleRows)return false;
+    const int previousScroll=scrollOffset;
+    const float previousGrab=railGrabOffset;
+    std::array<int,SkellPresetAudioProcessor::slotCount> order{};
+    for(int i=0;i<count;++i)order[(size_t)i]=processor.slotIdAt(i);
+    scrollOffset=0;railGrabOffset=0.f;
+    moveRailTo(rowStart+visibleRows*rowStep-4);
+    const bool atBottom=scrollOffset==count-visibleRows;
+    moveRailTo(rowStart);
+    bool valid=atBottom && scrollOffset==0;
+    for(int i=0;i<count;++i)
+        valid=valid && processor.slotIdAt(i)==order[(size_t)i];
+    scrollOffset=previousScroll;railGrabOffset=previousGrab;
+    visualSnapshotValid=false;repaint();
+    return valid;
+}
+bool ChainPanel::testWheelReordersPhysicalEffect(){
+    const int count=processor.activeSlotCount();
+    if(count<3)return false;
+    const int first=processor.slotIdAt(0),second=processor.slotIdAt(1);
+    if(processor.slotType(first)==SkellPresetAudioProcessor::Empty)return false;
+    std::array<int,SkellPresetAudioProcessor::slotCount> before{};
+    for(int i=0;i<count;++i)before[(size_t)i]=processor.slotIdAt(i);
+    const int oldSelected=selected,oldScroll=scrollOffset;
+    const auto previousNotice=moveNotice;
+    const float priorWet=slotWet(first);
+    wheelTargetSlot=-1;effectWheelCarry=0.f;lastWheelEventMs=0.;
+    applyEffectWheel(first,-.5f);
+    const bool down=processor.slotIdAt(1)==first &&
+        processor.slotIdAt(0)==second;
+    applyEffectWheel(first,-.5f); // same physical ID, not the replacement row
+    const bool downTwice=processor.slotIdAt(2)==first;
+    applyEffectWheel(first,.5f);
+    applyEffectWheel(first,.5f);
+    bool restored=true;
+    for(int i=0;i<count;++i)
+        restored=restored && processor.slotIdAt(i)==before[(size_t)i];
+    if(!restored){
+        int position=-1;
+        for(int i=0;i<count;++i)
+            if(processor.slotIdAt(i)==first)position=i;
+        if(position>=0)processor.reorderSlot(position,0);
+    }
+    bool finalOrder=true;
+    for(int i=0;i<count;++i)
+        finalOrder=finalOrder && processor.slotIdAt(i)==before[(size_t)i];
+    selected=oldSelected;scrollOffset=oldScroll;clampScroll();
+    moveNotice=previousNotice;
+    wheelTargetSlot=-1;effectWheelCarry=0.f;lastWheelEventMs=0.;
+    visualSnapshotValid=false;repaint();
+    return down && downTwice && restored && finalOrder &&
+           std::abs(slotWet(first)-priorWet)<.00001f;
+}
+bool ChainPanel::testRackKeyboardNavigation(){
+    const int count=processor.activeSlotCount();
+    if(count<=visibleRows || count<2)return false;
+    const int first=processor.slotIdAt(0),second=processor.slotIdAt(1);
+    if(processor.slotType(first)==SkellPresetAudioProcessor::Empty)return false;
+    const int oldSelected=selected,oldScroll=scrollOffset;
+    const auto oldNotice=moveNotice;
+    selectPhysical(first);
+    const auto plain=juce::ModifierKeys();
+    const auto command=juce::ModifierKeys(juce::ModifierKeys::commandModifier);
+    keyPressed(juce::KeyPress(juce::KeyPress::downKey,plain));
+    const bool arrowDown=selected==second;
+    keyPressed(juce::KeyPress(juce::KeyPress::upKey,plain));
+    const bool arrowUp=selected==first;
+    keyPressed(juce::KeyPress(juce::KeyPress::downKey,command));
+    const bool moveDown=processor.slotIdAt(1)==first;
+    keyPressed(juce::KeyPress(juce::KeyPress::upKey,command));
+    const bool moveUp=processor.slotIdAt(0)==first;
+    keyPressed(juce::KeyPress(juce::KeyPress::endKey,plain));
+    const bool end=selected==processor.slotIdAt(count-1) &&
+        scrollOffset==count-visibleRows;
+    keyPressed(juce::KeyPress(juce::KeyPress::homeKey,plain));
+    const bool home=selected==first && scrollOffset==0;
+    keyPressed(juce::KeyPress(juce::KeyPress::pageDownKey,plain));
+    const bool pageDown=scrollOffset==count-visibleRows;
+    keyPressed(juce::KeyPress(juce::KeyPress::pageUpKey,plain));
+    const bool pageUp=scrollOffset==0;
+    selected=oldSelected;scrollOffset=oldScroll;clampScroll();
+    moveNotice=oldNotice;visualSnapshotValid=false;repaint();
+    return arrowDown && arrowUp && moveDown && moveUp &&
+           end && home && pageDown && pageUp &&
+           processor.slotIdAt(0)==first && processor.slotIdAt(1)==second;
 }
 bool ChainPanel::testWheelScrollDoesNotReorder() {
     if(processor.activeSlotCount()<=visibleRows)return false;

@@ -35,9 +35,9 @@ public:
                                    juce::jmax(0.f,bounds.getWidth()-14.f),1.35f,.6f);
         }
         g.setColour(enabled?(active?accent:Theme::white):Theme::muted.withAlpha(.4f));
-        const auto text=getButtonText();
-        const bool historySymbol=text.length()==1 &&
-            (text[0]==0x21B6 || text[0]==0x21B7);
+        const auto buttonCaption=getButtonText();
+        const bool historySymbol=buttonCaption.length()==1 &&
+            (buttonCaption[0]==0x21B6 || buttonCaption[0]==0x21B7);
         const float fontSize=historySymbol?21.f:
             getWidth()<=36?13.f:getWidth()<=92?11.6f:12.3f;
         g.setFont(Theme::font(fontSize,true));

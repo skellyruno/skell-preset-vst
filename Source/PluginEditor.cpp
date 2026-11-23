@@ -685,7 +685,15 @@ public:
         chain.setScreenshotScrollOffset(2);
         if(!chain.canScrollForTest() || chain.scrollPositionForTest()!=2 ||
            !chain.testWheelScrollDoesNotReorder())
-            issues.add("Rack wheel must navigate without changing effect order");
+            issues.add("Rack rail/gutter wheel navigation changed effect order");
+        if(!chain.testWheelRegions())
+            issues.add("Rack effect, side scrollbar, shift and wet hit zones overlap");
+        if(!chain.testRackRailNavigation())
+            issues.add("Rack scrollbar dragging changed physical effect order or limits");
+        if(!chain.testWheelReordersPhysicalEffect())
+            issues.add("Effect-face wheel did not move the same physical FX up/down without changing wet");
+        if(!chain.testRackKeyboardNavigation())
+            issues.add("Rack keyboard up/down, reorder, Home/End or Page keys failed");
         chain.setScreenshotScrollOffset(0);
         if(!chain.testWheelWetAndRack())
             issues.add("Rack wheel and wet controls are not independent");

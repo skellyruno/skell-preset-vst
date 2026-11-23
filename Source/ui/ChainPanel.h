@@ -16,6 +16,7 @@ public:
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
+    bool keyPressed(const juce::KeyPress&) override;
     void setSelectedSlot(int s) {selected=s;repaint();}
     void setScreenshotScrollOffset(int offset) {
         scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),offset);
@@ -23,6 +24,10 @@ public:
     }
     bool testWheelScrollDoesNotReorder();
     bool testWheelWetAndRack();
+    bool testWheelReordersPhysicalEffect();
+    bool testRackKeyboardNavigation();
+    bool testWheelRegions();
+    bool testRackRailNavigation();
     bool testRemoveExtraSlot();
     // Local Quick4 captures the ACTUAL custom right-click menu, including
     // the bottom Remove from Rack action. No mock popup is drawn.
@@ -66,7 +71,19 @@ private:
     int hoveredRow=-1,scrollOffset=0,lastSlotCount=0;
     std::array<int,SkellPresetAudioProcessor::slotCount> lastVisual{};
     bool visualSnapshotValid=false;
-    float railWheelCarry=0.f; // navigation only
+    float railWheelCarry=0.f; // wheel on gutter or Shift+effect = viewport
+    float effectWheelCarry=0.f;
+    int wheelTargetSlot=-1; // stable physical ID throughout one wheel gesture
+    double lastWheelEventMs=0.;
+    int lastWheelX=-1000,lastWheelY=-1000;
+    bool railDragging=false,railHovered=false;
+    float railGrabOffset=0.f;
+    juce::String moveNotice; // updated only after a real reorder
+    bool movePhysicalSlot(int physical,int destination);
+    void selectPhysical(int physical);
+    void applyEffectWheel(int physical,float deltaY);
+    int wheelRegionAt(int x,int y,bool shift) const;
+    void moveRailTo(int y);
     int rowAt(int y) const;
     void clampScroll();
     void applyWheelDelta(float deltaY);
