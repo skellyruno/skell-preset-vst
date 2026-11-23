@@ -229,13 +229,32 @@ void ChainPanel::paint(juce::Graphics& g) {
         auto* on=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_on");
         const int type=processor.slotType(slot);
         const bool enabled=on && on->load()>.5f && type!=0;
-        g.setColour(selected==slot?Theme::panelAlt.brighter(.1f):(hoveredRow==row?Theme::green.withAlpha(.12f):Theme::panelAlt.withMultipliedAlpha(row%2?.78f:.96f)));
+        const bool focused=selected==slot;
+        const bool hovering=hoveredRow==row;
+        const auto face=Theme::panelAlt;
+        g.setGradientFill(juce::ColourGradient(
+            face.brighter(focused?.13f:hovering?.085f:.045f),
+            box.getTopLeft(),face.darker(row%2?.12f:.18f),
+            box.getBottomRight(),false));
         g.fillRoundedRectangle(box,6.f);
-        if(selected==slot) {g.setColour(Theme::green.withAlpha(.88f));g.drawRoundedRectangle(box.reduced(.5f),6.f,1.5f);}
+        // A single machined edge and inset glint instead of thick neon
+        // outlines around every rack row.
+        g.setColour(focused?Theme::green.withAlpha(.79f):
+                    hovering?Theme::stroke.withAlpha(.72f):
+                             Theme::stroke.withAlpha(.31f));
+        g.drawRoundedRectangle(box.reduced(.65f),6.f,focused?1.2f:.85f);
+        g.setColour(Theme::white.withAlpha(focused?.12f:.045f));
+        g.drawLine(box.getX()+13.f,box.getY()+1.4f,
+                   box.getRight()-13.f,box.getY()+1.4f,.65f);
+        if(focused){
+            g.setColour(Theme::green.withAlpha(.79f));
+            g.fillRoundedRectangle(box.getX()+2.f,box.getY()+8.f,
+                                   2.5f,box.getHeight()-16.f,1.2f);
+        }
         if(dragging && dragTo==row) {
             g.setColour(Theme::green);g.fillRoundedRectangle(10.f,(float)top-2.f,196.f,2.5f,1.f);
         }
-        g.setColour(Theme::muted.withAlpha(selected==slot?.67f:.51f));
+        g.setColour(Theme::muted.withAlpha(focused?.72f:.44f));
         for(int dot=0;dot<6;dot++)g.fillEllipse(18.f+(dot%2)*4.f,(float)top+12.f+(dot/2)*4.f,1.6f,1.6f);
         Theme::text(g,juce::String(row+1).paddedLeft('0',2),{32,top+9,21,18},11.5f,Theme::muted,true);
         // Thin bone engraving on each module face; no generic FL clone art.
@@ -282,8 +301,8 @@ void ChainPanel::paint(juce::Graphics& g) {
         // Recessed FL-inspired wet dial, with bone-white marker and true arc.
         g.setColour(Theme::bg.withAlpha(.94f));
         g.fillEllipse(cx-12.f,cy-12.f,24.f,24.f);
-        g.setColour(Theme::stroke.brighter(.14f));
-        g.drawEllipse(cx-11.1f,cy-11.1f,22.2f,22.2f,1.1f);
+        g.setColour(Theme::stroke.withAlpha(.81f));
+        g.drawEllipse(cx-11.1f,cy-11.1f,22.2f,22.2f,.9f);
         juce::Path baseArc,valueArc;
         constexpr float pi=juce::MathConstants<float>::pi;
         constexpr float a0=1.24f*pi, a1=2.76f*pi;
@@ -292,7 +311,7 @@ void ChainPanel::paint(juce::Graphics& g) {
         g.setColour(Theme::muted.withAlpha(.27f));
         g.strokePath(baseArc,juce::PathStrokeType(2.2f));
         if(wet>.001f) {
-            g.setColour((enabled?Theme::green:Theme::muted).withAlpha(enabled?.94f:.40f));
+            g.setColour((enabled?Theme::green:Theme::muted).withAlpha(enabled?.84f:.36f));
             g.strokePath(valueArc,juce::PathStrokeType(2.45f));
         }
         const float angle=a0+(a1-a0)*wet;

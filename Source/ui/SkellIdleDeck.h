@@ -56,7 +56,7 @@ public:
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
-        const float width=(float)getWidth(),height=(float)getHeight();
+        const float width=(float)getWidth();
         const auto stage=layoutFor(getWidth(),getHeight());
         if(!stage.valid)return;
         Theme::panelBox(g,getLocalBounds().toFloat(),9.f);

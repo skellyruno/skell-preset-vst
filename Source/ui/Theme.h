@@ -10,18 +10,18 @@ constexpr int width=1168, height=688;
  // but is no longer an offered theme. Existing projects render in Obsidian.
 enum Variant { Obsidian=0, Cream=1, Crimson=2 };
 inline thread_local int current = Obsidian;
-inline thread_local juce::Colour bg       {0xff020404};
-inline thread_local juce::Colour panel    {0xff080d0d};
-inline thread_local juce::Colour panelAlt {0xff111919};
-inline thread_local juce::Colour stroke   {0xff385449};
-inline thread_local juce::Colour green    {0xff39ff3a};
-inline thread_local juce::Colour blue     {0xff77c7ae};
-inline thread_local juce::Colour pink     {0xffff638d};
-inline thread_local juce::Colour white    {0xffeff7ef};
-inline thread_local juce::Colour muted    {0xff91a89a};
-inline thread_local juce::Colour amber    {0xffffbc62};
-inline thread_local juce::Colour red      {0xffff4a4a};
-inline thread_local juce::Colour plot     {0xff040707};
+inline thread_local juce::Colour bg       {0xff060a0b};
+inline thread_local juce::Colour panel    {0xff0d1415};
+inline thread_local juce::Colour panelAlt {0xff151f20};
+inline thread_local juce::Colour stroke   {0xff38514a};
+inline thread_local juce::Colour green    {0xff67f990};
+inline thread_local juce::Colour blue     {0xff9ac9c6};
+inline thread_local juce::Colour pink     {0xffe08eaa};
+inline thread_local juce::Colour white    {0xffeff5f2};
+inline thread_local juce::Colour muted    {0xffa4b7b1};
+inline thread_local juce::Colour amber    {0xffe9b980};
+inline thread_local juce::Colour red      {0xfff67878};
+inline thread_local juce::Colour plot     {0xff080e0f};
 
 inline int clampVariant(int v) noexcept {
     return v==Crimson ? Crimson : Obsidian; // legacy Cream=1 -> Obsidian
@@ -34,19 +34,19 @@ inline void select(int v) {
     if (current==v) return;
     current=v;
     if(v==Crimson) {
-        bg=juce::Colour(0xff0e0a0c); panel=juce::Colour(0xff1b1317);
-        panelAlt=juce::Colour(0xff291b22); stroke=juce::Colour(0xff55313d);
-        green=juce::Colour(0xffff3a55); blue=juce::Colour(0xffe68e9e);
-        pink=juce::Colour(0xffff6c97); white=juce::Colour(0xffffecf0);
-        muted=juce::Colour(0xffbc9ba5); amber=juce::Colour(0xffefb46b);
-        red=juce::Colour(0xffff4458); plot=juce::Colour(0xff130d10);
+        bg=juce::Colour(0xff100e12); panel=juce::Colour(0xff19151a);
+        panelAlt=juce::Colour(0xff292027); stroke=juce::Colour(0xff55424b);
+        green=juce::Colour(0xfff56b87); blue=juce::Colour(0xffe0a8bd);
+        pink=juce::Colour(0xfff59ab1); white=juce::Colour(0xfff7eff3);
+        muted=juce::Colour(0xffc4aab6); amber=juce::Colour(0xffe8b983);
+        red=juce::Colour(0xffff647b); plot=juce::Colour(0xff110d11);
     } else {
-        bg=juce::Colour(0xff020404); panel=juce::Colour(0xff080d0d);
-        panelAlt=juce::Colour(0xff111919); stroke=juce::Colour(0xff385449);
-        green=juce::Colour(0xff39ff3a); blue=juce::Colour(0xff77c7ae);
-        pink=juce::Colour(0xffff638d); white=juce::Colour(0xffeff7ef);
-        muted=juce::Colour(0xff91a89a); amber=juce::Colour(0xffffbc62);
-        red=juce::Colour(0xffff4a4a); plot=juce::Colour(0xff040707);
+        bg=juce::Colour(0xff060a0b); panel=juce::Colour(0xff0d1415);
+        panelAlt=juce::Colour(0xff151f20); stroke=juce::Colour(0xff38514a);
+        green=juce::Colour(0xff67f990); blue=juce::Colour(0xff9ac9c6);
+        pink=juce::Colour(0xffe08eaa); white=juce::Colour(0xffeff5f2);
+        muted=juce::Colour(0xffa4b7b1); amber=juce::Colour(0xffe9b980);
+        red=juce::Colour(0xfff67878); plot=juce::Colour(0xff080e0f);
     }
 }
 inline void selectFor(const juce::AudioProcessorValueTreeState& state) {
@@ -56,22 +56,27 @@ inline void panelBox(juce::Graphics& g,juce::Rectangle<float> box,float radius=1
     // Restrained anodized-metal depth shared across the rack, native editors
     // and floating menus. No drop-shadow layers, image allocations or
     // animation timers. This executes only inside UI paint(), never DSP.
+    // Satin-smoked metal: restrained borders and two specular lines
+    // instead of repeated neon outlines. Message-thread paint only.
     g.setGradientFill(juce::ColourGradient(
-        panel.brighter(.075f),box.getTopLeft(),
-        panel.darker(.075f),box.getBottomRight(),false));
+        panelAlt.withMultipliedBrightness(1.045f),box.getTopLeft(),
+        panel.darker(.12f),box.getBottomRight(),false));
     g.fillRoundedRectangle(box,radius);
-    g.setColour(bg.withAlpha(.45f));
+    g.setColour(bg.withAlpha(.78f));
     g.drawRoundedRectangle(box.reduced(.25f),radius,1.f);
-    // Sharper brushed-metal separation on the near-black neon theme.
-    g.setColour(active?green.withAlpha(.78f):stroke.withAlpha(.96f));
-    g.drawRoundedRectangle(box.reduced(.7f),radius,current==Obsidian?1.35f:1.f);
+    g.setColour(active?green.withAlpha(.67f):stroke.withAlpha(.57f));
+    g.drawRoundedRectangle(box.reduced(.9f),radius,1.f);
     if(box.getWidth()>35.f && box.getHeight()>22.f) {
-        const float inset=std::min(16.f,radius+5.f);
+        const float inset=std::min(17.f,radius+6.f);
         const float x0=box.getX()+inset,x1=box.getRight()-inset;
-        g.setColour(white.withAlpha(.048f));
-        g.drawLine(x0,box.getY()+1.4f,x1,box.getY()+1.4f,.7f);
-        g.setColour(bg.withAlpha(.31f));
-        g.drawLine(x0,box.getBottom()-1.1f,x1,box.getBottom()-1.1f,.7f);
+        g.setColour(white.withAlpha(.085f));
+        g.drawLine(x0,box.getY()+1.6f,x1,box.getY()+1.6f,.65f);
+        g.setColour(bg.withAlpha(.49f));
+        g.drawLine(x0,box.getBottom()-1.4f,x1,box.getBottom()-1.4f,.8f);
+        if(active){
+            g.setColour(green.withAlpha(.31f));
+            g.drawLine(x0,box.getY()+2.8f,x1,box.getY()+2.8f,.65f);
+        }
     }
 }
 inline juce::Font font(float size,bool bold=false) {

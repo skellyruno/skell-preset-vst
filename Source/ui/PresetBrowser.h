@@ -54,7 +54,7 @@ private:
     void refreshArtwork();
     int bank=0,scroll=0,hoveredCard=-1,hoveredStar=-1,keyboardCard=-1;
     float browserWheelCarry=0.f;
-    std::array<int,5> categoryCounts{};
+    std::array<int,4> categoryCounts{};
     bool categoryCountsDirty=true;
     void refreshCategoryCounts();
     bool detailsOpen=false;
