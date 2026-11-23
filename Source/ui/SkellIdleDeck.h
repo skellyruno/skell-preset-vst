@@ -4,6 +4,7 @@
 #include "../PluginProcessor.h"
 #include <array>
 #include <cmath>
+#include <limits>
 
 // A full skeletal vocalist on an angular, cinematic stage. Every contour is
 // native JUCE geometry on the UI thread: no imported mockups, random spectrum,
@@ -12,6 +13,29 @@ class SkellIdleDeck final : public juce::Component {
 public:
     explicit SkellIdleDeck(SkellPresetAudioProcessor& p):processor(p) {
         setInterceptsMouseClicks(true,false);
+    }
+    // The waveform is a post-FX snapshot. Its last frame must not remain
+    // marked LIVE after the host stops sending audio. Called only by the UI
+    // timer; no locks, allocations or changes to audio processing.
+    void setAudioFresh(bool fresh) {
+        if(audioFresh==fresh)return;
+        audioFresh=fresh;
+        repaint();
+    }
+    bool isAudioFreshForTest() const noexcept {return audioFresh;}
+
+    static float meterFraction(float peak) noexcept {
+        if(!std::isfinite(peak) || peak<=0.f)return 0.f;
+        const float db=20.f*std::log10(juce::jmax(.001f,peak));
+        return juce::jlimit(0.f,1.f,(db+60.f)/60.f);
+    }
+    static bool testTelemetryScaleForTest() noexcept {
+        return meterFraction(0.f)==0.f &&
+            meterFraction(-1.f)==0.f &&
+            meterFraction(std::numeric_limits<float>::quiet_NaN())==0.f &&
+            std::abs(meterFraction(.01f)-1.f/3.f)<.002f &&
+            std::abs(meterFraction(.1f)-2.f/3.f)<.002f &&
+            meterFraction(1.f)==1.f && meterFraction(2.f)==1.f;
     }
     struct StageLayout {
         juce::Rectangle<float> scope;
@@ -69,13 +93,16 @@ public:
             actualPeak=juce::jmax(actualPeak,std::abs(v));
             energy+=(double)v*(double)v;
         }
-        const float rms=(float)std::sqrt(energy/128.);
-        const bool live=actualPeak>.0005f;
+        const float rms=audioFresh?(float)std::sqrt(energy/128.):0.f;
+        const bool live=audioFresh && actualPeak>.0005f;
         const float activity=live?juce::jlimit(0.f,1.f,
             .48f*actualPeak+2.1f*rms):0.f;
         const float metered=processor.getOutputPeak();
-        const float outputPeak=std::isfinite(metered)?
+        const float outputPeak=audioFresh && std::isfinite(metered)?
             juce::jmax(0.f,metered):0.f;
+        const float inputSample=processor.getInputPeak();
+        const float inputPeak=audioFresh && std::isfinite(inputSample)?
+            juce::jmax(0.f,inputSample):0.f;
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
@@ -89,6 +116,25 @@ public:
             Theme::plot.withAlpha(.92f),stageBounds.getBottomRight(),false));
         g.fillRoundedRectangle(stageBounds,10.f);
         const float centreX=width*.5f;
+        // Honest two-stage meters: INPUT is the processor's pre-rack peak,
+        // OUTPUT is post-FX; bars use the -60 to 0 dBFS log scale. Drawing
+        // these is bounded GUI work and never fabricates audio data.
+        const float meterWidth=juce::jmin(119.f,(width-70.f)*.28f);
+        const float meterY=stageBounds.getY()+47.f;
+        const auto levelBar=[&](float x,float peak,juce::String label){
+            const auto bar=juce::Rectangle<float>(x,meterY,meterWidth,4.f);
+            g.setColour(Theme::stroke.withAlpha(.34f));
+            g.fillRoundedRectangle(bar,2.f);
+            const float fraction=meterFraction(peak);
+            if(fraction>0.f) {
+                g.setColour(peak>=1.f?Theme::red:accent.withAlpha(.78f));
+                g.fillRoundedRectangle(x,meterY,meterWidth*fraction,4.f,2.f);
+            }
+            Theme::text(g,label,{juce::roundToInt(x),juce::roundToInt(meterY-15.f),
+                        juce::roundToInt(meterWidth),13},8.4f,Theme::muted,true);
+        };
+        levelBar(stageBounds.getX()+14.f,inputPeak,"IN  /  PRE RACK");
+        levelBar(stageBounds.getRight()-meterWidth-14.f,outputPeak,"OUT  /  POST FX");
         juce::Path backplate;
         backplate.startNewSubPath(centreX-130.f*stage.scale,stage.originY+30.f);
         backplate.lineTo(centreX-200.f*stage.scale,stage.scope.getY()-18.f);
@@ -386,7 +432,8 @@ public:
             g.drawLine(187.f,45.f,193.f,69.f,1.f);
         }
 
-        // Restrained waveform monitor remains the only moving diagnostic.
+        // The trace and bone illumination are directly audio-reactive;
+        // nothing is a fake spectrum or prerecorded animation.
         const auto scope=stage.scope;
         g.setGradientFill(juce::ColourGradient(
             Theme::plot.withAlpha(.97f),scope.getTopLeft(),
@@ -397,6 +444,11 @@ public:
         g.setColour(Theme::stroke.withAlpha(.43f));
         g.drawLine(scope.getX()+9.f,scope.getCentreY(),
                    scope.getRight()-9.f,scope.getCentreY(),.85f);
+        for(const float offset:{.25f,.75f}) {
+            g.setColour(Theme::stroke.withAlpha(.17f));
+            g.drawLine(scope.getX()+9.f,scope.getY()+scope.getHeight()*offset,
+                       scope.getRight()-9.f,scope.getY()+scope.getHeight()*offset,.65f);
+        }
         // Quiet waveform grid is rectangular, never an orbit/ellipse.
         for(int index=1;index<8;++index){
             const float x=scope.getX()+scope.getWidth()*index/8.f;
@@ -406,22 +458,46 @@ public:
         juce::Path trace;
         for(int index=0;index<128;++index){
             const float raw=signal[(size_t)index];
-            const float value=std::isfinite(raw)?
+            // Clear the visual trace when the DAW has stopped processing
+            // instead of displaying a stale recorded vocal as LIVE.
+            const float value=audioFresh && std::isfinite(raw)?
                 juce::jlimit(-1.f,1.f,raw):0.f;
             const float x=scope.getX()+11.f+(scope.getWidth()-22.f)*index/127.f;
             const float y=scope.getCentreY()-value*scope.getHeight()*.43f;
             if(index==0)trace.startNewSubPath(x,y);
             else trace.lineTo(x,y);
         }
+        if(live) {
+            auto envelope=trace;
+            envelope.lineTo(scope.getRight()-11.f,scope.getCentreY());
+            envelope.lineTo(scope.getX()+11.f,scope.getCentreY());
+            envelope.closeSubPath();
+            g.setColour(accent.withAlpha(.045f+.07f*activity));
+            g.fillPath(envelope);
+        }
         g.setColour(accent.withAlpha(live?.95f:.43f));
         g.strokePath(trace,juce::PathStrokeType(live?1.85f:1.2f,
             juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        // Measured waveform RMS, not a synthetic envelope or new processor.
+        if(scope.getHeight()>=52.f){
+            const float areaX=scope.getX()+11.f,areaY=scope.getBottom()-11.f;
+            const float areaW=juce::jmin(126.f,scope.getWidth()*.28f);
+            g.setColour(Theme::stroke.withAlpha(.55f));
+            g.fillRoundedRectangle(areaX,areaY,areaW,2.5f,1.f);
+            if(rms>.0005f) {
+                g.setColour(accent.withAlpha(.65f));
+                g.fillRoundedRectangle(areaX,areaY,areaW*meterFraction(rms),2.5f,1.f);
+            }
+            Theme::text(g,"WAVEFORM RMS",
+                {juce::roundToInt(areaX),juce::roundToInt(areaY-13.f),
+                 juce::roundToInt(areaW+18.f),12},8.1f,Theme::muted,true);
+        }
         Theme::text(g,live?"LIVE":"IDLE",
                     {juce::roundToInt(stage.scope.getX()+12.f),34,84,22},
                     10.7f,live?accent:Theme::muted,true);
         const juce::String db=outputPeak<1.e-6f?juce::String("-INF"):
             juce::String(20.f*std::log10(outputPeak),1);
-        const bool clipping=outputPeak>=.999f;
+        const bool clipping=outputPeak>=1.f;
         Theme::text(g,clipping?"CLIP":db+" dBFS",
                     {getWidth()-177,34,131,22},10.7f,
                     clipping?Theme::red:Theme::muted,true,
@@ -429,4 +505,5 @@ public:
     }
 private:
     SkellPresetAudioProcessor& processor;
+    bool audioFresh=false;
 };

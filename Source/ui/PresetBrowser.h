@@ -26,6 +26,14 @@ public:
     bool testBrowserKeyboardForTest(); // roving result focus without triggering audio loads
     bool testBrowserSortingForTest(); // no data mutation during sorting
     bool testCategoryCountsForTest(); // cached library counts track user metadata
+    // The highlighted keyboard card must be the one Enter auditions, even
+    // after Home/End/PageDown scrolling. With no highlight use the first
+    // visible card; never index a filtered list out of bounds.
+    static constexpr int auditionTargetForTest(int focus,int scroll,int count) noexcept {
+        if(count<=0)return -1;
+        return focus>=0 && focus<count?focus:
+               (scroll<0?0:scroll>=count?count-1:scroll);
+    }
     static constexpr int artworkPaletteIndexForTest(int seed) noexcept {
         // This exact helper is used by the real paint path. The previous
         // seed%5 indexed a four-colour palette out of bounds for 4/9/44...
@@ -64,7 +72,9 @@ private:
     void chooseExport();
     void chooseArtwork();
     void refreshArtwork();
-    int bank=0,scroll=0,hoveredCard=-1,hoveredStar=-1,keyboardCard=-1;
+    int bank=0,scroll=0,hoveredCard=-1,hoveredStar=-1,keyboardCard=-1,
+        hoveredBank=-1;
+    bool hoveredAdlibs=false;
     float browserWheelCarry=0.f;
     std::array<int,4> categoryCounts{};
     bool categoryCountsDirty=true;

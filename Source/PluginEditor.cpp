@@ -649,6 +649,8 @@ public:
             issues.add("Preset browser custom category controls or cover preview overlap");
         if(!SkellIdleDeck::testStageGeometryForTest())
             issues.add("Skell full-body performer/scope stage clips at compact or enlarged sizes");
+        if(!SkellIdleDeck::testTelemetryScaleForTest())
+            issues.add("Live performer input/output and RMS telemetry dBFS scale regressed");
         if(!testMeterBallistics())
             issues.add("Input/output -60dBFS meter scale, attack, release or NaN guard regressed");
         if(!slot.testHomeReturnHitZonesForTest())
@@ -1462,6 +1464,8 @@ public:
         const unsigned count=processor.liveScopeSampleCount();
         if(count!=lastScopeSampleCount) {
             lastScopeSampleCount=count;
+            lastScopeFrameTimeMs=juce::Time::getMillisecondCounter();
+            idle.setAudioFresh(count>0);
             if(idle.isVisible())idle.repaint();
             // The former top LIVE status was removed; do not repaint the
             // static SKELL title/version every incoming scope update.
@@ -1470,6 +1474,13 @@ public:
                 // Original Simple waveform lives around y=317; repaint the
                 // small live strip, not the entire row of rotary cards.
                 repaint(juce::Rectangle<int>(79,300,1000,34));
+        } else if(lastScopeFrameTimeMs!=0u &&
+                  (unsigned)(juce::Time::getMillisecondCounter()-
+                             lastScopeFrameTimeMs)>=400u) {
+            // The host can stop sending blocks without resetting its scope
+            // buffer. Clear the Stage LIVE indicator and drawn trace once;
+            // never repaint the idle animation continuously on silence.
+            idle.setAudioFresh(false);
         }
     }
     // The rack and effect face never contain an implicit click-away area:
@@ -1627,6 +1638,7 @@ private:
     bool lastMicOn=false;
     int lastRecordingState=-1;
     unsigned lastScopeSampleCount=~0u;
+    unsigned lastScopeFrameTimeMs=0u;
     SkellActionButton preset,match,undo,redo,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;

@@ -100,7 +100,8 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     // Enter auditions the first filtered result without dismissing the browser.
     search.onReturnKey=[this]{
         const auto entries=filtered();
-        if(!entries.empty())auditionEntry(entries[(size_t)std::min(scroll,(int)entries.size()-1)]);
+        const int target=auditionTargetForTest(keyboardCard,scroll,(int)entries.size());
+        if(target>=0)auditionEntry(entries[(size_t)target]);
     };
     addAndMakeVisible(search);
     addAndMakeVisible(artistEditor);
@@ -329,6 +330,7 @@ void PresetBrowser::open() {
     scanLibrary();loadFavorites();loadArtists();
     loadCustomCategories();refreshGenreChoices();loadGenres();refreshArtwork();
     bank=0;mainAdlibs=false;scroll=0;hoveredCard=-1;keyboardCard=-1;
+    hoveredBank=-1;hoveredAdlibs=false;
     genreFilter.setSelectedId(1,juce::dontSendNotification);
     // Preserve the user's in-session display sort without saving DAW state.
     showDetails(false);
@@ -814,9 +816,13 @@ bool PresetBrowser::testBrowserKeyboardForTest(){
     keyPressed(juce::KeyPress(juce::KeyPress::downKey,unmodified,0));
     const bool down=keyboardCard==1 && scroll==0;
     keyPressed(juce::KeyPress(juce::KeyPress::endKey,unmodified,0));
-    const bool end=keyboardCard==11 && scroll==6;
+    const bool end=keyboardCard==11 && scroll==6 &&
+        auditionTargetForTest(keyboardCard,scroll,12)==11;
     keyPressed(juce::KeyPress(juce::KeyPress::pageUpKey,unmodified,0));
-    const bool pageUp=keyboardCard==5 && scroll==5;
+    const bool pageUp=keyboardCard==5 && scroll==5 &&
+        auditionTargetForTest(-1,scroll,12)==5 &&
+        auditionTargetForTest(-1,999,12)==11 &&
+        auditionTargetForTest(-1,0,0)==-1;
     keyPressed(juce::KeyPress(juce::KeyPress::homeKey,unmodified,0));
     const bool home=keyboardCard==0 && scroll==0;
     keyPressed(juce::KeyPress(juce::KeyPress::leftKey,unmodified,0));
@@ -1323,9 +1329,12 @@ void PresetBrowser::paint(juce::Graphics&g) {
         for(int i=0;i<banks.size();++i){
             const auto b=bankBounds(i).toFloat();
             const bool selected=i==bank && (i!=0 || !mainAdlibs);
-            g.setColour(selected?Theme::green.withAlpha(.14f):Theme::panel);
+            const bool hovered=i==hoveredBank;
+            g.setColour(selected?Theme::green.withAlpha(.14f):
+                        hovered?Theme::panelAlt.brighter(.17f):Theme::panel);
             g.fillRoundedRectangle(b,6.f);
-            g.setColour(selected?Theme::green.withAlpha(.78f):Theme::stroke.withAlpha(.75f));
+            g.setColour(selected?Theme::green.withAlpha(.78f):
+                        hovered?Theme::muted.withAlpha(.68f):Theme::stroke.withAlpha(.75f));
             g.drawRoundedRectangle(b.reduced(.5f),6.f,selected?1.25f:1.f);
             Theme::fittedText(g,banks[i],
                 {29,(int)b.getY()+5,112,20},12.f,
@@ -1338,10 +1347,12 @@ void PresetBrowser::paint(juce::Graphics&g) {
         }
         const auto sub=adlibsBounds().toFloat();
         g.setColour(mainAdlibs?Theme::green.withAlpha(.15f):
-                              Theme::panelAlt.withAlpha(.47f));
+                   hoveredAdlibs?Theme::panelAlt.brighter(.19f):
+                                 Theme::panelAlt.withAlpha(.47f));
         g.fillRoundedRectangle(sub,5.f);
         g.setColour(mainAdlibs?Theme::green.withAlpha(.68f):
-                              Theme::stroke.withAlpha(.45f));
+                   hoveredAdlibs?Theme::muted.withAlpha(.75f):
+                                 Theme::stroke.withAlpha(.45f));
         g.drawRoundedRectangle(sub.reduced(.5f),5.f,.85f);
         g.setColour(Theme::green.withAlpha(mainAdlibs?.85f:.26f));
         g.drawLine(33.f,147.f,33.f,162.f,1.f);
@@ -1609,25 +1620,42 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     }
 }
 void PresetBrowser::mouseMove(const juce::MouseEvent& e){
+    int nextBank=-1;
+    bool nextAdlibs=false;
+    if(!detailsOpen && e.x>=17 && e.x<185){
+        nextAdlibs=adlibsBounds().contains(e.getPosition());
+        if(!nextAdlibs)
+            for(int i=0;i<banks.size();++i)
+                if(bankBounds(i).contains(e.getPosition())){nextBank=i;break;}
+    }
     const int candidate=presetCardHitForTest(detailsOpen,e.x,e.y,getWidth())
         ? (e.y-110)/61+scroll : -1;
     const bool onStar=e.x>=getWidth()-77 && e.x<=getWidth()-38;
-    if(candidate>=0 && candidate==hoveredCard &&
-       (onStar?hoveredStar==candidate:hoveredStar<0))
-        return; // avoid a full filtered/sorted library scan per mouse pixel
-    const int next=candidate>=0&&candidate<(int)filtered().size()?candidate:-1;
+    // Avoid filtering all the cards for every pixel of mouse travel.
+    const bool stableCard=candidate>=0 && candidate==hoveredCard &&
+        (onStar?hoveredStar==candidate:hoveredStar<0);
+    const int next=stableCard?hoveredCard:
+        candidate>=0&&candidate<(int)filtered().size()?candidate:-1;
     const int nextStar=onStar?next:-1;
-    if(next!=hoveredCard || nextStar!=hoveredStar){
-        hoveredCard=next;hoveredStar=nextStar;repaint();
-        setTooltip(nextStar>=0?"Toggle favorite. Does not load or change this sound.":
-                   next>=0?"Load this preset. Your current sound can be undone.":
-                   "Click a category, choose a genre or search for a saved sound.");
-        setMouseCursor(next>=0?juce::MouseCursor::PointingHandCursor
-                              :juce::MouseCursor::NormalCursor);
-    }
+    if(next==hoveredCard && nextStar==hoveredStar &&
+       nextBank==hoveredBank && nextAdlibs==hoveredAdlibs)return;
+    hoveredCard=next;hoveredStar=nextStar;
+    hoveredBank=nextBank;hoveredAdlibs=nextAdlibs;
+    repaint();
+    setTooltip(nextStar>=0?"Toggle favorite without changing the loaded sound.":
+               next>=0?"Load this preset; your current sound can be undone.":
+               nextAdlibs?"Browse native and saved Adlibs.":
+               nextBank>=0?"Browse this library category.":
+               "Click a category, choose a genre or search for a saved sound.");
+    setMouseCursor(juce::MouseCursor(next>=0 || nextBank>=0 || nextAdlibs?
+        juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor));
 }
 void PresetBrowser::mouseExit(const juce::MouseEvent&){
-    hoveredCard=-1;hoveredStar=-1;repaint();
+    if(hoveredCard>=0 || hoveredStar>=0 || hoveredBank>=0 || hoveredAdlibs){
+        hoveredCard=-1;hoveredStar=-1;hoveredBank=-1;hoveredAdlibs=false;
+        repaint();
+    }
+    setMouseCursor(juce::MouseCursor::NormalCursor);
 }
 void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel){
     if(detailsOpen || e.x<197 || e.y<102 || e.y>486 ||

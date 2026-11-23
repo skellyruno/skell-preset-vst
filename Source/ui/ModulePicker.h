@@ -6,6 +6,7 @@
 #include <functional>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 
 // ShallowHost-inspired native effect finder. Unlike a generic ComboBox, this
 // search/filter UI is rendered inside the existing JUCE PluginEditor. It never
@@ -66,6 +67,14 @@ public:
     int visibleRows() const noexcept {
         return juce::jlimit(4,10,(getHeight()-173)/37);
     }
+    // Actual card hit areas, excluding the 3px gaps and scrollbar.
+    static bool resultHitForTest(int x,int y,int width,int rows) noexcept {
+        return x>=15 && x<width-15 && y>=108 &&
+            y<108+rows*37 && (y-108)%37<34;
+    }
+    static bool externalHitForTest(int x,int y,int width,int height) noexcept {
+        return x>=17 && x<width-17 && y>=height-55 && y<height-29;
+    }
     void positionWithin(juce::Rectangle<int> initial) {
         if(!movedByUser) {setBounds(initial);return;}
         if(auto* parent=getParentComponent()) {
@@ -108,7 +117,12 @@ public:
             !search.getBounds().intersects(firstRow) &&
             !heading.intersects(dragLabel) &&
             !resultText.intersects(categoryText) &&
-            !lastRow.intersects(footer);
+            !lastRow.intersects(footer) &&
+            resultHitForTest(18,108,getWidth(),visibleRows()) &&
+            !resultHitForTest(18,142,getWidth(),visibleRows()) &&
+            !resultHitForTest(5,115,getWidth(),visibleRows()) &&
+            externalHitForTest(getWidth()/2,getHeight()-40,getWidth(),getHeight()) &&
+            !externalHitForTest(getWidth()/2,getHeight()-27,getWidth(),getHeight());
     }
     void applyTheme() {
         Theme::selectFor(processor.state);
@@ -139,6 +153,8 @@ public:
         repaint();
     }
     void hide() {
+        hoveredClose=false;hoveredExternal=false;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
         setVisible(false);
         if(onDismiss)onDismiss();
     }
@@ -175,8 +191,14 @@ public:
         Theme::fittedText(g,"EFFECT LIBRARY",{31,9,150,30},16,Theme::white,true);
         Theme::text(g,"DRAG / RESIZE",{200,15,getWidth()-243,16},9,Theme::muted,
                     false,juce::Justification::centredRight);
-        Theme::text(g,"X",{getWidth()-34,9,23,26},15,Theme::muted,true,
-                    juce::Justification::centred);
+        const auto closeRect=juce::Rectangle<float>(W-42.f,8.f,32.f,30.f);
+        g.setColour(hoveredClose?Theme::panelAlt.brighter(.21f):Theme::panelAlt);
+        g.fillRoundedRectangle(closeRect,5.f);
+        g.setColour(hoveredClose?Theme::green:Theme::stroke);
+        g.drawRoundedRectangle(closeRect.reduced(.4f),4.7f,1.f);
+        g.setColour(hoveredClose?Theme::white:Theme::muted);
+        g.drawLine(W-32.f,17.f,W-20.f,29.f,1.5f);
+        g.drawLine(W-20.f,17.f,W-32.f,29.f,1.5f);
         Theme::text(g,"SEARCH  •  CLICK TO LOAD  •  SCROLL EFFECTS",
                     {18,86,getWidth()-34,17},11.4f,Theme::muted.brighter(.18f));
 
@@ -215,9 +237,9 @@ public:
         g.drawLine(18.f,(float)(foot-7),W-18.f,(float)(foot-7),1.f);
         // Dedicated external-insert action, separated from native DSP results.
         const auto externalRow=juce::Rectangle<float>(17.f,H-55.f,W-34.f,26.f);
-        g.setColour(Theme::green.withAlpha(.12f));
+        g.setColour(Theme::green.withAlpha(hoveredExternal?.20f:.12f));
         g.fillRoundedRectangle(externalRow,5.f);
-        g.setColour(Theme::green.withAlpha(.72f));
+        g.setColour(Theme::green.withAlpha(hoveredExternal?.94f:.72f));
         g.drawRoundedRectangle(externalRow.reduced(.6f),5.f,1.f);
         Theme::text(g,"+ LOAD EXTERNAL VST3 PLUGIN",
                     {28,getHeight()-52,getWidth()-58,21},12,Theme::green,true);
@@ -257,14 +279,14 @@ public:
             setMouseCursor(juce::MouseCursor::DraggingHandCursor);
             return;
         }
-        if(e.y>=getHeight()-55 && e.y<getHeight()-29) {
+        if(externalHitForTest(e.x,e.y,getWidth(),getHeight())) {
             hide();
             if(onExternal)onExternal();
             return;
         }
         constexpr int rowY=108,rowHeight=37;
         const int visible=visibleRows();
-        if(e.y<rowY||e.y>=rowY+visible*rowHeight)return;
+        if(!resultHitForTest(e.x,e.y,getWidth(),visible))return;
         const int i=topItem+(e.y-rowY)/rowHeight;
         if(i>=0&&i<(int)results.size()){
             selectedRow=i;
@@ -303,23 +325,39 @@ public:
         setMouseCursor(juce::MouseCursor::NormalCursor);
     }
     void mouseMove(const juce::MouseEvent& e) override {
-        if(e.x>=getWidth()-23 && e.y>=getHeight()-23)
-            setMouseCursor(juce::MouseCursor::BottomRightCornerResizeCursor);
-        else if(e.y>=0 && e.y<42 && e.x<getWidth()-45)
-            setMouseCursor(juce::MouseCursor::DraggingHandCursor);
-        else setMouseCursor(juce::MouseCursor::NormalCursor);
+        const bool nextClose=e.y>=0 && e.y<42 && e.x>=getWidth()-43;
+        const bool nextExternal=externalHitForTest(e.x,e.y,getWidth(),getHeight());
+        if(nextClose!=hoveredClose || nextExternal!=hoveredExternal){
+            hoveredClose=nextClose;hoveredExternal=nextExternal;
+            repaint();
+        }
         constexpr int rowY=108,rowHeight=37;
         const int visible=visibleRows();
-        if(e.y>=rowY&&e.y<rowY+visible*rowHeight){
+        const bool onResult=resultHitForTest(e.x,e.y,getWidth(),visible) &&
+            topItem+(e.y-rowY)/rowHeight<(int)results.size();
+        if(onResult){
             const int i=topItem+(e.y-rowY)/rowHeight;
-            if(i<(int)results.size() && i!=selectedRow){
-                selectedRow=i;repaint();
-            }
+            if(i!=selectedRow){selectedRow=i;repaint();}
         }
+        const auto shape=e.x>=getWidth()-23 && e.y>=getHeight()-23?
+            juce::MouseCursor::BottomRightCornerResizeCursor:
+            e.y>=0 && e.y<42 && e.x<getWidth()-45?
+            juce::MouseCursor::DraggingHandCursor:
+            nextClose || nextExternal || onResult?
+            juce::MouseCursor::PointingHandCursor:
+            juce::MouseCursor::NormalCursor;
+        setMouseCursor(juce::MouseCursor(shape));
+    }
+    void mouseExit(const juce::MouseEvent&) override {
+        if(hoveredClose || hoveredExternal){
+            hoveredClose=false;hoveredExternal=false;repaint();
+        }
+        setMouseCursor(juce::MouseCursor::NormalCursor);
     }
     void mouseWheelMove(const juce::MouseEvent&,
                         const juce::MouseWheelDetails& wheel) override {
-        if(wheel.deltaY==0.f)return;
+        if(!std::isfinite(wheel.deltaY) || wheel.deltaY==0.f ||
+           results.empty())return;
         if(wheelCarry*wheel.deltaY<0.f)wheelCarry=0.f;
         wheelCarry=juce::jlimit(-1.f,1.f,wheelCarry+wheel.deltaY);
         if(std::abs(wheelCarry)<.38f)return;
@@ -416,6 +454,7 @@ private:
     std::vector<int> results;
     int currentType=0,selectedRow=0,topItem=0;
     bool movedByUser=false,dragHeader=false,resizing=false;
+    bool hoveredClose=false,hoveredExternal=false;
     juce::Rectangle<int> resizeStart{};
     float wheelCarry=0.f;
     juce::Point<int> dragOrigin{};
