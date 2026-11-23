@@ -732,6 +732,9 @@ public:
             issues.add("Settings button did not open its themed overlay");
         if(!settingsPanel.hasWorldLinkControlForTest())
             issues.add("Optional SkellWorld presence control is missing from themed Settings");
+        if(!settingsPanel.testKeyboardNavigationForTest() ||
+           !settingsPanel.hasKeyboardFocus(false))
+            issues.add("Settings keyboard navigation or focus-on-open regressed");
         settings.onClick();
         if(settingsPanel.isVisible())
             issues.add("Settings button did not close its themed overlay");

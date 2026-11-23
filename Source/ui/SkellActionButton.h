@@ -71,5 +71,11 @@ public:
         g.setFont(Theme::font(fontSize,true));
         g.drawFittedText(getButtonText(),getLocalBounds().reduced(7,4),
                          juce::Justification::centred,1,.82f);
+        // Text action buttons need the same keyboard-focus visibility as
+        // the hardware Power, Settings, performer and history buttons.
+        if(hasKeyboardFocus(true)){
+            g.setColour(accent.withAlpha(enabled?.84f:.38f));
+            g.drawRoundedRectangle(bounds.reduced(2.5f),4.f,1.25f);
+        }
     }
 };

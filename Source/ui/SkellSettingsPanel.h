@@ -12,12 +12,66 @@ public:
     std::function<void()> onWorldLinkToggle;
     std::function<void()> onClose;
 
+    SkellSettingsPanel() {
+        setWantsKeyboardFocus(true);
+        setTooltip("Arrow keys choose a control; Enter applies; Escape closes");
+    }
     void select(int index) { selected=juce::jlimit(0,3,index);repaint(); }
     void open(int index) {
         select(index);
-        setVisible(true);toFront(true);
+        focusedTarget=selected;
+        setVisible(true);toFront(true);grabKeyboardFocus();
     }
-    void close() {setVisible(false);if(onClose)onClose();}
+    void close() {
+        setVisible(false);
+        if(auto* parent=getParentComponent())parent->grabKeyboardFocus();
+        if(onClose)onClose();
+    }
+
+    // All keyboard targets are genuine existing actions: four scale cards
+    // plus optional SkellWorld presence. Arrows only move the focus outline;
+    // they do not resize the DAW window or mutate settings until activation.
+    static int nextKeyboardTarget(int target,int code) noexcept {
+        target=juce::jlimit(0,4,target);
+        if(code==juce::KeyPress::leftKey)
+            return target<4 && target%2==1?target-1:target;
+        if(code==juce::KeyPress::rightKey)
+            return target<4 && target%2==0?target+1:target;
+        if(code==juce::KeyPress::upKey)
+            return target==4?2:target>=2?target-2:target;
+        if(code==juce::KeyPress::downKey)
+            return target<=1?target+2:target<=3?4:target;
+        return target;
+    }
+    bool testKeyboardNavigationForTest() const noexcept {
+        return nextKeyboardTarget(0,juce::KeyPress::rightKey)==1 &&
+               nextKeyboardTarget(1,juce::KeyPress::downKey)==3 &&
+               nextKeyboardTarget(3,juce::KeyPress::leftKey)==2 &&
+               nextKeyboardTarget(2,juce::KeyPress::downKey)==4 &&
+               nextKeyboardTarget(4,juce::KeyPress::upKey)==2 &&
+               nextKeyboardTarget(0,juce::KeyPress::leftKey)==0 &&
+               nextKeyboardTarget(4,juce::KeyPress::rightKey)==4;
+    }
+    bool keyPressed(const juce::KeyPress& key) override {
+        const int code=key.getKeyCode();
+        if(code==juce::KeyPress::escapeKey){close();return true;}
+        const int next=nextKeyboardTarget(focusedTarget,code);
+        if(next!=focusedTarget){focusedTarget=next;repaint();return true;}
+        if(code==juce::KeyPress::leftKey || code==juce::KeyPress::rightKey ||
+           code==juce::KeyPress::upKey || code==juce::KeyPress::downKey)
+            return true;
+        if(code==juce::KeyPress::returnKey || code==' ') {
+            if(focusedTarget==4){
+                if(onWorldLinkToggle)onWorldLinkToggle();
+            } else {
+                select(focusedTarget);
+                if(onSizeChange)onSizeChange(focusedTarget+1);
+                close();
+            }
+            return true;
+        }
+        return false;
+    }
 
     void setWorldLinkState(bool requested,bool localOnline,bool hubOnline) {
         const juce::String next=!requested
@@ -34,7 +88,12 @@ public:
         if(getWidth()<388 || getHeight()<326)return false;
         const auto close=juce::Rectangle<int>(getWidth()-47,10,37,40);
         const auto world=juce::Rectangle<int>(25,239,getWidth()-50,39);
-        if(!bounds.contains(close) || !bounds.contains(world))return false;
+        const auto legend=juce::Rectangle<int>(25,285,getWidth()-50,18);
+        const auto keyboardHint=juce::Rectangle<int>(25,306,getWidth()-50,18);
+        if(!bounds.contains(close) || !bounds.contains(world) ||
+           !bounds.contains(legend) || !bounds.contains(keyboardHint) ||
+           world.intersects(legend) || legend.intersects(keyboardHint))
+            return false;
         for(int i=0;i<4;++i) {
             const auto a=juce::Rectangle<int>(25+(i%2)*177,119+(i/2)*47,166,39);
             if(!bounds.contains(a)||a.intersects(world))return false;
@@ -66,10 +125,15 @@ public:
             const int x=25+(i%2)*177, y=119+(i/2)*47;
             const auto r=juce::Rectangle<float>((float)x,(float)y,166.f,39.f);
             const bool active=i==selected;
+            const bool focused=hasKeyboardFocus(false) && focusedTarget==i;
             g.setColour(active?Theme::green.withAlpha(.21f):Theme::panelAlt);
             g.fillRoundedRectangle(r,7.f);
             g.setColour(active?Theme::green:Theme::stroke);
             g.drawRoundedRectangle(r.reduced(.5f),7.f,1.15f);
+            if(focused){
+                g.setColour(Theme::white.withAlpha(.88f));
+                g.drawRoundedRectangle(r.reduced(2.8f),5.f,1.2f);
+            }
             Theme::text(g,labels[(size_t)i],{x+13,y+8,122,23},14,
                         active?Theme::green:Theme::white,true);
             if(active){g.setColour(Theme::green);g.fillEllipse((float)x+142.f,(float)y+16.f,7.f,7.f);}
@@ -83,11 +147,17 @@ public:
         g.setColour(worldLinkLabel.startsWith("LEAVE")
                     ?Theme::green:Theme::stroke);
         g.drawRoundedRectangle(linkButton.reduced(.5f),7.f,1.15f);
+        if(hasKeyboardFocus(false) && focusedTarget==4){
+            g.setColour(Theme::white.withAlpha(.88f));
+            g.drawRoundedRectangle(linkButton.reduced(2.8f),5.f,1.2f);
+        }
         Theme::text(g,worldLinkLabel,
                     {34,247,getWidth()-68,22},11.2f,Theme::white,true,
                     juce::Justification::centred);
         Theme::text(g,"PRESENCE ONLY  ·  NO AUDIO, PRESETS OR CHAIN DATA",
-                    {25,291,getWidth()-50,18},8.8f,Theme::muted);
+                    {25,285,getWidth()-50,18},10.2f,Theme::muted);
+        Theme::text(g,"ARROWS: MOVE   ·   ENTER: SELECT   ·   ESC: CLOSE",
+                    {25,306,getWidth()-50,17},10.f,Theme::muted);
     }
     void mouseDown(const juce::MouseEvent& e) override {
         if(e.x>=getWidth()-47 && e.y<50) {close();return;}
@@ -106,6 +176,6 @@ public:
         }
     }
 private:
-    int selected=0;
+    int selected=0,focusedTarget=0;
     juce::String worldLinkLabel{"JOIN SKELLWORLD  |  PRESENCE ONLY"};
 };
