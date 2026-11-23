@@ -3155,13 +3155,51 @@ void SlotEditor::paint(juce::Graphics&g) {
             Theme::text(g,"CONTROL RESPONSE / NOT LIVE AUDIO",
                         {55,327,735,18},10.f,Theme::muted);
         } else if(type!=SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
-            // Match Finish already draws its measured harmonic-transfer curve,
-            // a muted clean reference and its own labels above. The generic
-            // fallback title used to cover that curve and the XY edit marker.
+            // Every formerly text-only native effect now has a truthful,
+            // automatable four-parameter contour: four radial values are
+            // the actual p1..p4 sliders, NOT an invented audio spectrum.
+            // The original XY dot, drag gestures and host IDs remain active.
+            const std::array<float,4> parameters{{
+                processor.getSlotParam(slot,0),processor.getSlotParam(slot,1),
+                processor.getSlotParam(slot,2),processor.getSlotParam(slot,3)}};
+            const float cx=plot.getCentreX(),cy=plot.getCentreY();
+            const float radius=juce::jmin(plot.getWidth()*.15f,plot.getHeight()*.38f);
+            const float angles[]{-juce::MathConstants<float>::halfPi,0.f,
+                juce::MathConstants<float>::halfPi,juce::MathConstants<float>::pi};
+            for(int ring=1;ring<=3;++ring){
+                const float r=radius*(float)ring/3.f;
+                g.setColour(Theme::stroke.withAlpha(.23f));
+                g.drawEllipse(cx-r,cy-r,2.f*r,2.f*r,.8f);
+            }
+            juce::Path shape;
+            for(int i=0;i<4;++i){
+                const float r=radius*(.12f+.88f*parameters[(size_t)i]);
+                const float sx=cx+std::cos(angles[i])*r;
+                const float sy=cy+std::sin(angles[i])*r;
+                g.setColour(Theme::stroke.withAlpha(.46f));
+                g.drawLine(cx,cy,cx+std::cos(angles[i])*radius,
+                           cy+std::sin(angles[i])*radius,.9f);
+                if(i==0)shape.startNewSubPath(sx,sy);
+                else shape.lineTo(sx,sy);
+            }
+            shape.closeSubPath();
+            g.setColour(Theme::green.withAlpha(.18f));
+            g.fillPath(shape);
+            g.setColour(Theme::green.withAlpha(.90f));
+            g.strokePath(shape,juce::PathStrokeType(2.6f,
+                juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            for(int i=0;i<4;++i){
+                const float r=radius*(.12f+.88f*parameters[(size_t)i]);
+                const float sx=cx+std::cos(angles[i])*r;
+                const float sy=cy+std::sin(angles[i])*r;
+                g.setColour(Theme::plot);g.fillEllipse(sx-4.5f,sy-4.5f,9.f,9.f);
+                g.setColour(i<2?Theme::green:Theme::blue);
+                g.drawEllipse(sx-4.5f,sy-4.5f,9.f,9.f,1.7f);
+            }
             Theme::fittedText(g,processor.moduleName(type).toUpperCase(),
-                {65,198,740,40},25,Theme::green,true,juce::Justification::centred);
-            Theme::text(g,"DRAG THE GRAPH TO EDIT THE FIRST TWO CONTROLS",
-                {120,249,620,22},12,Theme::muted,false,juce::Justification::centred);
+                {60,169,700,24},14.f,Theme::green,true);
+            Theme::text(g,"CONTROL MAP  /  DRAG XY DOT",
+                {60,326,390,18},10.f,Theme::muted);
         }
         // Non-EQ modules share the two-axis universal marker.
         if(!isPagedEQ(type) &&

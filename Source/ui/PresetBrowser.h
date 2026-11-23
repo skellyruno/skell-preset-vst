@@ -88,7 +88,7 @@ private:
     bool canEditCover() const;
     void reloadAlchemistArtwork();
     void scanLibrary();
-    void copyToLibrary(const juce::File& file);
+    bool copyToLibrary(const juce::File& file);
     void loadFactoryFromBrowser(int index);
     void loadUserFromBrowser(int index);
     void auditionEntry(int entry);

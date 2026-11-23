@@ -602,7 +602,7 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         const auto hosted=processor.slotType(physical)==SkellPresetAudioProcessor::ExternalVST3
             ?processor.hostedVST3Name(physical):juce::String{};
         setTooltip((hosted.isNotEmpty()?hosted+" / ":"")+
-            "Click to edit / right-click for menu / drag to reorder");
+            "Click to edit / wheel over effect to scroll / drag to reorder");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(add)setMouseCursor(juce::MouseCursor::PointingHandCursor);
     else setMouseCursor(juce::MouseCursor::NormalCursor);

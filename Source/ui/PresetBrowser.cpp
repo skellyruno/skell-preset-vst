@@ -266,27 +266,26 @@ juce::Image PresetBrowser::selectedCover() const {
     return {};
 }
 
-void PresetBrowser::copyToLibrary(const juce::File& source) {
+bool PresetBrowser::copyToLibrary(const juce::File& source) {
     const auto folder=libraryDirectory();
-    if(folder.createDirectory().failed())return;
+    if(folder.createDirectory().failed())return false;
     if(source.getParentDirectory()==folder) {
-        activeUserPreset=source;scanLibrary();refreshArtwork();return;
+        activeUserPreset=source;scanLibrary();refreshArtwork();return true;
     }
     const auto dest=folder.getNonexistentChildFile(
         juce::File::createLegalFileName(source.getFileNameWithoutExtension()),
         ".skellpreset",true);
-    if(source.copyFileTo(dest)) {
-        activeUserPreset=dest;
-        // Keep a validated sidecar cover when importing from another
-        // library. This is data only, never executable preset content.
-        auto originalCover=source.withFileExtension(".png");
-        if(!originalCover.existsAsFile())originalCover=source.withFileExtension(".jpg");
-        if(originalCover.existsAsFile() && originalCover.getSize()>0 &&
-           originalCover.getSize()<=8*1024*1024)
-            originalCover.copyFileTo(dest.withFileExtension(originalCover.getFileExtension()));
-    }
+    if(!source.copyFileTo(dest))return false;
+    activeUserPreset=dest;
+    // Preserve a validated cover in the personal library if it exists.
+    auto originalCover=source.withFileExtension(".png");
+    if(!originalCover.existsAsFile())originalCover=source.withFileExtension(".jpg");
+    if(originalCover.existsAsFile() && originalCover.getSize()>0 &&
+       originalCover.getSize()<=8*1024*1024)
+        originalCover.copyFileTo(dest.withFileExtension(originalCover.getFileExtension()));
     scanLibrary();
     refreshArtwork();
+    return true;
 }
 void PresetBrowser::open() {
     scanLibrary();loadFavorites();loadArtists();
@@ -360,8 +359,12 @@ void PresetBrowser::chooseImport() {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot import preset",result.getErrorMessage());
                 return;
             }
-            safe->copyToLibrary(file);
+            const bool copied=safe->copyToLibrary(file);
             if(safe->onLoaded)safe->onLoaded();
+            if(!copied)
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::AlertWindow::WarningIcon,"Preset loaded",
+                    "The sound was imported, but a library copy could not be saved.");
             safe->repaint();
         });
 }
@@ -372,22 +375,44 @@ void PresetBrowser::chooseExport() {
     const auto initial=base.getChildFile(juce::File::createLegalFileName(processor.presetName())+".skellpreset");
     fileChooser=std::make_unique<juce::FileChooser>("Save native Skell-Preset",initial,"*.skellpreset");
     juce::Component::SafePointer<PresetBrowser> safe(this);
-    fileChooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+    fileChooser->launchAsync(juce::FileBrowserComponent::saveMode |
+        juce::FileBrowserComponent::canSelectFiles |
+        juce::FileBrowserComponent::warnAboutOverwriting,
         [safe](const juce::FileChooser& chooser) {
             if(!safe)return;
             safe->setChooserActive(false);
             auto file=chooser.getResult();
             if(file==juce::File{})return;
             if(!file.hasFileExtension(".skellpreset"))file=file.withFileExtension(".skellpreset");
+            const auto previousUser=safe->activeUserPreset;
+            juce::String previousArtist,previousGenre;
+            for(int i=0;i<(int)safe->userPresets.size();++i)
+                if(safe->userPresets[(size_t)i]==previousUser) {
+                    previousArtist=safe->artistForUser(i);
+                    previousGenre=safe->genreForUser(i);
+                    break;
+                }
             auto oldCover=safe->activeArtworkDestination();
-            if(!oldCover.existsAsFile() && safe->activeUserPreset.existsAsFile())
-                oldCover=safe->activeUserPreset.withFileExtension(".jpg");
+            if(!oldCover.existsAsFile() && previousUser.existsAsFile())
+                oldCover=previousUser.withFileExtension(".jpg");
             const auto result=safe->processor.exportPreset(file);
             if(result.failed()) {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot save preset",result.getErrorMessage());
                 return;
             }
-            safe->copyToLibrary(file);
+            const bool copied=safe->copyToLibrary(file);
+            // Save-as should retain artist/category labels on the NEW library
+            // copy, without changing the original .skellpreset or metadata.
+            if(copied && safe->activeUserPreset!=previousUser) {
+                for(int i=0;i<(int)safe->userPresets.size();++i)
+                    if(safe->userPresets[(size_t)i]==safe->activeUserPreset) {
+                        if(previousArtist.isNotEmpty())
+                            safe->setArtistForUser(i,previousArtist);
+                        if(previousGenre.isNotEmpty())
+                            safe->setGenreForUser(i,previousGenre);
+                        break;
+                    }
+            }
             // Saving a tweaked Alchemist or personal preset should preserve
             // its current cover even if the destination preset name changes.
             if(oldCover.existsAsFile() && safe->activeUserPreset.existsAsFile()) {
@@ -399,7 +424,11 @@ void PresetBrowser::chooseExport() {
             safe->refreshArtwork();
             if(safe->onCoverChanged)safe->onCoverChanged();
             safe->repaint();
-            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"Preset saved",file.getFullPathName());
+            juce::AlertWindow::showMessageBoxAsync(
+                copied?juce::AlertWindow::InfoIcon:juce::AlertWindow::WarningIcon,
+                copied?"Preset saved":"Preset exported",
+                copied?file.getFullPathName():
+                   file.getFullPathName()+"\nThe file was exported, but no library copy was saved.");
         });
 }
 int PresetBrowser::visibleFactoryPresetsForTest() const {
@@ -1114,7 +1143,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         }
     }
     if(entries.empty()) {
-        Theme::text(g,bank==3?"NO FAVORITES YET":
+        Theme::text(g,bank==4?"NO FAVORITES YET":
             bank==3?"NO ARTIST PRESETS YET":
             bank==1?"NO AD-LIB PRESETS YET":
             genreFilter.getSelectedId()>1?"NO PRESETS IN "+genreFilter.getText().toUpperCase():
