@@ -120,7 +120,8 @@ public:
         // OUTPUT is post-FX; bars use the -60 to 0 dBFS log scale. Drawing
         // these is bounded GUI work and never fabricates audio data.
         const float meterWidth=juce::jmin(119.f,(width-70.f)*.28f);
-        const float meterY=stageBounds.getY()+47.f;
+        // Leave an optical gap below the LIVE/dB header even at 70% scale.
+        const float meterY=stageBounds.getY()+55.f;
         const auto levelBar=[&](float x,float peak,juce::String label){
             const auto bar=juce::Rectangle<float>(x,meterY,meterWidth,4.f);
             g.setColour(Theme::stroke.withAlpha(.34f));

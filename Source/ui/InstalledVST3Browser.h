@@ -86,7 +86,20 @@ public:
                 if(controls[i]->getBounds().intersects(controls[j]->getBounds()))
                     return false;
         }
-        return true;
+        return testSelectedFileRowForTest();
+    }
+    static bool testSelectedFileRowForTest() {
+        // Synthetic names only: no VST3 is instantiated or scanned.
+        const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory);
+        const auto a=root.getChildFile("skell-order-a.vst3");
+        const auto b=root.getChildFile("skell-order-b.vst3");
+        const std::vector<skellpreset::host::InstalledVST3Bundle> entries{{a,"A"},{b,"B"}};
+        const std::vector<int> visibleRows{0,1};
+        return rowForFile(b,visibleRows,entries)==1 &&
+               rowForFile(a,visibleRows,entries)==0 &&
+               rowForFile(root.getChildFile("skell-order-c.vst3"),
+                          visibleRows,entries)==-1 &&
+               rowForFile(b,std::vector<int>{0},entries)==-1;
     }
     void resized() override {
         const auto w=getWidth(),h=getHeight();
@@ -131,6 +144,26 @@ private:
     juce::ListBox list;
     juce::TextButton rescan,chooseFile,cancel,load;
 
+    // The index inserts and re-sorts bundles while scanning. Save the file
+    // identity BEFORE stepping, otherwise a new alphabetically-earlier VST3
+    // can cause the selected row to silently load the wrong plugin.
+    juce::File selectedFile() const {
+        const int row=list.getSelectedRow();
+        if(row<0 || row>=(int)visible.size())return {};
+        const int entry=visible[(size_t)row];
+        if(entry<0 || entry>=(int)index.entries().size())return {};
+        return index.entries()[(size_t)entry].file;
+    }
+    static int rowForFile(const juce::File& file,const std::vector<int>& rows,
+                          const std::vector<skellpreset::host::InstalledVST3Bundle>& entries) {
+        if(file==juce::File{})return -1;
+        for(int row=0;row<(int)rows.size();++row){
+            const int entry=rows[(size_t)row];
+            if(entry>=0 && entry<(int)entries.size() &&
+               entries[(size_t)entry].file==file)return row;
+        }
+        return -1;
+    }
     void beginScan(const juce::Array<juce::File>& roots) {
         stopTimer();
         index.start(roots);
@@ -139,16 +172,22 @@ private:
         repaint();
     }
     void timerCallback() override {
+        const auto before=selectedFile();
+        const bool wasFinished=index.finished();
         const bool changed=index.step(2);
-        if(changed)refreshResults();
+        if(changed)refreshResults(before);
         if(index.finished())stopTimer();
-        repaint();
+        // Avoid 28 full browser repaints/second while crawling slow disks.
+        // Only found items and the terminal scan status require invalidation.
+        if(!changed && !wasFinished && index.finished())repaint();
     }
-    void refreshResults() {
+    void refreshResults(const juce::File& preserve={}) {
         visible=index.filter(search.getText());
         list.setVisible(!visible.empty());
         list.updateContent();
-        if(visible.empty())list.deselectAllRows();
+        const int selected=rowForFile(preserve,visible,index.entries());
+        if(selected>=0)list.selectRow(selected);
+        else if(visible.empty())list.deselectAllRows();
         else list.selectRow(0);
         load.setEnabled(!visible.empty());
         list.repaint();
