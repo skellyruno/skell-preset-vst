@@ -51,7 +51,7 @@ public:
         if(++head==data.size())head=0;
     }
     float read(float samples) const noexcept {
-        if(data.empty())return 0.f;
+        if(data.empty() || !std::isfinite(samples))return 0.f;
         const float d=std::clamp(samples,1.f,(float)data.size()-3.f);
         const size_t whole=(size_t)d;
         const float fraction=d-(float)whole;
@@ -111,12 +111,17 @@ public:
         outputSlew=1.f-pole(16.f);
         chainG.fill(0.f);mainG=masterG=1.f;sensG=1.f;
         cached.fill(-5.f);p=vocalFeelNeutral;lastProfile=-1;
+        parametersConfigured=false;
         beginBlock();
         set(vocalFeelNeutral);
     }
     void set(const std::array<float,16>& parameters) noexcept {
         std::array<float,16> next{};
         for(size_t i=0;i<next.size();++i)next[i]=clamp(parameters[i],0.f,1.f);
+        // Same APVTS block state is overwhelmingly common. Skip all voice
+        // filter setup, return-root calculations and fader pow() when the
+        // normalized values and profile have not moved.
+        if(parametersConfigured && next==cached)return;
         p=next;
         const int voice=std::clamp((int)std::lround(p[0]*2.f),0,2);
         if(voice!=lastProfile || next[2]!=cached[2] ||
@@ -148,6 +153,7 @@ public:
            next[0]!=cached[0])
             opto.set(p[7],p[8],p[0],1.f);
         cached=next;
+        parametersConfigured=true;
         for(int k=0;k<5;++k)
             targetChain[(size_t)k]=vfReturn(p[(size_t)(10+k)]);
         targetSens=dbToGain((p[1]-.5f)*24.f);
@@ -274,6 +280,7 @@ private:
     double sr=48000.;
     std::array<float,16> p=vocalFeelNeutral,cached{};
     int lastProfile=-1;
+    bool parametersConfigured=false;
     Biquad lo,mid,hi,magicHp,magicPeak,slapHp,slapLp,attackBp;
     Biquad attitudeHp,attitudeLp,presenceBp,presenceAir;
     SplitDeEsser deess;

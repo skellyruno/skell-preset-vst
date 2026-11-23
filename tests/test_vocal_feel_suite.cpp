@@ -6,6 +6,9 @@
 #include <cmath>
 #include <cstdio>
 #include <chrono>
+#include <limits>
+#include <memory>
+#include <vector>
 using namespace skellpreset::dsp;
 constexpr double pi2=6.2831853071795864769;
 static float sample(int n,double rate) {
@@ -119,6 +122,67 @@ int main(){
             assert(one[0]==two[0] && one[1]==two[1]);
         }
     }
+    // Invalid fractional delay readout is explicitly rejected rather than
+    // allowing NaN -> size_t conversion inside the ring index.
+    {
+        VocalFeelLine line;
+        line.prepare(48000);
+        for(int n=0;n<250;++n)line.push(.2f);
+        assert(line.read(std::numeric_limits<float>::quiet_NaN())==0.f);
+        assert(line.read(std::numeric_limits<float>::infinity())==0.f);
+        assert(std::isfinite(line.read(-1000.f)));
+        assert(std::isfinite(line.read(1.e9f)));
+    }
+    // Changing one parameter must recompute the proper filters, while
+    // unchanged updates never disturb a compressor's state, across rates.
+    for(double rate:{44100.,48000.,96000.}) {
+        VocalFeelSuite stable,repeated;
+        stable.prepare(rate);repeated.prepare(rate);
+        auto params=vocalFeelNeutral;
+        params[2]=.78f;params[4]=.25f;params[5]=.45f;
+        params[7]=.76f;params[8]=.3f;
+        for(int k=10;k<15;++k)params[(size_t)k]=.4f;
+        stable.set(params);repeated.set(params);
+        stable.beginBlock();repeated.beginBlock();
+        for(int n=0;n<(int)(rate*.35);++n) {
+            if(n==(int)(rate*.12)) {
+                params[4]=.62f;params[2]=.55f;params[7]=.51f;
+                stable.set(params);repeated.set(params);
+            }
+            if(n%32==0)repeated.set(params);
+            const float x=sample(n,rate);
+            const auto a=stable.process(x,-x*.42f);
+            const auto b=repeated.process(x,-x*.42f);
+            assert(a==b);
+            assert(std::isfinite(a[0]) && std::isfinite(a[1]));
+        }
+        for(int k=0;k<5;++k)
+            assert(std::abs(stable.chainRms(k)-repeated.chainRms(k))<1.e-6f);
+    }
+    // Invalid host automation is zero-clamped and must not poison filters,
+    // meters or a later valid voice. Test both stereo channels separately.
+    {
+        VocalFeelSuite hostile;
+        hostile.prepare(48000.);
+        auto params=vocalFeelNeutral;
+        params.fill(std::numeric_limits<float>::quiet_NaN());
+        hostile.set(params);
+        for(int n=0;n<512;++n) {
+            const auto a=hostile.process(
+                n%2?std::numeric_limits<float>::infinity():.6f,
+                n%3?std::numeric_limits<float>::quiet_NaN():-.6f);
+            assert(std::isfinite(a[0]) && std::isfinite(a[1]));
+            assert(std::abs(a[0])<=16.f && std::abs(a[1])<=16.f);
+        }
+        params=vocalFeelNeutral;
+        hostile.set(params);hostile.beginBlock();
+        for(int n=0;n<2048;++n){
+            const auto a=hostile.process(sample(n,48000.),0.f);
+            assert(std::isfinite(a[0]) && std::isfinite(a[1]));
+        }
+        for(int chain=0;chain<5;++chain)
+            assert(std::isfinite(hostile.chainRms(chain)));
+    }
     VocalFeelSuite stress;stress.prepare(48000.);
     auto p=vocalFeelNeutral;
     for(int k=10;k<15;++k)p[(size_t)k]=.7f;
@@ -133,5 +197,32 @@ int main(){
     const auto ms=std::chrono::duration<double,std::milli>(
         std::chrono::steady_clock::now()-begin).count();
     std::printf("PASS: 3 rates, five real returns, full suite, solo return, voice profiles, clean unity, 0 PDC; one stereo second DSP-only %.2f ms, checksum %.3f\n",ms,checksum);
+    // Diagnostic only. No flaky CI CPU threshold and no false FL Studio
+    // projection: these timings are native DSP-only runner measurements.
+    for(int instances:{8,16}) {
+        std::vector<std::unique_ptr<VocalFeelSuite>> engines;
+        engines.reserve((size_t)instances);
+        for(int k=0;k<instances;++k) {
+            auto effect=std::make_unique<VocalFeelSuite>();
+            effect->prepare(48000.);
+            effect->set(p);
+            engines.push_back(std::move(effect));
+        }
+        float sum=0.f;
+        const auto start=std::chrono::steady_clock::now();
+        for(int n=0;n<48000;++n) {
+            const float input=sample(n,48000.);
+            for(auto& fx:engines) {
+                if(n%128==0)fx->set(p);
+                const auto output=fx->process(input,-input*.7f);
+                sum+=output[0]*.0000005f;
+            }
+        }
+        const auto elapsed=std::chrono::duration<double,std::milli>(
+            std::chrono::steady_clock::now()-start).count();
+        std::printf("BENCH: Vocal Feel Suite @48kHz full FX 128-sample blocks %d instances, %.2f ms total, %.2f ms/instance, checksum %.6f\n",
+            instances,elapsed,elapsed/instances,(double)sum);
+        assert(std::isfinite(sum));
+    }
     return 0;
 }
