@@ -16,6 +16,7 @@ public:
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
     bool keyPressed(const juce::KeyPress&) override;
     void open();
+    void loadEmptyRack();
     void applyTheme();
     // Cached on the message thread; no image file I/O from paint/audio.
     juce::Image selectedCover() const;
@@ -64,7 +65,7 @@ private:
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
         artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
         genreButton{"TAG"},detailsButton{"EDIT DETAILS"},
-        addCategoryButton{"ADD CATEGORY"},clearSearchButton{"CLEAR"};
+        addCategoryButton{"ADD CATEGORY"},clearSearchButton{"CLEAR"},emptyButton{"EMPTY RACK"};
     std::unique_ptr<juce::FileChooser> fileChooser;
     bool chooserActive=false;
     void setChooserActive(bool active);

@@ -110,6 +110,9 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
         if(target>=0)auditionEntry(entries[(size_t)target]);
     };
     addAndMakeVisible(search);
+    addAndMakeVisible(emptyButton);
+    emptyButton.setTooltip("Start from a clean rack: no effects, unity gain, full mix");
+    emptyButton.onClick=[this]{loadEmptyRack();};
     addAndMakeVisible(artistEditor);
     addAndMakeVisible(genrePicker);
     addAndMakeVisible(genreFilter);
@@ -240,7 +243,7 @@ void PresetBrowser::applyTheme() {
     categoryEditor.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
     for(auto* button:{&importButton,&exportButton,&artworkButton,
                        &artistButton,&genreButton,&detailsButton,&addCategoryButton,
-                       &clearSearchButton}) {
+                       &clearSearchButton,&emptyButton}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panel);
         button->setColour(juce::TextButton::textColourOffId,Theme::white);
     }
@@ -383,6 +386,8 @@ void PresetBrowser::resized(){
     sortPicker.setVisible(!detailsOpen);
     sortPicker.setBounds(getWidth()-169,69,150,29);
     detailsButton.setBounds(18,detailsOpen?112:386,166,30);
+    emptyButton.setVisible(!detailsOpen);
+    emptyButton.setBounds(18,510,166,23);
     for(auto* control:{static_cast<juce::Component*>(&artistEditor),
                        static_cast<juce::Component*>(&artistButton),
                        static_cast<juce::Component*>(&genrePicker),
@@ -410,6 +415,7 @@ void PresetBrowser::resized(){
 }
 void PresetBrowser::setChooserActive(bool active) {
     chooserActive=active;
+    emptyButton.setEnabled(!active);
     importButton.setEnabled(!active);
     exportButton.setEnabled(!active);
     artworkButton.setEnabled(!active && canEditCover());
@@ -870,10 +876,10 @@ bool PresetBrowser::testBrowserLayoutForTest() {
            categoryEditor.isVisible()!=expanded ||
            addCategoryButton.isVisible()!=expanded ||
            genreFilter.isVisible()==expanded)return false;
-        const std::array<const juce::Component*,11> widgets{{
+        const std::array<const juce::Component*,12> widgets{{
             &detailsButton,&genrePicker,&genreButton,&artistEditor,
             &artistButton,&importButton,&exportButton,&artworkButton,
-            &categoryEditor,&addCategoryButton,&genreFilter}};
+            &categoryEditor,&addCategoryButton,&genreFilter,&emptyButton}};
         for(size_t i=0;i<widgets.size();++i){
             if(!widgets[i]->isVisible())continue;
             if(!bounds.contains(widgets[i]->getBounds()))return false;
@@ -1534,6 +1540,16 @@ void PresetBrowser::paint(juce::Graphics&g) {
             " OF "+juce::String((int)entries.size())+"  /  WHEEL TO SCROLL",
             {260,getHeight()-20,310,16},10.f,Theme::muted);
     }
+}
+void PresetBrowser::loadEmptyRack(){
+    if(chooserActive)return;
+    if(onBeforeLoad)onBeforeLoad();
+    activeUserPreset=juce::File{};
+    processor.clearRackToEmpty();
+    refreshArtwork();
+    setVisible(false);
+    if(onLoaded)onLoaded();
+    if(onClose)onClose();
 }
 void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;

@@ -161,8 +161,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         p.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID{id,1},label,initial));
     };
     p.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"mode",1},"Mode",juce::StringArray{"Simple","Advanced","Vocoding","Bypass"},1));
-    percent("input","Input",-24,24,0);percent("mix","Mix",0,1,1);
-    percent("output","Output",-24,24,0);
+    auto masterGain=[&](const juce::String& id,const juce::String& label){
+        const auto attrs=juce::AudioParameterFloatAttributes()
+            .withStringFromValueFunction([](float db,int){
+                return juce::String(db>.001f?"+":"")+juce::String(db,1)+" dB";
+            })
+            .withValueFromStringFunction([](const juce::String& text){
+                const float v=text.getFloatValue();
+                return juce::jlimit(-24.f,24.f,text.contains("%")?
+                    20.f*std::log10(juce::jmax(.0001f,v*.01f)):v);
+            });
+        p.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{id,1},label,
+            juce::NormalisableRange<float>(-24.f,24.f,.001f),0.f,attrs));
+    };
+    masterGain("input","Input");percent("mix","Mix",0,1,1);
+    masterGain("output","Output");
     bl("autoGain","Auto gain (reserved)",false);bl("delta","Delta",false);
     bl("adapt","Adapt (reserved)",false);fl("adaptAmount","Adapt amount (reserved)",0,1,0);
     bl("globalGate","Legacy global gate (inactive; use rack Gate)",false);fl("gateThreshold","Gate threshold",-80,0,-50);
@@ -754,10 +767,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const float micGateDepth=juce::jlimit(0.f,1.f,rawMic.gateDepth->load());
     micGateWet.setTargetValue(rawMic.gateOn->load()>.5f?1.f:0.f);
     const bool delta=rawGlobal.delta->load()>.5f;
-    const float macroTone=rawGlobal.macros[0]->load();
-    const float macroPunch=rawGlobal.macros[1]->load();
-    const float macroSpace=rawGlobal.macros[2]->load();
-    const float macroGrit=rawGlobal.macros[3]->load();
+    const auto macroValue=[&](int i){
+        const float v=rawGlobal.macros[(size_t)i]->load();
+        return std::isfinite(v)?juce::jlimit(0.f,1.f,v):.5f;
+    };
+    const float macroTone=macroValue(0),macroPunch=macroValue(1);
+    const float macroSpace=macroValue(2),macroGrit=macroValue(3);
     // One consistent rack topology snapshot for the entire callback. Only
     // ACTIVE rack slots need coefficient updates, which can involve pow/exp.
     // Inactive expanded slots are configured on their first active callback;
@@ -791,6 +806,33 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 (int)raw.studioEqKind[(size_t)k]->load());
             c.studioEqEnabled[(size_t)k]=raw.studioEqOn[(size_t)k]->load()>.5f;
         }
+        // Apply non-destructive macro offsets to the block's control
+        // snapshot only. Center (50%) is exactly the stored preset.
+        const float toneOffset=macroTone-.5f,punchOffset=macroPunch-.5f,
+                    gritOffset=macroGrit-.5f;
+        if(toneOffset!=0.f){
+            if(c.type==EightBandToneFX)c.p[15]=juce::jlimit(0.f,1.f,c.p[15]+toneOffset*.25f);
+            if(c.type==StudioEQFX){
+                for(int band=7;band>=0;--band){
+                    const int shape=c.studioEqKinds[(size_t)band];
+                    if(c.studioEqEnabled[(size_t)band] && shape!=1 && shape!=2){
+                        c.p[(size_t)(band*2+1)]=juce::jlimit(0.f,1.f,
+                            c.p[(size_t)(band*2+1)]+toneOffset*.22f);
+                        break;
+                    }
+                }
+            }
+        }
+        if(punchOffset!=0.f){
+            if(c.type==VoxRackSmoothComp || c.type==SerialDynamicsFX || c.type==StudioCompressorFX)
+                c.p[0]=juce::jlimit(0.f,1.f,c.p[0]-punchOffset*.24f);
+            if(c.type==VocalFeelOptoFX)c.p[0]=juce::jlimit(0.f,1.f,c.p[0]+punchOffset*.36f);
+        }
+        if(gritOffset!=0.f && (c.type==Exciter || c.type==SkelldizerFX ||
+            c.type==StudioFastDistFX || c.type==AdlibSaturate))
+            c.p[0]=juce::jlimit(0.f,1.f,c.p[0]+gritOffset*.55f);
+        if(c.type==StudioDelayFX && macroSpace!=.5f)
+            c.p[10]=juce::jlimit(0.f,1.f,c.p[10]*(.5f+macroSpace));
         auto& e=engines[(size_t)s];
         if(supportsWetSidechain(c.type))
             e.voiceDuck.set(c.duckOn,c.duckDepth,c.duckThreshold,
@@ -932,7 +974,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 break;
             default: break;
         }
-        const float fx=(c.type==Reverb || c.type==Delay)
+        const float fx=(c.type!=StudioDelayFX &&
+            (skellpreset::registry::macroTargets(c.type)&skellpreset::registry::SpaceTarget)!=0u)
             ?(.5f+macroSpace):1.f;
         slotWetSmooth[(size_t)s].setTargetValue(juce::jlimit(0.f,1.f,c.wet*fx)
             *(c.on?1.f:0.f));
@@ -1333,6 +1376,26 @@ int SkellPresetAudioProcessor::appendRackSlot() {
     return slotIdAt(count);
 }
 
+unsigned SkellPresetAudioProcessor::activeSimpleMacroMask() const noexcept {
+    unsigned mask=0;
+    const int count=activeSlotCount();
+    for(int position=0;position<count;++position){
+        const int id=slotIdAt(position);
+        const auto& raw=rawSlots[(size_t)id];
+        if(!raw.on || !raw.wet || raw.on->load()<=.5f || raw.wet->load()<=0.f)continue;
+        const int type=slotType(id);
+        if(type==StudioEQFX){
+            bool activeBand=false;
+            for(size_t band=0;band<8;++band){
+                const int shape=(int)raw.studioEqKind[band]->load();
+                if(raw.studioEqOn[band]->load()>.5f && shape!=1 && shape!=2){activeBand=true;break;}
+            }
+            if(!activeBand)continue;
+        }
+        mask|=skellpreset::registry::macroTargets(type);
+    }
+    return mask;
+}
 void SkellPresetAudioProcessor::clearRackToEmpty() {
     suppressProgramIdentityUpdates.store(true,std::memory_order_release);
     emptyRackIdentity.store(false,std::memory_order_release);

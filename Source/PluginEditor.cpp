@@ -14,7 +14,6 @@
 #include "chain/AlchemistNativePreset.h"
 #include "chain/NativeSoundMatchTrials.h"
 #include <SkellCore/UI.h>
-#include <SkellCore/WorldLink.h>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -101,13 +100,6 @@ public:
         // microphone trigger at the top right of the effect rack.
         micButton.setVisible(false);
         chain.onMicRequest=[this] {if(micButton.onClick)micButton.onClick();};
-        match.setButtonText("MATCH");style(match);addAndMakeVisible(match);
-        match.onClick=[this]{
-            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"MATCH | DEVELOPMENT STAGE",
-                "The deterministic MATCH alignment + level test harness is implemented and passing. "
-                "Dry/Wet WAV file capture, optimization, and full-chain reconstruction are not yet wired into this editor. "
-                "No match percentage is claimed for real vocal material.","OK");
-        };
         // One view-switch control plus one independent bypass toggle.
         style(viewSwitch);style(powerButton);
         addAndMakeVisible(viewSwitch);addAndMakeVisible(powerButton);
@@ -162,6 +154,9 @@ public:
                 return juce::jlimit(0.,1.,value.getDoubleValue()/100.);
             };
             s.updateText();
+            s.onValueChange=[this,k]{
+                repaint(juce::Rectangle<int>(78+k*254,339,220,214));
+            };
         }
         for(auto* s:{&input,&mix,&output}) {
             // Three true rotary controls, with larger percent readouts painted
@@ -185,14 +180,14 @@ public:
         // Input and Output drive real -24..+24 dB gain stages. Show actual
         // dB instead of a pseudo-percent where 50% ambiguously meant unity.
         // This is PRESENTATION ONLY: physical ranges, APVTS IDs and DSP
-        // are unchanged. Accept legacy typed percentages as a fallback.
+        // are unchanged. A typed percent now means linear amplitude (100%=unity).
         auto gainDb=[](double db) {
             return juce::String(db>0.001?"+":"")+juce::String(db,1)+" dB";
         };
         auto parseGainDb=[](const juce::String& text) {
             const double displayed=text.getDoubleValue();
             const double db=text.contains("%")
-                ?(displayed-50.)*48./100.:displayed;
+                ?20.*std::log10(juce::jmax(.0001,displayed*.01)):displayed;
             return juce::jlimit(-24.,24.,db);
         };
         input.textFromValueFunction=gainDb;
@@ -207,9 +202,11 @@ public:
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
         input.updateText();output.updateText();mix.updateText();
-        input.setTooltip("Input gain -24 to +24 dB · 0 dB is unity");
+        for(auto* control:{&input,&mix,&output})
+            control->onValueChange=[this]{repaint(juce::Rectangle<int>(804,639,350,48));};
+        input.setTooltip("Input gain -24 to +24 dB. 0 dB = 100% of original signal.");
         mix.setTooltip("Global dry / wet mix · 100% is fully processed");
-        output.setTooltip("Output gain -24 to +24 dB · 0 dB is unity");
+        output.setTooltip("Output gain -24 to +24 dB. 0 dB = 100% of original signal.");
         sizeSelect.addItemList({"70%","85%","100%","125%"},1);
         const float restored=(float)processor.state.state.getProperty("uiScale",.70f);
         const float available[]{.70f,.85f,1.f,1.25f};
@@ -225,7 +222,7 @@ public:
         addAndMakeVisible(sizeSelect);
         sizeSelect.setVisible(false); // Internal compatibility adapter only.
         // Use the recessed, engraved settings switch from Skell Silence.
-        settings.setTooltip("Settings / Interface Size / Optional SkellWorld Presence");
+        settings.setTooltip("Settings / Interface size / Rack position / Empty rack");
         style(settings);
         addAndMakeVisible(settings);
         settings.onClick=[this] {
@@ -233,15 +230,12 @@ public:
             micPanel.setVisible(false);
             if(settingsPanel.isVisible())settingsPanel.close();
             else {
-                refreshWorldLinkStatus();
+                settingsPanel.setRackRight(rackOnRight);
                 settingsPanel.open(sizeSelect.getSelectedId()-1);
             }
         };
-        settingsPanel.onWorldLinkToggle=[this] {
-            if(worldLink.requested())worldLink.leave();
-            else worldLink.join();
-            refreshWorldLinkStatus();
-        };
+        settingsPanel.onRackToggle=[this]{dockRack(!rackOnRight);settingsPanel.setRackRight(rackOnRight);};
+        settingsPanel.onEmptyRack=[this]{browser.loadEmptyRack();settingsPanel.close();};
         settingsPanel.onSizeChange=[this](int choice){
             if(choice>=1 && choice<=4)
                 sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
@@ -292,8 +286,9 @@ public:
         browser.onLoadFailed=[this]{pendingHistory.reset();updateHistoryButtons();};
         browser.onLoaded=[this]{
             commitHistory();
-            editingIdle=false;idle.setVisible(false);
-            slot.select(0);chain.setSelectedSlot(0);refresh();
+            editingIdle=processor.presetName()=="Empty Rack";
+            idle.setVisible(editingIdle);
+            slot.select(0);chain.setSelectedSlot(editingIdle?-1:0);refresh();
         };
         browser.onCoverChanged=[this]{repaint();};
         browser.onClose=[this]{preset.repaint();};
@@ -342,7 +337,7 @@ public:
         return {Theme::green,Theme::panel,Theme::white,Theme::muted,
                 juce::Colour(0xd9000000)};
     }
-    ~Canvas()override {worldLink.leave();stopTimer();setLookAndFeel(nullptr);}
+    ~Canvas()override {stopTimer();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
             g.setColour(Theme::bg.withAlpha(.57f));g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
@@ -361,8 +356,8 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(juce::TextButton* b:std::array<juce::TextButton*,10>{{
-            &preset,&match,&viewSwitch,&undo,&redo,&powerButton,&help,&settings,&record,&micButton}})
+        for(juce::TextButton* b:std::array<juce::TextButton*,9>{{
+            &preset,&viewSwitch,&undo,&redo,&powerButton,&help,&settings,&record,&micButton}})
             style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
@@ -381,10 +376,6 @@ public:
         chain.repaint();slot.applyTheme();browser.applyTheme();
         idle.repaint();settingsPanel.repaint();
         refresh();
-    }
-    void refreshWorldLinkStatus() {
-        settingsPanel.setWorldLinkState(
-            worldLink.requested(),worldLink.online(),worldLink.hubOnline());
     }
     void dockRack(bool right) {
         if(rackOnRight==right)return;
@@ -438,7 +429,6 @@ public:
             browser.setVisible(false);
             micPanel.setVisible(false);
             slot.dismissTransientOverlays();
-            refreshWorldLinkStatus();
             settingsPanel.open(sizeSelect.getSelectedId()-1);
         } else {
             // Scene setup must not leave a stale settings overlay on the
@@ -478,7 +468,7 @@ public:
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
-        const std::array<const juce::Component*,13> all{{&themeButton,&preset,&match,
+        const std::array<const juce::Component*,12> all{{&themeButton,&preset,
             &viewSwitch,&powerButton,&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
@@ -494,11 +484,11 @@ public:
            || !output.textFromValueFunction || output.textFromValueFunction(-6.)!="-6.0 dB"
            || !mix.textFromValueFunction || mix.textFromValueFunction(1.)!="100%"
            || !input.valueFromTextFunction
-           || std::abs(input.valueFromTextFunction("50%"))>1.e-5
+           || std::abs(input.valueFromTextFunction("100%"))>1.e-5
            || std::abs(input.valueFromTextFunction("+6 dB")-6.)>1.e-5)
-            issues.add("Master rotary readout or legacy percent input incorrectly maps physical dB");
-        const std::array<const juce::Component*,7> top{{
-            &preset,&match,&viewSwitch,&undo,&redo,&settings,&powerButton}};
+            issues.add("Master rotary readout or unity percentage incorrectly maps physical dB");
+        const std::array<const juce::Component*,6> top{{
+            &preset,&viewSwitch,&undo,&redo,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -710,7 +700,10 @@ public:
                 std::abs(processor.state.getRawParameterValue("mix")->load()-.67f)<.02f &&
                 std::abs(processor.state.getRawParameterValue("output")->load()+2.f)<.05f;
         };
-        const bool automated=correctState();
+        const bool automated=correctState() &&
+            input.getTextFromValue(input.getValue())=="+3.0 dB" &&
+            mix.getTextFromValue(mix.getValue())=="67%" &&
+            output.getTextFromValue(output.getValue())=="-2.0 dB";
         viewSwitch.onClick();
         const bool hiddenInAdvanced=!input.isVisible() && !mix.isVisible() &&
             !output.isVisible() && correctState();
@@ -746,10 +739,8 @@ public:
         settings.onClick();
         if(!settingsPanel.isVisible())
             issues.add("Settings button did not open its themed overlay");
-        if(!settingsPanel.hasWorldLinkControlForTest())
-            issues.add("Optional SkellWorld presence control is missing from themed Settings");
         if(!settingsPanel.testKeyboardNavigationForTest())
-            issues.add("Settings keyboard navigation between scale cards and presence regressed");
+            issues.add("Settings keyboard navigation regressed");
         // Exercise Escape directly; focus-grabbing is verified by native
         // screenshots because a CI smoke editor may not have a window peer.
         if(!settingsPanel.keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)) ||
@@ -1132,7 +1123,7 @@ public:
         wordmark.draw(g,juce::Rectangle<float>(75.f,9.f,271.f,38.f));
         // The new tagline lives directly under SKELLPRESET, rather than
         // fighting the old waveform strip for the same 14 px.
-        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{76,54,190,14},
+        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{76,43,150,12},
                     10.3f,Theme::muted,true);
         // UI edition marker belongs with the title, not an isolated LIVE
         // badge. Binary package version stays 0.7.0 for old host projects.
@@ -1140,18 +1131,16 @@ public:
         // PRESET; the actual VST3 binary version stays unchanged.
         Theme::text(g,"v.01",{230,43,45,12},9.5f,
                     Theme::green.withAlpha(.83f),true);
-        Theme::text(g,"PRESET",{356,12,332,14},10,Theme::muted,true);
-        const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
-        const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
-        Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
-                    {695,12,91,14},9,Theme::muted,true);
-        g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
+        Theme::text(g,"PRESET",{286,12,380,14},10,Theme::muted,true);
+        g.setColour(Theme::stroke);g.drawHorizontalLine(635,14.f,394.f);
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withMultipliedBrightness(.88f),0.f,635.f,
             Theme::panel.darker(.07f),0.f,688.f,false));
-        g.fillRect(0,635,Theme::width,53);
+        // Slim meter strip in Advanced; Simple keeps individual master
+        // dial cards on the black canvas, not an oversized full-width bar.
+        g.fillRoundedRectangle(14.f,643.f,380.f,27.f,5.f);
         g.setColour(Theme::white.withAlpha(.055f));
-        g.drawHorizontalLine(636,12.f,(float)Theme::width-12.f);
+        g.drawHorizontalLine(644,20.f,388.f);
         const int masterMode=(int)processor.state.getRawParameterValue("mode")->load();
         if(masterMode==0 || (masterMode==3 && previousMode==0)) {
             g.setColour(Theme::stroke.withAlpha(.50f));
@@ -1246,7 +1235,8 @@ public:
                 g.fillRoundedRectangle(x+17.f,354.f,3.f,20.f,1.5f);
                 Theme::text(g,labels[k],{(int)x+28,349,177,27},
                             16,Theme::white,true);
-                Theme::text(g,hints[k],{(int)x+20,377,180,18},
+                const bool target=(simpleMacroMask&(1u<<k))!=0u;
+                Theme::text(g,target?hints[k]:"NO ACTIVE EFFECT",{(int)x+20,377,180,18},
                             10.5f,Theme::muted,true,
                             juce::Justification::centred);
                 // Mini hardware scale stays subtle and never competes with
@@ -1267,7 +1257,7 @@ public:
                 // scale the old hover-only readout left four expensive
                 // looking but opaque knobs with no numeric feedback.
                 Theme::text(g,juce::String(juce::roundToInt(amount*100.f))+"%",
-                    {(int)x+55,510,110,29},21,Theme::green,true,
+                    {(int)x+55,510,110,29},21,target?Theme::green:Theme::muted,true,
                     juce::Justification::centred);
                 const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
                 g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
@@ -1309,13 +1299,12 @@ public:
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
-        preset.setBounds(356,27,332,39);
-        match.setBounds(696,27,87,37);
-        viewSwitch.setBounds(796,27,176,37);
+        preset.setBounds(286,27,380,39);
+        viewSwitch.setBounds(866,27,176,37);
         // Bounded message-thread preset history in the top bar.
         // The two small actions never obscure the Power / Settings group.
-        undo.setBounds(990,34,27,24);
-        redo.setBounds(1024,34,27,24);
+        undo.setBounds(674,34,27,24);
+        redo.setBounds(706,34,27,24);
         micButton.setBounds(0,0,44,36);
         micButton.setVisible(false);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
@@ -1343,11 +1332,11 @@ public:
             control->setVisible(display==0);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1110,28,36,36);
-        settingsPanel.setBounds(743,78,388,326);
+        settingsPanel.setBounds(819,78,312,204);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
         // Keep the rack unobstructed when the user docks it on the right.
-        browser.setBounds(rackOnRight?76:445,77,650,538);
+        browser.setBounds(rackOnRight?76:286,77,650,538);
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
                               display==0?1140:906,display==0?507:535);
     }
@@ -1369,11 +1358,8 @@ public:
         // disabled rack/controls and master shade already show bypass.
         idle.setEnabled(!bypass);idle.setAlpha(bypass?.72f:1.f);
         if(idle.isVisible())idle.repaint();
-        for(auto& s:macro){
-            s.setVisible(display==0);
-            s.setEnabled(!bypass);
-            s.setAlpha(bypass?.35f:1.f);
-        }
+        for(auto& s:macro)s.setVisible(display==0);
+        updateMacroAvailability(bypass,true);
         for(auto* s:{&input,&mix,&output}) {
             s->setVisible(display==0);
             s->setEnabled(!bypass);
@@ -1400,9 +1386,28 @@ public:
         slot.refreshIfChanged();
         resized();repaint();
     }
+    void updateMacroAvailability(bool bypass,bool force=false){
+        const auto mask=processor.activeSimpleMacroMask();
+        if(!force && mask==simpleMacroMask)return;
+        simpleMacroMask=mask;
+        constexpr const char* descriptions[]{
+            "Tone: adjusts active EQ bands",
+            "Punch: adjusts active compression",
+            "Space: adjusts active delay and reverb",
+            "Grit: adjusts active saturation and enhancement"
+        };
+        for(size_t i=0;i<macro.size();++i){
+            const bool target=(mask&(1u<<i))!=0u;
+            auto& knob=macro[i];
+            knob.setEnabled(!bypass && target);
+            knob.setAlpha(bypass?.35f:target?1.f:.45f);
+            knob.setTooltip(juce::String(descriptions[i])+
+                (target?" | 50% is neutral":" | No matching active effect in this rack"));
+        }
+        repaint(juce::Rectangle<int>(78,339,982,214));
+    }
     void timerCallback() override{
         processor.refreshHostedLatency();
-        if(settingsPanel.isVisible())refreshWorldLinkStatus();
         if(micPanel.isVisible())micPanel.refreshIfChanged();
         const bool micActive=micPanel.anyActive();
         if(micActive!=lastMicOn) {
@@ -1421,6 +1426,7 @@ public:
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
+        if(display==0)updateMacroAvailability(m==3);
         if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
         const auto now=juce::Time::getMillisecondCounter();
         const auto count=processor.liveScopeSampleCount();
@@ -1622,7 +1628,6 @@ private:
     ChainPanel chain;SlotEditor slot;SkellIdleDeck idle;
     PresetBrowser browser;SkellMicModelPanel micPanel;
     SkellSettingsPanel settingsPanel;
-    skellcore::world::WorldLink worldLink{"skell.preset","Skell Preset"};
     SkullThemeButton themeButton;
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
@@ -1635,12 +1640,13 @@ private:
     int lastRecordingState=-1;
     std::uint64_t lastScopeSampleCount=0;
     unsigned lastScopeFrameTimeMs=0u;
-    SkellActionButton preset,match,undo,redo,help,record,micButton;
+    SkellActionButton preset,undo,redo,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
     SkellActionButton viewSwitch;
     SkellPowerButton powerButton;
+    unsigned simpleMacroMask=0;
     std::array<SkellMacroKnob,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
     juce::Slider input,mix,output;

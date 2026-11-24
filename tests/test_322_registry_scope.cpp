@@ -48,6 +48,13 @@ int main(){
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(43).name)=="Vocal Feel Opto");
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(44).name)=="Vocal Feel Suite");
 
+    using namespace skellpreset::registry;
+    SKELL_REQUIRE(macroTargets(1)==ToneTarget && macroTargets(26)==ToneTarget &&
+                  macroTargets(34)==ToneTarget);
+    SKELL_REQUIRE(macroTargets(2)==PunchTarget && macroTargets(36)==PunchTarget);
+    SKELL_REQUIRE(macroTargets(38)==SpaceTarget && macroTargets(18)==SpaceTarget);
+    SKELL_REQUIRE(macroTargets(33)==GritTarget && macroTargets(8)==GritTarget);
+    SKELL_REQUIRE(macroTargets(0)==0 && macroTargets(12)==0 && macroTargets(-1)==0);
     LiveAudioScope scope;
     static_assert(sizeof(scope.samplesCaptured())>=8,"Long-session capture cursor must be 64-bit");
     std::array<float,128> display{};

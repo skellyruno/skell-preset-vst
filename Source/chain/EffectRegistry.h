@@ -67,6 +67,18 @@ constexpr const Effect& at(int id) noexcept {
     return effects[static_cast<std::size_t>(id<0||id>=(int)effects.size()?0:id)];
 }
 constexpr int count() noexcept {return static_cast<int>(effects.size());}
+// Real macro targets, shared between DSP and Simple UI. Do not advertise
+// a macro as audible if its rack has no compatible powered processor.
+enum MacroTarget : unsigned { ToneTarget=1u, PunchTarget=2u, SpaceTarget=4u, GritTarget=8u };
+constexpr unsigned macroTargets(int id) noexcept {
+    switch(id){
+        case 1:case 26:case 34:return ToneTarget;
+        case 2:case 19:case 27:case 36:case 43:return PunchTarget;
+        case 6:case 7:case 9:case 10:case 18:case 24:case 38:return SpaceTarget;
+        case 5:case 8:case 33:case 37:case 42:return GritTarget;
+        default:return 0u;
+    }
+}
 // Useful for automated tests and documentation. The 322 processors all have
 // existing native counterparts, so none is imported or duplicated in rack.
 inline constexpr std::array<std::string_view,6> reference322Names{

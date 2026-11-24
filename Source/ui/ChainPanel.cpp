@@ -802,7 +802,9 @@ void ChainPanel::applyEffectWheel(int physical,float deltaY){
     // Half a conventional mouse-wheel step is enough, but tiny trackpad
     // deltas must accumulate instead of unintentionally shuffling the rack.
     if(std::abs(effectWheelCarry)<.45f)return;
-    effectWheelCarry=0.f;
+    // Preserve sub-detent remainder; smooth trackpad events should not
+    // throw away the last part of a gesture when a row is crossed.
+    effectWheelCarry-=std::copysign(.45f,effectWheelCarry);
     int position=-1;
     for(int i=0;i<processor.activeSlotCount();++i)
         if(processor.slotIdAt(i)==physical){position=i;break;}
@@ -903,7 +905,9 @@ void ChainPanel::applyWheelDelta(float deltaY) {
     // Trackpad micro-deltas are not separate commands; one row per detent.
     if(std::abs(railWheelCarry)<.12f)return;
     const int direction=railWheelCarry<0.f?1:-1;
-    railWheelCarry=0.f;
+    railWheelCarry-=std::copysign(.12f,railWheelCarry);
+    // One row at most per event, retain a bounded fractional remainder.
+    railWheelCarry=juce::jlimit(-.119f,.119f,railWheelCarry);
     const int next=juce::jlimit(0,
         juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset+direction);
     if(next!=scrollOffset){scrollOffset=next;hoveredRow=-1;hoveredWetSlot=-1;
@@ -928,12 +932,14 @@ void ChainPanel::applyWetWheel(int physical,float deltaY) {
 }
 void ChainPanel::mouseWheelMove(const juce::MouseEvent& event,
                                 const juce::MouseWheelDetails& wheel) {
-    if(contextOpen){contextOpen=false;contextHover=-1;repaint();}
+    if(!std::isfinite(wheel.deltaY) || wheel.deltaY==0.f ||
+        std::abs(wheel.deltaX)>std::abs(wheel.deltaY))return;
+    if(contextOpen){contextOpen=false;contextHover=-1;repaint();return;}
     if(wetDragSlot>=0 || dragging || dockingDrag || railDragging)return;
     const int region=wheelRegionAt(event.x,event.y,event.mods.isShiftDown());
     const int row=rowAt(event.y);
     if(region==2 && row>=0){
-        wheelTargetSlot=-1;
+        wheelTargetSlot=-1;effectWheelCarry=0.f;railWheelCarry=0.f;
         applyWetWheel(processor.slotIdAt(row),wheel.deltaY);
         return;
     }
@@ -947,7 +953,10 @@ void ChainPanel::mouseWheelMove(const juce::MouseEvent& event,
             now-lastWheelEventMs<360. && samePointer
             ?wheelTargetSlot:processor.slotIdAt(row);
         lastWheelX=event.x;lastWheelY=event.y;
-        applyEffectWheel(physical,wheel.deltaY);
+        railWheelCarry=0.f;
+        // Inertial tail events after a trackpad gesture must not keep
+        // reordering effects under an idle pointer.
+        if(!wheel.isInertial)applyEffectWheel(physical,wheel.deltaY);
         return;
     }
     wheelTargetSlot=-1;effectWheelCarry=0.f;

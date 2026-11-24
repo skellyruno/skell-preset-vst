@@ -26,14 +26,23 @@ class SkellMicModelPanel final : public juce::Component {
             g.fillRoundedRectangle(r,5.f);
             g.setColour((active?Theme::green:Theme::stroke).withAlpha(active?.90f:.85f));
             g.drawRoundedRectangle(r.reduced(.5f),5.f,1.f);
-            const float x=r.getX()+17.f,y=r.getCentreY();
-            const float w=index==1?13.f:index==3?9.f:11.f;
+            const float x=r.getX()+18.f,y=r.getCentreY();
+            const float w=index==1?15.f:index==3?10.f:12.f;
             g.setGradientFill(juce::ColourGradient(
                 Theme::white.withAlpha(.88f),x-w*.5f,y-11.f,
                 Theme::muted.withAlpha(.42f),x+w*.5f,y+10.f,false));
-            if(index==2)g.fillEllipse(x-w*.5f,y-12.f,w,12.f);
-            else g.fillRoundedRectangle(x-w*.5f,y-12.f,w,15.f,index==3?1.4f:3.f);
-            g.fillRoundedRectangle(x-2.5f,y+1.f,5.f,12.f,1.f);
+            const auto head=juce::Rectangle<float>(x-w*.5f,y-15.f,w,14.f);
+            if(index==2)g.fillEllipse(head);
+            else g.fillRoundedRectangle(head,index==3?1.5f:3.f);
+            g.setGradientFill(juce::ColourGradient(Theme::muted.withAlpha(.50f),x-5.f,y,
+                Theme::white.withAlpha(.88f),x+1.f,y+12.f,false));
+            g.fillRoundedRectangle(x-4.f,y-1.f,8.f,14.f,1.8f);
+            g.setColour(Theme::bg.withAlpha(.65f));
+            for(int i=0;i<4;++i)g.drawHorizontalLine(juce::roundToInt(y-12.f+i*2.4f),
+                x-w*.36f,x+w*.36f);
+            g.setColour(Theme::white.withAlpha(.53f));
+            g.drawLine(x-3.f,y+11.f,x+3.f,y+11.f,.7f);
+            g.fillRoundedRectangle(x-1.6f,y+13.f,3.2f,3.f,.6f);
             g.setColour(Theme::bg.withAlpha(.68f));
             for(int k=0;k<4;++k)g.drawLine(x-w*.35f,y-8.f+k*2.4f,
                 x+w*.35f,y-8.f+k*2.4f,.7f);
@@ -193,15 +202,6 @@ public:
             refresh();
         };
         addAndMakeVisible(gateEnabled);
-        gateAdvanced.setButtonText("MORE");
-        gateAdvanced.setTooltip("Show attack, hold and hysteresis without changing their stored values");
-        gateAdvanced.onClick=[this]{
-            advancedGate=!advancedGate;
-            updateGateVisibility();
-            if(getWidth()>=312 && getHeight()>=308)resized();
-            repaint();
-        };
-        addAndMakeVisible(gateAdvanced);
         juce::Slider* gateKnobs[]{&gateThreshold,&gateAttack,&gateHold,
                                   &gateRelease,&gateHysteresis,&gateDepth};
         constexpr double gateDefaults[]{-45.,4.,55.,160.,3.,1.};
@@ -318,7 +318,6 @@ public:
         for(auto& simulation:simulations)simulation.setVisible(!gate);
         amount.setVisible(!gate);trim.setVisible(!gate);
         gateEnabled.setVisible(gate);
-        gateAdvanced.setVisible(gate);
         updateGateVisibility();
         // Constructor calls showPage() before JUCE assigns panel bounds.
         // Never set negative slider widths during zero-size startup.
@@ -328,11 +327,10 @@ public:
     void updateGateVisibility() {
         gateThreshold.setVisible(gatePage);
         gateRelease.setVisible(gatePage);
-        gateDepth.setVisible(gatePage && advancedGate);
-        gateAttack.setVisible(gatePage && advancedGate);
-        gateHold.setVisible(gatePage && advancedGate);
-        gateHysteresis.setVisible(gatePage && advancedGate);
-        gateAdvanced.setButtonText(advancedGate?"LESS":"MORE");
+        gateAttack.setVisible(gatePage);
+        gateDepth.setVisible(false);
+        gateHold.setVisible(false);
+        gateHysteresis.setVisible(false);
     }
     bool hasBeenMoved() const noexcept {return movedByUser;}
     void visibilityChanged() override {
@@ -436,10 +434,6 @@ public:
                               lastGateEnabled?Theme::green.withAlpha(.24f):Theme::panelAlt);
         gateEnabled.setColour(juce::TextButton::textColourOffId,
                               lastGateEnabled?Theme::green:Theme::white);
-        gateAdvanced.setColour(juce::TextButton::buttonColourId,
-            advancedGate?Theme::green.withAlpha(.16f):Theme::panelAlt);
-        gateAdvanced.setColour(juce::TextButton::textColourOffId,
-            advancedGate?Theme::green:Theme::white);
         for(auto* tab:{&modelTab,&gateTab}){
             const bool selected=(tab==&gateTab)==gatePage;
             tab->setColour(juce::TextButton::buttonColourId,
@@ -496,18 +490,10 @@ public:
         amount.setBounds(77,235,w-89,25);
         trim.setBounds(77,263,w-89,25);
         gateEnabled.setBounds(w-79,88,62,27);
-        gateAdvanced.setBounds(12,88,82,27);
-        if(advancedGate) {
-            juce::Slider* controls[]{&gateThreshold,&gateAttack,&gateHold,
-                                    &gateRelease,&gateHysteresis,&gateDepth};
-            for(int i=0;i<6;++i)
-                controls[i]->setBounds(102,129+27*i,w-114,24);
-        } else {
-            gateThreshold.setBounds(102,149,w-114,27);
-            gateRelease.setBounds(102,198,w-114,27);
-            for(auto* control:{&gateAttack,&gateHold,&gateHysteresis,&gateDepth})
-                control->setBounds(0,0,0,0);
-        }
+        gateThreshold.setBounds(102,134,w-114,30);
+        gateRelease.setBounds(102,187,w-114,30);
+        gateAttack.setBounds(102,240,w-114,30);
+        for(auto* control:{&gateHold,&gateHysteresis,&gateDepth})control->setBounds(0,0,0,0);
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
@@ -519,17 +505,12 @@ public:
         // The title bar itself is draggable; avoid redundant caption text
         // colliding with the source label in this compact layout.
         if(gatePage){
-            if(advancedGate) {
-                constexpr const char* labels[]{"THRESHOLD","ATTACK","HOLD",
-                                               "RELEASE","HYSTERESIS","DEPTH"};
-                for(int i=0;i<6;++i)
-                    Theme::fittedText(g,labels[i],{14,129+27*i,84,23},
-                        10.f,Theme::white,true);
-            } else {
-                Theme::text(g,"THRESHOLD",{14,150,87,22},10.5f,
-                            Theme::white,true);
-                Theme::text(g,"RELEASE",{14,199,87,22},10.5f,
-                            Theme::white,true);
+            constexpr const char* labels[]{"THRESHOLD","RELEASE","ATTACK"};
+            for(int i=0;i<3;++i){
+                const int y=128+i*53;
+                g.setColour(Theme::panelAlt);
+                g.fillRoundedRectangle(10.f,(float)y,(float)getWidth()-20.f,42.f,5.f);
+                Theme::fittedText(g,labels[i],{20,y+6,78,29},10.5f,Theme::white,true);
             }
             Theme::fittedText(g,lastGateEnabled?"GATE ON / ZERO ADDED LATENCY":"GATE BYPASSED / SETTINGS RETAINED",
                 {13,getHeight()-17,getWidth()-26,13},8.5f,lastGateEnabled?Theme::green:Theme::muted);
@@ -595,7 +576,7 @@ public:
     }
     bool testCompactGeometryForTest() {
         const auto oldBounds=getBounds();
-        const bool oldGate=gatePage,oldAdvanced=advancedGate;
+        const bool oldGate=gatePage;
         bool okay=true;
         constexpr int sizes[3][2]{{312,308},{324,320},{440,400}};
         for(const auto& dims:sizes){
@@ -619,25 +600,16 @@ public:
             okay=okay && !amount.getBounds().intersects(trim.getBounds()) &&
                 trim.getBottom()<getHeight()-16;
             showPage(true);
-            advancedGate=false;updateGateVisibility();resized();
-            okay=okay && gateThreshold.isVisible() &&
-                gateRelease.isVisible() && !gateDepth.isVisible() &&
-                !gateAttack.isVisible() && !gateHold.isVisible() &&
-                !gateHysteresis.isVisible() &&
-                !gateThreshold.getBounds().intersects(gateRelease.getBounds());
-            advancedGate=true;updateGateVisibility();resized();
-            const juce::Slider* advanced[]{
-                &gateThreshold,&gateAttack,&gateHold,
-                &gateRelease,&gateHysteresis,&gateDepth};
-            for(int i=0;i<6;++i){
-                const auto rect=advanced[i]->getBounds();
-                okay=okay && advanced[i]->isVisible() &&
-                    area.contains(rect) && rect.getBottom()<getHeight()-16;
-                for(int j=i+1;j<6;++j)
-                    okay=okay && !rect.intersects(advanced[j]->getBounds());
+            okay=okay && gateThreshold.isVisible() && gateRelease.isVisible() &&
+                gateAttack.isVisible() && !gateDepth.isVisible() && !gateHold.isVisible() &&
+                !gateHysteresis.isVisible();
+            const juce::Slider* simple[]{&gateThreshold,&gateRelease,&gateAttack};
+            for(int i=0;i<3;++i){
+                const auto rect=simple[i]->getBounds();
+                okay=okay && area.contains(rect) && rect.getBottom()<getHeight()-16;
+                for(int j=i+1;j<3;++j)okay=okay && !rect.intersects(simple[j]->getBounds());
             }
         }
-        advancedGate=oldAdvanced;
         setBounds(oldBounds);
         showPage(oldGate);
         return okay;
@@ -658,35 +630,25 @@ public:
             && !on() && anyActive();
         gateThreshold.setValue(-54.f,juce::sendNotificationSync);
         const bool mapped=std::abs(threshold->load()+54.f)<.05f;
-        const bool simple=gatePage && gateAdvanced.isVisible() &&
-            gateAdvanced.getButtonText()=="MORE"
-            && gateThreshold.isVisible() && gateRelease.isVisible()
-            && !gateDepth.isVisible() && !gateAttack.isVisible()
-            && !gateHold.isVisible() && !gateHysteresis.isVisible();
-        gateAdvanced.onClick();
-        const bool expanded=advancedGate && gateAttack.isVisible()
-            && gateHold.isVisible() && gateHysteresis.isVisible()
-            && gateThreshold.isVisible() && gateRelease.isVisible()
-            && gateDepth.isVisible();
-        const juce::Slider* sliders[]{&gateThreshold,&gateAttack,&gateHold,
-                                      &gateRelease,&gateHysteresis,&gateDepth};
-        bool noOverlaps=getHeight()>=308 && getWidth()>=312;
-        for(int i=0;i<6;++i) {
-            const auto bounds=sliders[i]->getBounds();
-            noOverlaps=noOverlaps && getLocalBounds().contains(bounds) &&
-                bounds.getBottom()<=getHeight()-12 && bounds.getX()>=100 &&
-                bounds.getWidth()>=175 &&
-                !bounds.intersects(gateEnabled.getBounds()) &&
-                !bounds.intersects(gateAdvanced.getBounds());
-            for(int j=i+1;j<6;++j)
-                noOverlaps=noOverlaps && !bounds.intersects(sliders[j]->getBounds());
-        }
-        gateAdvanced.onClick();
+        const auto* attack=processor.state.getRawParameterValue("micGateAttackMs");
+        const auto* release=processor.state.getRawParameterValue("micGateRelease");
+        if(!attack || !release)return false;
+        const float priorAttack=attack->load(),priorRelease=release->load();
+        gateAttack.setValue(8.f,juce::sendNotificationSync);
+        gateRelease.setValue(220.f,juce::sendNotificationSync);
+        const bool simple=gatePage && gateThreshold.isVisible() && gateRelease.isVisible() &&
+            gateAttack.isVisible() && !gateDepth.isVisible() && !gateHold.isVisible() &&
+            !gateHysteresis.isVisible() && std::abs(attack->load()-8.f)<.05f &&
+            std::abs(release->load()-220.f)<.05f;
+        const bool noOverlaps=!gateThreshold.getBounds().intersects(gateRelease.getBounds()) &&
+            !gateAttack.getBounds().intersects(gateRelease.getBounds());
+        setPhysical("micGateAttackMs",priorAttack);
+        setPhysical("micGateRelease",priorRelease);
         setPhysical("micGateOn",priorEnabled);
         setPhysical("micGateThreshold",priorThreshold);
         setPhysical("micPreOn",priorModel);
         showPage(false);
-        return switched && mapped && simple && expanded && noOverlaps &&
+        return switched && mapped && simple && noOverlaps &&
                !gatePage && modelTab.isVisible();
     }
     bool testInputAndBypass() {
@@ -722,7 +684,7 @@ private:
         }
     }
     SkellPresetAudioProcessor& processor;
-    juce::TextButton close,enabled,modelTab,gateTab,gateEnabled,gateAdvanced;
+    juce::TextButton close,enabled,modelTab,gateTab,gateEnabled;
     juce::TextButton input;
     SourceMenu sourceMenu;
     std::array<ModelCard,4> simulations;
@@ -730,7 +692,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountLink,trimLink;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateThresholdLink,gateReleaseLink,gateHoldLink,gateAttackLink,gateHysteresisLink,gateDepthLink;
     int lastInput=-1,lastTarget=-1;
-    bool lastEnabled=false,lastGateEnabled=false,gatePage=false,advancedGate=false;
+    bool lastEnabled=false,lastGateEnabled=false,gatePage=false;
     bool movedByUser=false,dragHeader=false,resizing=false;
     juce::Point<int> dragOrigin{};
     juce::Rectangle<int> resizeStart{};

@@ -9,13 +9,24 @@ bool isPagedEQ(int type) noexcept {
     return type==SkellPresetAudioProcessor::EightBandToneFX
         || type==SkellPresetAudioProcessor::StudioEQFX;
 }
-bool rotaryFace(int type) noexcept {
+bool splitDynamicsFace(int type) noexcept {
+    using P=SkellPresetAudioProcessor;
+    return type==P::Compressor || type==P::StudioCompressorFX ||
+        type==P::VoxRackSmoothComp || type==P::Gate ||
+        type==P::DeEsser || type==P::SerialDynamicsFX;
+}
+bool rotaryFace(int type,int index) noexcept {
+    if(splitDynamicsFace(type))return index<2;
     const auto family=std::string_view(skellpreset::registry::at(type).category);
     return family=="Space" || family=="Motion" || family=="Pitch" ||
         (family=="Tone" && !isPagedEQ(type) && type!=SkellPresetAudioProcessor::EQ);
 }
 juce::Rectangle<int> parameterCardBounds(int type,int index) noexcept {
-    if(rotaryFace(type))return {28+index*215,403,204,113};
+    if(splitDynamicsFace(type)){
+        if(index<2)return {28+index*183,403,172,113};
+        return {397,406+(index-2)*57,480,44};
+    }
+    if(rotaryFace(type,index))return {28+index*215,403,204,113};
     return {33+(index%2)*430,406+(index/2)*57,400,44};
 }
 float eqGainAtY(int type,float y) noexcept {
@@ -1806,8 +1817,8 @@ void SlotEditor::resized() {
     layoutParameterControls(processor.slotType(slot));
 }
 void SlotEditor::layoutParameterControls(int type){
-    const bool rotary=rotaryFace(type);
     for(int k=0;k<4;++k){
+        const bool rotary=rotaryFace(type,k);
         auto& control=knobs[(size_t)k];
         const auto style=rotary?juce::Slider::RotaryHorizontalVerticalDrag:
             juce::Slider::LinearHorizontal;
@@ -1817,8 +1828,8 @@ void SlotEditor::layoutParameterControls(int type){
                 juce::Slider::TextBoxRight,false,rotary?96:92,rotary?20:24);
         }
         const auto card=parameterCardBounds(type,k);
-        control.setBounds(rotary?juce::Rectangle<int>(card.getX()+49,card.getY()+23,106,87):
-            juce::Rectangle<int>(card.getX()+135,card.getY()+5,257,30));
+        control.setBounds(rotary?juce::Rectangle<int>(card.getCentreX()-53,card.getY()+23,106,87):
+            juce::Rectangle<int>(card.getX()+135,card.getY()+5,card.getWidth()-143,30));
     }
 }
 bool SlotEditor::testPopupLayoutsForTest() const {
@@ -3706,7 +3717,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         for(int i=0;i<4;++i) {
             if(!knobs[(size_t)i].isVisible())continue;
             const auto card=parameterCardBounds(type,i).toFloat();
-            const bool rotary=rotaryFace(type);
+            const bool rotary=rotaryFace(type,i);
             const auto tint=dynamics?Theme::amber:space?Theme::blue:
                 motion?Theme::pink:familyAccent;
             g.setColour(Theme::panelAlt.withAlpha(.60f));
@@ -4281,7 +4292,7 @@ bool SlotEditor::testIntegratedEffectLayout() const {
         if(!getLocalBounds().contains(r) || !getLocalBounds().contains(card) ||
            !card.contains(r) || r.getY()<405 || r.getBottom()>516 ||
            r.intersects(slotPower.getBounds()) ||
-           knobs[(size_t)i].getSliderStyle()!=(rotaryFace(type)?
+           knobs[(size_t)i].getSliderStyle()!=(rotaryFace(type,i)?
                juce::Slider::RotaryHorizontalVerticalDrag:juce::Slider::LinearHorizontal))
             return false;
         for(int j=i+1;j<4;++j)

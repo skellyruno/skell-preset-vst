@@ -721,15 +721,62 @@ int percentDisplaySmoke(){
         }
         return parameter->getLabel().isEmpty(); // no extra '%' appended
     };
-    if(!check("input",-24.f,"0%") ||
-       !check("input",0.f,"50%") ||
-       !check("input",24.f,"100%") ||
-       !check("output",0.f,"50%") ||
+    if(!check("input",-24.f,"-24.0 dB") ||
+       !check("input",0.f,"0.0 dB") ||
+       !check("input",24.f,"+24.0 dB") ||
+       !check("output",0.f,"0.0 dB") ||
        !check("mix",1.f,"100%") ||
        !check("macro1",.37f,"37%") ||
        !check("s1_wet",.82f,"82%"))
         return 92;
-    std::puts("PASS: host Input/Mix/Output, macros and rack wet map to 0-100% text");
+    // Probe actual processor output, not just the macro UI. Both
+    // renders use the identical rack and input; only the macro differs.
+    using P=SkellPresetAudioProcessor;
+    const auto render=[](int type,int macroIndex,float amount){
+        auto p=std::make_unique<P>();
+        p->clearRackToEmpty();
+        p->setSlotType(0,type);p->setSlotOn(0,true);
+        for(int k=0;k<16;++k)p->setSlotParam(0,k,.5f);
+        if(auto* param=p->state.getParameter("macro"+juce::String(macroIndex+1)))
+            param->setValueNotifyingHost(param->convertTo0to1(amount));
+        if(auto* mode=p->state.getParameter("mode"))
+            mode->setValueNotifyingHost(mode->convertTo0to1(0.f));
+        p->prepareToPlay(48000.,256);
+        juce::AudioBuffer<float> audio(2,256);
+        juce::MidiBuffer midi;
+        std::vector<float> result;result.reserve(256*128);
+        for(int block=0;block<128;++block){
+            for(int n=0;n<256;++n){
+                const float time=(float)(block*256+n)/48000.f;
+                const float envelope=((block/12)%2==0)?.7f:.12f;
+                const float sample=envelope*(.45f*std::sin(2.f*juce::MathConstants<float>::pi*185.f*time)
+                    +.22f*std::sin(2.f*juce::MathConstants<float>::pi*2900.f*time)
+                    +.13f*std::sin(2.f*juce::MathConstants<float>::pi*8200.f*time));
+                audio.setSample(0,n,sample);audio.setSample(1,n,sample);
+            }
+            p->processBlock(audio,midi);
+            for(int n=0;n<256;++n)result.push_back(audio.getSample(0,n));
+        }
+        p->releaseResources();return result;
+    };
+    constexpr int types[]{P::EightBandToneFX,P::StudioCompressorFX,P::Delay,P::SkelldizerFX};
+    for(int i=0;i<4;++i){
+        const auto low=render(types[i],i,0.f),high=render(types[i],i,1.f);
+        double energy=0.,difference=0.;
+        for(size_t n=0;n<low.size();++n){
+            if(!std::isfinite(low[n]) || !std::isfinite(high[n]))return 93;
+            const double delta=double(high[n])-low[n];
+            difference+=delta*delta;energy+=double(low[n])*low[n];
+        }
+        if(energy<=0. || difference<=energy*1.e-6){
+            std::fprintf(stderr,"Simple macro %d did not affect actual processor output\n",i+1);
+            return 93;
+        }
+    }
+    processor->clearRackToEmpty();
+    if(processor->activeSimpleMacroMask()!=0u ||
+       processor->presetName()!="Empty Rack" || processor->getLatencySamples()!=0)return 94;
+    std::puts("PASS: master dB / mix percentage, four macro audio differences, empty rack");
     return 0;
 }
 
@@ -1167,7 +1214,8 @@ int stress() {
         for(const int preset:{skellpreset::alchemist::factoryIndex,
                                 skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
                                 skellpreset::alchemist_low_end_contour_trial::factoryIndex,
-                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,25,0}) {
+                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,
+                                skellpreset::factoryIndexForRecipe(25),0}) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
             p->loadFactoryPreset(preset);
             p->prepareToPlay(sr,64);

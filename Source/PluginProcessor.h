@@ -68,6 +68,7 @@ public:
     juce::AudioProcessorValueTreeState state;
     void loadFactoryPreset(int index);
     void clearRackToEmpty();
+    unsigned activeSimpleMacroMask() const noexcept;
     // Message-thread only, validated native .skellpreset ZIP packages.
     juce::Result exportPreset(const juce::File& file) const;
     juce::Result importPreset(const juce::File& file);
