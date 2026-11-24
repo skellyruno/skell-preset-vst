@@ -311,7 +311,7 @@ void PresetBrowser::applyTheme() {
     exportButton.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.22f));
     detailsButton.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.12f));
     addCategoryButton.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.12f));
-    repaint();
+    syncVocalTabs();repaint();
 }
 juce::File PresetBrowser::libraryDirectory() const {
     return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
@@ -418,7 +418,7 @@ void PresetBrowser::showDetails(bool openDetails) {
     detailsOpen=openDetails;
     hoveredCard=-1;hoveredStar=-1;hoveredBank=-1;hoveredAdlibs=false;
     browserWheelCarry=0.f;
-    detailsButton.setButtonText(detailsOpen?"BACK TO LIBRARY":"EDIT DETAILS");
+    detailsButton.setButtonText(detailsOpen?"BACK TO LIBRARY":"MANAGE LIBRARY");
     if(!detailsOpen)grabKeyboardFocus();
     resized();repaint();
 }
@@ -478,7 +478,8 @@ void PresetBrowser::resized(){
     sortPicker.setBounds(getWidth()-169,69,150,29);
     directoryBack.setVisible(!detailsOpen && hasDirectoryParent());
     directoryBack.setBounds(getWidth()-241,69,64,29);
-    detailsButton.setBounds(18,detailsOpen?112:getHeight()-104,166,28);
+    detailsButton.setBounds(18,detailsOpen?112:getHeight()-38,166,28);
+    importButton.setVisible(detailsOpen);exportButton.setVisible(detailsOpen);
     for(auto* control:{static_cast<juce::Component*>(&artistEditor),
                        static_cast<juce::Component*>(&artistButton),
                        static_cast<juce::Component*>(&genrePicker),
@@ -960,7 +961,7 @@ void PresetBrowser::paintDirectory(juce::Graphics& g,const std::vector<Directory
     const int right=getWidth()-17;
     if(cards.empty()){
         Theme::fittedText(g,"NO ARTISTS IN THIS GROUP",{222,210,std::max(1,right-239),32},15.f,Theme::white,true);
-        Theme::fittedText(g,"Assign an artist and tier in Edit Details.",{222,250,std::max(1,right-239),26},11.f,Theme::muted);
+        Theme::fittedText(g,"Assign an artist and tier in Manage Library.",{222,250,std::max(1,right-239),26},11.f,Theme::muted);
         return;
     }
     const std::array<juce::Colour,4> accents{{Theme::green,Theme::amber,Theme::pink,Theme::white}};
@@ -1204,7 +1205,8 @@ bool PresetBrowser::testBrowserLayoutForTest() {
            !bounds.contains(directoryBack.getBounds()) ||
            directoryBack.getBounds().intersects(sortPicker.getBounds()) ||
            directoryBack.isVisible()!=(!expanded && hasDirectoryParent()))return false;
-        if(artistEditor.isVisible()!=expanded ||
+        if(importButton.isVisible()!=expanded || exportButton.isVisible()!=expanded ||
+           artistEditor.isVisible()!=expanded ||
            artistButton.isVisible()!=expanded ||
            genrePicker.isVisible()!=expanded ||
            genreButton.isVisible()!=expanded ||
@@ -2042,10 +2044,12 @@ void PresetBrowser::auditionEntry(int entry) {
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(!e.mods.isLeftButtonDown())return;
     if(!usableBounds.isEmpty() && getParentComponent()){
-        const bool edge=e.x>=getWidth()-8 || e.y>=getHeight()-8;
+        const bool right=e.x>=getWidth()-8,bottom=e.y>=getHeight()-8;
+        const bool edge=right || bottom;
         const bool header=e.y>=63 && e.y<103 && e.x<195;
         if(edge || header){
             resizingWindow=edge;draggingWindow=!edge;userPlaced=true;
+            resizeWidth=right;resizeHeight=bottom;
             gestureStartBounds=getBounds();windowGestureStart=e.getEventRelativeTo(getParentComponent()).getPosition();
             return;
         }
@@ -2082,12 +2086,22 @@ void PresetBrowser::mouseDrag(const juce::MouseEvent& e){
     const auto delta=e.getEventRelativeTo(getParentComponent()).getPosition()-windowGestureStart;
     auto bounds=gestureStartBounds;
     if(draggingWindow)bounds=bounds.translated(delta.x,delta.y);
-    else bounds=bounds.withSize(bounds.getWidth()+delta.x,bounds.getHeight()+delta.y);
+    else {
+        // An edge controls only its own axis. Clamp before repositioning so a
+        // resize cannot push the anchored left/top corner outside the canvas.
+        const int maxW=juce::jmin(1000,usableBounds.getRight()-bounds.getX());
+        const int maxH=juce::jmin(610,usableBounds.getBottom()-bounds.getY());
+        const int w=resizeWidth?juce::jlimit(juce::jmin(620,maxW),maxW,bounds.getWidth()+delta.x):bounds.getWidth();
+        const int h=resizeHeight?juce::jlimit(juce::jmin(530,maxH),maxH,bounds.getHeight()+delta.y):bounds.getHeight();
+        bounds=bounds.withSize(w,h);
+    }
     setBounds(constrainWindow(bounds));
 }
-void PresetBrowser::mouseUp(const juce::MouseEvent&){draggingWindow=false;resizingWindow=false;}
+void PresetBrowser::mouseUp(const juce::MouseEvent&){draggingWindow=false;resizingWindow=false;resizeWidth=false;resizeHeight=false;}
 void PresetBrowser::mouseMove(const juce::MouseEvent& e){
-    if(e.x>=getWidth()-8 || e.y>=getHeight()-8){setMouseCursor(juce::MouseCursor::BottomRightCornerResizeCursor);return;}
+    const bool right=e.x>=getWidth()-8,bottom=e.y>=getHeight()-8;
+    if(right || bottom){setMouseCursor(right && bottom?juce::MouseCursor::BottomRightCornerResizeCursor:
+        right?juce::MouseCursor::LeftRightResizeCursor:juce::MouseCursor::UpDownResizeCursor);return;}
     if(e.y>=63 && e.y<103 && e.x<195){setMouseCursor(juce::MouseCursor::DraggingHandCursor);return;}
     int nextBank=-1;
     bool nextAdlibs=false;

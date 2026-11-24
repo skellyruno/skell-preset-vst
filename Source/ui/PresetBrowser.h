@@ -68,7 +68,7 @@ private:
     juce::TextButton metadataButton{"SAVE ORGANIZATION"},relatedButton{"MATCHING PRESETS"},directoryBack{"BACK"};
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
         artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
-        genreButton{"TAG"},detailsButton{"EDIT DETAILS"},
+        genreButton{"TAG"},detailsButton{"MANAGE LIBRARY"},
         addCategoryButton{"ADD CATEGORY"},clearSearchButton{"CLEAR"};
     std::unique_ptr<juce::FileChooser> fileChooser;
     bool chooserActive=false;
@@ -124,6 +124,7 @@ private:
     void refreshArtistChoices();
     int visibleRows() const noexcept {return juce::jlimit(6,7,(getHeight()-153)/61);}
     bool userPlaced=false,draggingWindow=false,resizingWindow=false;
+    bool resizeWidth=false,resizeHeight=false;
     juce::Rectangle<int> usableBounds,gestureStartBounds;
     juce::Point<int> windowGestureStart;
     juce::Rectangle<int> constrainWindow(juce::Rectangle<int>) const;

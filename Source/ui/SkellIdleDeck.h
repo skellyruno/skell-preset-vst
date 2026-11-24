@@ -258,6 +258,18 @@ public:
                 g.drawLine(x0,y0,x1,y1,thickness+1.f);
                 g.setColour(porcelain.withAlpha(highlight));
                 g.drawLine(x0-.6f,y0-.8f,x1-.6f,y1-.8f,thickness*.72f);
+                if(thickness>=5.f){
+                    // Rounded epiphyses and a narrow specular ridge add depth without changing the pose.
+                    const float r=thickness*.48f;
+                    g.setColour(Theme::muted.withAlpha(.78f));
+                    g.fillEllipse(x0-r,y0-r,2.f*r,2.f*r);
+                    g.fillEllipse(x1-r,y1-r,2.f*r,2.f*r);
+                    g.setColour(porcelain.withAlpha(highlight*.8f));
+                    g.fillEllipse(x0-r*.82f,y0-r*.9f,r*1.25f,r*1.4f);
+                    g.fillEllipse(x1-r*.82f,y1-r*.9f,r*1.25f,r*1.4f);
+                    g.setColour(porcelain.withAlpha(.30f));
+                    g.drawLine(x0-thickness*.16f,y0-.7f,x1-thickness*.16f,y1-.7f,1.f);
+                }
                 g.setColour(accent.withAlpha(.06f+.16f*activity));
                 g.drawLine(x0+thickness*.28f,y0,
                            x1+thickness*.28f,y1,1.f);
@@ -413,6 +425,12 @@ public:
                 porcelain.withAlpha(.88f),110.f,23.f,
                 Theme::muted.withAlpha(.54f),195.f,136.f,false));
             g.fillPath(skull);
+            // Soft directional key and reflected rim confined to the bone silhouette.
+            g.setGradientFill(juce::ColourGradient(porcelain.withAlpha(.30f),132.f,37.f,
+                porcelain.withAlpha(0.f),189.f,103.f,true));
+            g.fillPath(skull);
+            g.setColour(shadow.withAlpha(.40f));
+            g.strokePath(skull,juce::PathStrokeType(1.5f));
             // Angular skull facets catch directional stage light, giving
             // depth and cheekbone planes instead of a single flat mask.
             juce::Path foreheadPlane,cheekPlane;

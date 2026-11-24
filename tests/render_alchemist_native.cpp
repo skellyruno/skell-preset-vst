@@ -811,9 +811,21 @@ int masterSignalSmoke(){
         p->processBlock(audio,midi);
         for(int n=0;n<blockSize;++n){const float sample=audio.getSample(0,n);maxStep=std::max(maxStep,(double)std::abs(sample-previous));previous=sample;}
     }
-    p->releaseResources();
     std::printf("MASTER_RENDER input automation max sample step=%.8g final=%.8g\n",maxStep,previous);
     if(maxStep>.002 || std::abs(previous-.1f*std::pow(10.f,6.f/20.f))>.001f)return 94;
+    const auto ramp=[&](const char* id,float target,float expected){
+        setProcessorParameter(*p,id,target);
+        double step=0.;bool finite=true;
+        for(int b=0;b<8;++b){
+            for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n)audio.setSample(ch,n,.1f);
+            p->processBlock(audio,midi);
+            for(int n=0;n<blockSize;++n){const float sample=audio.getSample(0,n);finite=finite&&std::isfinite(sample);step=std::max(step,(double)std::abs(sample-previous));previous=sample;}
+        }
+        std::printf("MASTER_RENDER %s automation max sample step=%.8g final=%.8g\n",id,step,previous);
+        return finite && step<.002 && std::abs(previous-expected)<.001f;
+    };
+    if(!ramp("mix",0.f,.1f) || !ramp("output",-6.f,.1f*std::pow(10.f,-6.f/20.f)))return 94;
+    p->releaseResources();
     setProcessorParameter(*p,"mix",.37f);setProcessorParameter(*p,"output",-3.f);
     juce::MemoryBlock state;p->getStateInformation(state);
     auto restored=std::make_unique<SkellPresetAudioProcessor>();
@@ -821,7 +833,27 @@ int masterSignalSmoke(){
     if(std::abs(restored->state.getRawParameterValue("input")->load()-6.f)>.02f ||
        std::abs(restored->state.getRawParameterValue("mix")->load()-.37f)>.002f ||
        std::abs(restored->state.getRawParameterValue("output")->load()+3.f)>.02f)return 95;
-    std::puts("PASS: master gain, dry/wet interpolation, automation smoothing, PDC and state recall");
+    // Round-trip the same user-saved rack via the actual preset archive path.
+    const auto personalFile=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("skell-master-qa-"+juce::Uuid().toString()+".skellpreset");
+    struct DeleteFixture {juce::File file;~DeleteFixture(){file.deleteFile();}} cleanup{personalFile};
+    if(p->exportPreset(personalFile).failed() || restored->importPreset(personalFile).failed())return 96;
+    const float expected=.1f*(1.f+.37f*(std::pow(10.f,6.f/20.f)-1.f))*std::pow(10.f,-3.f/20.f);
+    for(int mode:{0,1}){
+        setProcessorParameter(*restored,"mode",(float)mode);
+        restored->prepareToPlay(sr,blockSize);
+        double peakError=0.;bool finite=true;
+        for(int b=0;b<8;++b){
+            for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n)audio.setSample(ch,n,.1f);
+            restored->processBlock(audio,midi);
+            if(b<4)continue;
+            for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n){const float sample=audio.getSample(ch,n);finite=finite&&std::isfinite(sample);peakError=std::max(peakError,(double)std::abs(sample-expected));}
+        }
+        const int latency=restored->getLatencySamples();restored->releaseResources();
+        std::printf("MASTER_RENDER personal mode=%d expected=%.8g peak_error=%.8g latency=%d\n",mode,expected,peakError,latency);
+        if(!finite || peakError>2.e-5 || latency!=0)return 96;
+    }
+    std::puts("PASS: master gain, dry/wet interpolation, automation smoothing, PDC, state and personal preset recall");
     return 0;
 }
 int studioSmoke() {
