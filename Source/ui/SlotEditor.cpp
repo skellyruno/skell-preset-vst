@@ -1769,8 +1769,8 @@ void SlotEditor::resized() {
     layoutEmbeddedEditor();
     upgradeEq.setBounds(650,97,212,31);
     modOrbButton.setBounds(764,77,95,23);
-    // Two tidy parameter rows INSIDE the single effect face: never a
-    // disconnected hardware-knob strip. Graph and effect pages stay intact.
+    // A common bounded parameter area for every native effect. Individual
+    // family treatments are painted behind these real APVTS controls.
     slotPower.setBounds(843,22,40,40);
     for(int k=0;k<4;++k) {
         const int column=k%2,row=k/2;
@@ -1818,11 +1818,8 @@ void SlotEditor::paint(juce::Graphics&g) {
     // ONE uninterrupted studio effect face. Controls and graph are inside
     // it; the former second box and duplicate knob panel are gone.
     Theme::panelBox(g,{0,0,906.f,535.f},9.f);
-    for(float x:{12.f,894.f})for(float y:{13.f,521.f}){
-        // Square studio hardware rivets, no decorative ellipse ornaments.
-        g.setColour(Theme::bg);g.fillRoundedRectangle(x-2.5f,y-2.5f,5.f,5.f,.65f);
-        g.setColour(Theme::stroke);g.drawLine(x-2.f,y-2.f,x+2.f,y+2.f,.9f);
-    }
+    g.setColour(Theme::stroke.withAlpha(.60f));
+    g.drawHorizontalLine(65,20.f,886.f);
     const int type=processor.slotType(slot);
     const auto family=juce::String(skellpreset::registry::at(type).category);
     const auto familyAccent=family.equalsIgnoreCase("Dynamics")?Theme::amber:
@@ -3653,13 +3650,34 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"SOFT KNEE",{430,107,116,20},11.5f,Theme::white,true);
     if(type!=SkellPresetAudioProcessor::ExternalVST3 &&
        type!=SkellPresetAudioProcessor::Empty) {
-        // In-face labels for the actual bound controls. Readouts live in
-        // each text box; no duplicate numerical overlay or "Control 1".
+        // Family-specific parameter cards behind real attached sliders.
+        // No extra decorative controls and no hidden limiter labels.
+        const bool dynamics=family.equalsIgnoreCase("Dynamics");
+        const bool space=family.equalsIgnoreCase("Space");
+        const bool motion=family.equalsIgnoreCase("Motion");
         for(int i=0;i<4;++i) {
-            const int column=i%2,row=i/2;
-            const int x=42+column*430,y=413+row*57;
+            if(!knobs[(size_t)i].isVisible())continue;
+            const auto control=knobs[(size_t)i].getBounds();
+            const int x=control.getX()-126,y=control.getY()+2;
+            const auto card=juce::Rectangle<float>((float)x-9.f,(float)y-7.f,
+                (float)control.getRight()-(float)x+17.f,44.f);
+            const auto tint=dynamics?Theme::amber:space?Theme::blue:
+                motion?Theme::pink:familyAccent;
+            g.setColour(Theme::panelAlt.withAlpha(.60f));
+            g.fillRoundedRectangle(card,5.f);
+            g.setColour(Theme::stroke.withAlpha(.74f));
+            g.drawRoundedRectangle(card.reduced(.5f),5.f,.8f);
+            g.setColour(tint.withAlpha(.63f));
+            if(dynamics)
+                g.fillRoundedRectangle(card.getX()+2.f,card.getY()+6.f,2.f,
+                    card.getHeight()-12.f,1.f);
+            else if(space)
+                g.drawLine(card.getX()+9.f,card.getY()+3.f,card.getRight()-9.f,
+                    card.getY()+3.f,.7f);
+            else
+                g.fillEllipse(card.getX()+6.f,card.getY()+7.f,3.f,3.f);
             Theme::fittedText(g,labels[(size_t)i].toUpperCase(),
-                {x,y,122,26},11.8f,Theme::white,true,
+                {x+1,y,120,26},11.8f,Theme::white,true,
                 juce::Justification::centredLeft);
         }
     }
@@ -4182,8 +4200,10 @@ bool SlotEditor::testIntegratedEffectLayout() const {
        !getLocalBounds().contains(slotPower.getBounds()))return false;
     for(int i=0;i<4;++i) {
         const auto r=knobs[(size_t)i].getBounds();
-        if(!getLocalBounds().contains(r) || r.getY()<405 ||
-           r.getBottom()>510 || r.intersects(slotPower.getBounds()))
+        const auto card=juce::Rectangle<int>(r.getX()-135,r.getY()-5,
+            r.getWidth()+143,44);
+        if(!getLocalBounds().contains(r) || !getLocalBounds().contains(card) ||
+           r.getY()<405 || r.getBottom()>510 || r.intersects(slotPower.getBounds()))
             return false;
         for(int j=i+1;j<4;++j)
             if(r.intersects(knobs[(size_t)j].getBounds()))return false;

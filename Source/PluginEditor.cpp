@@ -956,7 +956,7 @@ public:
         // The recording-oriented Live Lead preset has no limiter PDC.
         // Selecting the studio phase vocoder must add exactly 768 samples;
         // removing the slot must return to zero host latency.
-        processor.loadFactoryPreset(25);
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25));
         processor.setSlotType(8,SkellPresetAudioProcessor::StudioPitchFormantFX);
         processor.setSlotOn(8,true);
         if(processor.getLatencySamples()!=
@@ -969,7 +969,7 @@ public:
         // The 322 source has six *effect classes* but no named 322 preset
         // collection. The new native Studio Six factory chain must actually
         // instantiate all six without deleting the old Simple macro mixer.
-        processor.loadFactoryPreset(42);
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(42));
         const int sixTypes[]{SkellPresetAudioProcessor::EQ,
             SkellPresetAudioProcessor::Compressor,
             SkellPresetAudioProcessor::Saturator,
@@ -984,23 +984,22 @@ public:
                !on || on->load()<.5f)
                 issues.add("Studio Six native effect chain is missing a stage");
         }
-        // The append-only catalog now contains 55 programs. Preserve the
-        // original Alchemist index and assert every later sound-match trial
-        // stays at its documented factory ID as new candidates are appended.
+        // The pre-release catalog has 39 factories after retiring 16 Adlibs.
+        // Verify the retained native sound-match identities at their new indexes.
         if(processor.getNumPrograms()!=SkellPresetAudioProcessor::customRackProgramIndex+1 ||
-           processor.getProgramName(43)!="Alchemist" ||
-           processor.getProgramName(44)!="Deuce D/Max (Native Trial)" ||
-           processor.getProgramName(45)!="Alchemist Refined (Trial)" ||
-           processor.getProgramName(46)!="Deuce" ||
-           processor.getProgramName(47)!="Alchemist Peak Guard (Trial)" ||
-           processor.getProgramName(48)!="Alchemist Tone Match (Trial)" ||
-           processor.getProgramName(49)!="Alchemist Lighter Dynamics (Trial)" ||
-           processor.getProgramName(50)!="Alchemist Fast Compressor Blend (Trial)" ||
-           processor.getProgramName(51)!="Alchemist Smooth Compressor Blend (Trial)" ||
-           processor.getProgramName(52)!="Alchemist Serial Dynamics (Trial)" ||
-           processor.getProgramName(53)!="Alchemist Low-End Contour (Trial)" ||
-           processor.getProgramName(54)!="Alchemist Serial Dynamics Blend (Trial)")
-            issues.add("Append-only factory catalog or legacy Alchemist index changed");
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(43))!="Alchemist" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(44))!="Deuce D/Max (Native Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(45))!="Alchemist Refined (Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(46))!="Deuce" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(47))!="Alchemist Peak Guard (Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(48))!="Alchemist Tone Match (Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(49))!="Alchemist Lighter Dynamics (Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(50))!="Alchemist Fast Compressor Blend (Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(51))!="Alchemist Smooth Compressor Blend (Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(52))!="Alchemist Serial Dynamics (Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(53))!="Alchemist Low-End Contour (Trial)" ||
+           processor.getProgramName(skellpreset::factoryIndexForRecipe(54))!="Alchemist Serial Dynamics Blend (Trial)")
+            issues.add("Retained factory catalog or Alchemist identity changed");
         if(!slot.testAllNativeEffectLayoutsForTest())
             issues.add("A native effect editor has clipped/invisible inline controls or popup geometry");
         if(!slot.testVocalFeelSuiteUI())
@@ -1009,7 +1008,7 @@ public:
             issues.add("Vocal Feel Spectrum live input/output UI button or read-only mode failed");
         // Real stereo audio → APVTS slot 43 → measured GR → exact state
         // snapshot/restore. Never prove a new plugin using UI-only graphics.
-        processor.loadFactoryPreset(25); // zero-PDC tracking factory
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25)); // zero-PDC tracking factory
         processor.setSlotType(0,SkellPresetAudioProcessor::VocalFeelOptoFX);
         processor.setSlotOn(0,true);
         processor.setSlotParam(0,0,.8f);

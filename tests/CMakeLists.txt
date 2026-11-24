@@ -9,8 +9,7 @@ endforeach()
 add_executable(SkellPresetMatchTest test_match.cpp)
 target_compile_features(SkellPresetMatchTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetMatchTest COMMAND SkellPresetMatchTest)
-# Preserve original 43 host programs and all 55 current factory identities.
-# Reconciles historical tests/test_factory_presets.cpp without its old ceiling.
+# Owner-authorized pre-release 39-factory catalog and retained identity checks.
 add_executable(SkellPresetFactoryHistoryTest test_factory_catalog_history.cpp)
 target_compile_features(SkellPresetFactoryHistoryTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetFactoryHistoryTest COMMAND SkellPresetFactoryHistoryTest)

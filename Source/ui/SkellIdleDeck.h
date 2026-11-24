@@ -98,10 +98,11 @@ public:
         const float scopeHeight=juce::jmax(30.f,juce::jmin(70.f,h*.18f));
         out.scope={margin,h-bottom-scopeHeight,
                    juce::jmax(1.f,w-2.f*margin),scopeHeight};
-        out.scale=juce::jlimit(.30f,1.15f,juce::jmin(
+        out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
             (w-2.f*margin)/345.f,(out.scope.getY()-22.f)/390.f));
         out.originX=w*.5f-151.f*out.scale;
-        out.originY=juce::jmax(10.f,22.f+(1.f-out.scale)*3.f);
+        const float spare=juce::jmax(0.f,out.scope.getY()-22.f-390.f*out.scale);
+        out.originY=juce::jmax(10.f,22.f+(1.f-out.scale)*3.f+spare*.44f);
         out.valid=out.originX>0.f &&
             out.scope.getY()>out.originY+377.f*out.scale &&
             out.scope.getRight()<=w && out.scope.getBottom()<=h;
@@ -146,7 +147,7 @@ public:
         const bool live=audioFresh &&
             (actualPeak>.0005f || outputMeter.level>.0005f);
         const float activity=live?juce::jlimit(0.f,1.f,
-            .48f*actualPeak+2.1f*rms):0.f;
+            .38f*actualPeak+1.75f*rms+.30f*outputMeter.level):0.f;
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
@@ -156,7 +157,9 @@ public:
         const auto stageBounds=juce::Rectangle<float>(10.f,10.f,width-20.f,
             stage.scope.getY()-18.f);
         const float centreX=width*.5f;
-        const float horizon=stage.scope.getY()-stage.scale*31.f;
+        // The feet are drawn around y=368 in model space. Ground the
+        // floor at the character's feet at every supported aspect ratio.
+        const float horizon=stage.originY+372.f*stage.scale;
         g.setColour(Theme::bg);
         g.fillRoundedRectangle(stageBounds,8.f);
         g.setGradientFill(juce::ColourGradient(
@@ -196,9 +199,16 @@ public:
             g.setColour(Theme::muted.withAlpha(.14f));
             g.drawRoundedRectangle(x-w*.5f,y,w,h,3.f*stage.scale,.8f);
         }
-        // Soft shadow anchors the skeleton to the stage.
+        // Restrained floor reflections and soft contact shadow.
+        // Static set dressing, with brightness driven by real audio.
+        for(int i=0;i<5;++i){
+            const float spread=(45.f+i*24.f)*stage.scale;
+            const float y=horizon+(3.f+2.6f*i)*stage.scale;
+            g.setColour(accent.withAlpha((.020f+.025f*activity)/(1.f+.30f*i)));
+            g.drawLine(centreX-spread,y,centreX+spread,y,1.1f*stage.scale);
+        }
         g.setColour(Theme::bg.withAlpha(.90f));
-        g.fillEllipse(centreX-105.f*stage.scale,horizon+1.f,
+        g.fillEllipse(centreX-105.f*stage.scale,horizon-4.f*stage.scale,
                       210.f*stage.scale,10.f*stage.scale);
 
         // Main character. Outline is defined as a full-bodied, standing
@@ -215,48 +225,14 @@ public:
                 g.setColour(Theme::muted.withAlpha(.78f));
                 g.drawLine(x0,y0,x1,y1,thickness+1.f);
                 g.setColour(porcelain.withAlpha(highlight));
-                g.drawLine(x0-.6f,y0-.8f,x1-.6f,y1-.8f,thickness*.59f);
+                g.drawLine(x0-.6f,y0-.8f,x1-.6f,y1-.8f,thickness*.72f);
                 g.setColour(accent.withAlpha(.06f+.16f*activity));
                 g.drawLine(x0+thickness*.28f,y0,
                            x1+thickness*.28f,y1,1.f);
             };
-            // Draped stage coat panels create depth and a distinctive
-            // performer silhouette without covering the skeletal chest.
-            // Their opening frames the actual ribs instead of turning the
-            // character into a simple white stick figure.
-            juce::Path leftCoat,rightCoat;
-            leftCoat.startNewSubPath(97.f,143.f);
-            leftCoat.cubicTo(78.f,156.f,71.f,193.f,73.f,234.f);
-            leftCoat.cubicTo(73.f,284.f,62.f,322.f,60.f,352.f);
-            leftCoat.lineTo(95.f,347.f);
-            leftCoat.lineTo(112.f,255.f);
-            leftCoat.cubicTo(106.f,214.f,111.f,183.f,120.f,161.f);
-            leftCoat.closeSubPath();
-            rightCoat.startNewSubPath(203.f,142.f);
-            rightCoat.cubicTo(229.f,164.f,231.f,193.f,226.f,226.f);
-            rightCoat.cubicTo(229.f,277.f,239.f,312.f,247.f,350.f);
-            rightCoat.lineTo(211.f,351.f);
-            rightCoat.lineTo(191.f,254.f);
-            rightCoat.cubicTo(196.f,215.f,190.f,174.f,183.f,159.f);
-            rightCoat.closeSubPath();
-            g.setGradientFill(juce::ColourGradient(
-                Theme::panelAlt.darker(.11f).withAlpha(.93f),69.f,145.f,
-                Theme::bg.withAlpha(.91f),134.f,355.f,false));
-            g.fillPath(leftCoat);
-            g.setGradientFill(juce::ColourGradient(
-                Theme::panelAlt.withAlpha(.91f),229.f,154.f,
-                Theme::bg.withAlpha(.93f),186.f,343.f,false));
-            g.fillPath(rightCoat);
-            g.setColour(Theme::muted.withAlpha(.24f));
-            g.strokePath(leftCoat,juce::PathStrokeType(1.6f));
-            g.strokePath(rightCoat,juce::PathStrokeType(1.6f));
-            g.setColour(porcelain.withAlpha(.14f));
-            g.drawLine(98.f,158.f,79.f,289.f,1.1f);
-            g.drawLine(205.f,159.f,224.f,294.f,1.1f);
-            // Subtle live edge light is tied to measured output amplitude.
-            g.setColour(accent.withAlpha(.07f+.20f*activity));
-            g.drawLine(96.f,148.f,81.f,258.f,1.f);
-            g.drawLine(204.f,147.f,224.f,246.f,1.f);
+            // Bare anatomical silhouette, no cape, coat or draped cloth.
+            // A slightly stronger directional bone highlight reads clearly
+            // against the dark graveyard without concealing the limbs.
             // Lower body first, to keep the ribcage and arms layered above.
             bone(126.f,263.f,113.f,318.f,9.f,.74f);
             bone(178.f,263.f,191.f,316.f,9.f,.72f);

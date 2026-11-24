@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
     // block-based refactor for external plugin hosting.
     for(double sampleRate:{44100.,48000.,96000.}) {
         processor.prepareToPlay(sampleRate,256);
-        processor.loadFactoryPreset(25); // Zero-PDC tracking chain.
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25)); // Zero-PDC tracking chain.
         for(int frameCount:{63,256,8193}) {
             juce::AudioBuffer<float> probe(2,frameCount);
             for(int n=0;n<frameCount;++n) {
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
         }
     }
     processor.prepareToPlay(48000.,512);
-    processor.loadFactoryPreset(25);
+    processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25));
     if(auto* mode=processor.state.getParameter("mode"))
         mode->setValueNotifyingHost(mode->convertTo0to1(3.f));
     for(int step=0;step<12;++step) {
@@ -272,12 +272,12 @@ int main(int argc, char** argv) {
             std::fprintf(stderr,"Processor sample rate was not prepared\n");
             ++failures;
         }
-        processor.loadFactoryPreset(25);
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25));
         if(processor.getLatencySamples()!=0) {
             std::fprintf(stderr,"Live Lead must report zero added PDC samples\n");
             ++failures;
         }
-        processor.loadFactoryPreset(24);
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(24));
         if(processor.getLatencySamples()<=0) {
             std::fprintf(stderr,"Vocal Polish limiter must report positive PDC\n");
             ++failures;
@@ -320,23 +320,15 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-installed-vst3-browser-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-browser-70",818,482,0,1,true});
-        options.scenes.push_back({"obsidian-factory-broadcast-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-digital-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-threeband-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-vox-velvet-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-vox-chamber-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-wide-choir-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-phantom-sweep-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-alien-ring-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-module-picker-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-rider-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-ducked-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-flutter-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-eightband-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-opto-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-harsh-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-noise-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-formant-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
         const std::array<std::pair<const char*,int>,31> effectScenes {{
@@ -414,44 +406,28 @@ int main(int argc, char** argv) {
                 processor.setSlotType(15,SkellPresetAudioProcessor::DeEsser);
                 processor.setSlotOn(15,true);
             } else if(scene.id=="crimson-deesser-70") {
-                processor.loadFactoryPreset(24); // Skell Vocal Polish
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(24)); // Skell Vocal Polish
             } else if(scene.id=="obsidian-live-70") {
-                processor.loadFactoryPreset(25); // Skell Live Lead, 0 PDC
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25)); // Skell Live Lead, 0 PDC
             } else if(scene.id=="obsidian-rack-right-70"
                       || scene.id=="obsidian-rack-right-browser-70") {
                 processor.loadFactoryPreset(0);
-            } else if(scene.id=="obsidian-factory-broadcast-70") {
-                processor.loadFactoryPreset(26);
             } else if(scene.id=="obsidian-factory-digital-70") {
-                processor.loadFactoryPreset(27);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(27));
             } else if(scene.id=="obsidian-factory-threeband-70") {
-                processor.loadFactoryPreset(28);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(28));
             } else if(scene.id=="obsidian-factory-vox-velvet-70") {
-                processor.loadFactoryPreset(29);
-            } else if(scene.id=="obsidian-factory-vox-chamber-70") {
-                processor.loadFactoryPreset(30);
-            } else if(scene.id=="obsidian-factory-wide-choir-70") {
-                processor.loadFactoryPreset(31);
-            } else if(scene.id=="obsidian-factory-phantom-sweep-70") {
-                processor.loadFactoryPreset(32);
-            } else if(scene.id=="obsidian-factory-alien-ring-70") {
-                processor.loadFactoryPreset(33);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(29));
             } else if(scene.id=="obsidian-factory-rider-70") {
-                processor.loadFactoryPreset(34);
-            } else if(scene.id=="obsidian-factory-ducked-70") {
-                processor.loadFactoryPreset(35);
-            } else if(scene.id=="obsidian-factory-flutter-70") {
-                processor.loadFactoryPreset(36);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(34));
             } else if(scene.id=="obsidian-factory-eightband-70") {
-                processor.loadFactoryPreset(37);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(37));
             } else if(scene.id=="obsidian-factory-opto-70") {
-                processor.loadFactoryPreset(38);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(38));
             } else if(scene.id=="obsidian-factory-harsh-70") {
-                processor.loadFactoryPreset(39);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(39));
             } else if(scene.id=="obsidian-factory-noise-70") {
-                processor.loadFactoryPreset(40);
-            } else if(scene.id=="obsidian-factory-formant-70") {
-                processor.loadFactoryPreset(41);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(40));
             } else if(scene.id=="obsidian-module-picker-70") {
                 processor.loadFactoryPreset(0);
             } else if(scene.id=="obsidian-rack-wet-dot-70"
@@ -535,32 +511,19 @@ int main(int argc, char** argv) {
                     || scene.id=="obsidian-external-70"
                     || scene.id=="obsidian-installed-vst3-browser-70")
                 editor.selectRackSlotForScreenshot(0,0);
-            else if(scene.id=="obsidian-factory-broadcast-70"
-                    || scene.id=="obsidian-factory-digital-70")
+            else if(scene.id=="obsidian-factory-digital-70")
                 editor.selectRackSlotForScreenshot(3,0);
             else if(scene.id=="obsidian-factory-threeband-70" ||
                     scene.id=="obsidian-factory-vox-velvet-70")
                 editor.selectRackSlotForScreenshot(1,0);
-            else if(scene.id=="obsidian-factory-vox-chamber-70")
-                editor.selectRackSlotForScreenshot(5,0);
-            else if(scene.id=="obsidian-factory-wide-choir-70" ||
-                    scene.id=="obsidian-factory-alien-ring-70")
-                editor.selectRackSlotForScreenshot(3,0);
-            else if(scene.id=="obsidian-factory-phantom-sweep-70")
-                editor.selectRackSlotForScreenshot(7,0);
-            else if(scene.id=="obsidian-factory-rider-70" ||
-                    scene.id=="obsidian-factory-flutter-70")
+            else if(scene.id=="obsidian-factory-rider-70")
                 editor.selectRackSlotForScreenshot(8,0);
-            else if(scene.id=="obsidian-factory-ducked-70")
-                editor.selectRackSlotForScreenshot(4,0);
             else if(scene.id=="obsidian-factory-eightband-70" ||
                     scene.id=="obsidian-factory-harsh-70" ||
                     scene.id=="obsidian-factory-noise-70")
                 editor.selectRackSlotForScreenshot(8,0);
             else if(scene.id=="obsidian-factory-opto-70")
                 editor.selectRackSlotForScreenshot(1,0);
-            else if(scene.id=="obsidian-factory-formant-70")
-                editor.selectRackSlotForScreenshot(8,0);
             if(scene.id=="obsidian-installed-vst3-browser-70")
                 editor.openInstalledVST3BrowserForScreenshot();
             if(scene.id=="obsidian-effect-alchemist-calibration-70")
@@ -594,16 +557,12 @@ int main(int argc, char** argv) {
             {"obsidian-effect-radio-70", "obsidian-effect-retro-crush-70"},
             {"obsidian-effect-tremolo-70", "obsidian-effect-stereo-width-70"},
             {"obsidian-effect-threeband-70", "obsidian-effect-radio-70"},
-            {"obsidian-factory-broadcast-70", "obsidian-factory-threeband-70"},
             {"obsidian-effect-voxrack-room-70", "obsidian-effect-voxrack-comp-70"},
-            {"obsidian-factory-vox-velvet-70", "obsidian-factory-vox-chamber-70"},
             {"obsidian-advanced-70", "obsidian-module-picker-70"},
             {"obsidian-effect-vocal-chorus-70", "obsidian-effect-vocal-flanger-70"},
             {"obsidian-effect-ring-mod-70", "obsidian-effect-vocal-flanger-70"},
-            {"obsidian-factory-wide-choir-70", "obsidian-factory-alien-ring-70"},
             {"obsidian-effect-vocal-rider-70", "obsidian-effect-vocal-vibrato-70"},
             {"obsidian-effect-ducking-pingpong-70", "obsidian-effect-delay-70"},
-            {"obsidian-factory-rider-70", "obsidian-factory-ducked-70"},
             {"obsidian-effect-eight-band-eq-70", "obsidian-effect-fet-opto-70"},
             {"obsidian-effect-harshness-tamer-70", "obsidian-effect-adaptive-noise-70"},
             {"obsidian-factory-eightband-70", "obsidian-factory-opto-70"},

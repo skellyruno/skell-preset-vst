@@ -187,10 +187,10 @@ int blankSmoke() {
        || plugin->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex
        || plugin->getProgramName(SkellPresetAudioProcessor::emptyRackProgramIndex)!="Empty Rack"
        || plugin->getProgramName(SkellPresetAudioProcessor::customRackProgramIndex)!="Custom Rack"
-       || plugin->getProgramName(43)!="Alchemist"
-       || plugin->getProgramName(44)!="Deuce D/Max (Native Trial)"
-       || plugin->getProgramName(46)!="Deuce"
-       || plugin->getProgramName(54)!="Alchemist Serial Dynamics Blend (Trial)")
+       || plugin->getProgramName(skellpreset::factoryIndexForRecipe(43))!="Alchemist"
+       || plugin->getProgramName(skellpreset::factoryIndexForRecipe(44))!="Deuce D/Max (Native Trial)"
+       || plugin->getProgramName(skellpreset::factoryIndexForRecipe(46))!="Deuce"
+       || plugin->getProgramName(skellpreset::factoryIndexForRecipe(54))!="Alchemist Serial Dynamics Blend (Trial)")
         return 31;
     for(int s=0;s<SkellPresetAudioProcessor::slotCount;++s) {
         const auto* active=plugin->state.getRawParameterValue(
@@ -783,7 +783,7 @@ int studioSmoke() {
         // Emulate an older FL Studio factory snapshot with no micGateOn
         // parameter at all, and restore it over an active new factory gate.
         // The historical factory 43 identity and original OFF sound survive.
-        selected->loadFactoryPreset(43);
+        selected->loadFactoryPreset(skellpreset::factoryIndexForRecipe(43));
         auto* gateParameter=selected->state.getParameter("micGateOn");
         if(!gateParameter) return 108;
         gateParameter->setValueNotifyingHost(gateParameter->convertTo0to1(0.f));
@@ -809,7 +809,7 @@ int studioSmoke() {
         if(!missingGateXml) return 111;
         juce::MemoryBlock oldFactoryWithoutGate;
         juce::AudioProcessor::copyXmlToBinary(*missingGateXml,oldFactoryWithoutGate);
-        selected->loadFactoryPreset(43); // New user selection enables the gate.
+        selected->loadFactoryPreset(skellpreset::factoryIndexForRecipe(43)); // New user selection enables the gate.
         if(selected->state.getRawParameterValue("micGateOn")->load()<.5f)
             return 112;
         // Deliberately dirty all added controls to verify missing-state
@@ -830,7 +830,7 @@ int studioSmoke() {
         const auto* restoredHyst=selected->state.getRawParameterValue("micGateHysteresisDb");
         const auto* restoredDepth=selected->state.getRawParameterValue("micGateDepth");
         if(selected->state.getRawParameterValue("micGateOn")->load()>.5f ||
-           selected->getCurrentProgram()!=43 ||
+           selected->getCurrentProgram()!=skellpreset::factoryIndexForRecipe(43) ||
            !restoredAttack || std::abs(restoredAttack->load()-4.f)>.05f ||
            !restoredHyst || std::abs(restoredHyst->load()-3.f)>.05f ||
            !restoredDepth || std::abs(restoredDepth->load()-1.f)>.001f)
@@ -1538,9 +1538,9 @@ int monoSmoke() {
 int eightBandAirFactorySmoke() {
     constexpr float gains[8]{-.04f,-.06f,-.03f,-.01f,.04f,.055f,.08f,.05f};
     auto plugin=std::make_unique<SkellPresetAudioProcessor>();
-    plugin->setCurrentProgram(37); // legacy host program: Eight-Band Air
-    if(plugin->getCurrentProgram()!=37 ||
-       plugin->loadedFactoryPresetIndex()!=37 ||
+    plugin->setCurrentProgram(skellpreset::factoryIndexForRecipe(37)); // legacy host program: Eight-Band Air
+    if(plugin->getCurrentProgram()!=skellpreset::factoryIndexForRecipe(37) ||
+       plugin->loadedFactoryPresetIndex()!=skellpreset::factoryIndexForRecipe(37) ||
        plugin->activeSlotCount()!=10 ||
        plugin->slotType(8)!=SkellPresetAudioProcessor::EightBandToneFX ||
        plugin->slotIdAt(0)!=8)
@@ -1607,8 +1607,8 @@ int eightBandAirFactorySmoke() {
     auto restored=std::make_unique<SkellPresetAudioProcessor>();
     restored->setStateInformation(hostState.getData(),static_cast<int>(hostState.getSize()));
     restored->prepareToPlay(48000.,256);
-    if(restored->getCurrentProgram()!=37 ||
-       restored->loadedFactoryPresetIndex()!=37 ||
+    if(restored->getCurrentProgram()!=skellpreset::factoryIndexForRecipe(37) ||
+       restored->loadedFactoryPresetIndex()!=skellpreset::factoryIndexForRecipe(37) ||
        !hasExpectedEqState(*restored))
         return 255;
 
@@ -2211,7 +2211,7 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
     if(argc==7 && juce::String(argv[1])=="--factory-override") {
-        const int factory=juce::String(argv[2]).getIntValue();
+        const int factory=skellpreset::factoryIndexForRecipe(juce::String(argv[2]).getIntValue());
         const float hpf=std::strtof(argv[3],nullptr);
         const float band70=std::strtof(argv[4],nullptr);
         if(factory!=skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
@@ -2229,7 +2229,7 @@ int main(int argc,char** argv) {
         if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51" && requested!="52" && requested!="53" && requested!="54")return 7;
         return render(juce::File(juce::String::fromUTF8(argv[3])),
                       juce::File(juce::String::fromUTF8(argv[4])),
-                      requested.getIntValue());
+                      skellpreset::factoryIndexForRecipe(requested.getIntValue()));
     }
     if(argc!=3) {
         std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53|54 INPUT.wav NEW_OUTPUT.wav\n");

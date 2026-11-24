@@ -1358,6 +1358,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     if(index<0||index>=(int)factoryPresets.size())return;
     emptyRackIdentity.store(false,std::memory_order_release);
     selectedProgram=index;const auto& preset=factoryPresets[(size_t)index];name=preset.name;
+    const int recipe=recipeForFactoryIndex(index);
     activeSlots.store(defaultSlotCount,std::memory_order_release);
     state.state.setProperty("rackSlots",defaultSlotCount,nullptr);
     for(int s=0;s<slotCount;s++){
@@ -1392,7 +1393,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     setSlotParam(4,0,.35f);setSlotParam(4,1,.31f);setReal("s5_wet",preset.space*.30f);
     setSlotParam(5,0,.24f+preset.space*.5f);setSlotParam(5,1,.65f);setReal("s6_wet",preset.space*.35f);
     setSlotParam(6,0,.89f);setSlotParam(6,1,.05f);setReal("s7_wet",.65f);
-    if(index==24 || index==25) {
+    if(recipe==24 || recipe==25) {
         // Original v1 factory IDs remain stable. Add de-essing before the
         // compressor in the new Vocal Polish and zero-PDC Live Lead chains.
         setSlotType(9,DeEsser);setSlotOn(9,true);
@@ -1405,7 +1406,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         for(int pos=0;pos<slotCount;++pos)
             order|=(std::uint64_t)ids[pos] << (4*pos);
         packedOrder.store(order,std::memory_order_release);
-        if(index==25) {
+        if(recipe==25) {
             // Recording/monitoring preset: only the 3ms SkellCore lookahead
             // limiter is omitted, while EQ, compression, gate and de-essing
             // remain in the original zero-PDC processing path.
@@ -1425,15 +1426,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotParam(7,2,.32f);
         setReal("s8_wet",.38f+preset.space*.45f);
     }
-    if(index==26) {
-        // A VoxRack-toned phrase throw plus an independently authored
-        // radio insert; no native VST3 host latency is added.
-        setSlotType(3,Radio);setSlotOn(3,true);
-        setSlotParam(3,0,.26f);setSlotParam(3,1,.38f);
-        setSlotParam(3,2,.52f);setSlotParam(3,3,.28f);
-        setReal("s4_wet",.72f);
-        setSlotParam(4,2,.37f);
-    } else if(index==27) {
+    if(recipe==27) {
         setSlotType(3,RetroCrush);setSlotOn(3,true);
         setSlotParam(3,0,.28f);setSlotParam(3,1,.42f);
         setSlotParam(3,2,.34f);setSlotParam(3,3,0.f);
@@ -1442,7 +1435,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotParam(7,0,.44f);setSlotParam(7,1,.58f);
         setSlotParam(7,2,.35f);setSlotParam(7,3,.15f);
         setReal("s8_wet",.55f);
-    } else if(index==28) {
+    } else if(recipe==28) {
         setSlotType(1,ThreeBandDynamics);setSlotOn(1,true);
         setSlotParam(1,0,.38f);setSlotParam(1,1,.52f);
         setSlotParam(1,2,.45f);setSlotParam(1,3,.45f);
@@ -1451,30 +1444,20 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setSlotParam(3,2,.5f);setSlotParam(3,3,.5f);
         setReal("s4_wet",.62f);
     }
-    if(index==29 || index==30) {
+    if(recipe==29) {
         setSlotType(1,VoxRackSmoothComp);setSlotOn(1,true);
-        setSlotParam(1,0,index==29?.56f:.39f);
-        setSlotParam(1,1,index==29?.30f:.56f);
-        setSlotParam(1,2,index==29?.42f:.56f);
+        setSlotParam(1,0,.56f);
+        setSlotParam(1,1,.30f);
+        setSlotParam(1,2,.42f);
         setSlotParam(1,3,.32f);
         setSlotType(5,VoxRackRoom);setSlotOn(5,true);
-        setSlotParam(5,0,index==29?.38f:.73f);
-        setSlotParam(5,1,index==29?.53f:.37f);
-        setSlotParam(5,2,index==29?.07f:.18f);
+        setSlotParam(5,0,.38f);
+        setSlotParam(5,1,.53f);
+        setSlotParam(5,2,.07f);
         setSlotParam(5,3,.16f);
-        setReal("s6_wet",index==29?.20f:.45f);
+        setReal("s6_wet",.20f);
     }
-    if(index>=31 && index<=33) {
-        const int slot=index==31?3:(index==32?7:3);
-        setSlotType(slot,index==31?VocalChorusFX:(index==32?VocalFlangerFX:RingModFX));
-        setSlotOn(slot,true);
-        setSlotParam(slot,0,index==33?.43f:.22f);
-        setSlotParam(slot,1,index==33?.81f:.57f);
-        setSlotParam(slot,2,index==33?.20f:.52f);
-        setSlotParam(slot,3,.62f);
-        setReal(slotPrefix(slot)+"wet",index==33?.63f:.49f);
-    }
-    if(index==34) {
+    if(recipe==34) {
         // Rider before the compressor: leveled phrases, no added PDC.
         setSlotType(8,VocalRiderFX);setSlotOn(8,true);
         setSlotParam(8,0,.71f);setSlotParam(8,1,.54f);
@@ -1485,45 +1468,29 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         for(int position=0;position<slotCount;++position)
             order|=(std::uint64_t)ids[position] << (4*position);
         packedOrder.store(order,std::memory_order_release);
-    } else if(index==35) {
-        // Ducking stereo echo replaces the ordinary phrase throw in this bank.
-        setSlotType(4,DuckingPingPongFX);setSlotOn(4,true);
-        setSlotParam(4,0,.62f);setSlotParam(4,1,.52f);
-        setSlotParam(4,2,.79f);setSlotParam(4,3,.55f);
-        setReal("s5_wet",.44f);
-    } else if(index==36) {
-        setSlotType(8,VocalVibratoFX);setSlotOn(8,true);
-        setSlotParam(8,0,.48f);setSlotParam(8,1,.56f);
-        setSlotParam(8,2,.62f);setSlotParam(8,3,.34f);
-        setReal("s9_wet",.53f);
-        std::uint64_t order=0;
-        const int ids[]{0,1,2,3,8,4,5,6,7,9,10,11,12,13,14,15};
-        for(int position=0;position<slotCount;++position)
-            order|=(std::uint64_t)ids[position] << (4*position);
-        packedOrder.store(order,std::memory_order_release);
     }
-    if(index>=37 && index<=40){
+    if(recipe>=37 && recipe<=40){
         // A new processor placed before the main compressor (or replaces it)
         // without changing the 16 physical slot IDs or old factory programs.
-        const bool dualComp=index==38;
+        const bool dualComp=recipe==38;
         const int physical=dualComp?1:8;
-        const int chosen=index==37?EightBandToneFX:
-            index==38?SerialDynamicsFX:
-            index==39?DynamicHarshnessFX:AdaptiveNoiseFX;
+        const int chosen=recipe==37?EightBandToneFX:
+            recipe==38?SerialDynamicsFX:
+            recipe==39?DynamicHarshnessFX:AdaptiveNoiseFX;
         setSlotType(physical,chosen);
         setSlotOn(physical,true);
         setReal(slotPrefix(physical)+"wet",dualComp?.92f:1.f);
-        if(index==37) {
+        if(recipe==37) {
             // Airy articulation with restrained low-mid cleanup.
             const float gains[8]{-.04f,-.06f,-.03f,-.01f,.04f,.055f,.08f,.05f};
             for(int k=0;k<8;++k) {
                 setSlotParam(8,k*2,.5f);
                 setSlotParam(8,k*2+1,.5f+gains[k]);
             }
-        } else if(index==38){
+        } else if(recipe==38){
             setSlotParam(1,0,.58f);setSlotParam(1,1,.47f);
             setSlotParam(1,2,.28f);setSlotParam(1,3,.12f);
-        } else if(index==39){
+        } else if(recipe==39){
             setSlotParam(8,0,.59f);setSlotParam(8,1,.58f);
             setSlotParam(8,2,.44f);setSlotParam(8,3,.34f);
         } else {
@@ -1538,19 +1505,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
             packedOrder.store(order,std::memory_order_release);
         }
     }
-    if(index==41) {
-        // Intentionally omitted from live vocal defaults: 768-sample STFT PDC.
-        setSlotType(8,StudioPitchFormantFX);setSlotOn(8,true);
-        setSlotParam(8,0,.72f);setSlotParam(8,1,.42f);
-        setSlotParam(8,2,.62f);setSlotParam(8,3,.58f);
-        setReal("s9_wet",.48f);
-        std::uint64_t order=0;
-        const int ids[]{0,1,2,3,8,4,5,6,7,9,10,11,12,13,14,15};
-        for(int position=0;position<slotCount;++position)
-            order|=(std::uint64_t)ids[position] << (4*position);
-        packedOrder.store(order,std::memory_order_release);
-    }
-    if(index==42){
+    if(recipe==42){
         // 322 DAW has six built-in Web Audio processors but no supplied
         // named factory preset library. This is an original, opt-in Skell
         // chain using our existing, more capable native DSP; do not import

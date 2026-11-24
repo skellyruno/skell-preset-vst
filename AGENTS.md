@@ -12,7 +12,9 @@
   docs/LOCAL_UI_SCREENSHOTS.md and docs/UI_RENDERER.md.
 - The renderer's default invocation captures the four Quick4 scenes; use `--output <folder>` to choose the destination and `--full` only for the complete deep visual audit. Do not pass an unsupported `--quick4` switch.
 - Preserve Simple mode Tone/Punch/Space/Grit and remove them ONLY from
-  Advanced. No UI code may rename any automation parameter, factory ID,
-  VST3 ID, or saved FL Studio state.
+  Advanced. No UI code may rename any automation parameter or VST3 ID.
+- Owner-approved pre-release exception (2026-11-23): remove 16 unwanted factory
+  Adlibs and compact host program indexes; retain Digital Bones, all other
+  factory recipes, personal files, DSP module IDs and APVTS parameter IDs.
 - Maintain Windows VST3, real DSP, low-latency, CPU and FL Studio gates
   independently from visual capture. Keep PRs draft until verified.

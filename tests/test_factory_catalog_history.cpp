@@ -1,6 +1,5 @@
-// Reconciled from audit/preset-slot-order-strict-20261113. Keep the
-// original 43 host program indexes and 12 subsequently shipped identities.
-// New factories can only be appended; never renumber old FL Studio programs.
+// Owner-authorized pre-release pruning: one factory Adlib, Digital Bones.
+// All retained sounds must still correspond to their original internal recipe labels.
 // Portable C++17, no JUCE dependency.
 #include "../Source/chain/FactoryPresets.h"
 #include <array>
@@ -11,7 +10,7 @@
 
 namespace {
 using Identity=std::pair<std::string_view,std::string_view>;
-constexpr std::array<Identity,55> expected{{
+constexpr std::array<Identity,39> expected{{
     {"Main Vocals", "Clean Lead"},
     {"Main Vocals", "Dark Trap Lead"},
     {"Main Vocals", "Airy Pop"},
@@ -20,14 +19,6 @@ constexpr std::array<Identity,55> expected{{
     {"Main Vocals", "Bright Radio"},
     {"Main Vocals", "Bedroom Intimate"},
     {"Main Vocals", "Aggressive Hook"},
-    {"Adlibs", "Demon Adlibs"},
-    {"Adlibs", "Ghost Echo"},
-    {"Adlibs", "Radio Adlib"},
-    {"Adlibs", "Wide Stack"},
-    {"Adlibs", "Stutter Throw"},
-    {"Adlibs", "Alien Pulse"},
-    {"Adlibs", "Whisper Trail"},
-    {"Adlibs", "Distorted Shout"},
     {"Vocoding", "Robot Chorus"},
     {"Vocoding", "Harmony Pad"},
     {"Vocoding", "Talkbox Glide"},
@@ -38,22 +29,14 @@ constexpr std::array<Identity,55> expected{{
     {"Vocoding", "Spectral Glow"},
     {"Main Vocals", "Skell Vocal Polish"},
     {"Main Vocals", "Skell Live Lead"},
-    {"Adlibs", "Broadcast Throw"},
     {"Adlibs", "Digital Bones"},
     {"Main Vocals", "Three-Band Silk"},
     {"Main Vocals", "VoxRack Velvet"},
-    {"Adlibs", "VoxRack Chamber"},
-    {"Adlibs", "Wide Choir Adlib"},
-    {"Adlibs", "Phantom Sweep"},
-    {"Adlibs", "Alien Ring"},
     {"Main Vocals", "Rider Ready"},
-    {"Adlibs", "Ducked Echo"},
-    {"Adlibs", "Skell Flutter"},
     {"Main Vocals", "Eight-Band Air"},
     {"Main Vocals", "Opto Punch"},
     {"Main Vocals", "Smooth Edge"},
     {"Main Vocals", "Noise Guard"},
-    {"Adlibs", "Formant Sketch"},
     {"Main Vocals", "Studio Six"},
     {"Main Vocals", "Alchemist (Native Preview)"},
     {"Main Vocals", "Deuce D/Max (Native Trial)"},
@@ -69,7 +52,7 @@ constexpr std::array<Identity,55> expected{{
     {"Main Vocals", "Alchemist Serial Dynamics Blend (Trial)"}
 }};
 constexpr bool historicIdentityOrderUnchanged() {
-    if(skellpreset::factoryPresets.size()<expected.size())return false;
+    if(skellpreset::factoryPresets.size()!=expected.size())return false;
     for(std::size_t i=0;i<expected.size();++i) {
         const auto& p=skellpreset::factoryPresets[i];
         if(!p.name || !p.bank || std::string_view(p.bank)!=expected[i].first ||
@@ -78,7 +61,7 @@ constexpr bool historicIdentityOrderUnchanged() {
     return true;
 }
 static_assert(historicIdentityOrderUnchanged(),
-    "Factory host program order changed: saved FL Studio projects may recall different presets");
+    "Curated factory order or identity changed");
 }
 int main() {
     std::array<std::size_t,3> legacyBankCounts{};
@@ -94,7 +77,7 @@ int main() {
             std::fprintf(stderr,"Invalid preset at host index %zu\n",i);
             return 1;
         }
-        if(i<43) {
+        if(i<27) {
             const std::string_view bank(p.bank);
             if(bank=="Main Vocals")++legacyBankCounts[0];
             else if(bank=="Adlibs")++legacyBankCounts[1];
@@ -111,11 +94,11 @@ int main() {
             }
         }
     }
-    if(legacyBankCounts!=std::array<std::size_t,3>{{18,17,8}}) {
+    if(legacyBankCounts!=std::array<std::size_t,3>{{18,1,8}}) {
         std::fprintf(stderr,"Original factory bank counts changed\n");
         return 4;
     }
-    std::printf("PASS: %zu factories, all 55 historic host program indexes, bank split 18/17/8, unique valid metadata\n",
+    std::printf("PASS: %zu factories, 39 curated program indexes, original section bank split 18/1/8, unique valid metadata\n",
                 skellpreset::factoryPresets.size());
     return 0;
 }

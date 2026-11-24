@@ -711,7 +711,7 @@ bool PresetBrowser::setArtistForUser(int index,const juce::String& input) {
     return true;
 }
 juce::String PresetBrowser::favoriteKey(int entry) const {
-    if(entry>=0)return "factory:"+juce::String(entry);
+    if(entry>=0)return "factory:"+juce::String(skellpreset::recipeForFactoryIndex(entry));
     const auto index=-entry-1;
     if(index<0 || index>=(int)userPresets.size())return {};
     return "user:"+userPresets[(size_t)index].getFileName().toLowerCase();
@@ -726,13 +726,7 @@ void PresetBrowser::loadFavorites() {
     if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>65536)return;
     for(auto key:juce::StringArray::fromLines(file.loadFileAsString())) {
         key=key.trim().toLowerCase();
-        bool safeFactory=key=="factory:43" || key=="factory:46";
-        if(!safeFactory && key.startsWith("factory:")){
-            const auto index=key.substring(8).getIntValue();
-            safeFactory=index>=0 && index<alchemistIndex &&
-                juce::String(skellpreset::factoryPresets[(size_t)index].bank)
-                    .equalsIgnoreCase("Adlibs");
-        }
+        const bool safeFactory=key=="factory:43" || key=="factory:46" || key=="factory:27";
         if(key.length()>0 && key.length()<260 &&
            (key.startsWith("user:") || safeFactory) &&
            !key.containsChar('\r') && !favoriteKeys.contains(key,true))
