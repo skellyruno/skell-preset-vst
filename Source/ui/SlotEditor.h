@@ -92,19 +92,9 @@ class SlotEditor final:public juce::Component {
 public:
     explicit SlotEditor(SkellPresetAudioProcessor& p);
     ~SlotEditor() override;
-    std::function<void()> onBackgroundClick; // intentional VISUAL top button
-    static juce::Rectangle<int> homeReturnBounds() noexcept {
-        return {325,7,145,23}; // free header margin; never graph or knobs
-    }
-    bool testHomeReturnHitZonesForTest() const noexcept {
-        const auto target=homeReturnBounds();
-        return target.contains(juce::Point<int>{361,18}) &&
-            !target.contains(juce::Point<int>{45,44}) &&
-            !target.contains(juce::Point<int>{105,205}) &&
-            !target.intersects(juce::Rectangle<int>{33,151,835,206}) &&
-            !target.intersects(juce::Rectangle<int>{168,411,257,30}) &&
-            !target.intersects(juce::Rectangle<int>{843,22,40,40});
-    }
+    std::function<void()> onBackgroundClick; // legacy callback; home is reached by Escape or canvas gap
+    static juce::Rectangle<int> homeReturnBounds() noexcept {return {};}
+    bool testHomeReturnHitZonesForTest() const noexcept {return homeReturnBounds().isEmpty();}
     void paint(juce::Graphics&) override;
     void resized() override;
     void select(int newSlot);
@@ -250,7 +240,6 @@ private:
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,2> eqCutAttachments;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> knobAttachment;
     bool draggingGraph=false;
-    bool homeHover=false; // UI-only; never audio state
     int gestureSlot=-1,gestureType=-1;
     int gestureEqBand=-1; // same parameter IDs receive begin/end gestures
     bool graphSnapshotValid=false;

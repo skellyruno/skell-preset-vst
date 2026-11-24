@@ -1877,26 +1877,6 @@ void SlotEditor::paint(juce::Graphics&g) {
         ?processor.hostedVST3Name(slot):juce::String{};
     Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleName(type),
                       {21,29,500,38},25,Theme::white,true);
-    // Explicit blank-space exit, separated from every title/graph gesture.
-    // This is deliberately small and calm; clicking elsewhere on the rack
-    // does not unexpectedly switch screens.
-    if(type!=SkellPresetAudioProcessor::ExternalVST3) {
-        const auto back=homeReturnBounds().toFloat();
-        g.setColour(homeHover?Theme::green.withAlpha(.14f):Theme::panelAlt);
-        g.fillRoundedRectangle(back,4.f);
-        g.setColour(homeHover?Theme::green.withAlpha(.85f):
-                    Theme::stroke.withAlpha(.75f));
-        g.drawRoundedRectangle(back.reduced(.5f),4.f,1.f);
-        g.setColour(homeHover?Theme::green:Theme::muted);
-        juce::Path pointer;
-        pointer.startNewSubPath(back.getX()+18.f,back.getCentreY()-4.f);
-        pointer.lineTo(back.getX()+13.f,back.getCentreY());
-        pointer.lineTo(back.getX()+18.f,back.getCentreY()+4.f);
-        g.strokePath(pointer,juce::PathStrokeType(1.5f));
-        Theme::text(g,"VISUAL",{(int)back.getX()+24,(int)back.getY()+2,
-                    (int)back.getWidth()-28,18},10.3f,
-                    homeHover?Theme::white:Theme::muted,true);
-    }
     // The hosted editor has its own top action buttons. Do not paint the
     // native selector prompt, category chip or signal dots underneath those
     // controls; it clips the third-party view at small UI scales.
@@ -2174,32 +2154,42 @@ void SlotEditor::paint(juce::Graphics&g) {
     } else if(type==SkellPresetAudioProcessor::DeEsser) {
         const float cutoff=3500.f+processor.getSlotParam(slot,0)*8000.f;
         const float threshold=-53.f+processor.getSlotParam(slot,1)*39.f;
-        const float maxReduction=2.f+processor.getSlotParam(slot,2)*20.f;
-        auto xFor=[&](float frequency){
-            return plot.getX()+plot.getWidth()*std::log(frequency/20.f)/std::log(1000.f);
+        const float reduction=2.f+processor.getSlotParam(slot,2)*20.f;
+        const double sr=juce::jlimit(8000.,192000.,processor.preparedAudioRate());
+        const double actualCutoff=juce::jlimit(1500.,sr*.45,(double)cutoff);
+        const double pole=std::exp(-2.*juce::MathConstants<double>::pi*actualCutoff/sr);
+        const double gain=skellpreset::dsp::dbToGain(-reduction);
+        auto xFor=[&](float hz){return plot.getX()+plot.getWidth()*std::log(hz/20.f)/std::log(1000.f);};
+        auto attenuation=[&](double hz){
+            const double w=2.*juce::MathConstants<double>::pi*juce::jmin(hz,sr*.5)/sr;
+            const double real=1.-pole*std::cos(w),imag=pole*std::sin(w);
+            const double denominator=real*real+imag*imag;
+            const double lowReal=(1.-pole)*real/denominator,lowImag=-(1.-pole)*imag/denominator;
+            return 20.*std::log10(juce::jmax(1.e-8,std::hypot(gain+(1.-gain)*lowReal,(1.-gain)*lowImag)));
         };
+        const auto responseY=[&](double hz){return plot.getY()+42.f-(float)attenuation(hz)*5.4f;};
+        const float markerX=xFor(cutoff),markerY=responseY(cutoff);
+        g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.035f),markerX,plot.getY(),
+            Theme::green.withAlpha(.14f),plot.getRight(),plot.getY(),false));
+        g.fillRect(markerX,plot.getY(),plot.getRight()-markerX,plot.getHeight());
+        g.setColour(Theme::amber.withAlpha(.72f));
+        g.drawVerticalLine(juce::roundToInt(markerX),plot.getY(),plot.getBottom());
         juce::Path response;
-        for(int ix=0;ix<=835;ix+=3) {
-            const float frequency=20.f*std::pow(1000.f,(float)ix/835.f);
-            const float highWeight=frequency/std::sqrt(frequency*frequency+cutoff*cutoff);
-            const float attenuation=20.f*std::log10(juce::jmax(.0001f,
-                1.f-(1.f-skellpreset::dsp::dbToGain(-maxReduction))*highWeight));
-            const float y=plot.getY()+35.f-attenuation*6.f;
-            if(ix==0)response.startNewSubPath(plot.getX(),y);
-            else response.lineTo(plot.getX()+ix,y);
+        for(int ix=0;ix<=835;ix+=2){
+            const float hz=20.f*std::pow(1000.f,(float)ix/835.f);
+            if(ix==0)response.startNewSubPath(plot.getX(),responseY(hz));
+            else response.lineTo(plot.getX()+ix,responseY(hz));
         }
-        g.setColour(Theme::green.withAlpha(.13f));
-        g.fillRect(xFor(cutoff),plot.getY(),plot.getRight()-xFor(cutoff),plot.getHeight());
-        g.setColour(Theme::amber.withAlpha(.8f));
-        g.drawVerticalLine((int)xFor(cutoff),plot.getY(),plot.getBottom());
-        g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.8f));
-        Theme::text(g,"SIBILANCE REGION  /  "+juce::String(cutoff,0)+" Hz",
-            {47,163,500,20},12,Theme::green,true);
-        Theme::text(g,juce::String(threshold,1)+" dB THRESHOLD  /  UP TO "
-            +juce::String(maxReduction,1)+" dB REDUCTION",
-            {47,186,650,21},13,Theme::white);
-        Theme::text(g,"ILLUSTRATIVE MAX REDUCTION  /  ACTUAL GAIN IS LEVEL-DEPENDENT",
-            {43,327,790,17},11,Theme::muted);
+        response.lineTo(plot.getRight(),responseY(20000.));
+        g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.5f));
+        g.setColour(Theme::bg);g.fillEllipse(markerX-7.f,markerY-7.f,14.f,14.f);
+        g.setColour(Theme::green);g.drawEllipse(markerX-7.f,markerY-7.f,14.f,14.f,2.f);
+        Theme::text(g,"SIBILANCE  /  "+juce::String(cutoff/1000.f,2)+" kHz",
+            {47,160,370,20},13.f,Theme::green,true);
+        Theme::text(g,"THRESHOLD "+juce::String(threshold,1)+" dBFS  /  MAX "+juce::String(reduction,1)+" dB",
+            {47,181,540,20},12.f,Theme::white);
+        Theme::text(g,"MAX REDUCTION RESPONSE  /  ACTUAL ATTENUATION FOLLOWS INPUT LEVEL",
+            {47,330,790,17},10.5f,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX && suiteSpectrumView) {
         // Actual INPUT/OUTPUT spectral values from lock-free audio buffers,
         // analyzed only on JUCE's message/render thread. No invented peaks.
@@ -3598,16 +3588,13 @@ void SlotEditor::paint(juce::Graphics&g) {
     // the real Studio EQ screenshot). ALL effects instead share one quiet
     // secondary hint in the dedicated 380–402px metadata lane BELOW the
     // 151–357px live graph and ABOVE the 411px parameter controls.
-    if(effectDetail.isNotEmpty()) {
-        Theme::fittedText(g,effectDetail,{47,383,811,17},10.f,
-                          Theme::muted,false,juce::Justification::centredLeft);
-    } else if(effectTitle.isNotEmpty()) {
-        Theme::fittedText(g,effectTitle,{47,383,811,17},10.f,
-                          Theme::muted,false,juce::Justification::centredLeft);
+    // One footer lane, not two overlapping text passes.
+    if(type==SkellPresetAudioProcessor::DeEsser){
+        Theme::fittedText(g,"SPLIT-BAND  /  ZERO LATENCY  /  LINKED STEREO",{33,106,835,28},
+            12.f,Theme::amber,true,juce::Justification::centredLeft);
     }
     if(type==SkellPresetAudioProcessor::Compressor ||
        type==SkellPresetAudioProcessor::Gate ||
-       type==SkellPresetAudioProcessor::DeEsser ||
        type==SkellPresetAudioProcessor::Delay ||
        type==SkellPresetAudioProcessor::AdlibThrow) {
         const float x=plot.getX()+24.f+(plot.getWidth()-48.f)*
@@ -3741,14 +3728,15 @@ void SlotEditor::paint(juce::Graphics&g) {
                   type==SkellPresetAudioProcessor::StudioPitchFormantFX ? "SPECTRAL PITCH / FORMANT / HOST LATENCY 768 SAMPLES" :
                   type==SkellPresetAudioProcessor::AlchemistMatchFinishFX ? "CAUSAL REFERENCE-LEARNED CONTOUR  /  CALIBRATE FOR EACH DIFFERENT VOICE" :
                   type==SkellPresetAudioProcessor::MicModelFX ? "TONAL RESPONSE SKETCH  /  NOT A MEASURED HARDWARE MICROPHONE IMPULSE" :
-                  type==SkellPresetAudioProcessor::DeEsser ? "ZERO ADDED LATENCY  /  STEREO-LINKED CONSONANT CONTROL" :
+                  type==SkellPresetAudioProcessor::DeEsser ? "DRAG THE FREQUENCY MARKER  /  USE THRESHOLD, REDUCTION AND RELEASE BELOW" :
                   type==SkellPresetAudioProcessor::ExternalVST3
                     ? juce::String("HOSTED VST3  /  INLINE EDITOR OR OPEN PLUGIN UI")
                   : (type==SkellPresetAudioProcessor::StudioLimiterFX && limiterPage==1) ||
                     (type==SkellPresetAudioProcessor::StudioDelayFX && delayPage!=0) ||
                     (type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage!=0)
                     ? juce::String("GRAPH READ-ONLY ON THIS PAGE  /  USE IN-PANEL CONTROLS")
-                    : gestureHint,{30,386,700,17},10,Theme::muted);
+                    : effectDetail.isNotEmpty()?effectDetail:effectTitle.isNotEmpty()?effectTitle:gestureHint,
+                    {30,386,838,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {
     const int type=processor.slotType(slot);
@@ -3760,7 +3748,11 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
     // Adlib graphs visualize control responses and do not edit invisible XY axes.
     if(type>=SkellPresetAudioProcessor::AdlibChop &&
        type<=SkellPresetAudioProcessor::AdlibSaturate)return;
-    if(type==SkellPresetAudioProcessor::EQ){
+    if(type==SkellPresetAudioProcessor::DeEsser){
+        const float x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
+        const float frequency=20.f*std::pow(1000.f,x);
+        processor.setSlotParam(slot,0,juce::jlimit(0.f,1.f,(frequency-3500.f)/8000.f));
+    } else if(type==SkellPresetAudioProcessor::EQ){
         const auto x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
         const auto y=juce::jlimit(-1.f,1.f,(254.f-point.y)/103.f);
         const float freq=20.f*std::pow(1000.f,x);
@@ -4031,29 +4023,11 @@ void SlotEditor::mouseDoubleClick(const juce::MouseEvent& e){
     if(draggingGraph)mouseUp(e);
     addStudioEqNodeAt(e.position);
 }
-void SlotEditor::mouseMove(const juce::MouseEvent& e) {
-    const bool hovered=processor.slotType(slot)!=
-        SkellPresetAudioProcessor::ExternalVST3 &&
-        homeReturnBounds().contains(e.getPosition());
-    if(homeHover!=hovered){
-        homeHover=hovered;
-        repaint(homeReturnBounds().expanded(2));
-    }
-    setMouseCursor(hovered?juce::MouseCursor::PointingHandCursor:
-                           juce::MouseCursor::NormalCursor);
-}
-void SlotEditor::mouseExit(const juce::MouseEvent&) {
-    if(homeHover){homeHover=false;repaint(homeReturnBounds().expanded(2));}
-    setMouseCursor(juce::MouseCursor::NormalCursor);
-}
+void SlotEditor::mouseMove(const juce::MouseEvent&) {setMouseCursor(juce::MouseCursor::NormalCursor);}
+void SlotEditor::mouseExit(const juce::MouseEvent&) {setMouseCursor(juce::MouseCursor::NormalCursor);}
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
     if(e.mods.isPopupMenu() && type!=SkellPresetAudioProcessor::StudioEQFX)return;
-    if(type!=SkellPresetAudioProcessor::ExternalVST3 &&
-       e.mods.isLeftButtonDown() && !e.mods.isPopupMenu() && homeReturnBounds().contains(e.getPosition())) {
-        if(onBackgroundClick)onBackgroundClick();
-        return;
-    }
     if(eqNodeMenu.isVisible()){eqNodeMenu.close();return;}
     if(vocalFeelStyles.isVisible()){vocalFeelStyles.close();return;}
     // A read-only analyzer must not silently edit the return parameters.
@@ -4146,6 +4120,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
     } else {
         gestureEqBand=-1;
         for(int param:{1,2})
+            if(type!=SkellPresetAudioProcessor::DeEsser || param==1)
             if(auto*p=processor.state.getParameter("s"+juce::String(slot+1)+
                                                   "_p"+juce::String(param)))
                 p->beginChangeGesture();
@@ -4170,7 +4145,7 @@ void SlotEditor::endGraphGesture(){
         if(auto* p=processor.state.getParameter(prefix+juce::String(gestureSuiteParameter+1)))
             p->endChangeGesture();
     } else {
-        for(int k=0;k<2;++k){
+        for(int k=0;k<(gestureType==SkellPresetAudioProcessor::DeEsser?1:2);++k){
             const int param=gestureEqBand>=0?gestureEqBand*2+k+1:k+1;
             if(auto* p=processor.state.getParameter(prefix+juce::String(param)))
                 p->endChangeGesture();
@@ -4224,6 +4199,13 @@ bool SlotEditor::testAllNativeEffectLayoutsForTest() {
         processor.setSlotType(probeSlot,type);
         processor.setSlotOn(probeSlot,type!=SkellPresetAudioProcessor::Empty);
         select(probeSlot);
+        if(type==SkellPresetAudioProcessor::DeEsser){
+            const float threshold=processor.getSlotParam(probeSlot,1);
+            const float x=33.f+835.f*std::log(6000.f/20.f)/std::log(1000.f);
+            updateGraphNode({x,220.f});
+            clean=clean && std::abs(processor.getSlotParam(probeSlot,0)-.3125f)<.002f &&
+                std::abs(processor.getSlotParam(probeSlot,1)-threshold)<.0001f;
+        }
         const bool geometryOK=testIntegratedEffectLayout();
         const bool popupsOK=testPopupLayoutsForTest();
         if(!geometryOK || !popupsOK){

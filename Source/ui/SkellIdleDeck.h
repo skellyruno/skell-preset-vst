@@ -59,6 +59,7 @@ public:
         // Smooth the measured animation on the UI timer, not during paint.
         // Fast attack and gentler release avoid flickering between frames.
         activityLevel=followActivity(activityLevel,target);
+        crowdPhase=std::fmod(crowdPhase+.055f+.13f*activityLevel,juce::MathConstants<float>::twoPi);
     }
     static float followActivity(float previous,float next) noexcept {
         previous=std::isfinite(previous)?juce::jlimit(0.f,1.f,previous):0.f;
@@ -125,9 +126,9 @@ public:
         out.scope={margin,h-bottom-scopeHeight,
                    juce::jmax(1.f,w-2.f*margin),scopeHeight};
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
-            (w-2.f*margin)/345.f,(out.scope.getY()-22.f)/390.f));
+            (w-2.f*margin)/345.f,(out.scope.getY()-22.f-(h>=350.f?juce::jmin(52.f,h*.10f):0.f))/390.f));
         out.originX=w*.5f-151.f*out.scale;
-        const float spare=juce::jmax(0.f,out.scope.getY()-22.f-390.f*out.scale);
+        const float spare=juce::jmax(0.f,out.scope.getY()-22.f-(h>=350.f?juce::jmin(52.f,h*.10f):0.f)-390.f*out.scale);
         out.originY=juce::jmax(10.f,22.f+(1.f-out.scale)*3.f+spare*.44f);
         out.valid=out.originX>0.f && out.originX+290.f*out.scale<=w &&
             out.scope.getY()>out.originY+377.f*out.scale &&
@@ -491,6 +492,48 @@ public:
             g.drawLine(187.f,45.f,193.f,69.f,1.f);
         }
 
+        // Two tiers of cheering skeletons viewed from behind; existing UI telemetry drives sway.
+        {
+            juce::Graphics::ScopedSaveState saved(g);g.reduceClipRegion(stageBounds.toNearestInt());
+            const float pitTop=horizon+4.f*stage.scale,pitBottom=stageBounds.getBottom();
+            const float depth=juce::jmax(0.f,pitBottom-pitTop);
+            if(depth>8.f){
+                g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(.65f),centreX,pitTop,
+                    Theme::bg,centreX,pitBottom,false));
+                g.fillRect(stageBounds.getX(),pitTop,stageBounds.getWidth(),depth);
+                for(int layer=0;layer<2;++layer){
+                    const int people=layer==0?16:12;
+                    const float base=pitTop+depth*(layer==0?.64f:1.16f);
+                    const float unit=juce::jmin(stage.scale*(layer==0?.55f:.78f),depth/(layer==0?57.f:45.f));
+                    for(int i=0;i<people;++i){
+                        const float x=stageBounds.getX()+stageBounds.getWidth()*(i+.5f+(layer?.18f:0.f))/people;
+                        const float sway=live?std::sin(crowdPhase+(float)i*1.47f+layer)*activity*3.f*unit:0.f;
+                        const float headY=base-(30.f+(float)(i%3)*2.5f)*unit+sway;
+                        const auto boneColour=porcelain.withAlpha(layer==0?.23f:.40f);
+                        const auto edge=Theme::bg.withAlpha(.94f);
+                        const float r=8.f*unit;
+                        g.setColour(edge);g.fillEllipse(x-r-1.f,headY-r-1.f,2.f*r+2.f,2.f*r+2.f);
+                        g.setGradientFill(juce::ColourGradient(boneColour,x-r,headY-r,boneColour.darker(.65f),x+r,headY+r,false));
+                        g.fillEllipse(x-r,headY-r,2.f*r,2.f*r);
+                        g.setColour(boneColour);g.drawLine(x,headY+r,x,base,2.8f*unit);
+                        for(int rib=0;rib<3;++rib)g.drawEllipse(x-8.f*unit,headY+(13.f+rib*4.f)*unit,16.f*unit,5.f*unit,1.2f*unit);
+                        for(int side:{-1,1}){
+                            const float sign=(float)side;
+                            const float sx=x+sign*8.f*unit,sy=headY+13.f*unit;
+                            const float ex=x+sign*(14.f+(float)((i+side+3)%3)*2.f)*unit;
+                            const float ey=headY+(2.f+(float)((i+layer)%3)*2.f)*unit;
+                            const float hx=ex+sign*(4.f+(float)(i%2)*3.f)*unit;
+                            const float hy=ey-(14.f+(float)(i%4)*2.f)*unit+sway;
+                            g.setColour(edge);g.drawLine(sx,sy,ex,ey,4.f*unit);g.drawLine(ex,ey,hx,hy,4.f*unit);
+                            g.setColour(boneColour);g.drawLine(sx,sy,ex,ey,2.f*unit);g.drawLine(ex,ey,hx,hy,2.f*unit);
+                            g.fillEllipse(hx-2.8f*unit,hy-3.f*unit,5.6f*unit,5.6f*unit);
+                        }
+                    }
+                }
+                g.setColour(accent.withAlpha(.12f+.08f*activity));
+                g.drawHorizontalLine(juce::roundToInt(pitTop),stageBounds.getX(),stageBounds.getRight());
+            }
+        }
         // The trace and bone illumination are directly audio-reactive;
         // nothing is a fake spectrum or prerecorded animation.
         const auto scope=stage.scope;
@@ -546,6 +589,6 @@ private:
     SkellPresetAudioProcessor& processor;
     bool audioFresh=false;
     MeterEnvelope inputMeter,outputMeter;
-    float activityLevel=0.f;
+    float activityLevel=0.f,crowdPhase=0.f;
     std::array<float,128> cachedSignal{};
 };

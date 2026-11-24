@@ -11,6 +11,9 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void placeWithin(juce::Rectangle<int> usable,juce::Rectangle<int> preferred);
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
@@ -39,12 +42,12 @@ public:
         // seed%5 indexed a four-colour palette out of bounds for 4/9/44...
         return (seed<0?0:seed)%4;
     }
-    static bool presetCardHitForTest(bool editing,int x,int y,int width) noexcept {
+    static bool presetCardHitForTest(bool editing,int x,int y,int width,int rows=6) noexcept {
         // Each visible card is 56px tall, 61px apart. The five-pixel gaps
         // are never click-to-load regions, nor is the Edit Details overlay.
         const int relative=y-110;
         return !editing && x>=207 && x<width-17 &&
-               relative>=0 && relative<6*61 && relative%61<56;
+               relative>=0 && relative<rows*61 && relative%61<56;
     }
     void loadFactoryForHistoryTest(int index) {loadFactoryFromBrowser(index);}
     juce::File historySelection() const {return activeUserPreset;}
@@ -119,6 +122,14 @@ private:
     bool saveCustomCategories() const;
     void refreshGenreChoices();
     void refreshArtistChoices();
+    int visibleRows() const noexcept {return juce::jlimit(6,7,(getHeight()-153)/61);}
+    bool userPlaced=false,draggingWindow=false,resizingWindow=false;
+    juce::Rectangle<int> usableBounds,gestureStartBounds;
+    juce::Point<int> windowGestureStart;
+    juce::Rectangle<int> constrainWindow(juce::Rectangle<int>) const;
+    bool showVocalTabs() const;
+    void syncVocalTabs();
+    std::array<juce::TextButton,3> vocalTabs;
     void resetResults();
     struct DirectoryCard {juce::String label;int id=0,main=0,adlib=0,other=0,artIndex=-1;};
     enum class DirectoryMode { none,genres,tiers,artists };

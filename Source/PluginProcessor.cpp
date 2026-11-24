@@ -971,9 +971,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         for(int n=0;n<frames;++n) {
             const float l=std::isfinite(inL[n])?inL[n]:0.f;
             const float r=inR&&!monoSource?(std::isfinite(inR[n])?inR[n]:0.f):l;
-            inPeak=std::max(inPeak,std::max(std::abs(l),std::abs(r)));
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
+            inPeak=std::max(inPeak,std::max(std::abs(preL),std::abs(preR)));
             const float gateWet=micGateWet.getNextValue();
             float frontL=preL,frontR=preR;
             // Stereo-linked microphone gate runs before mic coloration.
@@ -993,9 +993,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const auto original=bypassPdc.process(l,r,blockLatency);
             // Real pre-rack input spectrum; no fabricated energy curves.
             liveSpectrumInput.push(frontL,frontR);
-            // Front-end tone is upstream of the rack AND its wet/dry blend.
-            // Full bypass still returns the original DAW signal unchanged.
-            const auto dry=dryPdc.process(frontL,frontR,blockLatency);
+            // Global Mix blends the latency-aligned original input against
+            // the full input-gain/mic/rack path; output gain follows the blend.
+            const auto dry=dryPdc.process(l,r,blockLatency);
             rackWork.setSample(0,n,frontL);rackWork.setSample(1,n,frontR);
             sidechainWork.setSample(0,n,frontL);
             sidechainWork.setSample(1,n,frontR);

@@ -101,13 +101,6 @@ public:
         // microphone trigger at the top right of the effect rack.
         micButton.setVisible(false);
         chain.onMicRequest=[this] {if(micButton.onClick)micButton.onClick();};
-        match.setButtonText("MATCH");style(match);addAndMakeVisible(match);
-        match.onClick=[this]{
-            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,"MATCH | DEVELOPMENT STAGE",
-                "The deterministic MATCH alignment + level test harness is implemented and passing. "
-                "Dry/Wet WAV file capture, optimization, and full-chain reconstruction are not yet wired into this editor. "
-                "No match percentage is claimed for real vocal material.","OK");
-        };
         // One view-switch control plus one independent bypass toggle.
         style(viewSwitch);style(powerButton);
         addAndMakeVisible(viewSwitch);addAndMakeVisible(powerButton);
@@ -361,8 +354,8 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(juce::TextButton* b:std::array<juce::TextButton*,10>{{
-            &preset,&match,&viewSwitch,&undo,&redo,&powerButton,&help,&settings,&record,&micButton}})
+        for(juce::TextButton* b:std::array<juce::TextButton*,9>{{
+            &preset,&viewSwitch,&undo,&redo,&powerButton,&help,&settings,&record,&micButton}})
             style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
@@ -478,7 +471,7 @@ public:
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
-        const std::array<const juce::Component*,13> all{{&themeButton,&preset,&match,
+        const std::array<const juce::Component*,12> all{{&themeButton,&preset,
             &viewSwitch,&powerButton,&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
@@ -497,8 +490,8 @@ public:
            || std::abs(input.valueFromTextFunction("50%"))>1.e-5
            || std::abs(input.valueFromTextFunction("+6 dB")-6.)>1.e-5)
             issues.add("Master rotary readout or legacy percent input incorrectly maps physical dB");
-        const std::array<const juce::Component*,7> top{{
-            &preset,&match,&viewSwitch,&undo,&redo,&settings,&powerButton}};
+        const std::array<const juce::Component*,6> top{{
+            &preset,&viewSwitch,&undo,&redo,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -535,8 +528,8 @@ public:
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
             issues.add("Mode visibility did not match the requested workspace");
         for(const auto* master:{&input,&mix,&output})
-            if(master->isVisible()==advanced)
-                issues.add("Input/Mix/Output are not restricted to Simple mode");
+            if(!master->isVisible())
+                issues.add("Input/Mix/Output must be available in both workspaces");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
         if(powerButton.isBypassed()!=(current==3))
             issues.add("Power indicator disagrees with host bypass state");
@@ -654,7 +647,7 @@ public:
         if(!testMeterBallistics())
             issues.add("Input/output -60dBFS meter scale, attack, release or NaN guard regressed");
         if(!slot.testHomeReturnHitZonesForTest())
-            issues.add("VISUAL return hit area overlaps effect title, graph, knobs or power");
+            issues.add("Removed VISUAL control still has an active hit target");
         if(!testEmptyGapReturnRegions())
             issues.add("Blank gap/top/bottom Home return zones leak into module or rack controls");
         if(!browser.testBrowserKeyboardForTest())
@@ -712,8 +705,8 @@ public:
         };
         const bool automated=correctState();
         viewSwitch.onClick();
-        const bool hiddenInAdvanced=!input.isVisible() && !mix.isVisible() &&
-            !output.isVisible() && correctState();
+        const bool shownInAdvanced=input.isVisible() && mix.isVisible() &&
+            output.isVisible() && correctState();
         viewSwitch.onClick();
         const bool recalled=input.isVisible() && mix.isVisible() && output.isVisible() &&
             correctState() && std::abs(input.getValue()-3.0)<.05 &&
@@ -721,7 +714,7 @@ public:
         input.setValue(oldMasters[0],juce::sendNotificationSync);
         mix.setValue(oldMasters[1],juce::sendNotificationSync);
         output.setValue(oldMasters[2],juce::sendNotificationSync);
-        if(!simpleShown || !automated || !hiddenInAdvanced || !recalled)
+        if(!simpleShown || !automated || !shownInAdvanced || !recalled)
             issues.add("Simple Input/Mix/Output visibility or automation recall regressed");
         for(int i=0;i<4;++i) {
             if(!macro[(size_t)i].isVisible()
@@ -1132,19 +1125,19 @@ public:
         wordmark.draw(g,juce::Rectangle<float>(75.f,9.f,271.f,38.f));
         // The new tagline lives directly under SKELLPRESET, rather than
         // fighting the old waveform strip for the same 14 px.
-        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{76,54,190,14},
-                    10.3f,Theme::muted,true);
+        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{75,46,230,17},
+                    11.f,Theme::muted,true,juce::Justification::centredLeft);
         // UI edition marker belongs with the title, not an isolated LIVE
         // badge. Binary package version stays 0.7.0 for old host projects.
         // Tuck the UI edition marker immediately under the final T in
         // PRESET; the actual VST3 binary version stays unchanged.
-        Theme::text(g,"v.01",{230,43,45,12},9.5f,
+        Theme::text(g,"v.01",{310,15,42,15},9.5f,
                     Theme::green.withAlpha(.83f),true);
-        Theme::text(g,"PRESET",{356,12,332,14},10,Theme::muted,true);
+        Theme::text(g,"PRESET",{431,12,349,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
         Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
-                    {695,12,91,14},9,Theme::muted,true);
+                    {796,12,176,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withMultipliedBrightness(.88f),0.f,635.f,
@@ -1152,8 +1145,7 @@ public:
         g.fillRect(0,635,Theme::width,53);
         g.setColour(Theme::white.withAlpha(.055f));
         g.drawHorizontalLine(636,12.f,(float)Theme::width-12.f);
-        const int masterMode=(int)processor.state.getRawParameterValue("mode")->load();
-        if(masterMode==0 || (masterMode==3 && previousMode==0)) {
+        {
             g.setColour(Theme::stroke.withAlpha(.50f));
             g.drawVerticalLine(801,644.f,681.f);
         }
@@ -1175,10 +1167,7 @@ public:
         }
         // Hardware dials show the true physical gain and mix readouts.
         // The actual gain stages operate in dB; only dry/wet uses %.
-        const int currentView=(int)processor.state.getRawParameterValue("mode")->load();
-        const bool masterControlsInSimple=(currentView==0 ||
-            (currentView==3 && previousMode==0));
-        if(masterControlsInSimple) {
+        {
         static constexpr const char* masterNames[]{"INPUT","MIX","OUTPUT"};
         const float values[]{(float)input.getValue(),(float)mix.getValue(),
                              (float)output.getValue()};
@@ -1309,8 +1298,7 @@ public:
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
-        preset.setBounds(356,27,332,39);
-        match.setBounds(696,27,87,37);
+        preset.setBounds(431,27,349,37);
         viewSwitch.setBounds(796,27,176,37);
         // Bounded message-thread preset history in the top bar.
         // The two small actions never obscure the Power / Settings group.
@@ -1337,17 +1325,17 @@ public:
         input.setBounds(810,642,45,40);
         mix.setBounds(926,642,45,40);
         output.setBounds(1042,642,45,40);
-        // Keep published input/mix/output APVTS values active in both modes,
-        // but expose their studio gain staging only in the Simple workspace.
+        // Keep the original APVTS master controls available in both modes.
         for(auto* control:{&input,&mix,&output})
-            control->setVisible(display==0);
+            control->setVisible(true);
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1110,28,36,36);
         settingsPanel.setBounds(743,78,388,326);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
         // Keep the rack unobstructed when the user docks it on the right.
-        browser.setBounds(rackOnRight?76:445,77,650,538);
+        browser.placeWithin(juce::Rectangle<int>(8,76,Theme::width-16,Theme::height-84),
+                            {rackOnRight?76:445,77,650,538});
         bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
                               display==0?1140:906,display==0?507:535);
     }
@@ -1375,7 +1363,7 @@ public:
             s.setAlpha(bypass?.35f:1.f);
         }
         for(auto* s:{&input,&mix,&output}) {
-            s->setVisible(display==0);
+            s->setVisible(true);
             s->setEnabled(!bypass);
             s->setAlpha(bypass?.35f:1.f);
         }
@@ -1635,7 +1623,7 @@ private:
     int lastRecordingState=-1;
     unsigned lastScopeSampleCount=~0u;
     unsigned lastScopeFrameTimeMs=0u;
-    SkellActionButton preset,match,undo,redo,help,record,micButton;
+    SkellActionButton preset,undo,redo,help,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;

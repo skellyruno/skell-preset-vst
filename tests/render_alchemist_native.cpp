@@ -733,7 +733,99 @@ int percentDisplaySmoke(){
     return 0;
 }
 
+int masterSignalSmoke(){
+    // Render deterministic, stereo, same-input vectors through the real processor.
+    // Exercise host-notified APVTS values after prepare; skip the 20 ms ramp
+    // for steady-state comparisons, while separately measuring ramp continuity.
+    constexpr int blockSize=256,blocks=28,settle=12;
+    constexpr double sr=48000.;
+    auto source=[](int n,int ch){
+        return (ch==0?1.f:.73f)*(.075f*(float)std::sin(2.*juce::MathConstants<double>::pi*713.*n/sr)
+               +.022f*(float)std::sin(2.*juce::MathConstants<double>::pi*1741.*n/sr));
+    };
+    struct Render {std::vector<float> output,original;int latency=0;bool finite=true;};
+    auto render=[&](int mode,int factory,float input,float mix,float output){
+        Render result;
+        auto p=std::make_unique<SkellPresetAudioProcessor>();
+        if(factory>=0)p->loadFactoryPreset(factory);else p->clearRackToEmpty();
+        setProcessorParameter(*p,"mode",(float)mode);
+        setProcessorParameter(*p,"micGateOn",0.f);setProcessorParameter(*p,"micPreOn",0.f);
+        setProcessorParameter(*p,"delta",0.f);
+        setProcessorParameter(*p,"input",0.f);setProcessorParameter(*p,"mix",1.f);setProcessorParameter(*p,"output",0.f);
+        p->prepareToPlay(sr,blockSize);
+        result.latency=p->getLatencySamples();
+        setProcessorParameter(*p,"input",input);setProcessorParameter(*p,"mix",mix);setProcessorParameter(*p,"output",output);
+        juce::AudioBuffer<float> audio(2,blockSize);juce::MidiBuffer midi;
+        for(int b=0;b<blocks;++b){
+            for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n)audio.setSample(ch,n,source(b*blockSize+n,ch));
+            p->processBlock(audio,midi);
+            if(b<settle)continue;
+            for(int n=0;n<blockSize;++n)for(int ch=0;ch<2;++ch){
+                const float sample=audio.getSample(ch,n);
+                result.finite=result.finite && std::isfinite(sample);
+                result.output.push_back(sample);
+                result.original.push_back(source(b*blockSize+n-result.latency,ch));
+            }
+        }
+        p->releaseResources();
+        return result;
+    };
+    auto error=[](const std::vector<float>& a,const std::vector<float>& b,double scale=1.){
+        if(a.size()!=b.size() || a.empty())return 1.e9;
+        double peak=0.;for(size_t i=0;i<a.size();++i)peak=std::max(peak,std::abs((double)a[i]-scale*b[i]));
+        return peak;
+    };
+    auto rms=[](const std::vector<float>& a){
+        double sum=0.;for(float x:a)sum+=(double)x*x;
+        return a.empty()?0.:std::sqrt(sum/a.size());
+    };
+    constexpr int factory=skellpreset::alchemist::factoryIndex;
+    for(int mode:{0,1}){
+        const auto unity=render(mode,-1,0.f,1.f,0.f);
+        const auto in=render(mode,-1,6.f,1.f,0.f);
+        const auto out=render(mode,-1,0.f,1.f,-6.f);
+        const auto dry=render(mode,factory,6.f,0.f,0.f);
+        const auto wet=render(mode,factory,6.f,1.f,0.f);
+        const auto middle=render(mode,factory,6.f,.5f,0.f);
+        auto expected=wet.output;
+        for(size_t i=0;i<expected.size();++i)expected[i]=.5f*(wet.output[i]+dry.output[i]);
+        const double inDb=20.*std::log10(rms(in.output)/rms(unity.output));
+        const double outDb=20.*std::log10(rms(out.output)/rms(unity.output));
+        const double dryError=error(dry.output,dry.original),blendError=error(middle.output,expected);
+        const double wetDiff=error(wet.output,dry.output);
+        std::printf("MASTER_RENDER mode=%d input=%+.3f dB output=%+.3f dB dry_error=%.8g blend_error=%.8g wet_difference=%.8g latency=%d samples\n",
+            mode,inDb,outDb,dryError,blendError,wetDiff,wet.latency);
+        if(!unity.finite || !in.finite || !out.finite || !dry.finite || !wet.finite || !middle.finite ||
+           std::abs(inDb-6.)>.03 || std::abs(outDb+6.)>.03 || dryError>2.e-5 ||
+           blendError>2.e-4 || wetDiff<.001 || wet.latency!=dry.latency)return 93;
+    }
+    auto p=std::make_unique<SkellPresetAudioProcessor>();p->clearRackToEmpty();
+    setProcessorParameter(*p,"mode",1.f);setProcessorParameter(*p,"input",0.f);
+    setProcessorParameter(*p,"mix",1.f);setProcessorParameter(*p,"output",0.f);
+    p->prepareToPlay(sr,blockSize);
+    juce::AudioBuffer<float> audio(2,blockSize);juce::MidiBuffer midi;
+    float previous=.1f;double maxStep=0.;
+    setProcessorParameter(*p,"input",6.f);
+    for(int b=0;b<8;++b){
+        for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n)audio.setSample(ch,n,.1f);
+        p->processBlock(audio,midi);
+        for(int n=0;n<blockSize;++n){const float sample=audio.getSample(0,n);maxStep=std::max(maxStep,(double)std::abs(sample-previous));previous=sample;}
+    }
+    p->releaseResources();
+    std::printf("MASTER_RENDER input automation max sample step=%.8g final=%.8g\n",maxStep,previous);
+    if(maxStep>.002 || std::abs(previous-.1f*std::pow(10.f,6.f/20.f))>.001f)return 94;
+    setProcessorParameter(*p,"mix",.37f);setProcessorParameter(*p,"output",-3.f);
+    juce::MemoryBlock state;p->getStateInformation(state);
+    auto restored=std::make_unique<SkellPresetAudioProcessor>();
+    restored->setStateInformation(state.getData(),(int)state.getSize());
+    if(std::abs(restored->state.getRawParameterValue("input")->load()-6.f)>.02f ||
+       std::abs(restored->state.getRawParameterValue("mix")->load()-.37f)>.002f ||
+       std::abs(restored->state.getRawParameterValue("output")->load()+3.f)>.02f)return 95;
+    std::puts("PASS: master gain, dry/wet interpolation, automation smoothing, PDC and state recall");
+    return 0;
+}
 int studioSmoke() {
+    if(const int masterResult=masterSignalSmoke())return masterResult;
     // Host automation of newly appended parameters must change Empty Rack's
     // program identity to Custom Rack, just like every legacy control.
     // This regression exercises the registered APVTS listeners directly.
@@ -2218,6 +2310,7 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--smoke-slot-order")return strictSlotOrderSmoke();
     if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
     if(argc==2 && juce::String(argv[1])=="--studio-smoke")return studioSmoke();
+    if(argc==2 && juce::String(argv[1])=="--master-signal-smoke")return masterSignalSmoke();
     if(argc==2 && juce::String(argv[1])=="--native-trials-smoke")return nativeTrialsSmoke();
     if(argc==2 && juce::String(argv[1])=="--lowend-override-smoke")return lowEndOverrideSmoke();
     if(argc==2 && juce::String(argv[1])=="--percent-smoke")return percentDisplaySmoke();

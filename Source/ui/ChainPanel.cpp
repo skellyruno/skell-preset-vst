@@ -380,11 +380,8 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
-    Theme::fittedText(g,moveNotice.isNotEmpty()?moveNotice:
-        juce::String("FX WHEEL: MOVE  /  SIDE: SCROLL"),
-        {10,511,200,18},9.8f,
-        moveNotice.isNotEmpty()?Theme::green:Theme::muted,false,
-        juce::Justification::centred);
+    // Reordering remains available through gestures and the context menu.
+    // The visible FX movement/status strip is intentionally removed.
     if(contextOpen) {
         const auto bounds=juce::Rectangle<float>(7.f,(float)contextTop,202.f,218.f);
         g.setColour(Theme::bg.withAlpha(.98f));g.fillRoundedRectangle(bounds,8.f);
