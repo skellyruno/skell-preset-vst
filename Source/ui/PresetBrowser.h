@@ -60,7 +60,9 @@ public:
 private:
     SkellPresetAudioProcessor& processor;
     juce::TextEditor search,artistEditor,categoryEditor;
-    juce::ComboBox genrePicker,genreFilter,sortPicker;
+    juce::ComboBox genrePicker,genreFilter,sortPicker,artistTierFilter,artistFilter,typeFilter,tierEditor,typeEditor;
+    juce::TextEditor pairEditor;
+    juce::TextButton metadataButton{"SAVE ORGANIZATION"},relatedButton{"MATCHING PRESETS"};
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
         artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
         genreButton{"TAG"},detailsButton{"EDIT DETAILS"},
@@ -76,7 +78,7 @@ private:
         hoveredBank=-1;
     bool hoveredAdlibs=false;
     float browserWheelCarry=0.f;
-    std::array<int,4> categoryCounts{};
+    std::array<int,5> categoryCounts{};
     bool categoryCountsDirty=true;
     void refreshCategoryCounts();
     bool detailsOpen=false;
@@ -116,6 +118,19 @@ private:
     void loadCustomCategories();
     bool saveCustomCategories() const;
     void refreshGenreChoices();
+    void refreshArtistChoices();
+    void resetResults();
+    juce::StringArray organizationKeys,organizationValues;
+    juce::File organizationFile() const;
+    juce::String organizationValue(const juce::String& key) const;
+    void setOrganizationValue(const juce::String& key,const juce::String& value);
+    void loadOrganization();
+    bool saveOrganization() const;
+    juce::String vocalType(int index) const;
+    juce::String artistTier(const juce::String& artist) const;
+    juce::String pairForUser(int index) const;
+    int activeUserIndex() const;
+    void refreshOrganizationEditor();
     bool isKnownCategory(const juce::String& label) const;
     juce::File libraryDirectory() const;
     juce::File activeArtworkDestination() const;
