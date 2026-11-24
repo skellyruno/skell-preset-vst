@@ -49,6 +49,7 @@ int main(){
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(44).name)=="Vocal Feel Suite");
 
     LiveAudioScope scope;
+    static_assert(sizeof(scope.samplesCaptured())>=8,"Long-session capture cursor must be 64-bit");
     std::array<float,128> display{};
     scope.snapshot(display);
     for(float s:display)SKELL_REQUIRE(s==0.f); // no fake/animated waveform
@@ -138,6 +139,14 @@ int main(){
     mono.push(left.data(),nullptr,(int)left.size());
     mono.snapshot(a);
     for(float x:a)SKELL_REQUIRE(x==-.7f);
-    std::puts("PASS: effect registry, actual audio scope, block partition invariance, invalid samples and ring wrap");
+    // Full ring, small snapshot and a zero-length read must retain the
+    // newest sample without indexing outside the actual captured history.
+    std::array<float,LiveAudioScope::capacity> full{};
+    std::array<float,1> one{};
+    std::array<float,0> none{};
+    mono.snapshot(full);mono.snapshot(one);mono.snapshot(none);
+    for(float v:full)SKELL_REQUIRE(v==-.7f);
+    SKELL_REQUIRE(one[0]==full.back());
+    std::puts("PASS: effect registry, 64-bit actual audio scope, block partition invariance, invalid samples and ring wrap");
     return 0;
 }

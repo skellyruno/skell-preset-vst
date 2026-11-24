@@ -20,8 +20,8 @@ public:
     }
     void push(const float* left,const float* right,int samples) noexcept {
         if(!left||samples<=0)return;
-        const unsigned before=count.load(std::memory_order_relaxed);
-        unsigned cursor=before;
+        const std::uint64_t before=count.load(std::memory_order_relaxed);
+        std::uint64_t cursor=before;
         // Jump directly to capture events. For a 512-sample block this
         // executes eight iterations, not 512, with identical sample phase.
         // The published mono trace is independent of host block splitting.
@@ -42,16 +42,16 @@ public:
     void snapshot(std::array<float,N>& output) const noexcept {
         static_assert(N<=capacity);
         const auto end=count.load(std::memory_order_acquire);
-        for(unsigned i=0;i<N;++i){
+        for(std::size_t i=0;i<N;++i){
             const auto prior=N-i;
             const auto offset=end>=prior?end-prior:0;
             output[i]=end>=prior?data[offset%capacity].load(std::memory_order_relaxed):0.f;
         }
     }
-    unsigned samplesCaptured() const noexcept {return count.load(std::memory_order_acquire);}
+    std::uint64_t samplesCaptured() const noexcept {return count.load(std::memory_order_acquire);}
 private:
     std::array<std::atomic<float>,capacity> data{};
-    std::atomic<unsigned> count{0};
+    std::atomic<std::uint64_t> count{0};
     int phase=0; // audio thread only
 };
 }

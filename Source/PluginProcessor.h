@@ -118,7 +118,7 @@ public:
     }
     // Audio producer progress is lock-free; the editor can avoid repainting
     // an unchanged waveform while FL Studio's transport is idle.
-    unsigned liveScopeSampleCount() const noexcept {return liveScope.samplesCaptured();}
+    std::uint64_t liveScopeSampleCount() const noexcept {return liveScope.samplesCaptured();}
     void getLiveSpectrumInput(
         std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity>& samples) const noexcept {
         liveSpectrumInput.snapshot(samples);

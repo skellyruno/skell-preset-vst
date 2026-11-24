@@ -74,8 +74,22 @@ int main(int argc,char** argv) {
         && index.filter("ADLIB").size()==1
         && index.filter("not-present").empty()
         && index.filter("DoNotDiscover").empty();
+    // Queue capacity must not discard all folders already admitted.
+    // Make one bundle in each of 520 folders; the root occupies one slot.
+    const auto capped=root.getChildFile("CapFixture");
+    bool created=capped.createDirectory().wasOk();
+    for(int i=0;i<520 && created;++i){
+        const auto dir=capped.getChildFile("Group-"+juce::String(i));
+        created=dir.getChildFile("Unique-"+juce::String(i)+".vst3").createDirectory().wasOk();
+    }
+    juce::Array<juce::File> capRoots;capRoots.add(capped);
+    index.start(capRoots);index.step(1);
+    const bool continued=!index.finished() && index.truncated();
+    for(int pass=0;pass<600 && !index.finished();++pass)index.step(1);
+    const bool capValid=created && continued && index.finished() &&
+        index.truncated() && index.entries().size()==511;
     root.deleteRecursively();
-    if(!valid){
+    if(!valid || !capValid){
         std::fprintf(stderr,"Installed VST3 bundle discovery/search regression\n");
         return 13;
     }

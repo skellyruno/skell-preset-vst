@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
+#include "../chain/MicModelDSP.h"
 #include "Theme.h"
 #include <array>
 #include <cmath>
@@ -279,8 +280,12 @@ public:
         }
         amount.setSliderStyle(juce::Slider::LinearHorizontal);
         amount.setTextBoxStyle(juce::Slider::TextBoxRight,false,58,20);
+        amount.setDoubleClickReturnValue(true,1.);
+        amount.setTooltip("Strength of the source-to-target tonal correction");
         trim.setSliderStyle(juce::Slider::LinearHorizontal);
         trim.setTextBoxStyle(juce::Slider::TextBoxRight,false,64,20);
+        trim.setDoubleClickReturnValue(true,.5);
+        trim.setTooltip("Output trim, -6 to +6 dB; double-click for unity");
         addAndMakeVisible(amount);
         addAndMakeVisible(trim);
         amountLink=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -300,6 +305,7 @@ public:
             return juce::jlimit(0.,1.,(t.getDoubleValue()+6.)/12.);
         };
         amount.updateText();trim.updateText();
+        amount.onValueChange=[this]{if(isVisible())repaint();};
         refresh();
         showPage(false);
         setVisible(false);
@@ -357,6 +363,7 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override {
         if(resizing) {
             if(auto* parent=getParentComponent()){
+                if(parent->getWidth()<324 || parent->getHeight()<320)return;
                 const int w=juce::jlimit(312,juce::jmin(440,parent->getWidth()-12),
                     resizeStart.getWidth()+e.getDistanceFromDragStartX());
                 const int h=juce::jlimit(308,juce::jmin(400,parent->getHeight()-12),
@@ -507,7 +514,7 @@ public:
         Theme::panelBox(g,getLocalBounds().toFloat(),10.f);
         g.setColour(Theme::green.withAlpha(.62f));
         g.fillRoundedRectangle({13.f,13.f,3.f,17.f},1.f);
-        Theme::text(g,"MIC MODELING",{22,7,getWidth()-135,23},
+        Theme::fittedText(g,gatePage?"INPUT NOISE GATE":"MIC MODELING",{22,7,getWidth()-135,23},
                     13.4f,Theme::white,true);
         // The title bar itself is draggable; avoid redundant caption text
         // colliding with the source label in this compact layout.
@@ -524,8 +531,8 @@ public:
                 Theme::text(g,"RELEASE",{14,199,87,22},10.5f,
                             Theme::white,true);
             }
-            Theme::fittedText(g,"ADVANCED SETTINGS PRESERVED",
-                {13,getHeight()-17,getWidth()-26,13},8.5f,Theme::muted);
+            Theme::fittedText(g,lastGateEnabled?"GATE ON / ZERO ADDED LATENCY":"GATE BYPASSED / SETTINGS RETAINED",
+                {13,getHeight()-17,getWidth()-26,13},8.5f,lastGateEnabled?Theme::green:Theme::muted);
         } else {
         Theme::text(g,"INPUT MIC",{13,75,100,14},10.3f,Theme::muted,true);
         const juce::StringArray descriptions{
@@ -541,7 +548,33 @@ public:
         g.drawHorizontalLine(232,13.f,(float)getWidth()-13.f);
         Theme::text(g,"AMOUNT",{13,238,62,18},10.6f,Theme::white,true);
         Theme::text(g,"TRIM",{13,266,60,18},10.6f,Theme::white,true);
-        Theme::fittedText(g,"TONAL PROFILE / ZERO ADDED LATENCY",
+        if(getHeight()>=362){
+            // Extra space in the expanded panel is an actual model preview:
+            // five zone deltas, not an invented measured microphone IR.
+            const auto delta=skellpreset::dsp::MicModelTone::spectralDeltaDb(
+                juce::jlimit(0,3,lastInput),target,(float)amount.getValue());
+            const auto chart=juce::Rectangle<float>(13.f,294.f,(float)getWidth()-26.f,
+                (float)getHeight()-322.f);
+            g.setColour(Theme::plot);
+            g.fillRoundedRectangle(chart,5.f);
+            const float plotHeight=chart.getHeight()-14.f;
+            const float baseline=chart.getY()+plotHeight*.5f;
+            g.setColour(Theme::stroke);
+            g.drawLine(chart.getX()+6.f,baseline,chart.getRight()-6.f,baseline,.8f);
+            constexpr const char* zones[]{"LOW","LOW MID","MID","HIGH MID","AIR"};
+            const float span=chart.getWidth()/5.f;
+            for(int i=0;i<5;++i){
+                const float x=chart.getX()+(i+.5f)*span;
+                const float v=juce::jlimit(-10.f,10.f,delta[(size_t)i]);
+                const float d=v*(plotHeight-4.f)/20.f;
+                g.setColour((lastEnabled?Theme::green:Theme::muted).withAlpha(.72f));
+                g.fillRoundedRectangle(x-span*.20f,baseline-juce::jmax(0.f,d),
+                    span*.40f,juce::jmax(1.f,std::abs(d)),1.5f);
+                Theme::fittedText(g,zones[i],{(int)(x-span*.5f),(int)chart.getBottom()-12,
+                    (int)span,11},8.f,Theme::muted,true,juce::Justification::centred);
+            }
+        }
+        Theme::fittedText(g,lastEnabled?"TONAL PROFILE / ZERO ADDED LATENCY":"MIC MODEL BYPASSED / SETTINGS RETAINED",
             {13,getHeight()-16,getWidth()-36,12},8.1f,Theme::muted,false);
         }
         // Resize handle, intentionally inside the panel bounds.

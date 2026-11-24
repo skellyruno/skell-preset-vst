@@ -2117,30 +2117,29 @@ void SlotEditor::paint(juce::Graphics&g) {
                 {(int)card.getX()+23,(int)card.getY()+9,139,21},13,
                 chosen?Theme::green:Theme::white,true);
         }
-        const auto response=skellpreset::dsp::MicModelTone::bandDeltaDb(input,output,strength);
-        const float x1=452.f,x2=629.f,x3=840.f,base=262.f,scale=7.5f;
-        const float a=base-juce::jlimit(-8.f,8.f,response[0])*scale;
-        const float b=base-juce::jlimit(-8.f,8.f,response[1])*scale;
-        const float c=base-juce::jlimit(-8.f,8.f,response[2])*scale;
-        Theme::text(g,"TONAL PROFILE",{449,167,328,20},12,Theme::green,true);
-        g.setColour(Theme::muted.withAlpha(.40f));
-        g.drawLine(x1,base,x3,base,1.3f);
-        juce::Path curve;
-        curve.startNewSubPath(x1,a);
-        curve.cubicTo(x1+84.f,a,x2-88.f,b,x2,b);
-        curve.cubicTo(x2+99.f,b,x3-91.f,c,x3,c);
-        g.setColour(Theme::green.withAlpha(.92f));
-        g.strokePath(curve,juce::PathStrokeType(2.7f));
-        const float xs[]{x1,x2,x3},ys[]{a,b,c};
-        for(int i=0;i<3;++i) {
-            g.setColour(Theme::bg);
-            g.fillEllipse(xs[i]-4.f,ys[i]-4.f,8.f,8.f);
-            g.setColour(Theme::green);
-            g.drawEllipse(xs[i]-4.f,ys[i]-4.f,8.f,8.f,1.5f);
+        const auto response=skellpreset::dsp::MicModelTone::spectralDeltaDb(input,output,strength);
+        const auto card=juce::Rectangle<float>(439.f,191.f,410.f,147.f);
+        g.setColour(Theme::bg.withAlpha(.80f));g.fillRoundedRectangle(card,6.f);
+        g.setColour(Theme::stroke);g.drawRoundedRectangle(card,6.f,.8f);
+        Theme::text(g,"FIVE-ZONE TONAL PROFILE",{449,167,390,20},12,Theme::green,true);
+        constexpr const char* zones[]{"LOW","LOW MID","MID","HIGH MID","AIR"};
+        constexpr float base=264.f,scale=3.5f;
+        g.setColour(Theme::stroke);
+        g.drawLine(card.getX()+8.f,base,card.getRight()-8.f,base,.9f);
+        for(int i=0;i<5;++i){
+            const float x=card.getX()+(i+.5f)*card.getWidth()/5.f;
+            const float delta=juce::jlimit(-12.f,12.f,response[(size_t)i]);
+            const float y=base-delta*scale;
+            const auto ink=delta>=0.f?Theme::green:Theme::blue;
+            g.setColour(ink.withAlpha(.20f));
+            g.fillRoundedRectangle(x-17.f,juce::jmin(y,base),34.f,
+                juce::jmax(1.f,std::abs(y-base)),3.f);
+            g.setColour(ink);g.drawLine(x-17.f,y,x+17.f,y,2.f);
+            Theme::text(g,juce::String(response[(size_t)i],1)+" dB",
+                {(int)x-38,201,76,17},10.f,Theme::white,true,juce::Justification::centred);
+            Theme::fittedText(g,zones[i],{(int)x-38,319,76,13},9.f,
+                Theme::muted,true,juce::Justification::centred);
         }
-        Theme::text(g,"LOW",{442,325,65,17},10,Theme::muted);
-        Theme::text(g,"MID",{615,325,65,17},10,Theme::muted);
-        Theme::text(g,"AIR",{793,325,50,17},10,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::SkelldizerFX) {
         // Custom character pads occupy the visualization above.
     } else if(type==SkellPresetAudioProcessor::EQ) {

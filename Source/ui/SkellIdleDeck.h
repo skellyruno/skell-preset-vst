@@ -156,8 +156,8 @@ public:
         Theme::selectFor(processor.state);
         const float width=(float)getWidth();
         const auto stage=layoutFor(getWidth(),getHeight());
-        if(!stage.valid)return;
         Theme::panelBox(g,getLocalBounds().toFloat(),9.f);
+        if(!stage.valid)return;
         const bool live=hasAudibleOutput();
         const float activity=live?activityLevel:0.f;
         const auto accent=Theme::green;
@@ -172,6 +172,8 @@ public:
         // The feet are drawn around y=368 in model space. Ground the
         // floor at the character's feet at every supported aspect ratio.
         const float horizon=stage.originY+372.f*stage.scale;
+        // Stage reflections must never spill into the waveform lane.
+        const float floorBottom=stage.scope.getY()-5.f;
         const auto* mode=processor.state.getRawParameterValue("mode");
         const bool bypassed=mode && (int)mode->load()==3;
         g.setColour(Theme::bg);
@@ -182,7 +184,7 @@ public:
         g.fillRoundedRectangle(stageBounds,8.f);
         // Wide, shallow stage floor with a restrained fog band.
         const auto floor=juce::Rectangle<float>(stageBounds.getX(),horizon,
-            stageBounds.getWidth(),juce::jmax(1.f,stageBounds.getBottom()-horizon));
+            stageBounds.getWidth(),juce::jmax(1.f,floorBottom-horizon));
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withAlpha(.80f),centreX,horizon,
             Theme::bg,centreX,floor.getBottom(),false));
@@ -235,12 +237,14 @@ public:
         for(int i=0;i<5;++i){
             const float spread=(45.f+i*24.f)*stage.scale;
             const float y=horizon+(3.f+2.6f*i)*stage.scale;
+            if(y>=floorBottom)break;
             g.setColour(accent.withAlpha((.020f+.025f*activity)/(1.f+.30f*i)));
             g.drawLine(centreX-spread,y,centreX+spread,y,1.1f*stage.scale);
         }
         g.setColour(Theme::bg.withAlpha(.90f));
         g.fillEllipse(centreX-105.f*stage.scale,horizon-4.f*stage.scale,
-                      210.f*stage.scale,10.f*stage.scale);
+                      210.f*stage.scale,juce::jmax(1.f,juce::jmin(10.f*stage.scale,
+                          floorBottom-horizon+4.f*stage.scale)));
 
         // Main character. Outline is defined as a full-bodied, standing
         // performer: anatomical pelvis/femurs/tibia/ribs, one arm gripping

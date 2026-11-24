@@ -266,7 +266,7 @@ public:
                 return;
             }
             const auto defaultPath=juce::File::getSpecialLocation(
-                juce::File::userDocumentsDirectory).getChildFile("SkellPreset-Capture.wav");
+                juce::File::userDocumentsDirectory).getNonexistentChildFile("SkellPreset-Capture",".wav",false);
             recordChooser=std::make_unique<juce::FileChooser>(
                 "Save processed track audio as WAV",defaultPath,"*.wav");
             recordChooser->launchAsync(
@@ -1423,10 +1423,10 @@ public:
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
         if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
         const auto now=juce::Time::getMillisecondCounter();
-        const unsigned count=processor.liveScopeSampleCount();
+        const auto count=processor.liveScopeSampleCount();
         const bool advancing=count!=lastScopeSampleCount;
-        const bool recent=advancing || (lastScopeFrameTimeMs!=0u &&
-            (unsigned)(now-lastScopeFrameTimeMs)<400u);
+        const bool recent=count>0 && (advancing || (lastScopeFrameTimeMs!=0u &&
+            (unsigned)(now-lastScopeFrameTimeMs)<400u));
         // Never retain a frozen peak when the host stops calling processBlock.
         displayedInputPeak=followMeter(displayedInputPeak,recent?processor.getInputPeak():0.f);
         displayedOutputPeak=followMeter(displayedOutputPeak,recent?processor.getOutputPeak():0.f);
@@ -1457,7 +1457,7 @@ public:
         if(advancing) {
             lastScopeSampleCount=count;
             lastScopeFrameTimeMs=now;
-            idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());
+            if(count>0)idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());
             idle.setAudioFresh(count>0);
             if(idle.isVisible())idle.repaint();
             // The former top LIVE status was removed; do not repaint the
@@ -1633,7 +1633,7 @@ private:
     bool lastInputOverload=false,lastOutputOverload=false;
     bool lastMicOn=false;
     int lastRecordingState=-1;
-    unsigned lastScopeSampleCount=~0u;
+    std::uint64_t lastScopeSampleCount=0;
     unsigned lastScopeFrameTimeMs=0u;
     SkellActionButton preset,match,undo,redo,help,record,micButton;
     SkellSettingsButton settings;

@@ -55,13 +55,22 @@ public:
         for(auto& channel:states)channel.fill(0.f);
         current.fill(1.f);
         target.fill(1.f);
+        configured=false;
     }
     void set(float input,float model,float amount,float trim) noexcept {
-        if(!std::isfinite(trim))trim=.5f;
-        const auto deltas=spectralDeltaDb(index(input),index(model),amount);
+        const int source=index(input),profile=index(model);
+        const float strength=std::isfinite(amount)?std::clamp(amount,0.f,1.f):0.f;
+        const float gainTrim=std::isfinite(trim)?std::clamp(trim,0.f,1.f):.5f;
+        // Only effective parameter changes require six pow calculations.
+        // Smoothing still advances per audio sample, even on a cache hit.
+        if(configured && source==cachedSource && profile==cachedTarget &&
+           strength==cachedAmount && gainTrim==cachedTrim)return;
+        cachedSource=source;cachedTarget=profile;
+        cachedAmount=strength;cachedTrim=gainTrim;configured=true;
+        const auto deltas=spectralDeltaDb(source,profile,strength);
         for(int b=0;b<5;++b)
             target[(size_t)b]=std::pow(10.f,deltas[(size_t)b]/20.f);
-        target[5]=std::pow(10.f,(-6.f+12.f*std::clamp(trim,0.f,1.f))/20.f);
+        target[5]=std::pow(10.f,(-6.f+12.f*gainTrim)/20.f);
     }
     std::array<float,2> process(float l,float r) noexcept {
         for(int b=0;b<6;++b)
@@ -110,5 +119,8 @@ private:
     std::array<float,6> current{{1.f,1.f,1.f,1.f,1.f,1.f}};
     std::array<float,6> target{{1.f,1.f,1.f,1.f,1.f,1.f}};
     float smoothing=.001f;
+    int cachedSource=0,cachedTarget=0;
+    float cachedAmount=0.f,cachedTrim=.5f;
+    bool configured=false;
 };
 } // namespace skellpreset::dsp
