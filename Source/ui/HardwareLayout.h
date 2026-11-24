@@ -42,6 +42,10 @@ inline juce::Rectangle<int> control(int type,int index) noexcept {
 }
 inline bool visible(int type,int index) noexcept {
     return type!=0 && type!=12 && !(limiter(type) && index==3) &&
+        // Classic faces retain their historical parameters for preset and host
+        // compatibility, but do not expose controls that the DSP does not read.
+        !(type==5 && index>1) && !(type==6 && index>1) &&
+        !(type==7 && index>2) && !(type==8 && index>0) &&
         !(type==40 && index==2) && !(type==42 && index==1);
 }
 }
