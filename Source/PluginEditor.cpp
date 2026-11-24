@@ -83,6 +83,8 @@ public:
         preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
         preset.onClick=[this]{
             micPanel.setVisible(false);
+            if(settingsPanel.isVisible())settingsPanel.close();
+            slot.dismissTransientOverlays();
             if(browser.isVisible())browser.setVisible(false);else browser.open();
         };
         style(preset);addAndMakeVisible(preset);
@@ -91,6 +93,7 @@ public:
         style(micButton);addAndMakeVisible(micButton);
         micButton.onClick=[this] {
             if(browser.isVisible())browser.setVisible(false);
+            if(settingsPanel.isVisible())settingsPanel.close();
             if(!micPanel.isVisible())slot.dismissTransientOverlays();
             micPanel.refresh();
             micPanel.setVisible(!micPanel.isVisible());
@@ -105,6 +108,8 @@ public:
         addAndMakeVisible(viewSwitch);addAndMakeVisible(powerButton);
         viewSwitch.onClick=[this] {
             browser.setVisible(false);micPanel.setVisible(false);
+            if(settingsPanel.isVisible())settingsPanel.close();
+            slot.dismissTransientOverlays();
             const int current=(int)processor.state.getRawParameterValue("mode")->load();
             const int view=current==3?previousMode:(current==0?0:1);
             previousMode=view==0?1:0;
@@ -114,6 +119,8 @@ public:
         };
         powerButton.onClick=[this] {
             browser.setVisible(false);micPanel.setVisible(false);
+            if(settingsPanel.isVisible())settingsPanel.close();
+            slot.dismissTransientOverlays();
             const int current=juce::jlimit(0,3,
                 (int)processor.state.getRawParameterValue("mode")->load());
             if(current==3)
@@ -228,6 +235,7 @@ public:
         settings.onClick=[this] {
             browser.setVisible(false);
             micPanel.setVisible(false);
+            slot.dismissTransientOverlays();
             if(settingsPanel.isVisible())settingsPanel.close();
             else {
                 settingsPanel.setRackRight(rackOnRight);
@@ -236,6 +244,7 @@ public:
         };
         settingsPanel.onRackToggle=[this]{dockRack(!rackOnRight);settingsPanel.setRackRight(rackOnRight);};
         settingsPanel.onEmptyRack=[this]{browser.loadEmptyRack();settingsPanel.close();};
+        settingsPanel.onGuide=[this]{settingsPanel.close();outer.showGuidedTour(false);};
         settingsPanel.onSizeChange=[this](int choice){
             if(choice>=1 && choice<=4)
                 sizeSelect.setSelectedId(choice,juce::sendNotificationSync);
@@ -308,6 +317,7 @@ public:
             if(std::abs(scale-sizes[i])<std::abs(scale-sizes[nearest]))nearest=i;
         if(sizeSelect.getSelectedId()!=nearest+1)
             sizeSelect.setSelectedId(nearest+1,juce::dontSendNotification);
+        settingsPanel.syncScale(nearest);
     }
     std::vector<skellcore::ui::GuidedTourStep> tourSteps() {
         std::vector<skellcore::ui::GuidedTourStep> steps;
@@ -321,16 +331,18 @@ public:
             steps.emplace_back(&slot,"EDIT A SLOT",
                 "Adjust the selected effect here. Rack slots keep their own independent controls, order and automation.");
         }
-        steps.emplace_back(&chain,"MIC MODEL + NOISE GATE",
-            "Click the rack's MIC icon. MIC MODEL shapes the recorded microphone; NOISE GATE has its own ON switch, threshold, hold and release. Both start independent, and the gate starts OFF.");
-        steps.emplace_back(&idle,"START HERE",
-            "The home deck shows your real output signal. Choose a preset or select any rack slot to begin; the microphone controls are available separately.");
+        if(chain.isVisible())steps.emplace_back(&chain,"MIC MODEL + NOISE GATE",
+            "Click MIC to choose a tonal profile or adjust the independent gate: threshold, release and attack.");
+        if(idle.isVisible())steps.emplace_back(&idle,"LIVE VISUAL",
+            "The performer responds to real output audio. Select a rack effect to edit it or use VISUAL to return.");
+        if(macro[0].isVisible())steps.emplace_back(&macro[0],"SIMPLE MACROS",
+            "50% is neutral. A dimmed macro has no corresponding active rack effect. Open Advanced to edit individual processors.");
         steps.emplace_back(&powerButton,"POWER / BYPASS",
             "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
-        steps.emplace_back(&mix,"BLEND YOUR SOUND",
-            "The three bottom-right knobs control Input, dry/wet Mix, and Output.");
-        steps.emplace_back(&settings,"SETTINGS / SKELLWORLD",
-            "Resize the interface or optionally join SkellWorld presence. This sends no audio, preset, chain or automation data.");
+        if(mix.isVisible())steps.emplace_back(&mix,"BLEND YOUR SOUND",
+            "Input and Output use dB: 0 dB is unity. Mix uses percent: 100% is fully processed.");
+        steps.emplace_back(&settings,"SETTINGS",
+            "Choose the interface size, dock the rack, load an empty rack or replay this guide.");
         return steps;
     }
     skellcore::ui::GuidedTourPalette tourPalette() const {
@@ -774,6 +786,18 @@ public:
         const bool newLoadClearsRedo=!redo.isEnabled();
         if(!loadedDeuce || !undoRecalled || !redoRecalled || !newLoadClearsRedo)
             issues.add("Header Undo/Redo does not restore native factory preset state");
+        browser.loadEmptyRack();
+        const bool emptySelected=processor.presetName()=="Empty Rack" &&
+            processor.activeSimpleMacroMask()==0u && idle.isVisible() &&
+            processor.getLatencySamples()==0;
+        undo.onClick();
+        const bool emptyUndo=processor.getCurrentProgram()==skellpreset::deuce_v25::factoryIndex &&
+            !idle.isVisible();
+        redo.onClick();
+        const bool emptyRedo=processor.presetName()=="Empty Rack" && idle.isVisible();
+        undo.onClick();
+        if(!emptySelected || !emptyUndo || !emptyRedo)
+            issues.add("Empty Rack selection, Home display or Undo/Redo regressed");
         undoStates.clear();redoStates.clear();pendingHistory.reset();updateHistoryButtons();
         const int beforeTheme=selectedTheme;
         themeButton.onClick();
@@ -1120,10 +1144,10 @@ public:
         brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,271.f);
-        wordmark.draw(g,juce::Rectangle<float>(75.f,9.f,271.f,38.f));
+        wordmark.draw(g,juce::Rectangle<float>(75.f,9.f,271.f,34.f));
         // The new tagline lives directly under SKELLPRESET, rather than
         // fighting the old waveform strip for the same 14 px.
-        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{76,43,150,12},
+        Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{76,40,151,14},
                     10.3f,Theme::muted,true);
         // UI edition marker belongs with the title, not an isolated LIVE
         // badge. Binary package version stays 0.7.0 for old host projects.
@@ -1267,18 +1291,6 @@ public:
                 }
             }
         }
-    }
-    void paintOverChildren(juce::Graphics& g) override {
-        // A subtle second wallpaper pass keeps cover art visible across the
-        // whole plugin, including panel surfaces, without hiding controls.
-        if(browser.isVisible())return;
-        const auto cover=browser.selectedCover();
-        if(!cover.isValid())return;
-        juce::Graphics::ScopedSaveState art(g);
-        g.reduceClipRegion(juce::Rectangle<int>(14,78,1140,555));
-        g.setOpacity(.045f);
-        g.drawImageWithin(cover,14,78,1140,555,
-            juce::RectanglePlacement::fillDestination);
     }
     void resized() override {
         themeButton.setBounds(15,12,53,56);
@@ -1427,12 +1439,14 @@ public:
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
         if(display==0)updateMacroAvailability(m==3);
-        if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
+        if(display==1 && m!=3)chain.refreshIfChanged();
         const auto now=juce::Time::getMillisecondCounter();
         const auto count=processor.liveScopeSampleCount();
         const bool advancing=count!=lastScopeSampleCount;
         const bool recent=count>0 && (advancing || (lastScopeFrameTimeMs!=0u &&
             (unsigned)(now-lastScopeFrameTimeMs)<400u));
+        slot.setAudioFresh(recent && m!=3);
+        if(display==1 && !editingIdle && m!=3)slot.refreshIfChanged();
         // Never retain a frozen peak when the host stops calling processBlock.
         displayedInputPeak=followMeter(displayedInputPeak,recent?processor.getInputPeak():0.f);
         displayedOutputPeak=followMeter(displayedOutputPeak,recent?processor.getOutputPeak():0.f);
@@ -1618,6 +1632,10 @@ private:
         processor.setStateInformation(target.state.getData(),
                                       (int)target.state.getSize());
         browser.restoreHistorySelection(target.selectedPreset);
+        slot.dismissTransientOverlays();
+        editingIdle=processor.presetName()=="Empty Rack";
+        slot.select(processor.slotIdAt(0));
+        chain.setSelectedSlot(editingIdle?-1:processor.slotIdAt(0));
         pushHistory(to,std::move(current));
         pendingHistory.reset();
         updateHistoryButtons();

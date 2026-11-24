@@ -26,7 +26,16 @@ juce::Rectangle<int> parameterCardBounds(int type,int index) noexcept {
         if(index<2)return {28+index*183,403,172,113};
         return {397,406+(index-2)*57,480,44};
     }
-    if(rotaryFace(type,index))return {28+index*215,403,204,113};
+    if(rotaryFace(type,index)){
+        // Delay/space: time and feedback are primary controls; smaller
+        // stereo and texture controls occupy the right-hand bank.
+        if(std::string_view(skellpreset::registry::at(type).category)=="Space"){
+            constexpr int x[]{28,274,520,700};
+            constexpr int w[]{234,234,168,168};
+            return {x[index],403,w[index],113};
+        }
+        return {28+index*215,403,204,113};
+    }
     return {33+(index%2)*430,406+(index/2)*57,400,44};
 }
 float eqGainAtY(int type,float y) noexcept {
@@ -1569,7 +1578,7 @@ void SlotEditor::refreshIfChanged() {
     if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX && suiteSpectrumView) {
         // At most 10 spectrum repaints per second with the existing 30Hz UI timer.
         // The Goertzel transform itself is computed on the GUI paint thread.
-        if(++suiteSpectrumTick>=3) {
+        if(audioFresh && ++suiteSpectrumTick>=3) {
             suiteSpectrumTick=0;
             repaint(juce::Rectangle<int>(33,151,835,206));
         }
@@ -1577,17 +1586,17 @@ void SlotEditor::refreshIfChanged() {
     const bool vocalMeter=type==SkellPresetAudioProcessor::VocalFeelOptoFX ||
                           type==SkellPresetAudioProcessor::VocalFeelSuiteFX;
     const int grStep=vocalMeter
-        ?juce::roundToInt(2.f*processor.getSlotGainReductionDb(slot)):0;
+        ?juce::roundToInt(2.f*(audioFresh?processor.getSlotGainReductionDb(slot):0.f)):0;
     changed=changed || grStep!=lastGainReductionStep;
     lastGainReductionStep=grStep;
     const int deessStep=type==SkellPresetAudioProcessor::VocalFeelSuiteFX
-        ?juce::roundToInt(2.f*processor.getSlotDeessReductionDb(slot)):0;
+        ?juce::roundToInt(2.f*(audioFresh?processor.getSlotDeessReductionDb(slot):0.f)):0;
     changed=changed || deessStep!=lastDeessStep;lastDeessStep=deessStep;
     for(int i=0;i<5;++i){
         // The graph uses the same -55..0 dB scale; a linear-RMS
         // quantizer made quiet real vocal returns appear frozen.
         const float returnRms=type==SkellPresetAudioProcessor::VocalFeelSuiteFX
-            ?processor.getSuiteReturnRms(slot,i):0.f;
+            ?(audioFresh?processor.getSuiteReturnRms(slot,i):0.f):0.f;
         const int quant=type==SkellPresetAudioProcessor::VocalFeelSuiteFX
             ?juce::jlimit(0,16,juce::roundToInt(16.f*
                 juce::jlimit(0.f,1.f,
@@ -1605,7 +1614,7 @@ void SlotEditor::refreshIfChanged() {
         changed=changed||std::abs(value-lastExtendedControls[(size_t)i])>1.e-5f;
         lastExtendedControls[(size_t)i]=value;
     }
-    const float rawPeak=processor.getSlotPeak(slot);
+    const float rawPeak=(audioFresh?processor.getSlotPeak(slot):0.f);
     const float measured=std::isfinite(rawPeak)?juce::jlimit(0.f,1.f,rawPeak):0.f;
     const int level=juce::jlimit(0,14,juce::roundToInt(measured*14.f));
     const bool peakChanged=lastPeakLevel!=level;
@@ -1822,13 +1831,18 @@ void SlotEditor::layoutParameterControls(int type){
         auto& control=knobs[(size_t)k];
         const auto style=rotary?juce::Slider::RotaryHorizontalVerticalDrag:
             juce::Slider::LinearHorizontal;
-        if(control.getSliderStyle()!=style){
-            control.setSliderStyle(style);
-            control.setTextBoxStyle(rotary?juce::Slider::TextBoxBelow:
-                juce::Slider::TextBoxRight,false,rotary?96:92,rotary?20:24);
-        }
         const auto card=parameterCardBounds(type,k);
-        control.setBounds(rotary?juce::Rectangle<int>(card.getCentreX()-53,card.getY()+23,106,87):
+        const int dialWidth=card.getWidth()>=230?140:card.getWidth()<180?88:106;
+        const int dialHeight=card.getWidth()>=230?90:card.getWidth()<180?76:87;
+        if(control.getSliderStyle()!=style)control.setSliderStyle(style);
+        const auto textPosition=rotary?juce::Slider::TextBoxBelow:juce::Slider::TextBoxRight;
+        const int textWidth=rotary?juce::jmin(104,dialWidth-4):92;
+        const int textHeight=rotary?20:24;
+        if(control.getTextBoxPosition()!=textPosition ||
+           control.getTextBoxWidth()!=textWidth || control.getTextBoxHeight()!=textHeight)
+            control.setTextBoxStyle(textPosition,false,textWidth,textHeight);
+        control.setBounds(rotary?juce::Rectangle<int>(card.getCentreX()-dialWidth/2,
+            card.getY()+23,dialWidth,dialHeight):
             juce::Rectangle<int>(card.getX()+135,card.getY()+5,card.getWidth()-143,30));
     }
 }
@@ -1928,7 +1942,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
         // vertebrae respond to the signal while leaving parameter graphs readable.
         Theme::text(g,"SLOT OUTPUT",{22,73,158,18},11.2f,Theme::muted,true);
-        const float level=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+        const float level=juce::jlimit(0.f,1.f,(audioFresh?processor.getSlotPeak(slot):0.f));
         for(int rib=0;rib<14;++rib) {
             const float x=178.f+13.5f*(float)rib;
             const bool alive=level>((float)rib/14.f);
@@ -2214,8 +2228,10 @@ void SlotEditor::paint(juce::Graphics&g) {
         // Actual INPUT/OUTPUT spectral values from lock-free audio buffers,
         // analyzed only on JUCE's message/render thread. No invented peaks.
         std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity> input{},output{};
-        processor.getLiveSpectrumInput(input);
-        processor.getLiveSpectrumOutput(output);
+        if(audioFresh){
+            processor.getLiveSpectrumInput(input);
+            processor.getLiveSpectrumOutput(output);
+        }
         const double sr=processor.preparedAudioRate();
         const auto inLevels=suiteSpectrumAnalyzer.analyze(input,sr);
         const auto outLevels=suiteSpectrumAnalyzer.analyze(output,sr);
@@ -2292,9 +2308,9 @@ void SlotEditor::paint(juce::Graphics&g) {
         // graphics. Dragging a bar uses the original p11..p15 automation ID.
         constexpr const char* returnNames[]{"MAGIC","SPACE","ATTACK","ATTITUDE","PRESENCE"};
         const float compressorGr=juce::jlimit(0.f,48.f,
-            processor.getSlotGainReductionDb(slot));
+            (audioFresh?processor.getSlotGainReductionDb(slot):0.f));
         const float deessGr=juce::jlimit(0.f,24.f,
-            processor.getSlotDeessReductionDb(slot));
+            (audioFresh?processor.getSlotDeessReductionDb(slot):0.f));
         Theme::text(g,"VOCAL FEEL  /  FIVE LIVE PARALLEL RETURNS",
                     {47,161,660,22},13.4f,Theme::green,true);
         Theme::text(g,"OPTO  "+juce::String(compressorGr,1)+" dB",
@@ -2303,7 +2319,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                     {300,185,260,21},11.4f,Theme::white,true);
         for(int chain=0;chain<5;++chain) {
             const float x=49.f+chain*163.f;
-            const float rms=processor.getSuiteReturnRms(slot,chain);
+            const float rms=(audioFresh?processor.getSuiteReturnRms(slot,chain):0.f);
             const float measured=juce::jlimit(0.f,1.f,
                 (skellpreset::dsp::gainToDb(rms)+55.f)/55.f);
             const float level=processor.getSlotParam(slot,10+chain);
@@ -2326,7 +2342,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     } else if(type==SkellPresetAudioProcessor::VocalFeelOptoFX) {
         // Measured gain reduction; sampled from the actual per-slot engine.
         // No fake FFT or imagined loudness score.
-        const float gr=juce::jlimit(0.f,24.f,processor.getSlotGainReductionDb(slot));
+        const float gr=juce::jlimit(0.f,24.f,(audioFresh?processor.getSlotGainReductionDb(slot):0.f));
         const float x=64.f,y=242.f,width=730.f;
         const float proportion=gr/24.f;
         Theme::text(g,"VOCAL FEEL  /  LINKED OPTO DETECTOR",
@@ -2472,7 +2488,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     } else if(type==SkellPresetAudioProcessor::Delay){
         const float seconds=.055f+.85f*processor.getSlotParam(slot,0);
         const float feedback=.8f*processor.getSlotParam(slot,1);
-        const float signal=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+        const float signal=juce::jlimit(0.f,1.f,(audioFresh?processor.getSlotPeak(slot):0.f));
         const float centre=plot.getCentreY()+12.f;
         g.setColour(Theme::stroke);
         g.drawLine(plot.getX()+28.f,centre,plot.getRight()-28.f,centre,1.f);
@@ -2516,7 +2532,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         const int division=juce::jlimit(0,7,(int)(processor.getSlotParam(slot,13)*7.999f));
         const int mode=juce::jlimit(0,3,(int)(processor.getSlotParam(slot,2)*3.999f));
         const juce::StringArray modes{"MONO","TRUE STEREO","PING PONG","OFF"};
-        const float baseline=plot.getCentreY()+18.f;
+        const float baseline=plot.getCentreY()+20.f;
         const float left=plot.getX()+52.f,usable=plot.getWidth()-104.f;
         g.setColour(Theme::stroke.withAlpha(.64f));
         g.drawLine(left,baseline,left+usable,baseline,.9f);
@@ -2526,6 +2542,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             const float centre=left+(tap+.5f)*usable/6.f;
             const float magnitude=tap==0?dry:mode==3?0.f:
                 wet*std::pow(feedback,float(tap-1));
+            if(magnitude<.0001f)continue;
             const float span=usable/6.f-12.f;
             for(int i=0;i<29;++i){
                 const float t=float(i)/28.f;
@@ -2540,7 +2557,9 @@ void SlotEditor::paint(juce::Graphics&g) {
             {320,165,260,40},29,Theme::white,true,juce::Justification::centred);
         Theme::text(g,sync?"HOST TEMPO":"FREE TIME",{320,205,260,16},10,Theme::muted,true,
             juce::Justification::centred);
-        Theme::text(g,modes[mode],{47,170,240,20},12,Theme::green,true);
+        Theme::text(g,modes[mode],{47,170,240,20},12,mode==3?Theme::muted:Theme::green,true);
+        Theme::text(g,"DRY  "+juce::String(dry*100.f,0)+"%  /  ECHO  "+juce::String(wet*100.f,0)+"%",
+            {47,190,240,16},10,Theme::muted);
         Theme::text(g,"FEEDBACK  "+juce::String(feedback*100.f,0)+"%",
             {600,170,236,20},12,Theme::green,true,juce::Justification::centredRight);
         Theme::text(g,mode==3?"ECHO DISABLED":sync?"SYNCED ECHO ENVELOPE":"FREE-TIME ECHO ENVELOPE",
@@ -2580,7 +2599,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             // illumination follows measured post-FX peak, not fake FFT/LFO
             // phase. No orbit rings, globe ellipses, or generated movement.
             const auto axes=titles(type);
-            const float peak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+            const float peak=juce::jlimit(0.f,1.f,(audioFresh?processor.getSlotPeak(slot):0.f));
             const float left=130.f,top=196.f,spacing=170.f;
             for(int control=0;control<4;++control) {
                 const float value=juce::jlimit(0.f,1.f,
@@ -3123,7 +3142,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                         {58,195,280,22},15.f,Theme::white,true);
             Theme::text(g,"DRIVE +"+juce::String(driveDb,1)+" dB",
                         {58,225,280,19},12.2f,Theme::muted,true);
-            const float rackPeak=juce::jlimit(0.f,1.f,processor.getSlotPeak(slot));
+            const float rackPeak=juce::jlimit(0.f,1.f,(audioFresh?processor.getSlotPeak(slot):0.f));
             const auto rail=juce::Rectangle<float>(plot.getRight()-175.f,
                                                    plot.getY()+49.f,101.f,121.f);
             g.setColour(Theme::panelAlt);
@@ -3758,6 +3777,8 @@ void SlotEditor::paint(juce::Graphics&g) {
                     (type==SkellPresetAudioProcessor::StudioDelayFX && delayPage!=0) ||
                     (type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage!=0)
                     ? juce::String("GRAPH READ-ONLY ON THIS PAGE  /  USE IN-PANEL CONTROLS")
+                    : (type>=SkellPresetAudioProcessor::AdlibChop && type<=SkellPresetAudioProcessor::AdlibSaturate)
+                    ? juce::String("SETTINGS RESPONSE  /  ADJUST THE CONTROLS BELOW")
                     : gestureHint,{30,386,700,17},10,Theme::muted);
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {

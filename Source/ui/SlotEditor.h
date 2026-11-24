@@ -110,6 +110,12 @@ public:
     void select(int newSlot);
     void applyTheme();
     void refreshIfChanged(); // only redraw when DSP controls or type change
+    void setAudioFresh(bool fresh){
+        if(fresh==audioFresh)return;
+        audioFresh=fresh;
+        graphSnapshotValid=false;
+        if(isVisible())repaint();
+    }
     int selectedSlot()const noexcept{return slot;}
     bool moduleSelectorMatchesAudio() const noexcept {
         return moduleBox.getSelectedId()==processor.slotType(slot)+1;
@@ -254,6 +260,7 @@ private:
     int gestureSlot=-1,gestureType=-1;
     int gestureEqBand=-1; // same parameter IDs receive begin/end gestures
     bool graphSnapshotValid=false;
+    bool audioFresh=true;
     int lastType=-1;
     int lastPeakLevel=-1,lastGainReductionStep=-1,lastDeessStep=-1;
     std::array<int,5> lastSuiteLevels{{-1,-1,-1,-1,-1}};
