@@ -86,6 +86,12 @@ void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
 }
 }
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
+    loadUIPreferences();
+    addAndMakeVisible(thumbnailView);addAndMakeVisible(listView);
+    thumbnailView.setTooltip("Browse artwork cards while keeping the current search and filters");
+    listView.setTooltip("Browse compact rows while keeping the current search and filters");
+    thumbnailView.onClick=[this]{setListView(false);};
+    listView.onClick=[this]{setListView(true);};
     search.setMultiLine(false);
     search.setTextToShowWhenEmpty("Search sounds / artist:name / genre:name",Theme::muted);
     artistEditor.setMultiLine(false);
@@ -171,6 +177,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     sortPicker.addItem("Name  A-Z",1);
     sortPicker.addItem("Name  Z-A",2);
     sortPicker.addItem("Starred first",3);
+    sortPicker.addItem("Recently used",4);
     sortPicker.setSelectedId(1,juce::dontSendNotification);
     sortPicker.setTooltip("Change display order, never rename presets or modify audio.");
     sortPicker.onChange=[this]{
@@ -195,7 +202,8 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
         search.grabKeyboardFocus();
         scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();
     };
-    genreButton.setTooltip("Manually tag your personal preset with a genre, Ad-libs or custom category.");
+    genreButton.setButtonText("TAG +");
+    genreButton.setTooltip("Add this genre to the selected preset. Multiple tags are allowed. Choose Uncategorized to clear all genre assignments.");
     addCategoryButton.setTooltip("Add a new category to the user library; no audio or preset ZIP changes.");
     genreButton.setEnabled(false);
     reloadAlchemistArtwork();
@@ -418,7 +426,7 @@ void PresetBrowser::open() {
 bool PresetBrowser::configureDirectoryForScreenshot(int page,int width,int height) {
     // Called only by the local renderer. Fixture labels are explicit; never
     // write fake artists, presets or pairing metadata into the user's library.
-    open();
+    preferencesReadOnly=true;open();
     if(page>=1){
         const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
             .getChildFile("Skell UI fixture "+juce::Uuid().toString());
@@ -523,9 +531,14 @@ void PresetBrowser::resized(){
     clearSearchButton.setEnabled(!detailsOpen && !chooserActive && search.getText().isNotEmpty());
     clearSearchButton.setBounds(getWidth()-86,22,66,31);
     sortPicker.setVisible(!detailsOpen && directoryMode()==DirectoryMode::none);
-    sortPicker.setBounds(getWidth()-169,69,150,29);
+    sortPicker.setBounds(18,getHeight()-77,166,29);
+    thumbnailView.setBounds(getWidth()-205,69,117,29);
+    listView.setBounds(getWidth()-82,69,63,29);
+    for(auto* b:{&thumbnailView,&listView})b->setVisible(!detailsOpen);
+    thumbnailView.setColour(juce::TextButton::buttonColourId,!listMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
+    listView.setColour(juce::TextButton::buttonColourId,listMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
     directoryBack.setVisible(!detailsOpen && hasDirectoryParent());
-    directoryBack.setBounds(getWidth()-241,69,64,29);
+    directoryBack.setBounds(207,69,64,29);
     detailsButton.setBounds(18,detailsOpen?112:getHeight()-38,166,28);
     importButton.setVisible(detailsOpen);exportButton.setVisible(detailsOpen);
     for(auto* control:{static_cast<juce::Component*>(&artistEditor),
@@ -762,11 +775,21 @@ void PresetBrowser::refreshGenreChoices() {
     genrePicker.setSelectedId(lookup(genrePicker,previousTag),juce::dontSendNotification);
     genreFilter.setSelectedId(lookup(genreFilter,previousFilter),juce::dontSendNotification);
 }
-juce::String PresetBrowser::genreForUser(int index) const {
-    if(index<0 || index>=(int)userPresets.size())return {};
-    const int pos=genreKeys.indexOf(favoriteKey(-index-1),true);
-    return pos>=0 && pos<genreNames.size()?genreNames[pos]:juce::String{};
+juce::StringArray PresetBrowser::genresForUser(int index) const {
+    juce::StringArray result;if(index<0 || index>=(int)userPresets.size())return result;
+    const auto key=favoriteKey(-index-1),extension=organizationValue("genres:"+key);
+    if(extension.isNotEmpty()) {
+        const auto decoded=juce::JSON::parse(extension);
+        if(const auto* values=decoded.getArray()) {
+            for(const auto& v:*values)if(v.isString() && isKnownCategory(v.toString()))result.addIfNotAlreadyThere(v.toString(),true);
+            return result;
+        }
+    }
+    const int pos=genreKeys.indexOf(key,true);
+    if(pos>=0 && pos<genreNames.size() && genreNames[pos].isNotEmpty())result.add(genreNames[pos]);
+    return result;
 }
+juce::String PresetBrowser::genreForUser(int index) const {return genresForUser(index).joinIntoString(", ");}
 void PresetBrowser::loadGenres() {
     genreKeys.clear();genreNames.clear();
     const auto file=genresFile();
@@ -795,28 +818,19 @@ bool PresetBrowser::saveGenres() const {
     return pending.overwriteTargetFileWithTemporary();
 }
 bool PresetBrowser::setGenreForUser(int index,const juce::String& label) {
-    if(index<0 || index>=(int)userPresets.size() ||
-       (label.isNotEmpty() && !isKnownCategory(label)))
-        return false;
-    const auto key=favoriteKey(-index-1);
-    if(key.isEmpty())return false;
-    const auto oldKeys=genreKeys,oldLabels=genreNames;
-    const int existing=genreKeys.indexOf(key,true);
-    if(existing>=0) {
-        if(label.isEmpty()){genreKeys.remove(existing);genreNames.remove(existing);}
-        else genreNames.set(existing,label);
-    } else if(label.isNotEmpty()) {
-        if(genreKeys.size()>=200)return false;
-        genreKeys.add(key);genreNames.add(label);
+    if(index<0 || index>=(int)userPresets.size() || (label.isNotEmpty() && !isKnownCategory(label)))return false;
+    auto labels=genresForUser(index);
+    if(label.isEmpty())labels.clear();else labels.addIfNotAlreadyThere(label,true);
+    if(labels.size()>32)return false;
+    const auto oldKeys=organizationKeys,oldValues=organizationValues;
+    juce::Array<juce::var> values;for(const auto& item:labels)values.add(item);
+    setOrganizationValue("genres:"+favoriteKey(-index-1),juce::JSON::toString(juce::var(values),true));
+    if(!saveOrganization()) {
+        organizationKeys=oldKeys;organizationValues=oldValues;
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Categories not saved",
+            "Check the preset library folder permissions.");return false;
     }
-    if(!saveGenres()) {
-        genreKeys=oldKeys;genreNames=oldLabels;
-        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-            "Category not saved","Check the Skell Preset library folder permissions.");
-        return false;
-    }
-    categoryCountsDirty=true;
-    return true;
+    categoryCountsDirty=true;return true;
 }
 juce::File PresetBrowser::artistsFile() const {
     // Artist tags are library metadata, not factory IDs, host automation,
@@ -851,13 +865,21 @@ void PresetBrowser::loadOrganization(){
         const int tab=row.indexOfChar('\t');if(tab<=0)continue;
         const auto key=row.substring(0,tab).trim().toLowerCase();
         const auto value=row.substring(tab+1).trim();
-        if(key.length()>270 || value.length()>80 || value.isEmpty() ||
+        if(key.length()>270 || value.length()>(key.startsWith("genres:user:")?2048:80) || value.isEmpty() ||
            value.containsAnyOf("\r\n\t") || organizationKeys.contains(key,true))continue;
         const bool type=key.startsWith("type:user:") &&
             (value=="main" || value=="adlib" || value=="unassigned");
         const bool tier=key.startsWith("tier:") && key.length()>5 &&
             (value=="Underground" || value=="Mainstream");
-        if(type || tier || key.startsWith("pair:user:")){
+        bool genres=false;
+        if(key.startsWith("genres:user:")) {
+            const auto decoded=juce::JSON::parse(value);
+            if(const auto* labels=decoded.getArray()) {
+                genres=labels->size()<=32;
+                for(const auto& item:*labels)genres=genres && item.isString() && isKnownCategory(item.toString());
+            }
+        }
+        if(type || tier || genres || key.startsWith("pair:user:")){
             organizationKeys.add(key);organizationValues.add(value);
         }
         if(organizationKeys.size()>=4096)break;
@@ -877,7 +899,7 @@ juce::String PresetBrowser::vocalType(int index) const {
     if(index<0 || index>=(int)userPresets.size())return {};
     const auto value=organizationValue("type:"+favoriteKey(-index-1));
     if(value.isNotEmpty())return value;
-    return genreForUser(index).equalsIgnoreCase("Ad-libs")?juce::String("adlib"):juce::String("unassigned");
+    return genresForUser(index).contains("Ad-libs",true)?juce::String("adlib"):juce::String("unassigned");
 }
 juce::String PresetBrowser::artistTier(const juce::String& artist) const {
     return organizationValue("tier:"+artist.toLowerCase());
@@ -961,7 +983,7 @@ std::vector<PresetBrowser::DirectoryCard> PresetBrowser::directoryCards() const 
         if((typeId==2 && type!="main") || (typeId==3 && type!="adlib"))continue;
         for(auto& card:cards){
             bool matches=false;
-            if(mode==DirectoryMode::genres)matches=card.id==2?genre.isEmpty():genre.equalsIgnoreCase(card.label);
+            if(mode==DirectoryMode::genres)matches=card.id==2?genre.isEmpty():genresForUser(i).contains(card.label,true);
             else if(mode==DirectoryMode::tiers)matches=artist.isNotEmpty() &&
                 (card.id==4?tier.isEmpty():tier==card.label);
             else matches=artist.isNotEmpty() && artist.equalsIgnoreCase(card.label);
@@ -978,13 +1000,14 @@ int PresetBrowser::resultCount() const {
     return directoryMode()==DirectoryMode::none?(int)filtered().size():(int)directoryCards().size();
 }
 int PresetBrowser::directoryColumns() const {
-    return directoryMode()==DirectoryMode::tiers?2:getWidth()>=850?3:2;
+    return listMode?1:directoryMode()==DirectoryMode::tiers?2:getWidth()>=850?3:2;
 }
-int PresetBrowser::directoryRows() const {return directoryMode()==DirectoryMode::tiers?2:3;}
+int PresetBrowser::directoryRows() const {return listMode?visibleRows():directoryMode()==DirectoryMode::tiers?2:3;}
 int PresetBrowser::pageCapacity() const {
-    return directoryMode()==DirectoryMode::none?visibleRows():directoryColumns()*directoryRows();
+    return directoryMode()==DirectoryMode::none && listMode?visibleRows():directoryColumns()*directoryRows();
 }
 juce::Rectangle<int> PresetBrowser::directoryCardBounds(int position) const {
+    if(listMode)return {207,110+position*61,getWidth()-224,56};
     const int cols=directoryColumns(),gap=10;
     const int width=(getWidth()-224-(cols-1)*gap)/cols;
     const int rows=directoryRows();
@@ -993,7 +1016,7 @@ juce::Rectangle<int> PresetBrowser::directoryCardBounds(int position) const {
 }
 int PresetBrowser::resultAt(juce::Point<int> p) const {
     if(detailsOpen)return -1;
-    if(directoryMode()==DirectoryMode::none)
+    if(directoryMode()==DirectoryMode::none && listMode)
         return presetCardHitForTest(false,p.x,p.y,getWidth(),visibleRows())?scroll+(p.y-110)/61:-1;
     for(int i=0;i<pageCapacity();++i)
         if(directoryCardBounds(i).contains(p))return scroll+i;
@@ -1042,7 +1065,8 @@ void PresetBrowser::paintDirectory(juce::Graphics& g,const std::vector<Directory
         g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(hover?.20f:.08f),
             bounds.getTopLeft(),Theme::plot,bounds.getBottomRight(),false));
         g.fillRoundedRectangle(bounds,8.f);
-        const auto art=bounds.reduced(6.f).removeFromTop(bounds.getHeight()-49.f);
+        const auto art=listMode?juce::Rectangle<float>(bounds.getX()+6.f,bounds.getY()+6.f,44.f,44.f):
+            bounds.reduced(6.f).removeFromTop(bounds.getHeight()-49.f);
         if(card.artIndex>=0 && card.artIndex<(int)userArtwork.size() && userArtwork[(size_t)card.artIndex].isValid()){
             juce::Graphics::ScopedSaveState saved(g);g.reduceClipRegion(art.toNearestInt());
             g.drawImageWithin(userArtwork[(size_t)card.artIndex],(int)art.getX(),(int)art.getY(),
@@ -1052,10 +1076,11 @@ void PresetBrowser::paintDirectory(juce::Graphics& g,const std::vector<Directory
             Theme::plot.withAlpha(.75f),art.getCentreX(),art.getBottom(),false));
         g.fillRoundedRectangle(art,5.f);
         const int total=card.main+card.adlib+card.other;
-        const auto badge=juce::Rectangle<float>(art.getRight()-50.f,art.getY()+6.f,44.f,21.f);
+        const auto badge=listMode?juce::Rectangle<float>(bounds.getRight()-56.f,bounds.getY()+17.f,44.f,21.f):
+            juce::Rectangle<float>(art.getRight()-50.f,art.getY()+6.f,44.f,21.f);
         g.setColour(Theme::bg.withAlpha(.92f));g.fillRoundedRectangle(badge,5.f);
         Theme::fittedText(g,juce::String(total),badge.toNearestInt(),12.f,Theme::white,true,juce::Justification::centred);
-        const auto x=(int)bounds.getX()+10,y=(int)bounds.getBottom()-43,w=(int)bounds.getWidth()-20;
+        const auto x=(int)bounds.getX()+(listMode?64:10),y=(int)bounds.getBottom()-47,w=(int)bounds.getWidth()-(listMode?130:20);
         Theme::fittedText(g,card.label,{x,y,w,22},16.f,Theme::white,true,juce::Justification::centredLeft);
         juce::String summary=juce::String(card.main)+" MAIN  ·  "+juce::String(card.adlib)+" ADLIB";
         if(card.other>0)summary+="  ·  "+juce::String(card.other)+" OTHER";
@@ -1216,6 +1241,7 @@ bool PresetBrowser::testBrowserSortingForTest(){
     return asc && desc && starred;
 }
 bool PresetBrowser::testBrowserKeyboardForTest(){
+    juce::ScopedValueSetter<bool> listTest(listMode,true);
     // Synthetic library entries are never loaded or written to disk.
     const int oldBank=bank,oldScroll=scroll,oldHover=hoveredCard,
         oldFocus=keyboardCard;
@@ -1267,6 +1293,8 @@ bool PresetBrowser::testBrowserKeyboardForTest(){
     return visible && firstDown && down && end && pageUp && home && left && right;
 }
 bool PresetBrowser::testBrowserLayoutForTest() {
+    juce::ScopedValueSetter<bool> readOnly(preferencesReadOnly,true);
+    if(!testViewSwitchForTest())return false;
     const bool oldDetails=detailsOpen;
     const auto validate=[this](bool expanded){
         showDetails(expanded);
@@ -1643,7 +1671,7 @@ std::vector<int> PresetBrowser::filtered() const {
             }
             if(bank!=0 && bank!=2 && genreActive &&
                (genreFilter.getSelectedId()==2
-                    ?genre.isNotEmpty():!genre.equalsIgnoreCase(selectedGenre)))
+                    ?genre.isNotEmpty():!genresForUser(i).contains(selectedGenre,true)))
                 found=false;
             if(favoritesOnly && !isFavorite(-i-1))found=false;
             if(found)list.push_back(-i-1);
@@ -1655,7 +1683,7 @@ std::vector<int> PresetBrowser::filtered() const {
     }
     // Display sorting changes only this temporary list. The original
     // files, factory program order, APVTS IDs and saved patch are untouched.
-    if(bank==1 || bank==2 || bank==3 || bank==4){
+    if(bank==1 || bank==2 || bank==3 || bank==4 || sortPicker.getSelectedId()==4){
         const int mode=sortPicker.getSelectedId();
         const auto label=[this](int entry){
             return entry>=0
@@ -1664,6 +1692,10 @@ std::vector<int> PresetBrowser::filtered() const {
         };
         std::stable_sort(list.begin(),list.end(),
             [this,mode,&label](int a,int b){
+                if(mode==4) {
+                    const int ia=recentKeys.indexOf(favoriteKey(a)),ib=recentKeys.indexOf(favoriteKey(b));
+                    const int ra=ia<0?999:ia,rb=ib<0?999:ib;if(ra!=rb)return ra<rb;
+                }
                 if(mode==3){
                     const bool favA=isFavorite(a),favB=isFavorite(b);
                     if(favA!=favB)return favA;
@@ -1824,7 +1856,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
     if(bank==4 && genreFilter.getSelectedId()>1)location+=" / "+genreFilter.getText();
     const int visibleCount=directory==DirectoryMode::none?(int)entries.size():(int)cards.size();
     Theme::fittedText(g,location+"  /  " +juce::String(visibleCount),
-        {207,73,std::max(0,getWidth()-(detailsOpen?387:directory==DirectoryMode::none?(hasDirectoryParent()?455:387):(hasDirectoryParent()?455:230))),20},13.f,Theme::white,true,juce::Justification::centredLeft);
+        {hasDirectoryParent()?280:207,73,std::max(0,getWidth()-(hasDirectoryParent()?493:420)),20},13.f,Theme::white,true,juce::Justification::centredLeft);
     if(detailsOpen)
         Theme::text(g,"ESC TO RETURN",{getWidth()-175,75,151,20},
             10,Theme::muted,false,juce::Justification::centredRight);
@@ -1881,6 +1913,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         (float)getWidth()-3.f,(float)getHeight()-5.f-i*4.f,1.f);
     if(detailsOpen)return;
     if(directory!=DirectoryMode::none){paintDirectory(g,cards);return;}
+    if(!detailsOpen && !listMode){paintPresetGrid(g,entries);return;}
     // Preset cards only appear at a leaf or in search. Artist metadata can be assigned with the sidebar
     // text field; the actual native preset and host program IDs stay intact.
     const int rows=visibleRows();
@@ -2083,6 +2116,7 @@ void PresetBrowser::loadFactoryFromBrowser(int index) {
     activeUserPreset=juce::File{};
     const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
     processor.loadFactoryPreset(index);
+    rememberRecent(index);
     refreshArtwork(); // Cover follows the selected factory sound.
     // Preserve Simple workspace and bypass while A/B auditioning.
     if(previousMode==0 || previousMode==3) {
@@ -2108,6 +2142,7 @@ void PresetBrowser::loadUserFromBrowser(int index) {
         if(auto* mode=processor.state.getParameter("mode"))
             mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
     activeUserPreset=file;
+    rememberRecent(-index-1);
     refreshArtwork();
     if(onLoaded)onLoaded();
     repaint();
@@ -2120,8 +2155,9 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(!e.mods.isLeftButtonDown())return;
     if(!usableBounds.isEmpty() && getParentComponent()){
         const bool right=e.x>=getWidth()-8,bottom=e.y>=getHeight()-8;
-        const bool edge=right || bottom;
-        const bool header=e.y>=63 && e.y<103 && e.x<195;
+        resizeLeft=e.x<8;resizeTop=e.y<8;
+        const bool edge=right || bottom || resizeLeft || resizeTop;
+        const bool header=e.y>=63 && e.y<103;
         if(edge || header){
             resizingWindow=edge;draggingWindow=!edge;userPlaced=true;
             resizeWidth=right;resizeHeight=bottom;
@@ -2147,7 +2183,8 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
         if(hit<(int)entries.size()){
             keyboardCard=hit;grabKeyboardFocus();
             const int entry=entries[(size_t)hit];
-            if(e.x>=getWidth()-77 && e.x<=getWidth()-38)
+            if(listMode?(e.x>=getWidth()-77 && e.x<=getWidth()-38):
+               directoryCardBounds(hit-scroll).removeFromRight(35).removeFromTop(35).contains(e.getPosition()))
                 toggleFavorite(entry);
             else
                 auditionEntry(entry);
@@ -2161,20 +2198,26 @@ void PresetBrowser::mouseDrag(const juce::MouseEvent& e){
     auto bounds=gestureStartBounds;
     if(draggingWindow)bounds=bounds.translated(delta.x,delta.y);
     else {
-        // An edge controls only its own axis. Clamp before repositioning so a
-        // resize cannot push the anchored left/top corner outside the canvas.
-        const int maxW=juce::jmin(1000,usableBounds.getRight()-bounds.getX());
-        const int maxH=juce::jmin(610,usableBounds.getBottom()-bounds.getY());
-        const int w=resizeWidth?juce::jlimit(juce::jmin(620,maxW),maxW,bounds.getWidth()+delta.x):bounds.getWidth();
-        const int h=resizeHeight?juce::jlimit(juce::jmin(530,maxH),maxH,bounds.getHeight()+delta.y):bounds.getHeight();
-        bounds=bounds.withSize(w,h);
+        const int minW=juce::jmin(620,usableBounds.getWidth()),minH=juce::jmin(530,usableBounds.getHeight());
+        if(resizeLeft)bounds.setLeft(juce::jlimit(juce::jmax(usableBounds.getX(),gestureStartBounds.getRight()-1000),
+            gestureStartBounds.getRight()-minW,gestureStartBounds.getX()+delta.x));
+        if(resizeTop)bounds.setTop(juce::jlimit(juce::jmax(usableBounds.getY(),gestureStartBounds.getBottom()-610),
+            gestureStartBounds.getBottom()-minH,gestureStartBounds.getY()+delta.y));
+        if(resizeWidth)bounds.setRight(juce::jlimit(bounds.getX()+minW,juce::jmin(usableBounds.getRight(),bounds.getX()+1000),
+            gestureStartBounds.getRight()+delta.x));
+        if(resizeHeight)bounds.setBottom(juce::jlimit(bounds.getY()+minH,juce::jmin(usableBounds.getBottom(),bounds.getY()+610),
+            gestureStartBounds.getBottom()+delta.y));
     }
     setBounds(constrainWindow(bounds));
 }
-void PresetBrowser::mouseUp(const juce::MouseEvent&){draggingWindow=false;resizingWindow=false;resizeWidth=false;resizeHeight=false;}
+void PresetBrowser::mouseUp(const juce::MouseEvent&){
+    if(draggingWindow || resizingWindow)saveUIPreferences();
+    draggingWindow=resizingWindow=resizeWidth=resizeHeight=resizeLeft=resizeTop=false;
+}
 void PresetBrowser::mouseMove(const juce::MouseEvent& e){
-    const bool right=e.x>=getWidth()-8,bottom=e.y>=getHeight()-8;
-    if(right || bottom){setMouseCursor(right && bottom?juce::MouseCursor::BottomRightCornerResizeCursor:
+    const bool right=e.x>=getWidth()-8 || e.x<8,bottom=e.y>=getHeight()-8 || e.y<8;
+    if(right || bottom){setMouseCursor(right && bottom?
+        ((e.x<8)==(e.y<8)?juce::MouseCursor::TopLeftCornerResizeCursor:juce::MouseCursor::TopRightCornerResizeCursor):
         right?juce::MouseCursor::LeftRightResizeCursor:juce::MouseCursor::UpDownResizeCursor);return;}
     if(e.y>=63 && e.y<103 && e.x<195){setMouseCursor(juce::MouseCursor::DraggingHandCursor);return;}
     int nextBank=-1;
@@ -2187,7 +2230,9 @@ void PresetBrowser::mouseMove(const juce::MouseEvent& e){
     }
     const int candidate=resultAt(e.getPosition());
     const bool directory=directoryMode()!=DirectoryMode::none;
-    const bool onStar=!directory && e.x>=getWidth()-77 && e.x<=getWidth()-38;
+    const bool onStar=!directory && candidate>=scroll && (listMode?
+        e.x>=getWidth()-77 && e.x<=getWidth()-38:
+        directoryCardBounds(candidate-scroll).removeFromRight(35).removeFromTop(35).contains(e.getPosition()));
     // Avoid filtering all the cards for every pixel of mouse travel.
     const bool stableCard=candidate>=0 && candidate==hoveredCard &&
         (onStar?hoveredStar==candidate:hoveredStar<0);
@@ -2225,7 +2270,7 @@ void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWh
     browserWheelCarry=juce::jlimit(-1.f,1.f,
         (browserWheelCarry*wheel.deltaY<0.f?0.f:browserWheelCarry)+wheel.deltaY);
     if(std::abs(browserWheelCarry)<.18f)return;
-    const int direction=(browserWheelCarry<0.f?1:-1)*(directoryMode()==DirectoryMode::none?1:directoryColumns());
+    const int direction=(browserWheelCarry<0.f?1:-1)*(directoryMode()==DirectoryMode::none && listMode?1:directoryColumns());
     browserWheelCarry=0.f;
     const int next=juce::jlimit(0,maxScroll,scroll+direction);
     if(scroll!=next){
@@ -2254,7 +2299,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     const bool directory=directoryMode()!=DirectoryMode::none;
     const auto entries=directory?std::vector<int>{}:filtered();
     if(code==juce::KeyPress::leftKey || code==juce::KeyPress::rightKey){
-        if(directory && keyboardCard>=0 && !key.getModifiers().isAltDown()){
+        if((directory || !listMode) && keyboardCard>=0 && !key.getModifiers().isAltDown()){
             focusCard(keyboardCard+(code==juce::KeyPress::leftKey?-1:1));return true;
         }
         constexpr std::array<int,6> navigation{{0,-1,4,2,1,3}};
@@ -2268,7 +2313,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     }
     if(code==juce::KeyPress::upKey || code==juce::KeyPress::downKey){
         focusCard(keyboardCard<0?scroll:keyboardCard+
-            (code==juce::KeyPress::upKey?-1:1)*(directory?directoryColumns():1));
+            (code==juce::KeyPress::upKey?-1:1)*(directory || !listMode?directoryColumns():1));
         return true;
     }
     if(code==juce::KeyPress::homeKey){

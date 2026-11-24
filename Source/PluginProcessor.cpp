@@ -98,6 +98,8 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.duckThreshold=state.getRawParameterValue(prefix+"duckThreshold");
         r.duckRelease=state.getRawParameterValue(prefix+"duckRelease");
         r.duckAttack=state.getRawParameterValue(prefix+"duckAttack");
+        r.limitAttack=state.getRawParameterValue(prefix+"limitAttack");
+        r.limitRelease=state.getRawParameterValue(prefix+"limitRelease");
         r.eqLowCut=state.getRawParameterValue(prefix+"eqLowCut");
         r.eqHighCut=state.getRawParameterValue(prefix+"eqHighCut");
         for(int k=0;k<16;k++)r.p[(size_t)k]=state.getRawParameterValue(prefix+"p"+juce::String(k+1));
@@ -334,6 +336,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(slot)+"_fxExt11",1},
             "Slot "+juce::String(slot)+" Vocal Feel Suite effect",
             juce::StringArray{"None","Vocal Feel Suite"},0));
+    // Append timing controls after every published parameter. Defaults reproduce
+    // the historical instantaneous detector and 70ms release exactly.
+    for(int slot=1;slot<=slotCount;++slot) {
+        const auto pre="s"+juce::String(slot)+"_";
+        fl(pre+"limitAttack","Slot "+juce::String(slot)+" limiter attack ms",0.f,3.f,0.f);
+        fl(pre+"limitRelease","Slot "+juce::String(slot)+" limiter release ms",5.f,500.f,70.f);
+    }
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -782,6 +791,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         c.duckThreshold=raw.duckThreshold->load();
         c.duckRelease=raw.duckRelease->load();
         c.duckAttack=raw.duckAttack->load();
+        c.limitAttack=raw.limitAttack->load();c.limitRelease=raw.limitRelease->load();
+
         c.eqLowCut=raw.eqLowCut->load();
         c.eqHighCut=raw.eqHighCut->load();
         for(int k=0;k<16;++k)c.p[(size_t)k]=raw.p[(size_t)k]->load();
@@ -792,6 +803,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             c.studioEqEnabled[(size_t)k]=raw.studioEqOn[(size_t)k]->load()>.5f;
         }
         auto& e=engines[(size_t)s];
+        if(c.type==Limiter || c.type==StudioLimiterFX)e.limiter.setTiming(c.limitAttack,c.limitRelease);
         if(supportsWetSidechain(c.type))
             e.voiceDuck.set(c.duckOn,c.duckDepth,c.duckThreshold,
                             c.duckRelease,c.duckAttack);
@@ -953,7 +965,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     }
     blockLatency=juce::jlimit(0,slotCount*(lookahead+skellpreset::dsp::SpectralPitchFormant::latencySamples)+
         skellpreset::host::HostedVST3::maxTotalLatency,blockLatency);
-    std::array<float,slotCount> meter{},grMeter{};
+    std::array<float,slotCount> meter{},grMeter{},minimumGain;minimumGain.fill(1.f);
     float inPeak=0.f,outPeak=0.f;
     const int limit=juce::jmax(64,hostChunkCapacity);
     for(int offset=0;offset<total;offset+=limit) {
@@ -1070,6 +1082,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case Compressor: {
                         const float g=e.comp.gain(std::max(std::abs(l),std::abs(r)));
+                        grMeter[(size_t)s]=std::max(grMeter[(size_t)s],e.comp.lastReductionDb);
                         wetL=l*g;wetR=r*g;break;
                     }
                     case StudioLimiterFX: {
@@ -1083,10 +1096,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         float output[2]{};
                         // Final SkellCore true-peak stage is never bypassed on wet audio.
                         e.limiter.processFrame(input,output,2);
+                        minimumGain[(size_t)s]=std::min(minimumGain[(size_t)s],e.limiter.appliedGain());
                         wetL=output[0];wetR=output[1];break;
                     }
                     case StudioCompressorFX: {
                         const auto y=e.studioComp.process(l,r);
+                        grMeter[(size_t)s]=std::max(grMeter[(size_t)s],e.studioComp.gainReductionDb());
                         wetL=y[0];wetR=y[1];break;
                     }
                     case VocalFeelOptoFX: {
@@ -1115,6 +1130,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         const float input[2]{l*limiterDrive,r*limiterDrive};
                         float output[2]{};
                         e.limiter.processFrame(input,output,2);
+                        minimumGain[(size_t)s]=std::min(minimumGain[(size_t)s],e.limiter.appliedGain());
                         wetL=output[0];wetR=output[1];break;
                     }
                     case Gate: {
@@ -1123,6 +1139,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case DeEsser: {
                         const auto y=e.deesser.process(l,r);
+                        minimumGain[(size_t)s]=std::min(minimumGain[(size_t)s],(float)e.deesser.reductionGain);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Radio: {
@@ -1314,8 +1331,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         slotPeaks[(size_t)s].store(meter[(size_t)s],std::memory_order_relaxed);
         const bool suite=controlCache[(size_t)s].type==VocalFeelSuiteFX;
         const auto& dsp=engines[(size_t)s].vocalSuite;
+        const float measured=std::max(grMeter[(size_t)s],-gainToDb(minimumGain[(size_t)s]));
         slotGainReductionDb[(size_t)s].store(suite?dsp.compressorReductionDb():
-                                            grMeter[(size_t)s],std::memory_order_relaxed);
+                                            measured,std::memory_order_relaxed);
         slotDeessReductionDb[(size_t)s].store(suite?dsp.deesserReductionDb():0.f,
                                               std::memory_order_relaxed);
         for(int chain=0;chain<5;++chain)
@@ -1377,6 +1395,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal(slotPrefix(s)+"duckThreshold",-32.f);
         setReal(slotPrefix(s)+"duckRelease",320.f);
         setReal(slotPrefix(s)+"duckAttack",12.f);
+        setReal(slotPrefix(s)+"limitAttack",0.f);setReal(slotPrefix(s)+"limitRelease",70.f);
         
     }
     std::uint64_t seqReset=0;
@@ -1660,6 +1679,7 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         dst.duckThreshold=value(prefix+"duckThreshold");
         dst.duckRelease=value(prefix+"duckRelease");
         dst.duckAttack=value(prefix+"duckAttack");
+        dst.limitAttack=value(prefix+"limitAttack");dst.limitRelease=value(prefix+"limitRelease");
         for(int k=0;k<16;++k)dst.params[(size_t)k]=getSlotParam(dst.slotId,k);
         for(int band=0;band<8;++band){
             const auto n=juce::String(band+1);
@@ -1686,6 +1706,7 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
         setReal(prefix+"duckThreshold",slot.duckThreshold);
         setReal(prefix+"duckRelease",slot.duckRelease);
         setReal(prefix+"duckAttack",slot.duckAttack);
+        setReal(prefix+"limitAttack",slot.limitAttack);setReal(prefix+"limitRelease",slot.limitRelease);
         for(int k=0;k<16;++k)setSlotParam(slot.slotId,k,slot.params[(size_t)k]);
         for(int band=0;band<8;++band){
             const auto n=juce::String(band+1);
@@ -1937,6 +1958,18 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
                 juce::ValueTree node(juce::Identifier("PARAM"));
                 node.setProperty("id",def.id,nullptr);
                 node.setProperty("value",def.initial,nullptr);
+                loaded.appendChild(node,nullptr);
+            }
+        }
+        for(int slot=1;slot<=slotCount;++slot)for(int timing=0;timing<2;++timing) {
+            const auto id="s"+juce::String(slot)+(timing==0?"_limitAttack":"_limitRelease");
+            bool present=false;
+            for(int i=0;i<loaded.getNumChildren();++i)
+                present=present || loaded.getChild(i).getProperty("id").toString()==id;
+            if(!present) {
+                juce::ValueTree node(juce::Identifier("PARAM"));
+                node.setProperty("id",id,nullptr);
+                node.setProperty("value",timing==0?0.f:70.f,nullptr);
                 loaded.appendChild(node,nullptr);
             }
         }

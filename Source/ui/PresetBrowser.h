@@ -20,6 +20,8 @@ public:
     bool keyPressed(const juce::KeyPress&) override;
     void open();
     bool configureDirectoryForScreenshot(int page,int width,int height);
+    void setListViewForScreenshot(bool list) {preferencesReadOnly=true;setListView(list,false);}
+    bool testViewSwitchForTest();
     void applyTheme();
     // Cached on the message thread; no image file I/O from paint/audio.
     juce::Image selectedCover() const;
@@ -50,7 +52,7 @@ public:
         return !editing && x>=207 && x<width-17 &&
                relative>=0 && relative<rows*61 && relative%61<56;
     }
-    void loadFactoryForHistoryTest(int index) {loadFactoryFromBrowser(index);}
+    void loadFactoryForHistoryTest(int index) {juce::ScopedValueSetter<bool> guard(preferencesReadOnly,true);loadFactoryFromBrowser(index);}
     juce::File historySelection() const {return activeUserPreset;}
     void restoreHistorySelection(const juce::File& selection) {
         activeUserPreset=selection;
@@ -62,6 +64,15 @@ public:
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
 private:
+    juce::TextButton thumbnailView{"THUMBNAILS"},listView{"LIST"};
+    bool listMode=false,preferencesReadOnly=false;
+    juce::StringArray recentKeys;
+    void rememberRecent(int entry);
+    bool resizeLeft=false,resizeTop=false;
+    void setListView(bool list,bool persist=true);
+    void loadUIPreferences();
+    void saveUIPreferences() const;
+    void paintPresetGrid(juce::Graphics&,const std::vector<int>&);
     SkellPresetAudioProcessor& processor;
     juce::TextEditor search,artistEditor,categoryEditor;
     juce::ComboBox genrePicker,genreFilter,sortPicker,artistTierFilter,artistFilter,typeFilter,tierEditor,typeEditor;
@@ -115,6 +126,7 @@ private:
     bool setArtistForUser(int index,const juce::String& name);
     juce::File genresFile() const;
     juce::String genreForUser(int index) const;
+    juce::StringArray genresForUser(int index) const;
     void loadGenres();
     bool saveGenres() const;
     bool setGenreForUser(int index,const juce::String& label);

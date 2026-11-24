@@ -9,3 +9,8 @@
 *.obj
 *.tlog
 *.lastbuildstate
+/dependencies/
+/evidence/
+/*.log
+
+/assets/

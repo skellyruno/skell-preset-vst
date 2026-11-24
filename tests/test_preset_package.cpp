@@ -56,7 +56,8 @@ int main(){
                && loaded.micGateAttackMs==4.f && loaded.micGateHysteresisDb==3.f && loaded.micGateDepth==1.f
               && !loaded.slots[0].duckOn
               && loaded.slots[0].duckDepth==.65f
-              && loaded.slots[0].duckAttack==12.f,
+              && loaded.slots[0].duckAttack==12.f
+              && loaded.slots[0].limitAttack==0.f && loaded.slots[0].limitRelease==70.f,
               "Default rack imports without activating effects or mic preamp");
         bool importedNeutralParameters=true;
         for(const auto& slot:loaded.slots)
@@ -76,6 +77,7 @@ int main(){
         slot.duckOn=s==2;slot.duckDepth=.73f;
         slot.duckThreshold=-28.f;slot.duckRelease=480.f;
         slot.duckAttack=34.f;
+        slot.limitAttack=1.25f;slot.limitRelease=227.f;
         slot.params.fill(.5f);
     }
     first.activeSlotCount=14;
@@ -106,7 +108,8 @@ int main(){
           &&second.slots[2].duckDepth==.73f
           &&second.slots[2].duckThreshold==-28.f
           &&second.slots[2].duckRelease==480.f
-          &&second.slots[2].duckAttack==34.f,
+          &&second.slots[2].duckAttack==34.f
+          &&second.slots[2].limitAttack==1.25f &&second.slots[2].limitRelease==227.f,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
 
     // Schema v2 supports all new VoxRack modules without modifying the
@@ -322,7 +325,9 @@ int main(){
                 {false,"duckDepth","duck-depth","Reject null duck depth"},
                 {false,"duckThreshold","duck-threshold","Reject null duck threshold"},
                 {false,"duckRelease","duck-release","Reject null duck release"},
-                {false,"duckAttack","duck-attack","Reject null duck attack"}
+                {false,"duckAttack","duck-attack","Reject null duck attack"},
+                {false,"limitAttack","limiter-attack","Reject null limiter attack"},
+                {false,"limitRelease","limiter-release","Reject null limiter release"}
             };
             for(const auto& test:nullCases) {
                 auto nullJson=juce::JSON::parse(jsonText);

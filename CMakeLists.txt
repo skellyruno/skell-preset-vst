@@ -108,8 +108,8 @@ target_sources(SkellPreset PRIVATE
     Source/chain/PresetPackage.h Source/chain/PresetPackage.cpp
     Source/host/HostedVST3.h
     Source/ui/Theme.h Source/ui/ModulePicker.h Source/ui/SkullThemeButton.h Source/ui/ChainPanel.h Source/ui/ChainPanel.cpp
-    Source/ui/SlotEditor.h Source/ui/SlotEditor.cpp
-    Source/ui/VocalFeelStyles.h Source/ui/PresetBrowser.h Source/ui/PresetBrowser.cpp
+    Source/ui/SlotEditor.h Source/ui/SlotEditor.cpp Source/ui/HardwareFace.cpp Source/ui/HardwareLayout.h
+    Source/ui/VocalFeelStyles.h Source/ui/PresetBrowser.h Source/ui/PresetBrowser.cpp Source/ui/BrowserViews.cpp
     Source/match/MatchCore.h)
 target_compile_definitions(SkellPreset PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)

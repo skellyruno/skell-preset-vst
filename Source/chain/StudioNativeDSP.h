@@ -166,18 +166,21 @@ public:
         envelope=pole*envelope+(1.-pole)*rms;
         if(envelope<1.e-20)envelope=0.;
         const float lvl=(float)std::min(envelope,100.);
-        if(lvl<=thresholdAmp)return 1.f;
+        if(lvl<=thresholdAmp){measuredGain=1.f;measuredReductionDb=0.f;return 1.f;}
         const float over=20.f*std::log10(lvl)-thresholdDb;
         const float db=(kneeA>1.e-5f)
             ? ((std::log1p((over+1.f)*kneeA)*kneeB-1.f)*(slope+1.f)-over)
             : over*slope;
-        return std::clamp(std::pow(10.f,db/20.f),0.f,1.f);
+        measuredReductionDb=-db;
+        measuredGain=std::clamp(std::pow(10.f,db/20.f),0.f,1.f);return measuredGain;
     }
     std::array<float,2> process(float l,float r) noexcept {
         const float g=gain(l,r);return {detail::safe(l*g),detail::safe(r*g)};
     }
+    float gainReductionDb() const noexcept {return measuredReductionDb;}
 private:
     double sr=48000.,sum=0.,envelope=0.,attackPole=.9,releasePole=.999;
+    float measuredGain=1.f,measuredReductionDb=0.f;
     float thresholdAmp=.25f,thresholdDb=-12.f,slope=-.7f,kneeA=0.f,kneeB=0.f;
     std::array<float,4096> window{};
     size_t index=0;int rmsCount=64;

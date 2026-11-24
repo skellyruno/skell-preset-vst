@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <SkellCore/Core.h>
+#include "chain/LimiterDSP.h"
 #include <SkellCore/AdlibFX.h>
 #include "chain/BasicDSP.h"
 #include "chain/LiveAudioScope.h"
@@ -187,7 +188,7 @@ private:
         skellpreset::dsp::VoiceWetDucker voiceDuck;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
-        skellcore::TruePeakLimiter limiter;
+        skellpreset::dsp::CompatibleLimiter limiter;
         skellcore::PhraseTracker phrase;
         std::array<std::vector<float>,2> throwHistory;
         size_t throwWrite=0,throwRead=0;
@@ -207,6 +208,7 @@ private:
         bool duckOn=false;
         float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
               duckAttack=12.f;
+        float limitAttack=0.f,limitRelease=70.f;
         std::array<float,16> p{};std::array<float,8> q{};
         std::array<int,8> studioEqKinds{{3,0,0,0,0,0,4,0}};
         std::array<bool,8> studioEqEnabled{{true,true,true,true,true,true,true,false}};
@@ -232,6 +234,7 @@ private:
         std::atomic<float>* duckOn=nullptr,*duckDepth=nullptr;
         std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr,
                           *duckAttack=nullptr;
+        std::atomic<float>* limitAttack=nullptr,*limitRelease=nullptr;
         std::array<std::atomic<float>*,16> p{};
         std::array<std::atomic<float>*,8> q{};
         std::array<std::atomic<float>*,8> studioEqKind{};

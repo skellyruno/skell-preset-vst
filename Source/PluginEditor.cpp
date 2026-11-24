@@ -39,10 +39,6 @@ public:
         addAndMakeVisible(idle);
         chain.setSelectedSlot(-1);
         themeButton.onClick=[this] {setTheme(Theme::nextVariant(selectedTheme));};
-        help.setButtonText("?");
-        help.setTooltip("Replay the Skell-Preset guided tour");
-        style(help);addAndMakeVisible(help);
-        help.onClick=[this]{outer.showGuidedTour(false);};
         addAndMakeVisible(themeButton);
         previousMode=juce::jlimit(0,1,(int)processor.state.state.getProperty("uiPreviousMode",1));
         rackOnRight=(bool)processor.state.state.getProperty("uiRackOnRight",false);
@@ -373,8 +369,8 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(juce::TextButton* b:std::array<juce::TextButton*,9>{{
-            &preset,&viewSwitch,&undo,&redo,&powerButton,&help,&settings,&record,&micButton}})
+        for(juce::TextButton* b:std::array<juce::TextButton*,8>{{
+            &preset,&viewSwitch,&undo,&redo,&powerButton,&settings,&record,&micButton}})
             style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
@@ -422,8 +418,9 @@ public:
         else browser.setVisible(false);
         repaint();
     }
-    bool configureBrowserForScreenshot(int page,int width,int height) {
-        return browser.configureDirectoryForScreenshot(page,width,height);
+    bool configureBrowserForScreenshot(int page,int width,int height,bool list) {
+        const bool result=browser.configureDirectoryForScreenshot(page,width,height);
+        browser.setListViewForScreenshot(list);return result;
     }
     void setMatchPageForScreenshot(int page) {
         editingIdle=false;idle.setVisible(false);
@@ -494,8 +491,8 @@ public:
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
-        const std::array<const juce::Component*,12> all{{&themeButton,&preset,
-            &viewSwitch,&powerButton,&help,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
+        const std::array<const juce::Component*,11> all{{&themeButton,&preset,
+            &viewSwitch,&powerButton,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
@@ -1161,36 +1158,34 @@ public:
         // append() left the new runs at JUCE's tiny default font.
         brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
-        wordmark.createLayout(brand,271.f);
-        wordmark.draw(g,juce::Rectangle<float>(75.f,9.f,271.f,38.f));
-        // The new tagline lives directly under SKELLPRESET, rather than
-        // fighting the old waveform strip for the same 14 px.
-        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{75,46,230,17},
-                    11.f,Theme::muted,true,juce::Justification::centredLeft);
-        // UI edition marker belongs with the title, not an isolated LIVE
-        // badge. Binary package version stays 0.7.0 for old host projects.
-        // Tuck the UI edition marker immediately under the final T in
-        // PRESET; the actual VST3 binary version stays unchanged.
-        Theme::text(g,"v.01",{310,15,42,15},9.5f,
-                    Theme::green.withAlpha(.83f),true);
+        wordmark.createLayout(brand,340.f);
+        const float titleX=75.f,titleY=15.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
+        wordmark.draw(g,{titleX,titleY,titleW,titleH});
+        const int subY=juce::roundToInt(titleY+titleH-1.f);
+        juce::AttributedString edition;edition.append("v.01",Theme::font(9.5f,true),Theme::green);
+        juce::TextLayout editionLayout;editionLayout.createLayout(edition,60.f);
+        const int editionX=juce::roundToInt(titleX+titleW-editionLayout.getWidth());
+        Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{75,subY,editionX-83,16},
+                          10.5f,Theme::muted,true,juce::Justification::centredLeft);
+        editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
         Theme::text(g,"PRESET",{431,12,349,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
         Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
                     {796,12,176,14},9,Theme::muted,true);
-        g.setColour(Theme::stroke);g.drawHorizontalLine(634,0.f,(float)Theme::width);
+        g.setColour(Theme::stroke);g.drawHorizontalLine(661,0.f,(float)Theme::width);
         g.setGradientFill(juce::ColourGradient(
-            Theme::panelAlt.withMultipliedBrightness(.88f),0.f,635.f,
+            Theme::panelAlt.withMultipliedBrightness(.88f),0.f,662.f,
             Theme::panel.darker(.07f),0.f,688.f,false));
-        g.fillRect(0,635,Theme::width,53);
+        g.fillRect(0,662,Theme::width,26);
         g.setColour(Theme::white.withAlpha(.055f));
-        g.drawHorizontalLine(636,12.f,(float)Theme::width-12.f);
+        g.drawHorizontalLine(663,12.f,(float)Theme::width-12.f);
         {
             g.setColour(Theme::stroke.withAlpha(.50f));
-            g.drawVerticalLine(801,644.f,681.f);
+            g.drawVerticalLine(801,667.f,683.f);
         }
-        Theme::text(g,"IN",{26,646,42,18},11,Theme::muted,true);
-        Theme::text(g,"OUT",{214,646,48,18},11,Theme::muted,true);
+        Theme::text(g,"IN",{26,665,42,18},11,Theme::muted,true);
+        Theme::text(g,"OUT",{214,665,48,18},11,Theme::muted,true);
         const int inputBars=meterBars(displayedInputPeak);
         const int outputBars=meterBars(displayedOutputPeak);
         for(int ix=0;ix<12;++ix){
@@ -1199,31 +1194,18 @@ public:
             g.setColour(inActive?(ix==11&&isMeterOverloaded(displayedInputPeak)
                 ?Theme::red:lit).withAlpha(.88f):
                 Theme::stroke.withAlpha(.39f));
-            g.fillRoundedRectangle((float)(68+ix*10),651.f,7.f,11.f,1.4f);
+            g.fillRoundedRectangle((float)(68+ix*10),670.f,7.f,9.f,1.4f);
             g.setColour(outActive?(ix==11&&isMeterOverloaded(displayedOutputPeak)
                 ?Theme::red:lit).withAlpha(.88f):
                 Theme::stroke.withAlpha(.39f));
-            g.fillRoundedRectangle((float)(263+ix*10),651.f,7.f,11.f,1.4f);
+            g.fillRoundedRectangle((float)(263+ix*10),670.f,7.f,9.f,1.4f);
         }
         // Simple-only master panel. The numeric labels are live children,
         // not cached canvas paint, and cannot be obscured by the dials.
         const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
-        static constexpr const char* masterNames[]{"INPUT","MIX","OUTPUT"};
-        for(int i=0;i<3;++i) {
-            const int x=807+i*116;
-            const auto card=juce::Rectangle<float>((float)x,639.f,110.f,46.f);
-            Theme::panelBox(g,card,5.f);
-            g.setColour(Theme::green.withAlpha(.78f));
-            g.fillRoundedRectangle((float)x+7.f,645.f,2.f,9.f,1.f);
-            Theme::text(g,masterNames[i],{x+52,642,54,14},11.4f,Theme::muted,true);
-            g.setColour(Theme::plot);
-            g.fillRoundedRectangle((float)x+49.f,657.f,58.f,23.f,3.f);
-        }
-        }
-        if(viewMode==0){
-            Theme::panelBox(g,{14.f,90.f,1140.f,507.f},11.f);
+            Theme::panelBox(g,{14.f,90.f,1140.f,568.f},11.f);
             Theme::text(g,"SIMPLE  /  MACRO MIXER",{52,115,520,25},15.8f,Theme::green,true);
             Theme::fittedText(g,processor.presetName(),{74,164,988,69},47,Theme::white,true);
             Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,248,900,24},16.0f,Theme::white.withAlpha(.86f),true);
@@ -1300,6 +1282,14 @@ public:
                 }
             }
         }
+        if(viewMode==0) {
+            const char* masterNames[]{"INPUT","MIX","OUTPUT"};
+            for(int i=0;i<3;++i) {
+                const int x=150+i*300;
+                Theme::panelBox(g,{(float)x,563.f,268.f,86.f},6.f);
+                Theme::text(g,masterNames[i],{x+108,574,142,18},11.5f,Theme::muted,true);
+            }
+        }
     }
     void paintOverChildren(juce::Graphics& g) override {
         // A subtle second wallpaper pass keeps cover art visible across the
@@ -1315,10 +1305,10 @@ public:
     }
     void resized() override {
         themeButton.setBounds(15,12,53,56);
-        chain.setBounds(rackOnRight?939:13,90,216,535);
+        chain.setBounds(rackOnRight?939:13,90,216,561);
         // The Advanced footer macro strip is gone: let the module editor
         // fill the space down to the shared master-control footer.
-        slot.setBounds(rackOnRight?14:247,90,906,535);
+        slot.setBounds(rackOnRight?14:247,90,906,561);
         idle.setBounds(slot.getBounds());
         // Smaller movable mic panel opens on the LEFT; manual drag/resize
         // remains under the user's control and survives editor refresh.
@@ -1343,7 +1333,6 @@ public:
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
         // Compact 36px controls on one baseline, visually grouped.
         powerButton.setBounds(1069,28,36,36);
-        help.setBounds(rackOnRight?906:1129,604,24,23);
         const int raw=(int)processor.state.getRawParameterValue("mode")->load();
         const int display=raw==3?previousMode:(raw==0?0:1);
         for(int i=0;i<4;++i) {
@@ -1356,16 +1345,16 @@ public:
         }
         // Keep all three original APVTS controls Simple-only and usable
         // even when the plugin is displayed at its default 70% scale.
-        input.setBounds(810,642,45,40);
-        mix.setBounds(926,642,45,40);
-        output.setBounds(1042,642,45,40);
+        input.setBounds(164,567,78,78);
+        mix.setBounds(464,567,78,78);
+        output.setBounds(764,567,78,78);
         for(auto* control:{&input,&mix,&output})control->setVisible(display==0);
         for(size_t i=0;i<masterValues.size();++i){
-            masterValues[i].setBounds(856+(int)i*116,657,58,23);
+            masterValues[i].setBounds(258+(int)i*300,600,142,29);
             masterValues[i].setVisible(display==0);
         }
         syncMasterReadouts();
-        sizeSelect.setBounds(1094,648,69,26);
+        sizeSelect.setBounds(1094,664,69,22);
         settings.setBounds(1110,28,36,36);
         settingsPanel.setBounds(743,78,388,326);
         record.setBounds(0,0,1,1);
@@ -1519,7 +1508,7 @@ public:
         const bool above=(point.x>=14 && point.x<Theme::width-14 &&
                           point.y>=78 && point.y<89);
         const bool below=(point.x>=14 && point.x<Theme::width-14 &&
-                          point.y>=627 && point.y<635);
+                          point.y>=chain.getBottom()+2 && point.y<662);
         return between || above || below;
     }
     bool testEmptyGapReturnRegions() const noexcept {
@@ -1528,7 +1517,7 @@ public:
         return right-left>=12 &&
             isEmptyGapReturn({(left+right)/2,chain.getY()+190}) &&
             isEmptyGapReturn({700,82}) &&
-            isEmptyGapReturn({700,630}) &&
+            isEmptyGapReturn({700,656}) &&
             !isEmptyGapReturn(chain.getBounds().getCentre()) &&
             !isEmptyGapReturn(slot.getBounds().getCentre()) &&
             !isEmptyGapReturn({1000,50}) &&
@@ -1663,7 +1652,7 @@ private:
     int lastRecordingState=-1;
     unsigned lastScopeSampleCount=~0u;
     unsigned lastScopeFrameTimeMs=0u;
-    SkellActionButton preset,undo,redo,help,record,micButton;
+    SkellActionButton preset,undo,redo,record,micButton;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
@@ -1733,8 +1722,8 @@ juce::StringArray SkellPresetAudioProcessorEditor::runScreenshotInteractionTests
 void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
     canvas->selectRackSlotForScreenshot(physicalSlot,scrollOffset);
 }
-bool SkellPresetAudioProcessorEditor::configureBrowserForScreenshot(int page,int width,int height) {
-    return canvas->configureBrowserForScreenshot(page,width,height);
+bool SkellPresetAudioProcessorEditor::configureBrowserForScreenshot(int page,int width,int height,bool list) {
+    return canvas->configureBrowserForScreenshot(page,width,height,list);
 }
 void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
     canvas->setMatchPageForScreenshot(page);

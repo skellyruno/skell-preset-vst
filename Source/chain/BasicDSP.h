@@ -101,7 +101,7 @@ struct SmoothedBiquad {
 
 struct Compressor {
     double sampleRate=48000, envelope=0;
-    float threshold=-18,ratio=3,attackMs=12,releaseMs=90,makeupDb=0;
+    float threshold=-18,ratio=3,attackMs=12,releaseMs=90,makeupDb=0,lastReductionDb=0;
     // Parameter smoothing guards against clicks when the host writes automation
     // at block boundaries. Envelope smoothing remains independent.
     double smoothedThreshold=-18,smoothedRatio=3,smoothedMakeup=0,paramPole=.998;
@@ -124,6 +124,7 @@ struct Compressor {
         if(envelope<1.e-20)envelope=0.; // no persistent denormal detector state
         const auto lvl=gainToDb(static_cast<float>(envelope));
         const auto gr=lvl>smoothedThreshold?(lvl-smoothedThreshold)*(1.-1./smoothedRatio):0.;
+        lastReductionDb=(float)gr;
         return dbToGain((float)(smoothedMakeup-gr));
     }
 };

@@ -1,0 +1,152 @@
+#include "SlotEditor.h"
+#include "HardwareLayout.h"
+#include "../chain/EffectRegistry.h"
+
+namespace {
+void meter(juce::Graphics& g,juce::Rectangle<float> r,float amount,
+           const juce::String& name,const juce::String& value,bool vertical=false) {
+    Theme::panelBox(g,r,6.f);
+    Theme::text(g,name,(r.getHeight()<60.f?r.reduced(12.f,6.f).withWidth(r.getWidth()*.48f):r.reduced(12.f,8.f)).withHeight(19.f).toNearestInt(),r.getHeight()<60.f?9.f:10.5f,Theme::muted,true);
+    auto rail=r.reduced(15.f,36.f);
+    if(vertical)rail=rail.withWidth(20.f).withCentre({r.getCentreX(),r.getCentreY()});
+    else if(r.getHeight()<60.f)rail={r.getX()+15.f,r.getBottom()-12.f,r.getWidth()-30.f,6.f};
+    else rail=rail.withHeight(15.f).withY(r.getCentreY()-3.f);
+    constexpr int segments=26;
+    const float level=juce::jlimit(0.f,1.f,amount);
+    for(int i=0;i<segments;++i) {
+        const float f=(float)i/(float)segments;
+        const auto lit=i>21?Theme::amber:Theme::green;
+        g.setColour(f<level?lit.withAlpha(.85f):Theme::stroke.withAlpha(.37f));
+        if(vertical) {
+            const float h=rail.getHeight()/segments;
+            g.fillRoundedRectangle(rail.getX(),rail.getBottom()-(i+1)*h,rail.getWidth(),h-2.f,1.f);
+        } else {
+            const float w=rail.getWidth()/segments;
+            g.fillRoundedRectangle(rail.getX()+i*w,rail.getY(),w-2.f,rail.getHeight(),1.f);
+        }
+    }
+    Theme::fittedText(g,value,{(int)(r.getHeight()<60.f?r.getCentreX():r.getX()+8.f),(int)(r.getHeight()<60.f?r.getY()+3.f:r.getBottom()-28.f),(int)(r.getHeight()<60.f?r.getWidth()*.5f-8.f:r.getWidth()-16.f),22},
+                      r.getHeight()<60.f?12.f:15.f,Theme::white,true,juce::Justification::centred);
+}
+}
+
+void SlotEditor::paintHardware(juce::Graphics& g,int type) {
+    using namespace skellpreset::face;
+    const auto panel=juce::Rectangle<float>(19.f,142.f,868.f,378.f);
+    g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.08f),panel.getTopLeft(),
+                                          Theme::bg,panel.getBottomRight(),false));
+    g.fillRoundedRectangle(panel,9.f);
+    g.setColour(Theme::white.withAlpha(.035f));
+    for(int y=148;y<518;y+=4)g.drawHorizontalLine(y,25.f,880.f);
+    g.setColour(Theme::stroke.withAlpha(.5f));g.drawRoundedRectangle(panel,.0f,1.f);
+    for(float x:{28.f,878.f})for(float y:{151.f,510.f}) {
+        g.setColour(Theme::bg);g.fillEllipse(x-3.f,y-3.f,6.f,6.f);
+        g.setColour(Theme::muted.withAlpha(.4f));g.drawLine(x-1.7f,y+1.f,x+1.7f,y-1.f,.8f);
+    }
+    auto labels=titlesForHardware(type);
+    for(int i=0;i<4;++i) {
+        if(!visible(type,i))continue;
+        const auto r=control(type,i);
+        Theme::fittedText(g,labels[(size_t)i].toUpperCase(),
+            {r.getX()-3,r.getY()-25,r.getWidth()+6,20},12.f,Theme::white,true,juce::Justification::centred);
+    }
+    const float peak=processor.getSlotPeak(slot);
+    const float db=skellpreset::dsp::gainToDb(peak);
+    const float level=juce::jlimit(0.f,1.f,(db+60.f)/60.f);
+    const float reduction=processor.getSlotGainReductionDb(slot);
+    const auto output=peak>0.00001f?juce::String(db,1)+" dBFS":juce::String("— dBFS");
+    const auto gr=juce::String(reduction,1)+" dB";
+    if(limiter(type)) {
+        meter(g,{754.f,177.f,106.f,310.f},level,"OUTPUT",output,true);
+        meter(g,{61.f,471.f,639.f,43.f},reduction/24.f,"REDUCTION",gr);
+    } else if(dynamics(type)) {
+        // Wide reduction meter above the two timing controls. Atomic telemetry
+        // comes from this slot's actual envelope, never a transfer-curve proxy.
+        const bool measured=type==2 || type==36 || type==43;
+        meter(g,{548.f,169.f,306.f,88.f},measured?reduction/24.f:level,
+              measured?"GAIN REDUCTION":"SLOT OUTPUT",measured?gr:output);
+        if(type==36)Theme::text(g,"KNEE",{445,107,92,20},10.f,Theme::muted,true);
+    } else if(type==4 || type==29) {
+        meter(g,{342.f,170.f,496.f,83.f},level,"SIGNAL ACTIVITY",output);
+        const bool open=peak>.0001f;
+        g.setColour(open?Theme::green:Theme::stroke);
+        g.fillEllipse(330.f,485.f,6.f,6.f);
+        Theme::text(g,open?"PASSING AUDIO":"BELOW FLOOR",{346,477,470,22},11.f,Theme::muted,true);
+    } else if(type==11 || type==28) {
+        const float hz=type==11?3500.f+8000.f*processor.getSlotParam(slot,0):
+            1800.f+6200.f*processor.getSlotParam(slot,0);
+        Theme::text(g,"SIBILANCE FOCUS",{346,162,360,19},11.f,Theme::muted,true);
+        Theme::text(g,juce::String(hz/1000.f,2)+" kHz",{343,183,390,45},31.f,Theme::green,true);
+        meter(g,{624.f,171.f,214.f,81.f},type==11?reduction/24.f:level,
+              type==11?"REDUCTION":"OUTPUT",type==11?gr:output);
+    } else if(space(type)) {
+        const bool room=type==6 || type==18;
+        const auto display=juce::Rectangle<float>(344.f,166.f,493.f,91.f);
+        Theme::panelBox(g,display,6.f);
+        Theme::text(g,room?"DECAY ENVELOPE":"ECHO SPACING",{358,174,440,18},10.f,Theme::muted,true);
+        const float feedback=processor.getSlotParam(slot,1);
+        for(int echo=0;echo<11;++echo) {
+            const float strength=room?std::exp(-(float)echo/(1.f+5.f*processor.getSlotParam(slot,0))):
+                (float)std::pow(juce::jlimit(.05f,.94f,feedback),echo);
+            const float x=360.f+41.f*echo;
+            g.setColour(Theme::green.withAlpha(.2f+.6f*strength));
+            g.fillRoundedRectangle(x,239.f-35.f*strength,room?25.f:5.f,35.f*strength+1.f,2.f);
+        }
+        Theme::text(g,room?"DECAY MODEL":"REPEAT LEVEL MODEL",{353,260,470,18},9.f,Theme::muted);
+        meter(g,{66.f,478.f,215.f,37.f},level,"RETURN",output);
+    } else if(type==30) {
+        Theme::text(g,"PITCH",{111,140,245,20},11.f,Theme::muted,true);
+        Theme::text(g,"FORMANT",{476,140,245,20},11.f,Theme::muted,true);
+        g.setColour(Theme::stroke);g.drawVerticalLine(440,176.f,495.f);
+    } else if(type==17) {
+        for(int band=0;band<3;++band) {
+            const int x=45+band*216;
+            Theme::text(g,juce::StringArray{"LOW","MID","HIGH"}[band],{x,166,180,28},18.f,Theme::green,true,
+                        juce::Justification::centred);
+        }
+        Theme::text(g,"TIMING",{693,166,170,28},18.f,Theme::muted,true,juce::Justification::centred);
+        meter(g,{64.f,476.f,771.f,39.f},level,"OUTPUT",output);
+    } else if(type==44) {
+        std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity> input{},spectrumOutput{};
+        processor.getLiveSpectrumInput(input);processor.getLiveSpectrumOutput(spectrumOutput);
+        const auto inLevels=suiteSpectrumAnalyzer.analyze(input,processor.preparedAudioRate());
+        const auto outLevels=suiteSpectrumAnalyzer.analyze(spectrumOutput,processor.preparedAudioRate());
+        Theme::text(g,"RACK INPUT / OUTPUT",{42,410,180,14},9.f,Theme::muted,true);
+        for(int band=0;band<skellpreset::visual::LiveSpectrumAnalyzer::bands;++band) {
+            const float x=239.f+band*17.f;
+            const float before=juce::jlimit(0.f,1.f,(skellpreset::dsp::gainToDb(inLevels[(size_t)band])+72.f)/72.f);
+            const float after=juce::jlimit(0.f,1.f,(skellpreset::dsp::gainToDb(outLevels[(size_t)band])+72.f)/72.f);
+            g.setColour(Theme::muted.withAlpha(.55f));g.fillRect(x,447.f-before*32.f,5.f,before*32.f);
+            g.setColour(Theme::green.withAlpha(.6f));g.fillRect(x+6.f,447.f-after*32.f,5.f,after*32.f);
+        }
+        const char* returns[]{"MAGIC","SPACE","ATTACK","ATTITUDE","PRESENCE"};
+        for(int i=0;i<5;++i) {
+            const float rms=processor.getSuiteReturnRms(slot,i);
+            const float fraction=juce::jlimit(0.f,1.f,(skellpreset::dsp::gainToDb(rms)+55.f)/55.f);
+            meter(g,{43.f+165.f*i,460.f,156.f,49.f},fraction,returns[i],
+                  rms>.00001f?juce::String(skellpreset::dsp::gainToDb(rms),1)+" dBFS":"— dBFS");
+        }
+    } else if(type==31 || type==40 || type==42) {
+        meter(g,{65.f,477.f,773.f,38.f},level,"OUTPUT",output);
+    } else {
+        // Dedicated central hardware instrument, with a live level ring and
+        // a purpose-specific description. No generic frequency/XY graph.
+        const float cx=453.f,cy=307.f;
+        g.setGradientFill(juce::ColourGradient(Theme::stroke.withAlpha(.30f),cx-90.f,cy-80.f,
+                                              Theme::bg,cx+90.f,cy+100.f,false));
+        g.fillEllipse(cx-115.f,cy-115.f,230.f,230.f);
+        for(int i=0;i<40;++i) {
+            const float angle=juce::MathConstants<float>::twoPi*i/40.f;
+            g.setColour(i<(int)(level*40.f)?Theme::green.withAlpha(.72f):Theme::stroke);
+            g.drawLine(cx+103.f*std::sin(angle),cy-103.f*std::cos(angle),
+                       cx+109.f*std::sin(angle),cy-109.f*std::cos(angle),1.7f);
+        }
+        const juce::String caption=type==10?"DOUBLE":type==13?"RADIO":type==14?"CRUSH":
+            type==15?"PULSE":type==16?"WIDTH":type==20?"ENSEMBLE":type==21?"FLANGE":
+            type==22?"CARRIER":type==25?"VIBRATO":type==39?"CHOP":type==41?"FILTER":
+            type==8?"AIR":type==33?"ENHANCE":"CHARACTER";
+        Theme::fittedText(g,caption,{337,273,232,29},19.f,Theme::white,true,juce::Justification::centred);
+        Theme::fittedText(g,output,{352,310,202,26},14.f,Theme::green,true,juce::Justification::centred);
+        Theme::text(g,"SLOT OUTPUT",{353,340,200,20},10.f,Theme::muted,false,juce::Justification::centred);
+    }
+}

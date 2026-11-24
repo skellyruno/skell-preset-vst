@@ -405,8 +405,8 @@ int main(int argc, char** argv) {
         for(size_t i=0;i<covered.size();++i)if(!covered[i]){std::fprintf(stderr,"Missing effect capture type %zu\n",i);++failures;}
         options.scenes.push_back({"obsidian-stage-audience-100",1168,688,0,1,false});
         const char* directoryNames[]{"default","genres","genre-leaf","tiers","underground","mainstream","artist","artist-main","artist-adlib"};
-        for(int page=0;page<9;++page)
-            options.scenes.push_back({juce::String("audit-browser-")+juce::String(page)+"-"+directoryNames[page],1168,688,0,1,true});
+        for(int page=0;page<9;++page)for(int view=0;view<2;++view)
+            options.scenes.push_back({juce::String("audit-browser-")+juce::String(page)+"-"+directoryNames[page]+(view==0?"-thumbnails":"-list"),1168,688,0,1,true});
         options.scenes.push_back({"audit-browser-0-minimum",818,482,0,1,true});
         options.scenes.push_back({"audit-browser-0-maximum",1460,860,0,1,true});
         if(factorySlots){
@@ -582,7 +582,7 @@ int main(int argc, char** argv) {
             if(scene.id.startsWith("audit-browser-")){
                 const int page=scene.id.fromFirstOccurrenceOf("audit-browser-",false,false).getIntValue();
                 const bool small=scene.id.endsWith("minimum"),large=scene.id.endsWith("maximum");
-                if(!editor.configureBrowserForScreenshot(page,small?620:large?1000:780,small?530:large?604:560)){
+                if(!editor.configureBrowserForScreenshot(page,small?620:large?1000:780,small?530:large?604:560,scene.id.endsWith("-list"))){
                     std::fprintf(stderr,"Browser scene configuration failed: %s\n",scene.id.toRawUTF8());++failures;
                 }
             }
@@ -684,7 +684,7 @@ int main(int argc, char** argv) {
         const auto legendCheck=skellcore::ui::headless::capture(editor,818,482);
         int neonTextPixels=0;
         if(legendCheck.image.isValid())
-            for(int y=128;y<159;++y)for(int x=198;x<640;++x){
+            for(int y=267;y<302;++y)for(int x=400;x<575;++x){
                 const auto colour=legendCheck.image.getPixelAt(x,y);
                 if(colour.getGreen()>120
                     && colour.getGreen()>colour.getRed()*1.35f
@@ -692,7 +692,7 @@ int main(int argc, char** argv) {
                     ++neonTextPixels;
             }
         if(neonTextPixels<25) {
-            std::fprintf(stderr,"Radio graph title is hidden by the plot clip at 70%%\n");
+            std::fprintf(stderr,"Radio hardware output readout is missing at 70%%\n");
             ++failures;
         }
         if(!quick4)processor.loadFactoryPreset(0); // Full-matrix legacy baseline only.
@@ -701,6 +701,7 @@ int main(int argc, char** argv) {
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
         juce::Image overview(juce::Image::RGB,2*thumbnailWidth,
                              (quick4?2:(int)themes.size())*thumbnailHeight,true);
+        {
         juce::Graphics g(overview);
         if(quick4) {
             // Use the exact four previously saved PNGs. Re-rendering the
@@ -736,6 +737,7 @@ int main(int argc, char** argv) {
                     }
                 }
         }
+        } // Flush the Windows graphics context before PNG encoding.
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
         if(quick4 && extras) {

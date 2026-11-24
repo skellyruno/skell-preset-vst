@@ -739,7 +739,7 @@ int masterSignalSmoke(){
     // for steady-state comparisons, while separately measuring ramp continuity.
     constexpr int blockSize=256,blocks=28,settle=12;
     constexpr double sr=48000.;
-    auto source=[](int n,int ch){
+    auto source=[sr](int n,int ch){
         return (ch==0?1.f:.73f)*(.075f*(float)std::sin(2.*juce::MathConstants<double>::pi*713.*n/sr)
                +.022f*(float)std::sin(2.*juce::MathConstants<double>::pi*1741.*n/sr));
     };
@@ -748,6 +748,7 @@ int masterSignalSmoke(){
         Render result;
         auto p=std::make_unique<SkellPresetAudioProcessor>();
         if(factory>=0)p->loadFactoryPreset(factory);else p->clearRackToEmpty();
+        if(factory==-2){p->setSlotType(0,SkellPresetAudioProcessor::Limiter);p->setSlotOn(0,true);}
         setProcessorParameter(*p,"mode",(float)mode);
         setProcessorParameter(*p,"micGateOn",0.f);setProcessorParameter(*p,"micPreOn",0.f);
         setProcessorParameter(*p,"delta",0.f);
@@ -798,6 +799,13 @@ int masterSignalSmoke(){
         if(!unity.finite || !in.finite || !out.finite || !dry.finite || !wet.finite || !middle.finite ||
            std::abs(inDb-6.)>.03 || std::abs(outDb+6.)>.03 || dryError>2.e-5 ||
            blendError>2.e-4 || wetDiff<.001 || wet.latency!=dry.latency)return 93;
+    }
+    for(int mode:{0,1}) {
+        const auto dry=render(mode,-2,6.f,0.f,0.f),wet=render(mode,-2,6.f,1.f,0.f),blend=render(mode,-2,6.f,.5f,0.f);
+        auto expected=wet.output;for(size_t i=0;i<expected.size();++i)expected[i]=.5f*(dry.output[i]+wet.output[i]);
+        const double dryError=error(dry.output,dry.original),mixError=error(blend.output,expected);
+        std::printf("MASTER_PDC mode=%d latency=%d dry_error=%.9g blend_error=%.9g\n",mode,dry.latency,dryError,mixError);
+        if(!dry.finite || !wet.finite || !blend.finite || dry.latency<=0 || dry.latency!=wet.latency || dryError>2.e-5 || mixError>2.e-4)return 97;
     }
     auto p=std::make_unique<SkellPresetAudioProcessor>();p->clearRackToEmpty();
     setProcessorParameter(*p,"mode",1.f);setProcessorParameter(*p,"input",0.f);
@@ -856,7 +864,60 @@ int masterSignalSmoke(){
     std::puts("PASS: master gain, dry/wet interpolation, automation smoothing, PDC, state and personal preset recall");
     return 0;
 }
+int limiterStateSmoke() {
+    using P=SkellPresetAudioProcessor;
+    for(int type:{P::Limiter,P::StudioLimiterFX}) {
+        auto p=std::make_unique<P>();p->clearRackToEmpty();p->setSlotType(0,type);p->setSlotOn(0,true);
+        p->setSlotParam(0,0,.35f);p->setSlotParam(0,1,.2f);p->setSlotParam(0,2,1.f);
+        p->setSlotParam(0,3,0.f);p->setSlotParam(0,4,0.f);
+        setProcessorParameter(*p,"s1_limitAttack",1.25f);setProcessorParameter(*p,"s1_limitRelease",227.f);
+        juce::MemoryBlock modern;p->getStateInformation(modern);
+        auto q=std::make_unique<P>();q->setStateInformation(modern.getData(),(int)modern.getSize());
+        const auto valuesMatch=[&](P& target,float attack,float release) {
+            return target.slotType(0)==type && std::abs(target.state.getRawParameterValue("s1_limitAttack")->load()-attack)<.001f &&
+                std::abs(target.state.getRawParameterValue("s1_limitRelease")->load()-release)<.001f &&
+                target.getSlotParam(0,1)==.2f && target.getSlotParam(0,2)==1.f && target.getSlotParam(0,3)==0.f;
+        };
+        if(!valuesMatch(*q,1.25f,227.f))return 98;
+        const auto path=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("limiter-"+juce::Uuid().toString()+".skellpreset");
+        const bool zip=p->exportPreset(path).wasOk() && q->importPreset(path).wasOk() && valuesMatch(*q,1.25f,227.f);
+        path.deleteFile();if(!zip)return 98;
+        auto xml=juce::AudioProcessor::getXmlFromBinary(modern.getData(),(int)modern.getSize());
+        auto tree=juce::ValueTree::fromXml(*xml);
+        for(int i=tree.getNumChildren();--i>=0;) {
+            const auto id=tree.getChild(i).getProperty("id").toString();
+            if(id.endsWith("_limitAttack") || id.endsWith("_limitRelease"))tree.removeChild(i,nullptr);
+        }
+        juce::MemoryBlock old;auto oldXml=tree.createXml();juce::AudioProcessor::copyXmlToBinary(*oldXml,old);
+        q->setStateInformation(old.getData(),(int)old.getSize());if(!valuesMatch(*q,0.f,70.f))return 98;
+        auto render=[&](float attack,float release) {
+            q->setStateInformation(modern.getData(),(int)modern.getSize());
+            setProcessorParameter(*q,"mode",1.f);setProcessorParameter(*q,"micGateOn",0.f);
+            setProcessorParameter(*q,"s1_limitAttack",attack);setProcessorParameter(*q,"s1_limitRelease",release);
+            q->prepareToPlay(48000.,256);std::vector<float> samples;
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+            for(int block=0;block<64;++block) {
+                for(int n=0;n<256;++n) {
+                    const int pos=block*256+n;const float value=(pos<1200?.9f:.04f)*std::sin(pos*.173f);
+                    audio.setSample(0,n,value);audio.setSample(1,n,value*.8f);
+                }
+                q->processBlock(audio,midi);
+                for(int n=0;n<256;++n){const float value=audio.getSample(0,n);if(!std::isfinite(value))return std::vector<float>{};samples.push_back(value);}
+            }
+            const int latency=q->getLatencySamples();q->releaseResources();if(latency!=144)return std::vector<float>{};
+            return samples;
+        };
+        const auto fast=render(0.f,15.f),slow=render(0.f,400.f),attack=render(2.f,15.f);
+        if(fast.empty() || fast.size()!=slow.size() || fast.size()!=attack.size())return 98;
+        double attackDelta=0.,releaseDelta=0.;
+        for(size_t i=0;i<fast.size();++i){if(i<1600)attackDelta+=std::abs(fast[i]-attack[i]);else releaseDelta+=std::abs(fast[i]-slow[i]);}
+        std::printf("LIMITER_RENDER type=%d attack_delta=%.8g release_delta=%.8g PDC=144 host+ZIP+legacy recall PASS\n",type,attackDelta,releaseDelta);
+        if(attackDelta<.001 || releaseDelta<.01)return 98;
+    }
+    return 0;
+}
 int studioSmoke() {
+    if(const int limiterResult=limiterStateSmoke())return limiterResult;
     if(const int masterResult=masterSignalSmoke())return masterResult;
     // Host automation of newly appended parameters must change Empty Rack's
     // program identity to Custom Rack, just like every legacy control.

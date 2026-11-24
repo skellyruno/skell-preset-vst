@@ -39,6 +39,8 @@ protected:
         // no competing normalized percentage bubble on hover/drag.
     }
 private:
+    void paintHardware(juce::Graphics&,int type);
+    void bindLimiterControls();
     bool hovered=false,editing=false;
 };
 // Single corner light controls the exact sN_on automation used by the rack.
@@ -162,13 +164,16 @@ public:
     bool keyPressed(const juce::KeyPress&) override;
     bool testEffectPageShortcutsForTest();
 private:
+    void paintHardware(juce::Graphics&,int type);
+    std::array<juce::String,4> titlesForHardware(int type) const;
+    void bindLimiterControls();
     SkellPresetAudioProcessor& processor;
     int slot=0;
     int eqBank=0; // two editable EQ bands per knob row; graph shows all eight
     int activeEqBand=0;
     int matchPage=0; // 0: sound shape / 1: calibration / 2: native reference match
     int limiterPage=0; // local UI pages only; existing p1..p9 host IDs
-    bool limiterDetailsVisible=false; // UI-only MORE/Less, no state/automation change
+    bool limiterDetailsVisible=false; // historical renderer compatibility, never a visible drawer
     void updateLimiterCompactVisibility();
     int delayPage=0; // opt-in Studio Delay: 16 controls across four UI pages
     int suitePage=0; // Vocal Feel Suite: source 16 controls in four pages
@@ -218,8 +223,6 @@ private:
     std::array<juce::Slider,2> eqCutSliders;
     std::array<juce::TextButton,8> eqBandButtons;
     std::array<juce::TextButton,3> matchPageButtons;
-    std::array<juce::TextButton,2> limiterPageButtons;
-    juce::TextButton limiterMore{"MORE"};
     std::array<juce::TextButton,4> delayPageButtons;
     std::array<juce::TextButton,4> suitePageButtons;
     juce::TextButton vocalFeelStyleButton{"VOICE STYLES  ▼"};

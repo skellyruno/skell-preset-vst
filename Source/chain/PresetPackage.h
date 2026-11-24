@@ -34,6 +34,7 @@ struct Slot {
     bool duckOn=false;
     float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
           duckAttack=12.f;
+    float limitAttack=0.f,limitRelease=70.f;
 };
 
 struct Document {
