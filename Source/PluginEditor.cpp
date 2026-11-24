@@ -402,6 +402,9 @@ public:
         else browser.setVisible(false);
         repaint();
     }
+    bool configureBrowserForScreenshot(int page,int width,int height) {
+        return browser.configureDirectoryForScreenshot(page,width,height);
+    }
     void setMatchPageForScreenshot(int page) {
         editingIdle=false;idle.setVisible(false);
         slot.setMatchPageForScreenshot(page);
@@ -1691,6 +1694,9 @@ juce::StringArray SkellPresetAudioProcessorEditor::runScreenshotInteractionTests
 
 void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
     canvas->selectRackSlotForScreenshot(physicalSlot,scrollOffset);
+}
+bool SkellPresetAudioProcessorEditor::configureBrowserForScreenshot(int page,int width,int height) {
+    return canvas->configureBrowserForScreenshot(page,width,height);
 }
 void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
     canvas->setMatchPageForScreenshot(page);

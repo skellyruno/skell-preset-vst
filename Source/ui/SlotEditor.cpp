@@ -1944,7 +1944,7 @@ void SlotEditor::paint(juce::Graphics&g) {
             g.setColour(Theme::stroke.withAlpha(.75f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
         }
     }
-    if(!echoFace)for(int i=0;i<=6;i++){
+    if(!echoFace && type!=SkellPresetAudioProcessor::DeEsser)for(int i=0;i<=6;i++){
         const auto y=plot.getY()+plot.getHeight()*i/6.f;
         g.setColour(i==3 && eqFace ?Theme::muted.withAlpha(.65f):
             Theme::stroke.withAlpha(eqFace?.48f:.72f));
@@ -2153,7 +2153,6 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,juce::String(freq,0)+" Hz  |  "+juce::String(gain,1)+" dB",{540,120,285,20},12,Theme::green,false,juce::Justification::centredRight);
     } else if(type==SkellPresetAudioProcessor::DeEsser) {
         const float cutoff=3500.f+processor.getSlotParam(slot,0)*8000.f;
-        const float threshold=-53.f+processor.getSlotParam(slot,1)*39.f;
         const float reduction=2.f+processor.getSlotParam(slot,2)*20.f;
         const double sr=juce::jlimit(8000.,192000.,processor.preparedAudioRate());
         const double actualCutoff=juce::jlimit(1500.,sr*.45,(double)cutoff);
@@ -2167,15 +2166,21 @@ void SlotEditor::paint(juce::Graphics&g) {
             const double lowReal=(1.-pole)*real/denominator,lowImag=-(1.-pole)*imag/denominator;
             return 20.*std::log10(juce::jmax(1.e-8,std::hypot(gain+(1.-gain)*lowReal,(1.-gain)*lowImag)));
         };
-        const auto responseY=[&](double hz){return plot.getY()+42.f-(float)attenuation(hz)*5.4f;};
-        const float markerX=xFor(cutoff),markerY=responseY(cutoff);
+        const auto dbY=[&](double db){return plot.getY()+25.f-(float)db*(plot.getHeight()-50.f)/24.f;};
+        const auto responseY=[&](double hz){return dbY(attenuation(hz));};
+        for(int db=0;db>=-24;db-=6){
+            const int y=juce::roundToInt(dbY(db));
+            g.setColour(Theme::stroke.withAlpha(db==0?.85f:.48f));
+            g.drawHorizontalLine(y,plot.getX(),plot.getRight());
+        }
+        const float markerX=xFor((float)actualCutoff),markerY=responseY(actualCutoff);
         g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.035f),markerX,plot.getY(),
             Theme::green.withAlpha(.14f),plot.getRight(),plot.getY(),false));
         g.fillRect(markerX,plot.getY(),plot.getRight()-markerX,plot.getHeight());
         g.setColour(Theme::amber.withAlpha(.72f));
         g.drawVerticalLine(juce::roundToInt(markerX),plot.getY(),plot.getBottom());
         juce::Path response;
-        for(int ix=0;ix<=835;ix+=2){
+        for(int ix=0;ix<=835;ix+=4){
             const float hz=20.f*std::pow(1000.f,(float)ix/835.f);
             if(ix==0)response.startNewSubPath(plot.getX(),responseY(hz));
             else response.lineTo(plot.getX()+ix,responseY(hz));
@@ -2184,12 +2189,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.5f));
         g.setColour(Theme::bg);g.fillEllipse(markerX-7.f,markerY-7.f,14.f,14.f);
         g.setColour(Theme::green);g.drawEllipse(markerX-7.f,markerY-7.f,14.f,14.f,2.f);
-        Theme::text(g,"SIBILANCE  /  "+juce::String(cutoff/1000.f,2)+" kHz",
-            {47,160,370,20},13.f,Theme::green,true);
-        Theme::text(g,"THRESHOLD "+juce::String(threshold,1)+" dBFS  /  MAX "+juce::String(reduction,1)+" dB",
-            {47,181,540,20},12.f,Theme::white);
-        Theme::text(g,"MAX REDUCTION RESPONSE  /  ACTUAL ATTENUATION FOLLOWS INPUT LEVEL",
-            {47,330,790,17},10.5f,Theme::muted);
+        Theme::text(g,"MAX REDUCTION RESPONSE / LEVEL-DEPENDENT",
+            {47,337,700,15},10.f,Theme::muted);
     } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX && suiteSpectrumView) {
         // Actual INPUT/OUTPUT spectral values from lock-free audio buffers,
         // analyzed only on JUCE's message/render thread. No invented peaks.
@@ -3590,8 +3591,17 @@ void SlotEditor::paint(juce::Graphics&g) {
     // 151–357px live graph and ABOVE the 411px parameter controls.
     // One footer lane, not two overlapping text passes.
     if(type==SkellPresetAudioProcessor::DeEsser){
-        Theme::fittedText(g,"SPLIT-BAND  /  ZERO LATENCY  /  LINKED STEREO",{33,106,835,28},
-            12.f,Theme::amber,true,juce::Justification::centredLeft);
+        const auto frequency=3500.f+8000.f*processor.getSlotParam(slot,0);
+        const auto threshold=-53.f+39.f*processor.getSlotParam(slot,1);
+        const auto reduction=2.f+20.f*processor.getSlotParam(slot,2);
+        Theme::fittedText(g,"SIBILANCE "+juce::String(frequency/1000.f,2)+" kHz",
+            {33,103,240,25},14.f,Theme::green,true);
+        Theme::fittedText(g,"THRESHOLD "+juce::String(threshold,1)+" dBFS   /   MAX "+juce::String(reduction,1)+" dB",
+            {285,103,583,25},12.f,Theme::white,true,juce::Justification::centredRight);
+        for(int db=0;db>=-24;db-=6){
+            const int y=juce::roundToInt(plot.getY()+25.f-db*(plot.getHeight()-50.f)/24.f);
+            Theme::text(g,juce::String(db),{1,y-7,29,14},9.f,Theme::muted,false,juce::Justification::centredRight);
+        }
     }
     if(type==SkellPresetAudioProcessor::Compressor ||
        type==SkellPresetAudioProcessor::Gate ||

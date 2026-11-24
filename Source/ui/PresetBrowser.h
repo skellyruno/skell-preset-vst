@@ -19,6 +19,7 @@ public:
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
     bool keyPressed(const juce::KeyPress&) override;
     void open();
+    bool configureDirectoryForScreenshot(int page,int width,int height);
     void applyTheme();
     // Cached on the message thread; no image file I/O from paint/audio.
     juce::Image selectedCover() const;

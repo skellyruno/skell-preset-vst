@@ -32,10 +32,12 @@ constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
 int main(int argc, char** argv) {
-    bool quick4=false,extras=false;
+    bool quick4=true,extras=false,factorySlots=false;
     for(int i=1;i<argc;++i) {
-        if(juce::String(argv[i])=="--quick4")quick4=true;
+        if(juce::String(argv[i])=="--full")quick4=false;
+        if(juce::String(argv[i])=="--quick4")quick4=true; // compatibility with older launchers
         if(juce::String(argv[i])=="--extras")extras=true;
+        if(juce::String(argv[i])=="--factory-slots"){factorySlots=true;quick4=false;}
     }
     const juce::String argument = argc >= 3 && juce::String(argv[1]) == "--output"
         ? juce::String::fromUTF8(argv[2]) : juce::String("ui-screenshots");
@@ -331,7 +333,19 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-noise-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,31> effectScenes {{
+        const std::array<std::pair<const char*,int>,43> effectScenes {{
+            {"empty",SkellPresetAudioProcessor::Empty},
+            {"eq",SkellPresetAudioProcessor::EQ},
+            {"studio-eq",SkellPresetAudioProcessor::StudioEQFX},
+            {"studio-limiter",SkellPresetAudioProcessor::StudioLimiterFX},
+            {"studio-compressor",SkellPresetAudioProcessor::StudioCompressorFX},
+            {"studio-fast-dist",SkellPresetAudioProcessor::StudioFastDistFX},
+            {"studio-delay",SkellPresetAudioProcessor::StudioDelayFX},
+            {"adlib-chop",SkellPresetAudioProcessor::AdlibChop},
+            {"adlib-motion",SkellPresetAudioProcessor::AdlibMotion},
+            {"adlib-filter",SkellPresetAudioProcessor::AdlibFilter},
+            {"adlib-saturate",SkellPresetAudioProcessor::AdlibSaturate},
+            {"vocal-feel-opto",SkellPresetAudioProcessor::VocalFeelOptoFX},
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -380,8 +394,35 @@ int main(int argc, char** argv) {
                                   818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-reference-70",
                                   818,482,0,1,false});
+        // Complete module inventory: external and vocal suite have independent scenes.
+        std::array<bool,SkellPresetAudioProcessor::NumberOfModules> covered{};
+        covered[SkellPresetAudioProcessor::ExternalVST3]=true;
+        covered[SkellPresetAudioProcessor::VocalFeelSuiteFX]=true;
+        for(const auto& effect:effectScenes){
+            if(covered[(size_t)effect.second]){std::fprintf(stderr,"Duplicate effect capture type %d\n",effect.second);++failures;}
+            covered[(size_t)effect.second]=true;
+        }
+        for(size_t i=0;i<covered.size();++i)if(!covered[i]){std::fprintf(stderr,"Missing effect capture type %zu\n",i);++failures;}
+        options.scenes.push_back({"obsidian-stage-audience-100",1168,688,0,1,false});
+        const char* directoryNames[]{"default","genres","genre-leaf","tiers","underground","mainstream","artist","artist-main","artist-adlib"};
+        for(int page=0;page<9;++page)
+            options.scenes.push_back({juce::String("audit-browser-")+juce::String(page)+"-"+directoryNames[page],1168,688,0,1,true});
+        options.scenes.push_back({"audit-browser-0-minimum",818,482,0,1,true});
+        options.scenes.push_back({"audit-browser-0-maximum",1460,860,0,1,true});
+        if(factorySlots){
+            for(int index=0;index<SkellPresetAudioProcessor::emptyRackProgramIndex;++index){
+                processor.loadFactoryPreset(index);
+                const int recipe=skellpreset::recipeForFactoryIndex(index);
+                for(int pos=0;pos<processor.activeSlotCount();++pos){
+                    const int physical=processor.slotIdAt(pos);
+                    if(processor.slotType(physical)==SkellPresetAudioProcessor::Empty)continue;
+                    options.scenes.push_back({juce::String("audit-factory-")+juce::String(recipe)+"-slot-"+juce::String(physical),1168,688,0,1,false});
+                }
+            }
+            processor.loadFactoryPreset(0);
+        }
         if(quick4) {
-            // Opt-in four actual-editor views; the complete current two-theme
+            // Four actual-editor views; the complete current two-theme
             // matrix and its independent regressions remain available.
             options.scenes={
                 {"obsidian-simple-100",1168,688,0,0,false},
@@ -391,7 +432,10 @@ int main(int argc, char** argv) {
             };
         }
         options.configure = [&](const auto& scene) {
-            if(scene.id=="obsidian-mic-panel-70") {
+            if(scene.id.startsWith("audit-factory-")){
+                const auto recipe=scene.id.fromFirstOccurrenceOf("audit-factory-",false,false).getIntValue();
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(recipe));
+            }else if(scene.id=="obsidian-mic-panel-70") {
                 processor.loadFactoryPreset(0);
                 if(auto* p=processor.state.getParameter("micPreOn"))
                     p->setValueNotifyingHost(p->convertTo0to1(1.f));
@@ -474,7 +518,7 @@ int main(int argc, char** argv) {
                 for(const auto& effect:effectScenes)
                     if(scene.id==juce::String("obsidian-effect-")+effect.first+"-70") {
                         processor.setSlotType(0,effect.second);
-                        processor.setSlotOn(0,true);
+                        processor.setSlotOn(0,effect.second!=SkellPresetAudioProcessor::Empty);
                         processor.setSlotParam(0,0,.68f);
                         processor.setSlotParam(0,1,.42f);
                         break;
@@ -534,6 +578,19 @@ int main(int argc, char** argv) {
             editor.setMicPanelForScreenshot(scene.id=="obsidian-mic-panel-70");
             editor.setSettingsPanelForScreenshot(scene.id=="obsidian-settings-70" ||
                 scene.id=="obsidian-settings-125" || scene.id=="crimson-settings-70");
+            if(scene.id=="obsidian-stage-audience-100")editor.showHomeForScreenshot();
+            if(scene.id.startsWith("audit-browser-")){
+                const int page=scene.id.fromFirstOccurrenceOf("audit-browser-",false,false).getIntValue();
+                const bool small=scene.id.endsWith("minimum"),large=scene.id.endsWith("maximum");
+                if(!editor.configureBrowserForScreenshot(page,small?620:large?1000:780,small?530:large?604:560)){
+                    std::fprintf(stderr,"Browser scene configuration failed: %s\n",scene.id.toRawUTF8());++failures;
+                }
+            }
+            if(scene.id.startsWith("audit-factory-")){
+                const int physical=scene.id.fromLastOccurrenceOf("-slot-",false,false).getIntValue();
+                int pos=0;for(int n=0;n<processor.activeSlotCount();++n)if(processor.slotIdAt(n)==physical)pos=n;
+                editor.selectRackSlotForScreenshot(physical,juce::jmax(0,pos-6));
+            }
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {

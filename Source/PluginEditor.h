@@ -13,6 +13,7 @@ public:
     void configureForScreenshot(int themeVariant, int workspaceMode, bool showPresetBrowser);
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset);
     void setMatchPageForScreenshot(int page);
+    bool configureBrowserForScreenshot(int page,int width,int height);
     void setSuiteForScreenshot(int page,bool stylesOpen);
     void setSuiteSpectrumForScreenshot(bool enabled);
     void setMicPanelForScreenshot(bool visible);
