@@ -1164,21 +1164,34 @@ int stress() {
     const double rates[]{44100.,48000.,96000.};
     for(const double sr:rates) {
         // Check actual host-facing processor PDC, not a helper's estimate.
-        for(const int preset:{skellpreset::alchemist::factoryIndex,
-                                skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
-                                skellpreset::alchemist_low_end_contour_trial::factoryIndex,
-                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,25,0}) {
+        // Recipe IDs survive factory-bank compaction; public program indexes do not.
+        constexpr int liveLead=skellpreset::factoryIndexForRecipe(25);
+        constexpr int noiseGuard=skellpreset::factoryIndexForRecipe(40);
+        constexpr int studioSix=skellpreset::factoryIndexForRecipe(42);
+        constexpr int cleanLead=skellpreset::factoryIndexForRecipe(0);
+        static_assert(liveLead>=0 && noiseGuard>=0 && studioSix>=0 && cleanLead>=0);
+        static_assert(std::string_view(skellpreset::factoryPresets[liveLead].name)=="Skell Live Lead");
+        static_assert(std::string_view(skellpreset::factoryPresets[noiseGuard].name)=="Noise Guard");
+        static_assert(std::string_view(skellpreset::factoryPresets[studioSix].name)=="Studio Six");
+        struct LatencyCase { int preset; bool lookahead; };
+        const LatencyCase cases[]{
+            {skellpreset::alchemist::factoryIndex,false},
+            {skellpreset::alchemist_serial_dynamics_trial::factoryIndex,true},
+            {skellpreset::alchemist_low_end_contour_trial::factoryIndex,true},
+            {skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,true},
+            {liveLead,false},{noiseGuard,true},{studioSix,false},{cleanLead,true}
+        };
+        for(const auto& test:cases) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
-            p->loadFactoryPreset(preset);
+            p->loadFactoryPreset(test.preset);
             p->prepareToPlay(sr,64);
-            const int expected=(preset==0 || preset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
-                                preset==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-                                preset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
-                ?std::max(48,(int)(sr*.003)):0;
+            const int expected=test.lookahead?std::max(48,(int)(sr*.003)):0;
             if(p->getLatencySamples()!=expected) {
                 std::fprintf(stderr,
-                    "FAIL factory %d / %.0f Hz: reported=%d expected=%d samples\n",
-                    preset,sr,p->getLatencySamples(),expected);
+                    "FAIL factory %d (%s; recipe %d) / %.0f Hz: reported=%d expected=%d samples\n",
+                    test.preset,p->getProgramName(test.preset).toRawUTF8(),
+                    skellpreset::recipeForFactoryIndex(test.preset),
+                    sr,p->getLatencySamples(),expected);
                 return 9;
             }
             p->releaseResources();
