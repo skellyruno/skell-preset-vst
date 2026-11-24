@@ -34,7 +34,7 @@ public:
         // and every host automation parameter remain untouched.
         meter.level=peak>=meter.level?peak:
             meter.level*.80f+peak*.20f;
-        if(peak>=meter.held){
+        if(peak>=meter.held && peak>0.f){
             meter.held=peak;
             meter.holdFrames=24; // ~800ms peak-hold at 30Hz
         }else if(meter.holdFrames>0){
@@ -56,8 +56,18 @@ public:
         if(!(m.level<.8f && m.level>.60f) ||
            m.held<.8f || m.holdFrames!=23)return false;
         for(int i=0;i<150;++i)followPeak(m,0.f);
-        return m.level<.001f && m.held<.005f &&
-            m.holdFrames==0;
+        if(!(m.level<.001f && m.held<.005f && m.holdFrames==0))
+            return false;
+        MeterEnvelope silent;
+        followPeak(silent,0.f);
+        followPeak(silent,std::numeric_limits<float>::quiet_NaN());
+        if(silent.level!=0.f || silent.held!=0.f || silent.holdFrames!=0)
+            return false;
+        MeterEnvelope clipped;
+        followPeak(clipped,1.2f);
+        followPeak(clipped,.2f);
+        return clipped.level<1.2f && clipped.held>=1.f &&
+            clipped.holdFrames==23;
     }
     bool isAudioFreshForTest() const noexcept {return audioFresh;}
 
@@ -131,11 +141,13 @@ public:
             energy+=(double)v*(double)v;
         }
         const float rms=audioFresh?(float)std::sqrt(energy/128.):0.f;
-        const bool live=audioFresh && actualPeak>.0005f;
+        // A decimated scope can miss a short transient. The actual peak
+        // envelope also drives the activity indicator, never a fake signal.
+        const bool live=audioFresh &&
+            (actualPeak>.0005f || outputMeter.level>.0005f);
         const float activity=live?juce::jlimit(0.f,1.f,
             .48f*actualPeak+2.1f*rms):0.f;
         const float outputPeak=audioFresh?outputMeter.level:0.f;
-        const float inputPeak=audioFresh?inputMeter.level:0.f;
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
@@ -554,8 +566,8 @@ public:
                     10.7f,live?accent:Theme::muted,true);
         const juce::String db=outputPeak<1.e-6f?juce::String("-INF"):
             juce::String(20.f*std::log10(outputPeak),1);
-        const bool clipping=outputPeak>=1.f;
-        Theme::text(g,clipping?"CLIP":db+" dBFS",
+        const bool clipping=audioFresh && outputMeter.held>=1.f;
+        Theme::text(g,clipping?"CLIP HOLD":db+" dBFS",
                     {getWidth()-177,34,131,22},10.7f,
                     clipping?Theme::red:Theme::muted,true,
                     juce::Justification::centredRight);

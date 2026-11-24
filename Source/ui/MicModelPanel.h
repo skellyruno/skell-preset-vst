@@ -17,9 +17,26 @@ class SkellMicModelPanel final : public juce::Component {
         std::function<void(int)> onChoose;
         void setSelected(int index) {
             selected=juce::jlimit(0,3,index);
+            focused=selected;
+            hovered=-1;
             repaint();
         }
         void chooseSelectedForTest() {choose(selected);}
+        void visibilityChanged() override {
+            hovered=-1;
+            setMouseCursor(juce::MouseCursor::NormalCursor);
+        }
+        static int nextFocus(int index,int delta) noexcept {
+            return juce::jlimit(0,3,index+delta);
+        }
+        void moveFocus(int delta) {
+            focused=nextFocus(focused,delta);
+            repaint();
+        }
+        bool testFocusForTest() const noexcept {
+            return nextFocus(0,-1)==0 && nextFocus(3,1)==3 &&
+                nextFocus(1,1)==2 && nextFocus(2,-1)==1;
+        }
         static int rowHitForTest(int x,int y,int width) noexcept {
             // Painted rows are 26 high, with 2px inert gutters.
             if(x<4 || x>=width-4 || y<3 || y>=3+4*28)return -1;
@@ -59,7 +76,7 @@ class SkellMicModelPanel final : public juce::Component {
                                Theme::muted.withAlpha(.64f));
                     g.drawRoundedRectangle(rect.reduced(.6f),4.f,1.f);
                 }
-                if(hasKeyboardFocus(false) && i==selected){
+                if(hasKeyboardFocus(false) && i==focused){
                     g.setColour(Theme::white.withAlpha(.52f));
                     g.drawRoundedRectangle(rect.reduced(2.f),3.f,1.f);
                 }
@@ -69,7 +86,11 @@ class SkellMicModelPanel final : public juce::Component {
         }
         void mouseMove(const juce::MouseEvent& event) override {
             const int row=rowHitForTest(event.x,event.y,getWidth());
-            if(row!=hovered){hovered=row;repaint();}
+            if(row!=hovered || (row>=0 && row!=focused)){
+                hovered=row;
+                if(row>=0)focused=row;
+                repaint();
+            }
             setMouseCursor(juce::MouseCursor(row>=0?
                 juce::MouseCursor::PointingHandCursor:
                 juce::MouseCursor::NormalCursor));
@@ -83,12 +104,12 @@ class SkellMicModelPanel final : public juce::Component {
             if(row>=0)choose(row);
         }
         bool keyPressed(const juce::KeyPress& key) override {
-            if(key==juce::KeyPress::upKey){setSelected(selected-1);return true;}
-            if(key==juce::KeyPress::downKey){setSelected(selected+1);return true;}
-            if(key==juce::KeyPress::homeKey){setSelected(0);return true;}
-            if(key==juce::KeyPress::endKey){setSelected(3);return true;}
+            if(key==juce::KeyPress::upKey){moveFocus(-1);return true;}
+            if(key==juce::KeyPress::downKey){moveFocus(1);return true;}
+            if(key==juce::KeyPress::homeKey){moveFocus(-3);return true;}
+            if(key==juce::KeyPress::endKey){moveFocus(3);return true;}
             if(key==juce::KeyPress::returnKey || key==juce::KeyPress::spaceKey){
-                choose(selected);return true;
+                choose(focused);return true;
             }
             if(key==juce::KeyPress::escapeKey){setVisible(false);return true;}
             return false;
@@ -98,7 +119,7 @@ class SkellMicModelPanel final : public juce::Component {
             setSelected(index);setVisible(false);
             if(onChoose)onChoose(selected);
         }
-        int selected=0,hovered=-1;
+        int selected=0,focused=0,hovered=-1;
     };
 public:
     explicit SkellMicModelPanel(SkellPresetAudioProcessor& p) : processor(p) {
@@ -586,7 +607,8 @@ public:
         sourceMenu.setVisible(false);
         setPhysical("micPreInput",oldSource);
         refresh();
-        return changed&&opened&&selected&&sourceMenu.testHitTargetsForTest();
+        return changed&&opened&&selected&&sourceMenu.testHitTargetsForTest()
+            &&sourceMenu.testFocusForTest();
     }
 private:
     void setPhysical(const juce::String& id,float v) {

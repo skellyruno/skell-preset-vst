@@ -16,6 +16,8 @@ public:
     void open(int selected=-1) {
         active=juce::jlimit(-1,10,selected);
         hover=active<0?0:active;
+        hoveredRow=-1;closeHovered=false;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
         setVisible(true);toFront(true);
         grabKeyboardFocus();repaint();
     }
@@ -23,6 +25,7 @@ public:
         setVisible(false);
         setMouseCursor(juce::MouseCursor::NormalCursor);
         closeHovered=false;
+        hoveredRow=-1;
     }
     // Share these precise rectangles between paint, pointer handling and
     // regression tests. The 2px inter-row gutters are deliberately inert.
@@ -33,7 +36,7 @@ public:
         return offset/26;
     }
     static bool closeHitForTest(int x,int y,int width) noexcept {
-        return x>=width-44 && x<width-8 && y>=6 && y<35;
+        return x>=width-44 && x<width-9 && y>=7 && y<34;
     }
     static bool testHitTargetsForTest() noexcept {
         for(int width:{228,270,400}){
@@ -48,8 +51,11 @@ public:
             if(recipeHitForTest(20,40,width)!=-1 ||
                recipeHitForTest(20,328,width)!=-1 ||
                recipeHitForTest(5,48,width)!=-1 ||
-               closeHitForTest(width-26,20,width)!=true ||
-               closeHitForTest(25,20,width)!=false)
+               !closeHitForTest(width-26,20,width) ||
+               !closeHitForTest(width-44,7,width) ||
+               closeHitForTest(width-9,20,width) ||
+               closeHitForTest(width-26,34,width) ||
+               closeHitForTest(25,20,width))
                 return false;
         }
         return true;
@@ -87,7 +93,7 @@ public:
                                                     (float)getWidth()-18.f,24.f);
             const bool selected=i==active;
             g.setColour(selected?Theme::green.withAlpha(.19f):
-                        i==hover?Theme::panelAlt.brighter(.10f):Theme::panelAlt);
+                        i==hoveredRow?Theme::panelAlt.brighter(.18f):Theme::panelAlt);
             g.fillRoundedRectangle(rect,4.5f);
             if(selected){
                 g.setColour(Theme::green);
@@ -96,7 +102,7 @@ public:
             if(i==hover && hasKeyboardFocus(false)){
                 g.setColour(Theme::white.withAlpha(.48f));
                 g.drawRoundedRectangle(rect.reduced(1.25f),3.5f,1.f);
-            } else if(i==hover){
+            } else if(i==hoveredRow){
                 g.setColour(Theme::stroke.withAlpha(.65f));
                 g.drawRoundedRectangle(rect.reduced(.5f),4.f,.85f);
             }
@@ -108,7 +114,8 @@ public:
     void mouseMove(const juce::MouseEvent& e)override {
         const bool nextClose=closeHitForTest(e.x,e.y,getWidth());
         const int next=recipeHitForTest(e.x,e.y,getWidth());
-        if(next!=hoveredRow || nextClose!=closeHovered){
+        if(next!=hoveredRow || nextClose!=closeHovered ||
+           (next>=0 && next!=hover)){
             hoveredRow=next;
             closeHovered=nextClose;
             if(next>=0)hover=next;
