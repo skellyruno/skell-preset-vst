@@ -9,6 +9,19 @@ bool isPagedEQ(int type) noexcept {
     return type==SkellPresetAudioProcessor::EightBandToneFX
         || type==SkellPresetAudioProcessor::StudioEQFX;
 }
+bool rotaryFace(int type) noexcept {
+    const auto family=std::string_view(skellpreset::registry::at(type).category);
+    return family=="Space" || family=="Motion" || family=="Pitch" ||
+        (family=="Tone" && !isPagedEQ(type) && type!=SkellPresetAudioProcessor::EQ);
+}
+juce::Rectangle<int> parameterCardBounds(int type,int index) noexcept {
+    if(rotaryFace(type))return {28+index*215,403,204,113};
+    return {33+(index%2)*430,406+(index/2)*57,400,44};
+}
+float eqGainAtY(int type,float y) noexcept {
+    return juce::jlimit(0.f,1.f,.5f+(254.f-y)/206.f*
+        (type==SkellPresetAudioProcessor::StudioEQFX?2.f:2.4f));
+}
 float eqVisualFrequency(const SkellPresetAudioProcessor& p,int slot,int band,int type) {
     const float x=p.getSlotParam(slot,band*2);
     if(type==SkellPresetAudioProcessor::StudioEQFX)
@@ -1454,7 +1467,9 @@ void SlotEditor::openModulePicker() {
     if(modulePicker.isVisible())modulePicker.hide();
     else modulePicker.open(processor.slotType(slot));
 }
+SlotEditor::~SlotEditor(){endGraphGesture();}
 void SlotEditor::select(int newSlot) {
+    endGraphGesture();
     if(slot!=newSlot)releaseEmbeddedEditor();
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
@@ -1629,6 +1644,8 @@ void SlotEditor::refreshIfChanged() {
     }
     if(!changed)return;
     if(type!=lastType){
+        endGraphGesture();
+        layoutParameterControls(type);
         // A new effect resets the EQ bank, preserving all saved parameter
         // values while reattaching only the controls visible on this page.
         eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;delayPage=0;suitePage=0;
@@ -1724,7 +1741,7 @@ void SlotEditor::refreshIfChanged() {
         knob.setVisible(!external && type!=SkellPresetAudioProcessor::Empty);
         knob.setTooltip(unused
             ?juce::String("Reserved automation parameter; no audible DSP")
-            :titles(type)[(size_t)i]+" / drag, wheel, or type a value");
+            :juce::String("Drag, wheel or type the displayed value. Double-click to reset."));
     }
     updateLimiterCompactVisibility();
     repaint();
@@ -1772,9 +1789,22 @@ void SlotEditor::resized() {
     // A common bounded parameter area for every native effect. Individual
     // family treatments are painted behind these real APVTS controls.
     slotPower.setBounds(843,22,40,40);
-    for(int k=0;k<4;++k) {
-        const int column=k%2,row=k/2;
-        knobs[(size_t)k].setBounds(168+column*430,411+row*57,257,30);
+    layoutParameterControls(processor.slotType(slot));
+}
+void SlotEditor::layoutParameterControls(int type){
+    const bool rotary=rotaryFace(type);
+    for(int k=0;k<4;++k){
+        auto& control=knobs[(size_t)k];
+        const auto style=rotary?juce::Slider::RotaryHorizontalVerticalDrag:
+            juce::Slider::LinearHorizontal;
+        if(control.getSliderStyle()!=style){
+            control.setSliderStyle(style);
+            control.setTextBoxStyle(rotary?juce::Slider::TextBoxBelow:
+                juce::Slider::TextBoxRight,false,rotary?96:92,rotary?20:24);
+        }
+        const auto card=parameterCardBounds(type,k);
+        control.setBounds(rotary?juce::Rectangle<int>(card.getX()+49,card.getY()+23,106,87):
+            juce::Rectangle<int>(card.getX()+135,card.getY()+5,257,30));
     }
 }
 bool SlotEditor::testPopupLayoutsForTest() const {
@@ -3644,7 +3674,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         labels={ "B"+juce::String(eqBank+1)+" FREQ", "B"+juce::String(eqBank+1)+" GAIN",
                  "B"+juce::String(eqBank+2)+" FREQ", "B"+juce::String(eqBank+2)+" GAIN" };
     }
-    if(type==SkellPresetAudioProcessor::StudioLimiterFX)
+    if(type==SkellPresetAudioProcessor::StudioLimiterFX && limiterDetailsVisible)
         Theme::text(g,"GATE FLOOR",{430,107,116,20},11.5f,Theme::white,true);
     if(type==SkellPresetAudioProcessor::StudioCompressorFX)
         Theme::text(g,"SOFT KNEE",{430,107,116,20},11.5f,Theme::white,true);
@@ -3657,10 +3687,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         const bool motion=family.equalsIgnoreCase("Motion");
         for(int i=0;i<4;++i) {
             if(!knobs[(size_t)i].isVisible())continue;
-            const auto control=knobs[(size_t)i].getBounds();
-            const int x=control.getX()-126,y=control.getY()+2;
-            const auto card=juce::Rectangle<float>((float)x-9.f,(float)y-7.f,
-                (float)control.getRight()-(float)x+17.f,44.f);
+            const auto card=parameterCardBounds(type,i).toFloat();
+            const bool rotary=rotaryFace(type);
             const auto tint=dynamics?Theme::amber:space?Theme::blue:
                 motion?Theme::pink:familyAccent;
             g.setColour(Theme::panelAlt.withAlpha(.60f));
@@ -3676,9 +3704,11 @@ void SlotEditor::paint(juce::Graphics&g) {
                     card.getY()+3.f,.7f);
             else
                 g.fillEllipse(card.getX()+6.f,card.getY()+7.f,3.f,3.f);
-            Theme::fittedText(g,labels[(size_t)i].toUpperCase(),
-                {x+1,y,120,26},11.8f,Theme::white,true,
-                juce::Justification::centredLeft);
+            const auto caption=rotary?card.toNearestInt().removeFromTop(22).reduced(10,0):
+                juce::Rectangle<int>((int)card.getX()+10,(int)card.getY()+7,120,26);
+            Theme::fittedText(g,labels[(size_t)i].toUpperCase(),caption,
+                11.8f,knobs[(size_t)i].isEnabled()?Theme::white:Theme::muted,true,
+                rotary?juce::Justification::centred:juce::Justification::centredLeft);
         }
     }
     const juce::String gestureHint="DRAG GRAPH  /  X: "+
@@ -3707,14 +3737,16 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
     // Adlib graphs visualize control responses and do not edit invisible XY axes.
     if(type>=SkellPresetAudioProcessor::AdlibChop &&
        type<=SkellPresetAudioProcessor::AdlibSaturate)return;
-    constexpr float plotCentreY=254.f;
     if(type==SkellPresetAudioProcessor::EQ){
         const auto x=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
         const auto y=juce::jlimit(-1.f,1.f,(254.f-point.y)/103.f);
         const float freq=20.f*std::pow(1000.f,x);
         processor.setSlotParam(slot,0,juce::jlimit(0.f,1.f,
             (float)(std::log(freq/40.f)/std::log(300.))));
-        processor.setSlotParam(slot,1,juce::jlimit(0.f,1.f,.5f+y*1.5f));
+        const auto* tone=processor.state.getRawParameterValue("macro1");
+        const float macro=tone?tone->load():.5f;
+        processor.setSlotParam(slot,1,juce::jlimit(0.f,1.f,
+            .5f+y*1.5f-8.f*(macro-.5f)/24.f));
     } else if(isPagedEQ(type)) {
         const float low=type==SkellPresetAudioProcessor::StudioEQFX?20.f:
             skellpreset::dsp::EightBandTone::edges[(size_t)activeEqBand];
@@ -3724,10 +3756,11 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
         const float freq=20.f*std::pow(1000.f,normalized);
         const float x=juce::jlimit(0.f,1.f,
             std::log(juce::jlimit(low,high,freq)/low)/std::log(high/low));
-        const float gain=juce::jlimit(0.f,1.f,
-            .5f+(plotCentreY-point.y)/206.f*2.4f);
+        const float gain=eqGainAtY(type,point.y);
         processor.setSlotParam(slot,activeEqBand*2,x);
-        processor.setSlotParam(slot,activeEqBand*2+1,gain);
+        const int shape=type==SkellPresetAudioProcessor::StudioEQFX?
+            studioEqBandType(activeEqBand):0;
+        if(shape!=1 && shape!=2)processor.setSlotParam(slot,activeEqBand*2+1,gain);
     } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
         if(gestureSuiteParameter>=10 && gestureSuiteParameter<=14)
             processor.setSlotParam(slot,gestureSuiteParameter,
@@ -3849,8 +3882,7 @@ bool SlotEditor::addStudioEqNodeAt(juce::Point<float> point){
     for(int band=0;band<8;++band){
         if(studioEqBandEnabled(band))continue;
         const float frequency=juce::jlimit(0.f,1.f,(point.x-33.f)/835.f);
-        const float gain=juce::jlimit(0.f,1.f,
-                                    .5f+(254.f-point.y)*2.f/206.f);
+        const float gain=eqGainAtY(SkellPresetAudioProcessor::StudioEQFX,point.y);
         // Use existing host parameters. No audio-thread allocations and no
         // hidden DSP instances: the newly enabled node is a real filter.
         processor.setSlotParam(slot,band*2,frequency);
@@ -3993,8 +4025,9 @@ void SlotEditor::mouseExit(const juce::MouseEvent&) {
 }
 void SlotEditor::mouseDown(const juce::MouseEvent& e){
     const int type=processor.slotType(slot);
+    if(e.mods.isPopupMenu() && type!=SkellPresetAudioProcessor::StudioEQFX)return;
     if(type!=SkellPresetAudioProcessor::ExternalVST3 &&
-       !e.mods.isPopupMenu() && homeReturnBounds().contains(e.getPosition())) {
+       e.mods.isLeftButtonDown() && !e.mods.isPopupMenu() && homeReturnBounds().contains(e.getPosition())) {
         if(onBackgroundClick)onBackgroundClick();
         return;
     }
@@ -4041,7 +4074,15 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         eqNodeMenu.open(studioEqBandType(best));
         return;
     }
+    if(e.mods.isPopupMenu() || !e.mods.isLeftButtonDown())return;
+    if(isPagedEQ(type) && type==SkellPresetAudioProcessor::StudioEQFX){
+        bool enabled=false;
+        for(int b=0;b<8;++b)enabled=enabled||studioEqBandEnabled(b);
+        if(!enabled)return;
+    }
+    endGraphGesture();
     draggingGraph=true;
+    gestureSlot=slot;gestureType=type;
     grabKeyboardFocus(); // only the graph, never steal slider text-entry focus
     if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
         gestureSuiteParameter=juce::jlimit(10,14,10+(int)((e.x-49.f)/163.f));
@@ -4059,7 +4100,12 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
                !studioEqBandEnabled(b))continue;
             const float freq=eqVisualFrequency(processor,slot,b,type);
             const float bx=33.f+835.f*std::log(freq/20.f)/std::log(1000.f);
-            const float dist=std::abs(bx-(float)e.x);
+            const int shape=type==SkellPresetAudioProcessor::StudioEQFX?studioEqBandType(b):0;
+            const float db=(shape==1||shape==2)?0.f:
+                (processor.getSlotParam(slot,b*2+1)-.5f)*
+                    (type==SkellPresetAudioProcessor::StudioEQFX?36.f:30.f);
+            const float by=254.f-db*206.f/72.f;
+            const float dist=std::hypot(bx-(float)e.x,by-(float)e.y);
             if(dist<nearest){nearest=dist;activeEqBand=b;}
         }
         showEqBank(activeEqBand);
@@ -4080,27 +4126,29 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
     // into that position and preventing a new node from being added.
     if(!isPagedEQ(type))updateGraphNode(e.position);
 }
-void SlotEditor::mouseDrag(const juce::MouseEvent& e){if(draggingGraph)updateGraphNode(e.position);}
-void SlotEditor::mouseUp(const juce::MouseEvent&){
+void SlotEditor::mouseDrag(const juce::MouseEvent& e){
     if(!draggingGraph)return;
-    if(gestureSuiteParameter>=0) {
-        if(auto* parameter=processor.state.getParameter(
-                "s"+juce::String(slot+1)+"_p"+juce::String(gestureSuiteParameter+1)))
-            parameter->endChangeGesture();
-        gestureSuiteParameter=-1;
-        draggingGraph=false;
-        return;
+    if(slot!=gestureSlot || processor.slotType(slot)!=gestureType){
+        endGraphGesture();return;
     }
-    const bool paged=isPagedEQ(processor.slotType(slot));
-    for(int k=0;k<2;++k) {
-        const int band=gestureEqBand>=0?gestureEqBand:activeEqBand;
-        const int param=paged?band*2+k+1:k+1;
-        if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+
-                                               "_p"+juce::String(param)))
+    updateGraphNode(e.position);
+}
+void SlotEditor::mouseUp(const juce::MouseEvent&){endGraphGesture();}
+void SlotEditor::endGraphGesture(){
+    if(!draggingGraph)return;
+    const auto prefix="s"+juce::String(gestureSlot+1)+"_p";
+    if(gestureSuiteParameter>=0){
+        if(auto* p=processor.state.getParameter(prefix+juce::String(gestureSuiteParameter+1)))
             p->endChangeGesture();
+    } else {
+        for(int k=0;k<2;++k){
+            const int param=gestureEqBand>=0?gestureEqBand*2+k+1:k+1;
+            if(auto* p=processor.state.getParameter(prefix+juce::String(param)))
+                p->endChangeGesture();
+        }
     }
-    draggingGraph=false;
-    gestureEqBand=-1;
+    draggingGraph=false;gestureSlot=-1;gestureType=-1;
+    gestureEqBand=-1;gestureSuiteParameter=-1;
 }
 
 bool SlotEditor::testPowerDotSync() {
@@ -4200,13 +4248,17 @@ bool SlotEditor::testIntegratedEffectLayout() const {
        !getLocalBounds().contains(slotPower.getBounds()))return false;
     for(int i=0;i<4;++i) {
         const auto r=knobs[(size_t)i].getBounds();
-        const auto card=juce::Rectangle<int>(r.getX()-135,r.getY()-5,
-            r.getWidth()+143,44);
+        const int type=processor.slotType(slot);
+        const auto card=parameterCardBounds(type,i);
         if(!getLocalBounds().contains(r) || !getLocalBounds().contains(card) ||
-           r.getY()<405 || r.getBottom()>510 || r.intersects(slotPower.getBounds()))
+           !card.contains(r) || r.getY()<405 || r.getBottom()>516 ||
+           r.intersects(slotPower.getBounds()) ||
+           knobs[(size_t)i].getSliderStyle()!=(rotaryFace(type)?
+               juce::Slider::RotaryHorizontalVerticalDrag:juce::Slider::LinearHorizontal))
             return false;
         for(int j=i+1;j<4;++j)
-            if(r.intersects(knobs[(size_t)j].getBounds()))return false;
+            if(r.intersects(knobs[(size_t)j].getBounds()) ||
+               card.intersects(parameterCardBounds(type,j)))return false;
     }
     return true;
 }
@@ -4269,8 +4321,16 @@ bool SlotEditor::testStudioEqGraphDoubleClick() {
     // A double-click directly on B8 must select it, not create a ninth node.
     const bool noDuplicate=!addStudioEqNodeAt(click)
         && studioEqBandEnabled(7) && activeEqBand==7;
+    updateGraphNode({700.f,235.f});
+    const bool dragMapped=std::abs(processor.getSlotParam(physical,15)-
+        eqGainAtY(SkellPresetAudioProcessor::StudioEQFX,235.f))<.002f;
+    setStudioEqBandType(7,1);
+    const float before=processor.getSlotParam(physical,15);
+    updateGraphNode({650.f,211.f});
+    const bool cutGainPreserved=std::abs(processor.getSlotParam(physical,15)-before)<.0001f;
+    setStudioEqBandType(7,0);
     setStudioEqBandEnabled(7,false);
-    return mapped && noDuplicate;
+    return mapped && noDuplicate && dragMapped && cutGainPreserved;
 }
 
 bool SlotEditor::testStudioEqAddAndFilterTypes() {

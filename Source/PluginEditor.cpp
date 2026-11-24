@@ -1361,7 +1361,10 @@ public:
         idle.setVisible(display==1 && editingIdle);
         chain.setAlpha(bypass?.30f:1.f);slot.setAlpha(bypass?.30f:1.f);
         chain.setEnabled(!bypass);slot.setEnabled(!bypass);
-        idle.setEnabled(!bypass);idle.setAlpha(bypass?.30f:1.f);
+        // Keep the actual performer and its BYPASS lamp readable. The
+        // disabled rack/controls and master shade already show bypass.
+        idle.setEnabled(!bypass);idle.setAlpha(bypass?.72f:1.f);
+        if(idle.isVisible())idle.repaint();
         for(auto& s:macro){
             s.setVisible(display==0);
             s.setEnabled(!bypass);

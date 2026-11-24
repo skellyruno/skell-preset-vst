@@ -15,7 +15,8 @@ class SkellMicModelPanel final : public juce::Component {
     class ModelCard final : public juce::TextButton {
     public:
         void setProfile(int profile,bool selected) {
-            index=juce::jlimit(0,3,profile);active=selected;repaint();
+            const int next=juce::jlimit(0,3,profile);
+            if(index!=next||active!=selected){index=next;active=selected;repaint();}
         }
         void paintButton(juce::Graphics& g,bool hover,bool down) override {
             const auto r=getLocalBounds().toFloat().reduced(.7f);
@@ -24,21 +25,22 @@ class SkellMicModelPanel final : public juce::Component {
             g.fillRoundedRectangle(r,5.f);
             g.setColour((active?Theme::green:Theme::stroke).withAlpha(active?.90f:.85f));
             g.drawRoundedRectangle(r.reduced(.5f),5.f,1.f);
-            const float x=r.getX()+14.f,y=r.getCentreY();
-            const float w=index==1?10.f:8.f;
+            const float x=r.getX()+17.f,y=r.getCentreY();
+            const float w=index==1?13.f:index==3?9.f:11.f;
             g.setGradientFill(juce::ColourGradient(
                 Theme::white.withAlpha(.88f),x-w*.5f,y-11.f,
                 Theme::muted.withAlpha(.42f),x+w*.5f,y+10.f,false));
-            g.fillRoundedRectangle(x-w*.5f,y-11.f,w,13.f,2.f);
-            g.fillRoundedRectangle(x-2.1f,y+1.f,4.2f,10.f,1.f);
+            if(index==2)g.fillEllipse(x-w*.5f,y-12.f,w,12.f);
+            else g.fillRoundedRectangle(x-w*.5f,y-12.f,w,15.f,index==3?1.4f:3.f);
+            g.fillRoundedRectangle(x-2.5f,y+1.f,5.f,12.f,1.f);
             g.setColour(Theme::bg.withAlpha(.68f));
             for(int k=0;k<4;++k)g.drawLine(x-w*.35f,y-8.f+k*2.4f,
                 x+w*.35f,y-8.f+k*2.4f,.7f);
             constexpr const char* subtitles[]{"Uncolored","Soft low-mids","Mid presence","High air"};
-            const int textW=juce::jmax(1,getWidth()-49);
-            Theme::fittedText(g,getButtonText(),{29,2,textW,16},10.7f,
+            const int textW=juce::jmax(1,getWidth()-52);
+            Theme::fittedText(g,getButtonText(),{33,4,textW,18},11.3f,
                 active?Theme::green:Theme::white,true);
-            Theme::fittedText(g,subtitles[index],{29,17,textW,12},8.8f,Theme::muted);
+            Theme::fittedText(g,subtitles[index],{33,22,textW,13},9.4f,Theme::muted);
             if(active){
                 g.setColour(Theme::green);
                 g.fillEllipse(r.getRight()-9.f,r.getY()+6.f,4.f,4.f);
@@ -60,6 +62,7 @@ class SkellMicModelPanel final : public juce::Component {
     public:
         SourceMenu(){setWantsKeyboardFocus(true);}
         std::function<void(int)> onChoose;
+        std::function<void()> onDismiss;
         void setSelected(int index) {
             selected=juce::jlimit(0,3,index);
             focused=selected;
@@ -146,7 +149,7 @@ class SkellMicModelPanel final : public juce::Component {
         }
         void mouseDown(const juce::MouseEvent& event) override {
             const int row=rowHitForTest(event.x,event.y,getWidth());
-            if(row>=0)choose(row);
+            if(row>=0 && event.mods.isLeftButtonDown())choose(row);
         }
         bool keyPressed(const juce::KeyPress& key) override {
             if(key==juce::KeyPress::upKey){moveFocus(-1);return true;}
@@ -156,7 +159,9 @@ class SkellMicModelPanel final : public juce::Component {
             if(key==juce::KeyPress::returnKey || key==juce::KeyPress::spaceKey){
                 choose(focused);return true;
             }
-            if(key==juce::KeyPress::escapeKey){setVisible(false);return true;}
+            if(key==juce::KeyPress::escapeKey){
+                setVisible(false);if(onDismiss)onDismiss();return true;
+            }
             return false;
         }
     private:
@@ -256,8 +261,9 @@ public:
         addAndMakeVisible(input);
         sourceMenu.onChoose=[this](int index) {
             setPhysical("micPreInput",(float)index);
-            refresh();
+            refresh();input.grabKeyboardFocus();
         };
+        sourceMenu.onDismiss=[this]{input.grabKeyboardFocus();};
         addAndMakeVisible(sourceMenu);
         sourceMenu.setVisible(false);
         constexpr const char* targets[]{"Flat","Warm","Focus","Air"};
@@ -408,6 +414,7 @@ public:
         const auto* out=processor.state.getRawParameterValue("micPreTarget");
         const int source=in?juce::jlimit(0,3,(int)in->load()):0;
         const int model=out?juce::jlimit(0,3,(int)out->load()):0;
+        if(sourceMenu.isVisible() && source!=lastInput)sourceMenu.setSelected(source);
         lastInput=source;lastTarget=model;lastEnabled=on();
         const auto* gateOn=processor.state.getRawParameterValue("micGateOn");
         lastGateEnabled=gateOn && gateOn->load()>.5f;
@@ -429,6 +436,8 @@ public:
         }
         const juce::StringArray sources{"NEUTRAL","CONDENSER","DYNAMIC","RIBBON"};
         input.setButtonText(sources[source]+"  ▼");
+        input.setTooltip("Select the actual input microphone type. The tonal profile is generic.");
+        enabled.setTooltip(on()?"Bypass microphone modeling":"Enable microphone modeling");
         enabled.setButtonText(on()?"ON":"OFF");
         enabled.setColour(juce::TextButton::buttonColourId,
                           on()?Theme::green.withAlpha(.24f):Theme::panelAlt);
@@ -470,7 +479,7 @@ public:
         const int cardWidth=(w-36)/2;
         for(int i=0;i<4;++i)
             simulations[(size_t)i].setBounds(12+(i%2)*(cardWidth+12),
-                                             148+(i/2)*37,cardWidth,32);
+                                             145+(i/2)*44,cardWidth,40);
         amount.setBounds(77,235,w-89,25);
         trim.setBounds(77,263,w-89,25);
         gateEnabled.setBounds(w-79,88,62,27);
@@ -517,11 +526,13 @@ public:
             "FLAT","WARM","FOCUS","AIR"};
         const auto* rawTarget=processor.state.getRawParameterValue("micPreTarget");
         const int target=rawTarget?juce::jlimit(0,3,(int)rawTarget->load()):0;
-        Theme::text(g,"MODEL",{13,125,72,16},10.3f,
+        Theme::text(g,"SIMULATE",{13,125,83,16},10.3f,
                     Theme::muted,true);
         Theme::fittedText(g,descriptions[target],
                           {getWidth()-117,125,100,16},10.f,Theme::green,true,
                           juce::Justification::centredRight);
+        g.setColour(Theme::stroke.withAlpha(.75f));
+        g.drawHorizontalLine(232,13.f,(float)getWidth()-13.f);
         Theme::text(g,"AMOUNT",{13,238,62,18},10.6f,Theme::white,true);
         Theme::text(g,"TRIM",{13,266,60,18},10.6f,Theme::white,true);
         Theme::fittedText(g,"TONAL PROFILE / ZERO ADDED LATENCY",
@@ -536,7 +547,11 @@ public:
         // microphones are painted behind the compact interactive controls.
     }
     bool keyPressed(const juce::KeyPress& key) override {
-        if(key==juce::KeyPress::escapeKey){close.onClick();return true;}
+        if(key==juce::KeyPress::escapeKey){
+            if(sourceMenu.isVisible()){sourceMenu.setVisible(false);input.grabKeyboardFocus();}
+            else close.onClick();
+            return true;
+        }
         return false;
     }
     bool testCompactGeometryForTest() {
@@ -555,10 +570,13 @@ public:
                 static_cast<const juce::Component*>(&gateTab),
                 static_cast<const juce::Component*>(&close)})
                 okay=okay && area.contains(component->getBounds());
-            for(const auto& button:simulations)
-                okay=okay && area.contains(button.getBounds()) &&
-                    !button.getBounds().intersects(trim.getBounds()) &&
-                    !button.getBounds().intersects(amount.getBounds());
+            for(size_t i=0;i<simulations.size();++i){
+                const auto rect=simulations[i].getBounds();
+                okay=okay && area.contains(rect) && rect.getHeight()==40 &&
+                    !rect.intersects(trim.getBounds()) && !rect.intersects(amount.getBounds());
+                for(size_t j=i+1;j<simulations.size();++j)
+                    okay=okay && !rect.intersects(simulations[j].getBounds());
+            }
             okay=okay && !amount.getBounds().intersects(trim.getBounds()) &&
                 trim.getBottom()<getHeight()-16;
             showPage(true);

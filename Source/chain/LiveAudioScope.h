@@ -20,18 +20,23 @@ public:
     }
     void push(const float* left,const float* right,int samples) noexcept {
         if(!left||samples<=0)return;
-        unsigned cursor=count.load(std::memory_order_relaxed);
-        for(int i=0;i<samples;++i) {
-            if(++phase>=decimation){
-                phase=0;
-                const float l=std::isfinite(left[i])?left[i]:0.f;
-                const float r=right?(std::isfinite(right[i])?right[i]:0.f):l;
-                data[cursor%capacity].store(std::clamp(.5f*(l+r),-1.f,1.f),
-                                           std::memory_order_relaxed);
-                ++cursor;
-            }
+        const unsigned before=count.load(std::memory_order_relaxed);
+        unsigned cursor=before;
+        // Jump directly to capture events. For a 512-sample block this
+        // executes eight iterations, not 512, with identical sample phase.
+        // The published mono trace is independent of host block splitting.
+        for(int i=decimation-phase-1;i<samples;){
+            const float l=std::isfinite(left[i])?left[i]:0.f;
+            const float r=right?(std::isfinite(right[i])?right[i]:0.f):l;
+            const float mono=.5f*l+.5f*r; // avoid overflow before downmix
+            data[cursor%capacity].store(std::clamp(mono,-1.f,1.f),
+                                       std::memory_order_relaxed);
+            ++cursor;
+            if(samples-i<=decimation)break; // also avoids signed int overflow
+            i+=decimation;
         }
-        count.store(cursor,std::memory_order_release);
+        phase=(phase+samples%decimation)%decimation;
+        if(cursor!=before)count.store(cursor,std::memory_order_release);
     }
     template<std::size_t N>
     void snapshot(std::array<float,N>& output) const noexcept {

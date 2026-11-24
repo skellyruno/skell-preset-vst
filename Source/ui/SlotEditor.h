@@ -91,6 +91,7 @@ public:
 class SlotEditor final:public juce::Component {
 public:
     explicit SlotEditor(SkellPresetAudioProcessor& p);
+    ~SlotEditor() override;
     std::function<void()> onBackgroundClick; // intentional VISUAL top button
     static juce::Rectangle<int> homeReturnBounds() noexcept {
         return {325,7,145,23}; // free header margin; never graph or knobs
@@ -191,6 +192,8 @@ private:
     void showSuitePage(int page);
     void selectSuiteRecipe(int index);
     void applyKnobReadouts();
+    void layoutParameterControls(int type);
+    void endGraphGesture();
     // ComboBox remains as a noninteractive compatibility/synchronization
     // adapter; the user-facing selector is the searchable native overlay.
     juce::ComboBox moduleBox;
@@ -247,6 +250,7 @@ private:
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> knobAttachment;
     bool draggingGraph=false;
     bool homeHover=false; // UI-only; never audio state
+    int gestureSlot=-1,gestureType=-1;
     int gestureEqBand=-1; // same parameter IDs receive begin/end gestures
     bool graphSnapshotValid=false;
     int lastType=-1;

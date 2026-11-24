@@ -24,6 +24,7 @@ public:
     }
     void close() {
         hoveredTarget=-1;
+        setMouseCursor(juce::MouseCursor::NormalCursor);
         setVisible(false);
         if(auto* parent=getParentComponent())parent->grabKeyboardFocus();
         if(onClose)onClose();
@@ -34,6 +35,8 @@ public:
     // they do not resize the DAW window or mutate settings until activation.
     static int nextKeyboardTarget(int target,int code) noexcept {
         target=juce::jlimit(0,4,target);
+        if(code==juce::KeyPress::homeKey)return 0;
+        if(code==juce::KeyPress::endKey)return 4;
         if(code==juce::KeyPress::leftKey)
             return target<4 && target%2==1?target-1:target;
         if(code==juce::KeyPress::rightKey)
@@ -51,7 +54,9 @@ public:
                nextKeyboardTarget(2,juce::KeyPress::downKey)==4 &&
                nextKeyboardTarget(4,juce::KeyPress::upKey)==2 &&
                nextKeyboardTarget(0,juce::KeyPress::leftKey)==0 &&
-               nextKeyboardTarget(4,juce::KeyPress::rightKey)==4;
+               nextKeyboardTarget(4,juce::KeyPress::rightKey)==4 &&
+               nextKeyboardTarget(4,juce::KeyPress::homeKey)==0 &&
+               nextKeyboardTarget(0,juce::KeyPress::endKey)==4;
     }
     bool keyPressed(const juce::KeyPress& key) override {
         const int code=key.getKeyCode();
@@ -59,7 +64,8 @@ public:
         const int next=nextKeyboardTarget(focusedTarget,code);
         if(next!=focusedTarget){focusedTarget=next;repaint();return true;}
         if(code==juce::KeyPress::leftKey || code==juce::KeyPress::rightKey ||
-           code==juce::KeyPress::upKey || code==juce::KeyPress::downKey)
+           code==juce::KeyPress::upKey || code==juce::KeyPress::downKey ||
+           code==juce::KeyPress::homeKey || code==juce::KeyPress::endKey)
             return true;
         if(code==juce::KeyPress::returnKey || code==' ') {
             if(focusedTarget==4){
@@ -85,10 +91,14 @@ public:
         if(next!=worldLinkLabel){worldLinkLabel=next;repaint();}
     }
     // The exact same targets drive hover, clicks and hit-area regression.
+    juce::Rectangle<int> scaleCard(int i) const noexcept {
+        const int w=(getWidth()-61)/2;
+        return {25+(i%2)*(w+11),119+(i/2)*47,w,39};
+    }
     int hitTargetForTest(juce::Point<int> p) const noexcept {
-        if(juce::Rectangle<int>(getWidth()-47,10,37,40).contains(p))return 5;
+        if(juce::Rectangle<int>(getWidth()-45,11,34,36).contains(p))return 5;
         for(int i=0;i<4;++i)
-            if(juce::Rectangle<int>(25+(i%2)*177,119+(i/2)*47,166,39).contains(p))
+            if(scaleCard(i).contains(p))
                 return i;
         if(juce::Rectangle<int>(25,239,getWidth()-50,39).contains(p))return 4;
         return -1;
@@ -110,7 +120,7 @@ public:
     bool testLayoutForTest() const noexcept {
         const auto bounds=getLocalBounds();
         if(getWidth()<388 || getHeight()<326)return false;
-        const auto close=juce::Rectangle<int>(getWidth()-47,10,37,40);
+        const auto close=juce::Rectangle<int>(getWidth()-45,11,34,36);
         const auto world=juce::Rectangle<int>(25,239,getWidth()-50,39);
         const auto legend=juce::Rectangle<int>(25,285,getWidth()-50,18);
         const auto keyboardHint=juce::Rectangle<int>(25,306,getWidth()-50,18);
@@ -119,17 +129,16 @@ public:
            world.intersects(legend) || legend.intersects(keyboardHint))
             return false;
         for(int i=0;i<4;++i) {
-            const auto a=juce::Rectangle<int>(25+(i%2)*177,119+(i/2)*47,166,39);
+            const auto a=scaleCard(i);
             if(!bounds.contains(a)||a.intersects(world))return false;
             for(int j=i+1;j<4;++j)
-                if(a.intersects(juce::Rectangle<int>(
-                    25+(j%2)*177,119+(j/2)*47,166,39)))
+                if(a.intersects(scaleCard(j)))
                     return false;
         }
         for(int i=0;i<4;++i) {
-            const int x=25+(i%2)*177,y=119+(i/2)*47;
-            if(hitTargetForTest({x+83,y+19})!=i ||
-               hitTargetForTest({x+166,y+19})==i)return false;
+            const auto card=scaleCard(i);
+            if(hitTargetForTest(card.getCentre())!=i ||
+               hitTargetForTest({card.getRight(),card.getCentreY()})==i)return false;
         }
         return hitTargetForTest({getWidth()-29,30})==5 &&
                hitTargetForTest({getWidth()/2,258})==4 &&
@@ -160,8 +169,9 @@ public:
                     {25,88,getWidth()-50,20},10.8f,Theme::muted);
         static constexpr const char* labels[]{"70%","85%","100%","125%"};
         for(int i=0;i<4;++i){
-            const int x=25+(i%2)*177, y=119+(i/2)*47;
-            const auto r=juce::Rectangle<float>((float)x,(float)y,166.f,39.f);
+            const auto rect=scaleCard(i);
+            const int x=rect.getX(),y=rect.getY();
+            const auto r=rect.toFloat();
             const bool active=i==selected;
             const bool focused=hasKeyboardFocus(false) && focusedTarget==i;
             const bool hovered=hoveredTarget==i;
@@ -175,9 +185,9 @@ public:
                 g.setColour(Theme::white.withAlpha(.88f));
                 g.drawRoundedRectangle(r.reduced(2.8f),5.f,1.2f);
             }
-            Theme::text(g,labels[(size_t)i],{x+13,y+8,122,23},14,
+            Theme::text(g,labels[(size_t)i],{x+13,y+8,rect.getWidth()-36,23},14,
                         active?Theme::green:Theme::white,true);
-            if(active){g.setColour(Theme::green);g.fillEllipse((float)x+142.f,(float)y+16.f,7.f,7.f);}
+            if(active){g.setColour(Theme::green);g.fillEllipse(r.getRight()-24.f,(float)y+16.f,7.f,7.f);}
         }
         Theme::text(g,"SKELLWORLD  /  OPTIONAL LOCAL PRESENCE",
                     {25,214,getWidth()-50,18},10,Theme::green,true);
@@ -202,6 +212,7 @@ public:
                     {25,306,getWidth()-50,17},10.f,Theme::muted);
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if(!e.mods.isLeftButtonDown())return;
         const int target=hitTargetForTest(e.getPosition());
         if(target==5){close();return;}
         if(target>=0 && target<4){

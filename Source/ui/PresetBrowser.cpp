@@ -95,7 +95,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     categoryEditor.setTooltip("Create your own library category; presets and automation stay unchanged.");
     applyTheme();
     search.onTextChange=[this]{
-        scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
+        scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;browserWheelCarry=0.f;
         clearSearchButton.setEnabled(search.getText().isNotEmpty());
         repaint();
     };
@@ -347,6 +347,8 @@ void PresetBrowser::open() {
 }
 void PresetBrowser::showDetails(bool openDetails) {
     detailsOpen=openDetails;
+    hoveredCard=-1;hoveredStar=-1;hoveredBank=-1;hoveredAdlibs=false;
+    browserWheelCarry=0.f;
     detailsButton.setButtonText(detailsOpen?"BACK TO LIBRARY":"EDIT DETAILS");
     if(!detailsOpen)grabKeyboardFocus();
     resized();repaint();
@@ -354,24 +356,24 @@ void PresetBrowser::showDetails(bool openDetails) {
 void PresetBrowser::chooseBank(int index){
     if(index<0 || index>=banks.size())return;
     bank=index;mainAdlibs=false;
-    scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
+    scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;browserWheelCarry=0.f;
     // Factory Main Vocals are not hidden by a previous user genre filter.
     if(bank==0)genreFilter.setSelectedId(1,juce::dontSendNotification);
     repaint();
 }
 void PresetBrowser::chooseAdlibs(){
     bank=0;mainAdlibs=true;
-    scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
+    scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;browserWheelCarry=0.f;
     genreFilter.setSelectedId(1,juce::dontSendNotification);
     repaint();
 }
 void PresetBrowser::focusCard(int index){
     const int count=(int)filtered().size();
-    if(count<=0){keyboardCard=-1;scroll=0;repaint();return;}
+    if(count<=0){keyboardCard=-1;scroll=0;hoveredCard=-1;hoveredStar=-1;repaint();return;}
     keyboardCard=juce::jlimit(0,count-1,index);
     if(keyboardCard<scroll)scroll=keyboardCard;
     if(keyboardCard>=scroll+6)scroll=keyboardCard-5;
-    hoveredCard=-1;repaint();
+    hoveredCard=-1;hoveredStar=-1;repaint();
 }
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-111,42);
@@ -1445,7 +1447,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         else g.strokePath(star,juce::PathStrokeType(1.3f));
         if(loaded){g.setColour(Theme::green);g.fillEllipse((float)getWidth()-29.f,(float)y+25.f,6.f,6.f);}
     }
-    if(entries.size()==1 && search.getText().trim().isEmpty()) {
+    if(entries.size()==1 && search.getText().trim().isEmpty() && !mainAdlibs) {
         // A single active factory sound shouldn't produce an unexplained
         // empty browser. Preview the editable cover instead; no fake
         // content, duplicate presets or heavy image loads in paint().
@@ -1482,6 +1484,16 @@ void PresetBrowser::paint(juce::Graphics&g) {
             Theme::text(g,"Your saved artwork",{424,407,196,18},11,Theme::muted);
             Theme::text(g,"can become the backdrop.",{424,424,196,18},11,Theme::muted);
         }
+    }
+    if(mainAdlibs && entries.size()==1 && search.getText().trim().isEmpty()){
+        // An intentionally small bank: no irrelevant SET COVER instructions
+        // for the noneditable Digital Bones factory.
+        Theme::fittedText(g,"DIGITAL BONES",{230,205,getWidth()-270,38},
+            24.f,Theme::white,true);
+        Theme::fittedText(g,"Bit-crushed vocal / rhythmic echoes",
+            {230,251,getWidth()-270,25},13.f,Theme::muted);
+        Theme::fittedText(g,"One factory Adlib. Save a personal copy to edit artwork.",
+            {230,290,getWidth()-270,24},11.f,Theme::muted);
     }
     if(entries.empty()) {
         const bool searched=search.getText().trim().isNotEmpty();
@@ -1559,6 +1571,7 @@ void PresetBrowser::auditionEntry(int entry) {
     else loadUserFromBrowser(-entry-1);
 }
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
+    if(!e.mods.isLeftButtonDown())return;
     if(!detailsOpen && e.x>=17 && e.x<185){
         if(adlibsBounds().contains(e.getPosition())){
             chooseAdlibs();grabKeyboardFocus();return;
@@ -1607,7 +1620,7 @@ void PresetBrowser::mouseMove(const juce::MouseEvent& e){
     repaint();
     setTooltip(nextStar>=0?"Toggle favorite without changing the loaded sound.":
                next>=0?"Load this preset; your current sound can be undone.":
-               nextAdlibs?"Browse native and saved Adlibs.":
+               nextAdlibs?"Browse the Digital Bones factory Adlib.":
                nextBank>=0?"Browse this library category.":
                "Click a category, choose a genre or search for a saved sound.");
     setMouseCursor(juce::MouseCursor(next>=0 || nextBank>=0 || nextAdlibs?
@@ -1662,7 +1675,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
         return true;
     }
     if(code==juce::KeyPress::upKey || code==juce::KeyPress::downKey){
-        focusCard(keyboardCard<0?0:keyboardCard+
+        focusCard(keyboardCard<0?scroll:keyboardCard+
             (code==juce::KeyPress::upKey?-1:1));
         return true;
     }
@@ -1674,7 +1687,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     }
     if(code==juce::KeyPress::pageUpKey ||
        code==juce::KeyPress::pageDownKey){
-        const int next=(keyboardCard<0?0:keyboardCard)+
+        const int next=(keyboardCard<0?scroll:keyboardCard)+
             (code==juce::KeyPress::pageUpKey?-6:6);
         focusCard(next);
         return true;

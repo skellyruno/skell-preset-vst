@@ -29,7 +29,7 @@ public:
         int holdFrames=0;
     };
     static void followPeak(MeterEnvelope& meter,float peak) noexcept {
-        peak=std::isfinite(peak)?juce::jmax(0.f,peak):0.f;
+        peak=std::isfinite(peak)?juce::jlimit(0.f,4.f,peak):0.f;
         // Immediate attack, 30 Hz UI-only release; the actual audio buffer
         // and every host automation parameter remain untouched.
         meter.level=peak>=meter.level?peak:
@@ -103,7 +103,7 @@ public:
         out.originX=w*.5f-151.f*out.scale;
         const float spare=juce::jmax(0.f,out.scope.getY()-22.f-390.f*out.scale);
         out.originY=juce::jmax(10.f,22.f+(1.f-out.scale)*3.f+spare*.44f);
-        out.valid=out.originX>0.f &&
+        out.valid=out.originX>0.f && out.originX+290.f*out.scale<=w &&
             out.scope.getY()>out.originY+377.f*out.scale &&
             out.scope.getRight()<=w && out.scope.getBottom()<=h;
         return out;
@@ -160,6 +160,8 @@ public:
         // The feet are drawn around y=368 in model space. Ground the
         // floor at the character's feet at every supported aspect ratio.
         const float horizon=stage.originY+372.f*stage.scale;
+        const auto* mode=processor.state.getRawParameterValue("mode");
+        const bool bypassed=mode && (int)mode->load()==3;
         g.setColour(Theme::bg);
         g.fillRoundedRectangle(stageBounds,8.f);
         g.setGradientFill(juce::ColourGradient(
@@ -198,7 +200,15 @@ public:
             g.fillRoundedRectangle(x-w*.5f,y,w,h,3.f*stage.scale);
             g.setColour(Theme::muted.withAlpha(.14f));
             g.drawRoundedRectangle(x-w*.5f,y,w,h,3.f*stage.scale,.8f);
+            g.setColour(Theme::muted.withAlpha(.10f));
+            g.drawLine(x-w*.28f,y+8.f*stage.scale,x+w*.28f,y+8.f*stage.scale,.75f);
+            g.drawLine(x,y+4.f*stage.scale,x,y+13.f*stage.scale,.75f);
         }
+        // Low mist is a soft gradient, not a large animated texture.
+        g.setGradientFill(juce::ColourGradient(
+            Theme::muted.withAlpha(.045f+.035f*activity),centreX,horizon-18.f*stage.scale,
+            Theme::bg.withAlpha(0.f),centreX,horizon-58.f*stage.scale,false));
+        g.fillRect(stageBounds.getX(),horizon-58.f*stage.scale,stageBounds.getWidth(),58.f*stage.scale);
         // Restrained floor reflections and soft contact shadow.
         // Static set dressing, with brightness driven by real audio.
         for(int i=0;i<5;++i){
@@ -238,10 +248,19 @@ public:
             bone(178.f,263.f,191.f,316.f,9.f,.72f);
             bone(113.f,318.f,105.f,364.f,6.5f,.76f);
             bone(191.f,316.f,205.f,360.f,6.5f,.75f);
+            // Paired fibulae and articulated ankle joints.
+            bone(119.f,323.f,111.f,361.f,2.7f,.56f);
+            bone(185.f,322.f,199.f,357.f,2.7f,.56f);
+            bone(105.f,360.f,106.f,366.f,8.f,.82f);
+            bone(205.f,357.f,205.f,364.f,8.f,.82f);
             bone(113.f,318.f,118.f,326.f,11.f,.58f);
             bone(191.f,316.f,185.f,325.f,11.f,.56f);
             bone(105.f,364.f,86.f,368.f,5.f,.72f);
             bone(205.f,360.f,226.f,367.f,5.f,.72f);
+            for(int toe=0;toe<4;++toe){
+                bone(102.f,366.f,84.f+toe*3.4f,369.f+toe*.6f,2.2f,.66f);
+                bone(207.f,364.f,227.f-toe*3.4f,368.f+toe*.6f,2.2f,.66f);
+            }
             // The pelvis is an angular anatomical saddle, not a circle.
             juce::Path hips;
             hips.startNewSubPath(113.f,239.f);
@@ -317,6 +336,10 @@ public:
             bone(78.f,208.f,59.f,256.f,6.4f,.72f);
             bone(206.f,151.f,245.f,187.f,8.3f,.85f);
             bone(245.f,187.f,269.f,117.f,6.5f,.82f);
+            bone(83.f,211.f,65.f,255.f,2.8f,.57f);
+            bone(239.f,183.f,263.f,118.f,2.8f,.59f);
+            bone(78.f,205.f,77.f,211.f,9.f,.69f);
+            bone(245.f,183.f,245.f,190.f,9.f,.74f);
             for(int finger=0;finger<4;++finger) {
                 bone(58.f+finger*2.f,256.f,51.f+finger*3.f,
                      275.f+finger*1.5f,2.0f,.56f);
@@ -431,10 +454,11 @@ public:
             for(int tooth=0;tooth<8;++tooth)
                 g.drawLine(132.f+5.f*tooth,115.f,132.f+5.f*tooth,
                            tooth==3||tooth==4?128.f:125.f,1.2f);
+            const float jawDrop=live?4.5f*activity:0.f;
             juce::Path jaw;
             jaw.startNewSubPath(123.f,109.f);
-            jaw.cubicTo(122.f,135.f,136.f,143.f,150.f,144.f);
-            jaw.cubicTo(171.f,145.f,185.f,131.f,183.f,107.f);
+            jaw.cubicTo(122.f,135.f+jawDrop,136.f,143.f+jawDrop,150.f,144.f+jawDrop);
+            jaw.cubicTo(171.f,145.f+jawDrop,185.f,131.f+jawDrop,183.f,107.f);
             g.setColour(porcelain.withAlpha(.53f));
             g.strokePath(jaw,juce::PathStrokeType(3.f));
             // Fine forehead fissure and spectral one-sided edge light.
@@ -473,18 +497,28 @@ public:
             g.setColour(accent.withAlpha(.045f+.07f*activity));
             g.fillPath(envelope);
         }
-        g.setColour(accent.withAlpha(live?.95f:.43f));
-        g.strokePath(trace,juce::PathStrokeType(live?1.85f:1.2f,
+        if(live){
+            g.setColour(accent.withAlpha(.13f));
+            g.strokePath(trace,juce::PathStrokeType(5.f,
+                juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        }
+        g.setColour(accent.withAlpha(live?.95f:.29f));
+        g.strokePath(trace,juce::PathStrokeType(live?1.85f:1.0f,
             juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         const auto status=juce::Rectangle<float>(stageBounds.getX()+15.f,
-            stageBounds.getY()+13.f,78.f,24.f);
+            stageBounds.getY()+13.f,90.f,24.f);
         g.setColour(Theme::bg.withAlpha(.84f));
         g.fillRoundedRectangle(status,6.f);
-        g.setColour(live?accent:Theme::muted.withAlpha(.50f));
+        const auto lamp=bypassed?Theme::amber:live?accent:Theme::muted;
+        if(live && !bypassed){
+            g.setColour(lamp.withAlpha(.13f+.18f*activity));
+            g.fillEllipse(status.getX()+6.f,status.getCentreY()-7.f,14.f,14.f);
+        }
+        g.setColour(lamp);
         g.fillEllipse(status.getX()+10.f,status.getCentreY()-3.f,6.f,6.f);
-        Theme::text(g,live?"LIVE":"IDLE",
+        Theme::text(g,bypassed?"BYPASS":live?"LIVE":"IDLE",
             {juce::roundToInt(status.getX()+23.f),juce::roundToInt(status.getY()),
-             52,24},10.7f,live?accent:Theme::muted,true);
+             66,24},10.7f,lamp,true);
 
     }
 private:

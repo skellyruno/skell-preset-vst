@@ -27,6 +27,11 @@ class SkellModulePicker final : public juce::Component {
                 if(onArrow)onArrow(1);
                 return true;
             }
+            if(key.getKeyCode()==juce::KeyPress::pageUpKey ||
+               key.getKeyCode()==juce::KeyPress::pageDownKey){
+                if(onArrow)onArrow(key.getKeyCode()==juce::KeyPress::pageUpKey?-6:6);
+                return true;
+            }
             return juce::TextEditor::keyPressed(key);
         }
     };
@@ -75,6 +80,21 @@ public:
     static bool externalHitForTest(int x,int y,int width,int height) noexcept {
         return x>=17 && x<width-17 && y>=height-55 && y<height-29;
     }
+    static bool closeHitForTest(int x,int y,int width) noexcept {
+        return x>=width-42 && x<width-10 && y>=8 && y<38;
+    }
+    static int searchRank(const juce::String& name,const juce::String& query) {
+        if(query.isEmpty())return 3;
+        if(name.equalsIgnoreCase(query))return 0;
+        if(name.startsWithIgnoreCase(query))return 1;
+        return name.containsIgnoreCase(query)?2:3;
+    }
+    static bool testSearchRankingForTest() {
+        return searchRank("Delay","delay")==0 &&
+            searchRank("Delay Studio","delay")==1 &&
+            searchRank("Studio Delay","delay")==2 &&
+            searchRank("Chorus","delay")==3;
+    }
     void positionWithin(juce::Rectangle<int> initial) {
         if(!movedByUser) {setBounds(initial);return;}
         if(auto* parent=getParentComponent()) {
@@ -122,7 +142,11 @@ public:
             !resultHitForTest(18,142,getWidth(),visibleRows()) &&
             !resultHitForTest(5,115,getWidth(),visibleRows()) &&
             externalHitForTest(getWidth()/2,getHeight()-40,getWidth(),getHeight()) &&
-            !externalHitForTest(getWidth()/2,getHeight()-27,getWidth(),getHeight());
+            !externalHitForTest(getWidth()/2,getHeight()-27,getWidth(),getHeight()) &&
+            closeHitForTest(getWidth()-42,8,getWidth()) &&
+            !closeHitForTest(getWidth()-10,8,getWidth()) &&
+            !closeHitForTest(getWidth()-26,38,getWidth()) &&
+            testSearchRankingForTest();
     }
     void applyTheme() {
         Theme::selectFor(processor.state);
@@ -137,7 +161,8 @@ public:
     }
     void open(int type) {
         currentType=type;
-        topItem=0;selectedRow=0;
+        topItem=0;selectedRow=0;wheelCarry=0.f;
+        hoveredClose=false;hoveredExternal=false;
         search.setText({},juce::dontSendNotification);
         filter();
         // When reopening, highlight the effect currently in the rack.
@@ -154,6 +179,7 @@ public:
     }
     void hide() {
         hoveredClose=false;hoveredExternal=false;
+        wheelCarry=0.f;dragHeader=false;resizing=false;
         setMouseCursor(juce::MouseCursor::NormalCursor);
         setVisible(false);
         if(onDismiss)onDismiss();
@@ -178,6 +204,8 @@ public:
     void resized() override {
         search.setBounds(17,49,getWidth()-34,35);
         topItem=juce::jlimit(0,std::max(0,(int)results.size()-visibleRows()),topItem);
+        if(!results.empty())selectedRow=juce::jlimit(topItem,
+            juce::jmin((int)results.size()-1,topItem+visibleRows()-1),selectedRow);
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
@@ -199,8 +227,8 @@ public:
         g.setColour(hoveredClose?Theme::white:Theme::muted);
         g.drawLine(W-32.f,17.f,W-20.f,29.f,1.5f);
         g.drawLine(W-20.f,17.f,W-32.f,29.f,1.5f);
-        Theme::text(g,"SEARCH  •  CLICK TO LOAD  •  SCROLL EFFECTS",
-                    {18,86,getWidth()-34,17},11.4f,Theme::muted.brighter(.18f));
+        Theme::fittedText(g,"SEARCH  /  "+juce::String(results.size())+" RESULTS",
+                    {18,86,getWidth()-34,17},10.5f,Theme::muted,true);
 
         const int visible=visibleRows();
         constexpr int rowHeight=37,rowY=108;
@@ -215,22 +243,33 @@ public:
                         highlighted?Theme::panelAlt.brighter(.12f):Theme::panelAlt);
             g.fillRoundedRectangle(rect,5.f);
             if(active || highlighted){
-                g.setColour(active?Theme::green:Theme::stroke);
+                g.setColour(active?Theme::green:Theme::muted.withAlpha(.66f));
                 g.drawRoundedRectangle(rect.reduced(.5f),5.f,1.1f);
+            }
+            if(active){
+                g.setColour(Theme::green);
+                g.fillRoundedRectangle(rect.getX()+2.f,rect.getY()+6.f,2.f,22.f,1.f);
+            }
+            if(highlighted && search.hasKeyboardFocus(true)){
+                g.setColour(Theme::white.withAlpha(.45f));
+                g.drawRoundedRectangle(rect.reduced(2.f),4.f,.8f);
             }
             const auto name=processor.moduleName(type);
             // Reserve the category chip's right-side area at 340px minimum
             // width; the old fixed 203px name field overlapped it by 20px.
             Theme::fittedText(g,name,{27,y+4,juce::jmax(110,getWidth()-165),23},14.0f,
                               active?Theme::green:Theme::white,true);
-            Theme::text(g,category(type).toUpperCase(),
+            const auto group=category(type);
+            const auto colour=group=="Dynamics"?Theme::amber:group=="Space"?Theme::blue:
+                group=="Motion"?Theme::pink:Theme::green;
+            Theme::fittedText(g,group.toUpperCase(),
                         {getWidth()-130,y+7,100,17},10.6f,
-                        active?Theme::green:Theme::muted,false,
+                        active?Theme::green:colour.withAlpha(.82f),false,
                         juce::Justification::centredRight);
         }
         const int foot=getHeight()-26;
         if(results.empty())
-            Theme::text(g,"No matching effects. Try 'delay', 'vocal', 'modulation'...",
+            Theme::fittedText(g,"No matching effects. Try delay, vocal or modulation.",
                         {22,rowY+65,getWidth()-44,26},12,Theme::muted,false,
                         juce::Justification::centred);
         g.setColour(Theme::stroke);
@@ -264,6 +303,7 @@ public:
         }
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if(!e.mods.isLeftButtonDown())return;
         if(e.x>=getWidth()-23 && e.y>=getHeight()-23) {
             resizing=true;
             resizeStart=getBounds();
@@ -271,7 +311,7 @@ public:
             setMouseCursor(juce::MouseCursor::BottomRightCornerResizeCursor);
             return;
         }
-        if(e.y<42 && e.x>=getWidth()-43){hide();return;}
+        if(closeHitForTest(e.x,e.y,getWidth())){hide();return;}
         if(e.y>=0 && e.y<42 && e.x>=0 && e.x<getWidth()-45) {
             dragHeader=true;
             dragOrigin=getPosition();
@@ -325,7 +365,7 @@ public:
         setMouseCursor(juce::MouseCursor::NormalCursor);
     }
     void mouseMove(const juce::MouseEvent& e) override {
-        const bool nextClose=e.y>=0 && e.y<42 && e.x>=getWidth()-43;
+        const bool nextClose=closeHitForTest(e.x,e.y,getWidth());
         const bool nextExternal=externalHitForTest(e.x,e.y,getWidth(),getHeight());
         if(nextClose!=hoveredClose || nextExternal!=hoveredExternal){
             hoveredClose=nextClose;hoveredExternal=nextExternal;
@@ -437,7 +477,11 @@ private:
                && matches(search.getText(),type))results.push_back(type);
         // Stable sort within categories retains each existing module ID
         // and automation mapping, while giving users a predictable catalog.
-        std::stable_sort(results.begin(),results.end(),[](int a,int b){
+        const auto query=search.getText().trim();
+        std::stable_sort(results.begin(),results.end(),[this,&query](int a,int b){
+            const int rankA=searchRank(processor.moduleName(a),query);
+            const int rankB=searchRank(processor.moduleName(b),query);
+            if(rankA!=rankB)return rankA<rankB;
             return category(a).compareIgnoreCase(category(b))<0;
         });
         selectedRow=0;topItem=0;
