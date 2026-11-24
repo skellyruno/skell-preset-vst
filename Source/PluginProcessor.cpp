@@ -830,10 +830,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float gateWet=micGateWet.getNextValue();
             float gateGain=1.f;
             if(gateWet>1.e-6f) {
-                float processedGain=micGate.processGain(preL,preR);
 #if defined(SKELL_PRESET_EXPERIMENTAL_CLUB_GATE_FINISH)
-                processedGain*=clubGateFinish.processGain(preL*processedGain,preR*processedGain);
+                constexpr bool useFinish=true;
+#else
+                constexpr bool useFinish=false;
 #endif
+                const float processedGain=skellcore::dsp::clubGateGain(micGate,clubGateFinish,useFinish,preL,preR);
                 gateGain=1.f+(processedGain-1.f)*gateWet;
             }
             const float gatedL=preL*gateGain,gatedR=preR*gateGain;

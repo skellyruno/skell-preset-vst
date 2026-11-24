@@ -5,6 +5,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(SKELL_PRESET_PORTABLE_ONLY "Build portable DSP and MATCH tests without JUCE" OFF)
 option(SKELL_PRESET_EXPERIMENTAL_CLUB_GATE_FINISH "TEST ONLY: causal Club Gate B finishing trial; not a production build" OFF)
+# Pin only the shared gate header. Do not replace the other pinned SkellCore DSP/UI.
+include(FetchContent)
+FetchContent_Declare(SkellNativeMatchHeaders
+    GIT_REPOSITORY https://github.com/skellyruno/skellcore-vst-template.git
+    GIT_TAG 92b03b753c59583b6b6063228c2d630ef94daf59
+    GIT_SHALLOW FALSE
+    SOURCE_SUBDIR _native_match_headers_only)
+FetchContent_MakeAvailable(SkellNativeMatchHeaders)
+set(_gate_header "${skellnativematchheaders_SOURCE_DIR}/SkellCore/include/SkellCore/ClubGate.h")
+file(SHA256 "${_gate_header}" _gate_hash)
+if(NOT _gate_hash STREQUAL "ab4a278f479fd851daa130834b17b3c91fc7363f0f781b462fbcc38d09ebce79")
+    message(FATAL_ERROR "Shared Club Gate source differs from pinned native matching implementation")
+endif()
+configure_file("${_gate_header}" "${CMAKE_CURRENT_BINARY_DIR}/native-match-include/SkellCore/ClubGate.h" COPYONLY)
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/native-match-include")
 enable_testing()
 add_subdirectory(tests)
 if(SKELL_PRESET_PORTABLE_ONLY)
