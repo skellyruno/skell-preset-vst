@@ -1207,20 +1207,24 @@ public:
             Theme::text(g,"FOUR MACROS  /  OPEN ADVANCED TO EDIT EACH EFFECT",{79,278,960,24},14.6f,Theme::muted);
             // Expanded live scope in the Simple view: this is actual
             // post-effects output, not a random waveform drawn for decoration.
-            Theme::text(g,"LIVE AUDIO",{79,306,110,20},13,
-                processor.isCapturing()?Theme::red:Theme::green,true);
+            Theme::text(g,processor.isCapturing()?"RECORDING":
+                idle.hasAudibleOutput()?"LIVE AUDIO":"IDLE",{79,306,110,20},13,
+                processor.isCapturing()?Theme::red:idle.hasAudibleOutput()?Theme::green:Theme::muted,true);
             g.setColour(Theme::stroke.withAlpha(.48f));
             g.drawHorizontalLine(317,202.f,1077.f);
             std::array<float,128> waveform{};
-            processor.getLiveWaveform(waveform);
+            if(idle.hasFreshAudio())processor.getLiveWaveform(waveform);
             juce::Path simpleScope;
             for(std::size_t n=0;n<waveform.size();++n) {
                 const float x=205.f+(float)n*867.f/(waveform.size()-1);
-                const float y=317.f-juce::jlimit(-1.f,1.f,waveform[n])*10.f;
+                const float sample=std::isfinite(waveform[n])?
+                    juce::jlimit(-1.f,1.f,waveform[n]):0.f;
+                const float y=317.f-sample*10.f;
                 if(n==0)simpleScope.startNewSubPath(x,y);
                 else simpleScope.lineTo(x,y);
             }
-            g.setColour(processor.isCapturing()?Theme::red:Theme::green.withAlpha(.9f));
+            g.setColour(processor.isCapturing()?Theme::red:
+                Theme::green.withAlpha(idle.hasAudibleOutput()?.9f:.28f));
             g.strokePath(simpleScope,juce::PathStrokeType(1.7f));
             static constexpr const char* labels[]{"TONE","PUNCH","SPACE","GRIT"};
             static constexpr const char* hints[]{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
@@ -1418,8 +1422,14 @@ public:
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
         if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
-        displayedInputPeak=followMeter(displayedInputPeak,processor.getInputPeak());
-        displayedOutputPeak=followMeter(displayedOutputPeak,processor.getOutputPeak());
+        const auto now=juce::Time::getMillisecondCounter();
+        const unsigned count=processor.liveScopeSampleCount();
+        const bool advancing=count!=lastScopeSampleCount;
+        const bool recent=advancing || (lastScopeFrameTimeMs!=0u &&
+            (unsigned)(now-lastScopeFrameTimeMs)<400u);
+        // Never retain a frozen peak when the host stops calling processBlock.
+        displayedInputPeak=followMeter(displayedInputPeak,recent?processor.getInputPeak():0.f);
+        displayedOutputPeak=followMeter(displayedOutputPeak,recent?processor.getOutputPeak():0.f);
         const int inputBars=meterBars(displayedInputPeak);
         const int outputBars=meterBars(displayedOutputPeak);
         const bool inputOverloaded=isMeterOverloaded(displayedInputPeak);
@@ -1444,10 +1454,9 @@ public:
         // Do not invalidate the scope and activity strip while the audio
         // producer has not advanced. During playback these still refresh at
         // 30 Hz, preserving animation timing and UI responsiveness.
-        const unsigned count=processor.liveScopeSampleCount();
-        if(count!=lastScopeSampleCount) {
+        if(advancing) {
             lastScopeSampleCount=count;
-            lastScopeFrameTimeMs=juce::Time::getMillisecondCounter();
+            lastScopeFrameTimeMs=now;
             idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());
             idle.setAudioFresh(count>0);
             if(idle.isVisible())idle.repaint();
@@ -1464,7 +1473,10 @@ public:
             // The host can stop sending blocks without resetting its scope
             // buffer. Clear the Stage LIVE indicator and drawn trace once;
             // never repaint the idle animation continuously on silence.
-            idle.setAudioFresh(false);
+            if(idle.hasFreshAudio()){
+                idle.setAudioFresh(false);
+                if(display==0)repaint(juce::Rectangle<int>(79,300,1000,34));
+            }
         }
     }
     // The rack and effect face never contain an implicit click-away area:

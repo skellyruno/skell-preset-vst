@@ -20,8 +20,8 @@ public:
     void setAudioFresh(bool fresh) {
         if(audioFresh==fresh)return;
         audioFresh=fresh;
-        if(!fresh){inputMeter={};outputMeter={};}
-        repaint();
+        if(!fresh){inputMeter={};outputMeter={};activityLevel=0.f;cachedSignal.fill(0.f);}
+        if(isVisible())repaint();
     }
     struct MeterEnvelope {
         float level=0.f;
@@ -46,6 +46,28 @@ public:
     void setMeasuredPeaks(float input,float output) noexcept {
         followPeak(inputMeter,input);
         followPeak(outputMeter,output);
+        processor.getLiveWaveform(cachedSignal);
+        float maximum=0.f;
+        double energy=0.;
+        for(auto& sample:cachedSignal){
+            sample=std::isfinite(sample)?juce::jlimit(-1.f,1.f,sample):0.f;
+            maximum=juce::jmax(maximum,std::abs(sample));
+            energy+=static_cast<double>(sample)*sample;
+        }
+        const float rms=static_cast<float>(std::sqrt(energy/static_cast<double>(cachedSignal.size())));
+        const float target=juce::jlimit(0.f,1.f,.38f*maximum+1.75f*rms+.30f*outputMeter.level);
+        // Smooth the measured animation on the UI timer, not during paint.
+        // Fast attack and gentler release avoid flickering between frames.
+        activityLevel=followActivity(activityLevel,target);
+    }
+    static float followActivity(float previous,float next) noexcept {
+        previous=std::isfinite(previous)?juce::jlimit(0.f,1.f,previous):0.f;
+        next=std::isfinite(next)?juce::jlimit(0.f,1.f,next):0.f;
+        return previous+(next-previous)*(next>previous?.68f:.22f);
+    }
+    bool hasFreshAudio() const noexcept {return audioFresh;}
+    bool hasAudibleOutput() const noexcept {
+        return audioFresh && activityLevel>.0005f;
     }
     static bool testMeterEnvelopeForTest() noexcept {
         MeterEnvelope m;
@@ -77,7 +99,11 @@ public:
         return juce::jlimit(0.f,1.f,(db+60.f)/60.f);
     }
     static bool testTelemetryScaleForTest() noexcept {
-        return testMeterEnvelopeForTest() && meterFraction(0.f)==0.f &&
+        return testMeterEnvelopeForTest() &&
+            followActivity(0.f,1.f)>.6f &&
+            followActivity(1.f,0.f)>.7f &&
+            followActivity(0.f,std::numeric_limits<float>::quiet_NaN())==0.f &&
+            meterFraction(0.f)==0.f &&
             meterFraction(-1.f)==0.f &&
             meterFraction(std::numeric_limits<float>::quiet_NaN())==0.f &&
             std::abs(meterFraction(.01f)-1.f/3.f)<.002f &&
@@ -132,22 +158,8 @@ public:
         const auto stage=layoutFor(getWidth(),getHeight());
         if(!stage.valid)return;
         Theme::panelBox(g,getLocalBounds().toFloat(),9.f);
-        std::array<float,128> signal{};
-        processor.getLiveWaveform(signal);
-        float actualPeak=0.f;
-        double energy=0.;
-        for(const auto sample:signal)if(std::isfinite(sample)){
-            const float v=juce::jlimit(-1.f,1.f,sample);
-            actualPeak=juce::jmax(actualPeak,std::abs(v));
-            energy+=(double)v*(double)v;
-        }
-        const float rms=audioFresh?(float)std::sqrt(energy/128.):0.f;
-        // A decimated scope can miss a short transient. The actual peak
-        // envelope also drives the activity indicator, never a fake signal.
-        const bool live=audioFresh &&
-            (actualPeak>.0005f || outputMeter.level>.0005f);
-        const float activity=live?juce::jlimit(0.f,1.f,
-            .38f*actualPeak+1.75f*rms+.30f*outputMeter.level):0.f;
+        const bool live=hasAudibleOutput();
+        const float activity=live?activityLevel:0.f;
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
@@ -177,6 +189,12 @@ public:
         g.fillRect(floor);
         g.setColour(accent.withAlpha(.12f+.20f*activity));
         g.drawLine(stageBounds.getX()+14.f,horizon,stageBounds.getRight()-14.f,horizon,.8f);
+        // Directional beams and a restrained central spotlight.
+        const float halo=120.f*stage.scale;
+        g.setGradientFill(juce::ColourGradient(
+            accent.withAlpha(.045f+.055f*activity),centreX,horizon-225.f*stage.scale,
+            accent.withAlpha(0.f),centreX+halo,horizon-225.f*stage.scale,true));
+        g.fillEllipse(centreX-halo,horizon-345.f*stage.scale,halo*2.f,halo*2.f);
         // Two muted directional lights rather than a grid of meters.
         for(int side:{-1,1}){
             const float x=centreX+(float)side*stageBounds.getWidth()*.38f;
@@ -193,11 +211,14 @@ public:
         // Distant tombstones frame the performer without competing for focus.
         for(int side:{-1,1})for(int k=0;k<3;++k){
             const float x=centreX+(float)side*(stageBounds.getWidth()*.23f+k*stageBounds.getWidth()*.075f);
-            const float h=(26.f+9.f*(float)(k%2))*stage.scale;
+            const float h=(24.f+9.f*(float)(k%2)+4.f*(float)(2-k))*stage.scale;
             const float w=(17.f+3.f*(float)k)*stage.scale;
             const float y=horizon-h;
             g.setColour(Theme::panelAlt.withAlpha(.58f));
             g.fillRoundedRectangle(x-w*.5f,y,w,h,3.f*stage.scale);
+            g.setColour(Theme::bg.withAlpha(.48f));
+            g.fillRoundedRectangle(x-w*.72f,y+h-2.f*stage.scale,
+                w*1.44f,4.f*stage.scale,1.f*stage.scale);
             g.setColour(Theme::muted.withAlpha(.14f));
             g.drawRoundedRectangle(x-w*.5f,y,w,h,3.f*stage.scale,.8f);
             g.setColour(Theme::muted.withAlpha(.10f));
@@ -479,7 +500,7 @@ public:
                    scope.getRight()-9.f,scope.getCentreY(),.7f);
         juce::Path trace;
         for(int index=0;index<128;++index){
-            const float raw=signal[(size_t)index];
+            const float raw=cachedSignal[(size_t)index];
             // Clear the visual trace when the DAW has stopped processing
             // instead of displaying a stale recorded vocal as LIVE.
             const float value=audioFresh && std::isfinite(raw)?
@@ -525,4 +546,6 @@ private:
     SkellPresetAudioProcessor& processor;
     bool audioFresh=false;
     MeterEnvelope inputMeter,outputMeter;
+    float activityLevel=0.f;
+    std::array<float,128> cachedSignal{};
 };

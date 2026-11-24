@@ -121,9 +121,10 @@ public:
     // UI-only: prevent overlapping modal effect selectors when opening the MIC panel.
     void dismissTransientOverlays() {
         vocalFeelStyles.close();
-        modulePicker.setVisible(false);
-        installedBrowser.setVisible(false);
-        eqNodeMenu.setVisible(false);
+        modulePicker.hide();
+        installedBrowser.hide();
+        eqNodeMenu.close();
+        endGraphGesture();
         duckPanel.setVisible(false);
     }
     bool modulePickerVisibleForTest() const noexcept {return modulePicker.isVisible();}
@@ -260,6 +261,7 @@ private:
     int lastHostedLatency=-1;
     bool lastHostedLoaded=false;
     std::array<float,6> lastControls{};
+    std::array<float,16> lastExtendedControls{};
     std::array<float,42> lastEqControls{}; // includes eight new filter types/enables
     bool updateMicCard(juce::Point<float> point);
     bool updateSkelldizerCard(juce::Point<float> point);

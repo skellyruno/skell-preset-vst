@@ -115,6 +115,28 @@ ChainPanel::ChainPanel(SkellPresetAudioProcessor& p):processor(p) {
     setWantsKeyboardFocus(true);
     setTooltip("Wheel on effect: move it. Side rail: scroll rack. Shift + wheel: scroll anywhere.");
 }
+ChainPanel::~ChainPanel(){finishWetGesture();}
+void ChainPanel::finishWetGesture(){
+    if(wetDragSlot>=0){
+        if(auto* p=processor.state.getParameter("s"+juce::String(wetDragSlot+1)+"_wet"))
+            p->endChangeGesture();
+        wetDragSlot=-1;
+    }
+}
+void ChainPanel::cancelPointerGestures(){
+    finishWetGesture();
+    pendingFrom=dragFrom=dragTo=pendingPhysical=-1;
+    dragging=false;dockingDrag=false;railDragging=false;
+    hoveredWetSlot=-1;hoveredRow=-1;railHovered=false;
+    setMouseCursor(juce::MouseCursor::NormalCursor);
+}
+void ChainPanel::visibilityChanged(){
+    if(!isVisible()){
+        cancelPointerGestures();
+        contextOpen=false;contextHover=-1;
+        wheelTargetSlot=-1;railWheelCarry=effectWheelCarry=0.f;
+    }
+}
 float ChainPanel::slotWet(int physicalSlot) const noexcept {
     if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount)return 0.f;
     const auto* value=processor.state.getRawParameterValue(
@@ -126,7 +148,7 @@ void ChainPanel::setSlotWet(int physicalSlot,float amount) {
     const auto name="s"+juce::String(physicalSlot+1)+"_wet";
     if(auto* parameter=processor.state.getParameter(name)) {
         // Retain the original host automation ID and physical 0..1 range.
-        const float next=juce::jlimit(0.f,1.f,amount);
+        const float next=std::isfinite(amount)?juce::jlimit(0.f,1.f,amount):slotWet(physicalSlot);
         parameter->setValueNotifyingHost(parameter->convertTo0to1(next));
     }
     visualSnapshotValid=false;
@@ -376,16 +398,15 @@ void ChainPanel::paint(juce::Graphics& g) {
         const juce::StringArray choices{
             "EDIT EFFECT","REPLACE EFFECT","MOVE UP","MOVE DOWN",
             "BYPASS / ENABLE","CLEAR EFFECT","REMOVE FROM RACK"};
-        const int pos=contextPosition();
         for(int i=0;i<choices.size();++i) {
             const int y=contextTop+30+i*26;
-            const bool enabled=(i!=2||pos>0) &&
-                (i!=3||pos+1<processor.activeSlotCount());
-            g.setColour(i==contextHover?Theme::green.withAlpha(.19f):
+            const bool enabled=contextActionEnabled(i);
+            const auto accent=i>=5?Theme::red:Theme::green;
+            g.setColour(i==contextHover&&enabled?accent.withAlpha(.19f):
                         (i%2?Theme::plot.withAlpha(.55f):Theme::panelAlt.withAlpha(.65f)));
             g.fillRoundedRectangle(13.f,(float)y,190.f,24.f,4.f);
-            g.setColour((i==contextHover&&enabled)?Theme::green:
-                        (enabled?Theme::white:Theme::muted.withAlpha(.35f)));
+            g.setColour((i==contextHover&&enabled)?accent:
+                        (enabled?(i>=5?Theme::red:Theme::white):Theme::muted.withAlpha(.35f)));
             g.setFont(Theme::font(11.f,true));
             g.drawFittedText(choices[i],{22,y+2,171,20},
                              juce::Justification::centredLeft,1,.82f);
@@ -397,14 +418,21 @@ void ChainPanel::refreshIfChanged() {
     bool changed=!visualSnapshotValid || currentSlots!=lastSlotCount;
     lastSlotCount=currentSlots;
     clampScroll();
+    if(contextOpen && contextPosition()<0){
+        contextOpen=false;contextHover=-1;changed=true;
+    }
+    if(wetDragSlot>=0 && processor.slotType(wetDragSlot)==SkellPresetAudioProcessor::Empty){
+        finishWetGesture();changed=true;
+    }
     for(int row=0;row<currentSlots;++row) {
         const int slot=processor.slotIdAt(row);
         const auto prefix="s"+juce::String(slot+1)+"_";
         const auto* enabled=processor.state.getRawParameterValue(prefix+"on");
         const int wetPercent=juce::jlimit(0,100,juce::roundToInt(slotWet(slot)*100.f));
-        const int value=slot*65536+processor.slotType(slot)*4096
-            +(enabled && enabled->load()>.5f?2048:0)
-            +wetPercent*16; // no 30-Hz per-row peak-driven repaints
+        // The previous 65536 stride collided when module IDs exceeded 15.
+        // Use disjoint fields for physical ID, 45 types, on/off and wet.
+        const int value=(slot<<20)|(processor.slotType(slot)<<12)|
+            (enabled && enabled->load()>.5f?2048:0)|(wetPercent<<4); // no 30-Hz per-row peak-driven repaints
         if(value!=lastVisual[(size_t)row])changed=true;
         lastVisual[(size_t)row]=value;
     }
@@ -417,6 +445,20 @@ int ChainPanel::contextPosition() const noexcept {
         if(processor.slotIdAt(row)==contextSlot)return row;
     return -1;
 }
+int ChainPanel::contextActionAt(int x,int y,int top) noexcept {
+    const int relative=y-top-30;
+    return x>=13 && x<203 && relative>=0 && relative<7*26 &&
+           relative%26<24?relative/26:-1;
+}
+bool ChainPanel::contextActionEnabled(int index) const noexcept {
+    const int pos=contextPosition();
+    if(index<0 || index>6 || pos<0)return false;
+    const bool nonEmpty=processor.slotType(contextSlot)!=SkellPresetAudioProcessor::Empty;
+    if(index==2)return pos>0 && nonEmpty;
+    if(index==3)return pos+1<processor.activeSlotCount() && nonEmpty;
+    if(index==4 || index==5)return nonEmpty;
+    return true;
+}
 void ChainPanel::popupFor(int physicalSlot,juce::Point<int> screenPoint) {
     (void)screenPoint;
     if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount)return;
@@ -427,12 +469,14 @@ void ChainPanel::popupFor(int physicalSlot,juce::Point<int> screenPoint) {
     // focus-loss surprises while automating another control.
     contextTop=juce::jlimit(44,juce::jmax(44,getHeight()-222),
                            rowStart+(position-scrollOffset)*rowStep);
+    cancelPointerGestures();
     contextHover=-1;
     contextOpen=true;
+    if(isShowing())grabKeyboardFocus();
     repaint();
 }
 void ChainPanel::selectContextAction(int index) {
-    if(!contextOpen || index<0 || index>6)return;
+    if(!contextOpen || !contextActionEnabled(index))return;
     const int physical=contextSlot,position=contextPosition();
     contextOpen=false;contextHover=-1;
     if(position<0)return;
@@ -480,13 +524,13 @@ void ChainPanel::addModule() {
 }
 void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     if(contextOpen) {
-        const int line=(e.y-contextTop-30)/26;
-        const bool inside=e.x>=13&&e.x<204&&e.y>=contextTop+30&&
-            e.y<contextTop+30+7*26;
-        if(inside)selectContextAction(line);
+        if(!e.mods.isLeftButtonDown() || e.mods.isPopupMenu())return;
+        const int line=contextActionAt(e.x,e.y,contextTop);
+        if(line>=0)selectContextAction(line);
         else {contextOpen=false;contextHover=-1;repaint();}
         return;
     }
+    if(!e.mods.isLeftButtonDown() && !e.mods.isPopupMenu())return;
     // Rail clicks/drag move only the viewport; no audio order changes.
     if(!e.mods.isPopupMenu() && processor.activeSlotCount()>visibleRows &&
        e.x>=205 && e.x<getWidth() &&
@@ -530,13 +574,15 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     }
     const auto slot=processor.slotIdAt(index);
     if(e.mods.isPopupMenu()){popupFor(slot,e.getScreenPosition());return;}
-    if(e.x>=powerControlLeft && e.x<=powerControlRight) {
-        toggleSlotPower(slot);return;
+    if(e.x>=powerControlLeft && e.x<powerControlRight) {
+        if(e.getNumberOfClicks()==1)toggleSlotPower(slot);
+        return;
     }
     if(e.x>=wetControlLeft && e.x<=wetControlRight) {
         if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty)return;
         selected=slot;
         if(onSelection)onSelection(slot);
+        finishWetGesture();
         wetDragSlot=slot;hoveredWetSlot=slot;
         wetDragStart=slotWet(slot);pressPoint=e.getPosition();repaint();
         if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+"_wet"))
@@ -545,7 +591,8 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     }
     selected=slot;if(onSelection)onSelection(slot);
     grabKeyboardFocus();
-    pendingFrom=index;dragFrom=dragTo=-1;dragging=false;pressPoint=e.getPosition();repaint();
+    pendingFrom=index;pendingPhysical=slot;
+    dragFrom=dragTo=-1;dragging=false;pressPoint=e.getPosition();repaint();
 }
 void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
     if(railDragging) {moveRailTo(e.y);return;}
@@ -563,7 +610,7 @@ void ChainPanel::mouseDrag(const juce::MouseEvent& e) {
         }
         return;
     }
-    if(pendingFrom<0)return;
+    if(pendingFrom<0 || pendingPhysical<0)return;
     if(!dragging && e.getPosition().getDistanceFrom(pressPoint)>6) {
         dragging=true;dragFrom=pendingFrom;dragTo=pendingFrom;
     }
@@ -578,9 +625,7 @@ void ChainPanel::mouseUp(const juce::MouseEvent& e) {
         railHovered=e.x>=205 && e.x<getWidth();repaint();return;
     }
     if(wetDragSlot>=0) {
-        if(auto* p=processor.state.getParameter("s"+juce::String(wetDragSlot+1)+"_wet"))
-            p->endChangeGesture();
-        wetDragSlot=-1;
+        finishWetGesture();
         const int hoverRow=(e.x>=wetControlLeft && e.x<=wetControlRight)?
             rowAt(e.y):-1;
         hoveredWetSlot=hoverRow>=0?processor.slotIdAt(hoverRow):-1;
@@ -594,24 +639,26 @@ void ChainPanel::mouseUp(const juce::MouseEvent& e) {
         return;
     }
     if(pendingFrom<0)return;
-    if(dragging && dragTo>=0 && dragTo!=dragFrom)processor.reorderSlot(dragFrom,dragTo);
-    pendingFrom=dragFrom=dragTo=-1;dragging=false;repaint();
+    if(dragging && dragTo>=0 && pendingPhysical>=0)
+        movePhysicalSlot(pendingPhysical,dragTo);
+    pendingFrom=dragFrom=dragTo=pendingPhysical=-1;dragging=false;repaint();
 }
 
 void ChainPanel::mouseDoubleClick(const juce::MouseEvent& e) {
-    if(e.mods.isPopupMenu())return;
+    if(e.mods.isPopupMenu() || !e.mods.isLeftButtonDown() || contextOpen)return;
     const int row=rowAt(e.y);
     if(row<0 || e.x<10 || e.x>powerControlRight)return;
     const int slot=processor.slotIdAt(row);
     if(e.x>=powerControlLeft)return; // power is a single-click switch
     if(e.x>=wetControlLeft) {
         if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty)return;
-        if(wetDragSlot==slot) {
-            if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+"_wet"))
-                p->endChangeGesture();
-            wetDragSlot=-1;
+        finishWetGesture();
+        if(auto* p=processor.state.getParameter("s"+juce::String(slot+1)+"_wet")){
+            p->beginChangeGesture();
+            setSlotWet(slot,1.f);
+            p->endChangeGesture();
         }
-        setSlotWet(slot,1.f);return; // FL-style double-click resets wet
+        return; // FL-style double-click resets wet
     }
     selectAndReplace(row);
 }
@@ -626,8 +673,8 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         return;
     }
     if(contextOpen) {
-        const int hovered=(e.x>=13&&e.x<204&&e.y>=contextTop+30&&
-            e.y<contextTop+30+7*26)?(e.y-contextTop-30)/26:-1;
+        const int target=contextActionAt(e.x,e.y,contextTop);
+        const int hovered=contextActionEnabled(target)?target:-1;
         if(hovered!=contextHover){contextHover=hovered;repaint();}
         setMouseCursor(hovered>=0?juce::MouseCursor::PointingHandCursor:
                                 juce::MouseCursor::NormalCursor);
@@ -770,6 +817,22 @@ bool ChainPanel::keyPressed(const juce::KeyPress& key){
         }
         return false;
     }
+    if(contextOpen){
+        const int code=key.getKeyCode();
+        if(code==juce::KeyPress::upKey||code==juce::KeyPress::downKey||
+           code==juce::KeyPress::homeKey||code==juce::KeyPress::endKey){
+            const int delta=code==juce::KeyPress::upKey||code==juce::KeyPress::endKey?-1:1;
+            int next=code==juce::KeyPress::homeKey?0:code==juce::KeyPress::endKey?6:
+                contextHover<0?(delta>0?0:6):juce::jlimit(0,6,contextHover+delta);
+            while(next>=0 && next<7 && !contextActionEnabled(next))next+=delta;
+            if(next>=0 && next<7)contextHover=next;
+            repaint();return true;
+        }
+        if(code==juce::KeyPress::returnKey||code==juce::KeyPress::spaceKey)
+            selectContextAction(contextHover>=0?contextHover:0);
+        // Do not let rack reordering shortcuts pass through an open menu.
+        return true;
+    }
     const bool command=key.getModifiers().isCommandDown();
     const bool shift=key.getModifiers().isShiftDown();
     int position=-1;
@@ -834,7 +897,7 @@ bool ChainPanel::keyPressed(const juce::KeyPress& key){
     return false;
 }
 void ChainPanel::applyWheelDelta(float deltaY) {
-    if(deltaY==0.f)return;
+    if(!std::isfinite(deltaY) || deltaY==0.f)return;
     if(railWheelCarry*deltaY<0.f)railWheelCarry=0.f;
     railWheelCarry=juce::jlimit(-1.f,1.f,railWheelCarry+deltaY);
     // Trackpad micro-deltas are not separate commands; one row per detent.
@@ -900,7 +963,13 @@ bool ChainPanel::testWheelRegions(){
            wheelRegionAt(209,y,false)==0 &&
            wheelRegionAt(100,y,true)==0 &&
            wheelRegionAt(165,y,true)==0 &&
-           wheelRegionAt(100,5,false)==0;
+           wheelRegionAt(100,5,false)==0 &&
+           contextActionAt(13,80,50)==0 &&
+           contextActionAt(202,103,50)==0 &&
+           contextActionAt(202,104,50)==-1 &&
+           contextActionAt(203,80,50)==-1 &&
+           contextActionAt(13,80+6*26+23,50)==6 &&
+           contextActionAt(13,80+6*26+24,50)==-1;
 }
 bool ChainPanel::testProgrammaticSelectionReveal(){
     if(processor.activeSlotCount()<=visibleRows)return false;

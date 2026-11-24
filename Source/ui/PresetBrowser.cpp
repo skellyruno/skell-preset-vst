@@ -119,7 +119,9 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     sortPicker.addItem("Starred first",3);
     sortPicker.setSelectedId(1,juce::dontSendNotification);
     sortPicker.setTooltip("Change display order, never rename presets or modify audio.");
-    sortPicker.onChange=[this]{scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();};
+    sortPicker.onChange=[this]{
+        scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;browserWheelCarry=0.f;repaint();
+    };
     addAndMakeVisible(categoryEditor);
     for(auto* button:{&importButton,&exportButton,&artworkButton,
                       &artistButton,&genreButton,&detailsButton,&addCategoryButton,
@@ -176,7 +178,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
             }
     };
     genreFilter.onChange=[this]{
-        scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();
+        scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;browserWheelCarry=0.f;repaint();
     };
     addCategoryButton.onClick=[this] {
         const auto label=categoryEditor.getText().trim();
@@ -335,8 +337,8 @@ bool PresetBrowser::copyToLibrary(const juce::File& source) {
 void PresetBrowser::open() {
     scanLibrary();loadFavorites();loadArtists();
     loadCustomCategories();refreshGenreChoices();loadGenres();refreshArtwork();
-    bank=0;mainAdlibs=false;scroll=0;hoveredCard=-1;keyboardCard=-1;
-    hoveredBank=-1;hoveredAdlibs=false;
+    bank=0;mainAdlibs=false;scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
+    hoveredBank=-1;hoveredAdlibs=false;browserWheelCarry=0.f;
     genreFilter.setSelectedId(1,juce::dontSendNotification);
     // Preserve the user's in-session display sort without saving DAW state.
     showDetails(false);
@@ -759,6 +761,8 @@ void PresetBrowser::toggleFavorite(int entry) {
     }
     scroll=juce::jlimit(0,std::max(0,(int)filtered().size()-6),scroll);
     hoveredCard=-1;hoveredStar=-1;
+    // Unstarring a row in Favorites changes the filtered row identities.
+    if(bank==3)keyboardCard=-1;
     categoryCountsDirty=true;
     repaint();
 }

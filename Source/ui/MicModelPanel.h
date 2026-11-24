@@ -330,17 +330,23 @@ public:
     }
     bool hasBeenMoved() const noexcept {return movedByUser;}
     void visibilityChanged() override {
-        if(!isVisible())sourceMenu.setVisible(false);
+        if(!isVisible()){
+            sourceMenu.setVisible(false);
+            dragHeader=false;resizing=false;
+            setMouseCursor(juce::MouseCursor::NormalCursor);
+        }
     }
     void mouseDown(const juce::MouseEvent& e) override {
+        if(!e.mods.isLeftButtonDown())return;
         if(e.x>=getWidth()-23 && e.y>=getHeight()-23) {
             resizing=true;
             resizeStart=getBounds();
             toFront(true);
             return;
         }
-        if(sourceMenu.isVisible()&&!sourceMenu.getBounds().contains(e.getPosition()))
-            sourceMenu.setVisible(false);
+        if(sourceMenu.isVisible()&&!sourceMenu.getBounds().contains(e.getPosition())){
+            sourceMenu.setVisible(false);input.grabKeyboardFocus();return;
+        }
         if(e.y>=0 && e.y<45 && e.x<getWidth()-112) {
             dragHeader=true;
             dragOrigin=getPosition();

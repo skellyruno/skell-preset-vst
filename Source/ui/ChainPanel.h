@@ -7,6 +7,8 @@ class ChainPanel final:public juce::Component,public juce::SettableTooltipClient
 public:
     static constexpr int visibleRows=8; // Two offscreen rows so the wheel can scroll a default ten-slot rack.
     explicit ChainPanel(SkellPresetAudioProcessor& p);
+    ~ChainPanel() override;
+    void visibilityChanged() override;
     void paint(juce::Graphics&) override;
     void refreshIfChanged(); // avoid painting unchanged effect rows
     void mouseDown(const juce::MouseEvent&) override;
@@ -77,6 +79,7 @@ public:
 private:
     SkellPresetAudioProcessor& processor;
     int selected=0,dragFrom=-1,dragTo=-1,pendingFrom=-1;
+    int pendingPhysical=-1;
     int wetDragSlot=-1;
     int hoveredWetSlot=-1; // physical ID under a wet dial; readout hidden elsewhere
     float wetDragStart=0.f;
@@ -106,6 +109,10 @@ private:
     void popupFor(int physicalSlot,juce::Point<int> screenPoint);
     void selectContextAction(int index);
     int contextPosition() const noexcept;
+    static int contextActionAt(int x,int y,int top) noexcept;
+    bool contextActionEnabled(int index) const noexcept;
+    void finishWetGesture();
+    void cancelPointerGestures();
     bool contextOpen=false;
     int contextSlot=-1,contextTop=50,contextHover=-1;
     float slotWet(int physicalSlot) const noexcept;

@@ -10,9 +10,19 @@ public:
     SkullThemeButton():juce::Button("Cycle Skell colour theme") {
         setTooltip("Skeleton vocalist / switch Obsidian and Crimson themes");
         setWantsKeyboardFocus(true);
-        startTimerHz(16);
     }
     ~SkullThemeButton() override {stopTimer();}
+    void mouseEnter(const juce::MouseEvent& e) override {
+        juce::Button::mouseEnter(e);
+        if(isShowing())startTimerHz(16);
+    }
+    void mouseExit(const juce::MouseEvent& e) override {
+        juce::Button::mouseExit(e);
+        stopTimer();phase=0.f;repaint();
+    }
+    void visibilityChanged() override {
+        if(!isShowing()){stopTimer();phase=0.f;}
+    }
     void setVariant(int id) {variant=Theme::clampVariant(id);repaint();}
     void paintButton(juce::Graphics& g,bool hovered,bool pressed) override {
         Theme::select(variant);
@@ -127,7 +137,8 @@ public:
     }
 private:
     void timerCallback() override {
-        if(isShowing() && isMouseOver(true)){
+        if(!isShowing() || !isMouseOver(true)){stopTimer();return;}
+        {
             phase+=.45f;
             if(phase>juce::MathConstants<float>::twoPi)
                 phase-=juce::MathConstants<float>::twoPi;

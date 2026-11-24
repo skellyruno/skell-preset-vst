@@ -22,21 +22,22 @@ public:
         const float r=std::isfinite(right)?right:0.f;
         const auto index=count.load(std::memory_order_relaxed);
         data[index%capacity].store(
-            std::clamp(.5f*(l+r),-8.f,8.f),std::memory_order_relaxed);
+            std::clamp(.5f*l+.5f*r,-8.f,8.f),std::memory_order_relaxed);
         count.store(index+1,std::memory_order_release);
     }
     void snapshot(std::array<float,capacity>& out) const noexcept {
         const auto end=count.load(std::memory_order_acquire);
         for(unsigned i=0;i<(unsigned)capacity;++i) {
-            const unsigned history=(unsigned)capacity-i;
+            const auto history=static_cast<std::uint64_t>(capacity-i);
             const auto idx=end>=history?(end-history)%capacity:0U;
             out[(size_t)i]=end>=history
-                ?data[idx].load(std::memory_order_relaxed):0.f;
+                ?data[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed):0.f;
         }
     }
 private:
     std::array<std::atomic<float>,capacity> data{};
-    std::atomic<unsigned> count{0};
+    // At 48 kHz a 32-bit full-rate cursor wraps in under 25 hours.
+    std::atomic<std::uint64_t> count{0};
 };
 
 class LiveSpectrumAnalyzer final {
@@ -61,14 +62,24 @@ public:
         std::array<float,bands> result{};
         const double sr=std::clamp(std::isfinite(sampleRate)?sampleRate:48000.,
                                    8000.,192000.);
+        std::array<double,LiveSpectrumCapture::capacity> weighted{};
+        bool hasEnergy=false;
+        for(std::size_t i=0;i<weighted.size();++i){
+            const float sample=std::isfinite(samples[i])?std::clamp(samples[i],-8.f,8.f):0.f;
+            weighted[i]=static_cast<double>(sample)*window[i];
+            hasEnergy=hasEnergy||weighted[i]!=0.;
+        }
+        if(!hasEnergy)return result;
         for(int band=0;band<bands;++band) {
-            const float f=std::min(frequency(band),(float)(sr*.45));
+            const float f=frequency(band);
+            // Frequencies outside the actual band limit are unavailable,
+            // not multiple copies of the same near-Nyquist value.
+            if(f>sr*.45)continue;
             const double omega=twoPi*(double)f/sr;
             const double coeff=2.*std::cos(omega);
             double q1=0.,q2=0.;
             for(int i=0;i<LiveSpectrumCapture::capacity;++i) {
-                const double q=(double)samples[(size_t)i]*window[(size_t)i]+
-                                coeff*q1-q2;
+                const double q=weighted[(size_t)i]+coeff*q1-q2;
                 q2=q1;q1=q;
             }
             const double energy=std::max(0.,q1*q1+q2*q2-coeff*q1*q2);
