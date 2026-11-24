@@ -5,12 +5,14 @@
 // Native, resolution-independent mic performer: a skeletal vocalist holding
 // a studio microphone. This is the *theme* toggle; the rack MIC control still
 // opens the input modeling panel. No external images or DSP-thread artwork.
-class SkullThemeButton final : public juce::Button {
+class SkullThemeButton final : public juce::Button, private juce::Timer {
 public:
     SkullThemeButton():juce::Button("Cycle Skell colour theme") {
         setTooltip("Skeleton vocalist / switch Obsidian and Crimson themes");
         setWantsKeyboardFocus(true);
+        startTimerHz(16);
     }
+    ~SkullThemeButton() override {stopTimer();}
     void setVariant(int id) {variant=Theme::clampVariant(id);repaint();}
     void paintButton(juce::Graphics& g,bool hovered,bool pressed) override {
         Theme::select(variant);
@@ -25,6 +27,17 @@ public:
             juce::Graphics::ScopedSaveState saved(g);
             g.addTransform(juce::AffineTransform::scale(
                 (float)getWidth()/64.f,(float)getHeight()/64.f));
+            // A brief native glitch offset on hover. No full editor repaint,
+            // no new DSP work, and no animation when hidden or untouched.
+            if(hovered){
+                const float shift=std::sin(phase)*.8f;
+                g.addTransform(juce::AffineTransform::translation(shift,0.f));
+                g.setColour(Theme::green.withAlpha(.30f));
+                for(int i=0;i<3;++i){
+                    const float y=13.f+17.f*i+std::sin(phase+float(i))*3.f;
+                    g.drawLine(5.f,y,12.f+2.f*i,y,.9f);
+                }
+            }
 
             // Off-centre silhouette: light falls from upper left while the
             // opposite side stays in the dark, not a flat cartoon icon.
@@ -113,5 +126,14 @@ public:
         }
     }
 private:
+    void timerCallback() override {
+        if(isShowing() && isMouseOver(true)){
+            phase+=.45f;
+            if(phase>juce::MathConstants<float>::twoPi)
+                phase-=juce::MathConstants<float>::twoPi;
+            repaint();
+        }
+    }
     int variant=Theme::Obsidian;
+    float phase=0.f;
 };

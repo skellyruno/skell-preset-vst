@@ -10,6 +10,51 @@
 // All five parameters are new, append-only APVTS IDs, so FL Studio can
 // automate, save and recall without touching legacy insert parameters.
 class SkellMicModelPanel final : public juce::Component {
+    // Native profile cards with schematic microphones, not licensed
+    // hardware model photographs or claims of measured microphone IRs.
+    class ModelCard final : public juce::TextButton {
+    public:
+        void setProfile(int profile,bool selected) {
+            index=juce::jlimit(0,3,profile);active=selected;repaint();
+        }
+        void paintButton(juce::Graphics& g,bool hover,bool down) override {
+            const auto r=getLocalBounds().toFloat().reduced(.7f);
+            g.setColour(active?Theme::green.withAlpha(.13f):
+                Theme::panelAlt.brighter(hover?.12f:0.f));
+            g.fillRoundedRectangle(r,5.f);
+            g.setColour((active?Theme::green:Theme::stroke).withAlpha(active?.90f:.85f));
+            g.drawRoundedRectangle(r.reduced(.5f),5.f,1.f);
+            const float x=r.getX()+14.f,y=r.getCentreY();
+            const float w=index==1?10.f:8.f;
+            g.setGradientFill(juce::ColourGradient(
+                Theme::white.withAlpha(.88f),x-w*.5f,y-11.f,
+                Theme::muted.withAlpha(.42f),x+w*.5f,y+10.f,false));
+            g.fillRoundedRectangle(x-w*.5f,y-11.f,w,13.f,2.f);
+            g.fillRoundedRectangle(x-2.1f,y+1.f,4.2f,10.f,1.f);
+            g.setColour(Theme::bg.withAlpha(.68f));
+            for(int k=0;k<4;++k)g.drawLine(x-w*.35f,y-8.f+k*2.4f,
+                x+w*.35f,y-8.f+k*2.4f,.7f);
+            constexpr const char* subtitles[]{"Uncolored","Soft low-mids","Mid presence","High air"};
+            const int textW=juce::jmax(1,getWidth()-49);
+            Theme::fittedText(g,getButtonText(),{29,2,textW,16},10.7f,
+                active?Theme::green:Theme::white,true);
+            Theme::fittedText(g,subtitles[index],{29,17,textW,12},8.8f,Theme::muted);
+            if(active){
+                g.setColour(Theme::green);
+                g.fillEllipse(r.getRight()-9.f,r.getY()+6.f,4.f,4.f);
+            }
+            if(hasKeyboardFocus(true)){
+                g.setColour(Theme::white.withAlpha(.7f));
+                g.drawRoundedRectangle(r.reduced(2.4f),4.f,1.f);
+            }
+            if(down){
+                g.setColour(Theme::bg.withAlpha(.16f));g.fillRoundedRectangle(r,5.f);
+            }
+        }
+    private:
+        int index=0;
+        bool active=false;
+    };
     // Native, theme-painted mic source choices; no OS/DAW ComboBox popup.
     class SourceMenu final : public juce::Component {
     public:
@@ -396,6 +441,7 @@ public:
         sourceMenu.repaint();
         for(int i=0;i<4;++i) {
             auto& b=simulations[(size_t)i];
+            b.setProfile(i,i==model);
             b.setColour(juce::TextButton::buttonColourId,
                         i==model?Theme::green.withAlpha(.19f):Theme::panelAlt);
             b.setColour(juce::TextButton::textColourOffId,
@@ -446,7 +492,7 @@ public:
         Theme::panelBox(g,getLocalBounds().toFloat(),10.f);
         g.setColour(Theme::green.withAlpha(.62f));
         g.fillRoundedRectangle({13.f,13.f,3.f,17.f},1.f);
-        Theme::text(g,"MIC  /  INPUT STUDIO",{22,7,getWidth()-135,23},
+        Theme::text(g,"MIC MODELING",{22,7,getWidth()-135,23},
                     13.4f,Theme::white,true);
         // The title bar itself is draggable; avoid redundant caption text
         // colliding with the source label in this compact layout.
@@ -466,7 +512,7 @@ public:
             Theme::fittedText(g,"ADVANCED SETTINGS PRESERVED",
                 {13,getHeight()-17,getWidth()-26,13},8.5f,Theme::muted);
         } else {
-        Theme::text(g,"SOURCE",{13,75,100,14},10.3f,Theme::muted,true);
+        Theme::text(g,"INPUT MIC",{13,75,100,14},10.3f,Theme::muted,true);
         const juce::StringArray descriptions{
             "FLAT","WARM","FOCUS","AIR"};
         const auto* rawTarget=processor.state.getRawParameterValue("micPreTarget");
@@ -622,7 +668,7 @@ private:
     juce::TextButton close,enabled,modelTab,gateTab,gateEnabled,gateAdvanced;
     juce::TextButton input;
     SourceMenu sourceMenu;
-    std::array<juce::TextButton,4> simulations;
+    std::array<ModelCard,4> simulations;
     juce::Slider amount,trim,gateThreshold,gateAttack,gateHold,gateRelease,gateHysteresis,gateDepth;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountLink,trimLink;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateThresholdLink,gateReleaseLink,gateHoldLink,gateAttackLink,gateHysteresisLink,gateDepthLink;

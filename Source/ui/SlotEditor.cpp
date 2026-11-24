@@ -1893,9 +1893,15 @@ void SlotEditor::paint(juce::Graphics&g) {
     
     }
     const auto plot=juce::Rectangle<float>(33,151,835,206);
+    const bool echoFace=type==SkellPresetAudioProcessor::Delay ||
+        type==SkellPresetAudioProcessor::StudioDelayFX;
+    const bool eqFace=type==SkellPresetAudioProcessor::EQ ||
+        type==SkellPresetAudioProcessor::StudioEQFX ||
+        type==SkellPresetAudioProcessor::EightBandToneFX ||
+        type==SkellPresetAudioProcessor::DeEsser;
     g.setGradientFill(juce::ColourGradient(
         Theme::plot,plot.getTopLeft(),
-        Theme::panelAlt.darker(.28f),plot.getBottomRight(),false));
+        echoFace?Theme::bg:Theme::panelAlt.darker(.44f),plot.getBottomRight(),false));
     g.fillRoundedRectangle(plot,6.f);
     g.setColour(familyAccent.withAlpha(.31f));
     g.drawRoundedRectangle(plot.reduced(.6f),6.f,1.1f);
@@ -1906,20 +1912,21 @@ void SlotEditor::paint(juce::Graphics&g) {
                            2.3f,plot.getHeight()-24.f,1.f);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
     constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
-    if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser || type==SkellPresetAudioProcessor::EightBandToneFX) {
+    if(eqFace) {
         for(float freq:frequencies){
             const auto x=plot.getX()+plot.getWidth()*std::log(freq/20.f)/std::log(1000.f);
-            g.setColour(Theme::stroke.withAlpha(.75f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
+            g.setColour(Theme::stroke.withAlpha(.48f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
         }
-    } else {
+    } else if(!echoFace) {
         for(int i=0;i<=8;i++) {
             const auto x=plot.getX()+plot.getWidth()*i/8.f;
             g.setColour(Theme::stroke.withAlpha(.75f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
         }
     }
-    for(int i=0;i<=6;i++){
+    if(!echoFace)for(int i=0;i<=6;i++){
         const auto y=plot.getY()+plot.getHeight()*i/6.f;
-        g.setColour(i==3 && type==SkellPresetAudioProcessor::EQ ?Theme::blue.withAlpha(.7f):Theme::stroke);
+        g.setColour(i==3 && eqFace ?Theme::muted.withAlpha(.65f):
+            Theme::stroke.withAlpha(eqFace?.48f:.72f));
         g.drawHorizontalLine((int)y,plot.getX(),plot.getRight());
     }
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
@@ -2454,28 +2461,34 @@ void SlotEditor::paint(juce::Graphics&g) {
         const bool sync=processor.getSlotParam(slot,12)>=.5f;
         const int mode=juce::jlimit(0,3,(int)(processor.getSlotParam(slot,2)*3.999f));
         const juce::StringArray modes{"MONO","TRUE STEREO","PING PONG","OFF"};
-        const float baseline=plot.getCentreY()+11.f;
-        g.setColour(Theme::stroke);
-        g.drawLine(plot.getX()+23.f,baseline,plot.getRight()-24.f,baseline,1.f);
-        for(int tap=0;tap<6;++tap) {
-            const float x=plot.getX()+62.f+tap*132.f;
-            const float magnitude=(tap==0?1.f:wet*std::pow(feedback,(float)(tap-1)));
-            const float height=juce::jmax(3.f,82.f*magnitude);
-            g.setColour((tap&1)?Theme::blue.withAlpha(.65f):
-                                     Theme::green.withAlpha(.75f));
-            g.drawLine(x,baseline-height,x,baseline+height,2.8f);
-            g.fillEllipse(x-3.5f,baseline-height-3.5f,7.f,7.f);
-            Theme::text(g,tap==0?"IN":juce::String(tap),
-                        {(int)x-15,(int)baseline+88,30,18},10,
-                        Theme::muted,false,juce::Justification::centred);
+        const float baseline=plot.getCentreY()+18.f;
+        const float left=plot.getX()+52.f,usable=plot.getWidth()-104.f;
+        g.setColour(Theme::stroke.withAlpha(.64f));
+        g.drawLine(left,baseline,left+usable,baseline,.9f);
+        // Compact echo trains use the actual feedback and wet controls.
+        // The envelopes describe the settings, not fabricated audio.
+        for(int tap=0;tap<6;++tap){
+            const float centre=left+(tap+.5f)*usable/6.f;
+            const float magnitude=tap==0?1.f:wet*std::pow(feedback,float(tap-1));
+            const float span=usable/6.f-12.f;
+            for(int i=0;i<29;++i){
+                const float t=float(i)/28.f;
+                const float x=centre-span*.5f+t*span;
+                const float height=50.f*magnitude*std::sin(t*juce::MathConstants<float>::pi);
+                g.setColour((tap&1?Theme::blue:Theme::green)
+                    .withAlpha(.20f+.63f*magnitude));
+                g.drawLine(x,baseline-height,x,baseline+height,1.6f);
+            }
         }
-        Theme::text(g,"STUDIO DELAY  /  "+modes[mode],
-                    {45,163,620,18},12,Theme::green,true);
-        Theme::text(g,sync?"TEMPO-SYNCED TIMING  /  USE HOST TRANSPORT":
-                        juce::String(seconds*1000.f,0)+" ms  /  FREE TIME",
-                    {45,186,620,18},12,Theme::white);
-        Theme::text(g,"ECHO TAPS ARE A SETTINGS DIAGRAM / NOT LIVE AUDIO",
-                    {43,326,790,17},10,Theme::muted);
+        Theme::text(g,sync?"HOST SYNC":juce::String(seconds*1000.f,0)+" ms",
+            {320,165,260,40},29,Theme::white,true,juce::Justification::centred);
+        Theme::text(g,"TIME",{320,205,260,16},10,Theme::muted,true,
+            juce::Justification::centred);
+        Theme::text(g,modes[mode],{47,170,240,20},12,Theme::green,true);
+        Theme::text(g,"FEEDBACK  "+juce::String(feedback*100.f,0)+"%",
+            {600,170,236,20},12,Theme::green,true,juce::Justification::centredRight);
+        Theme::text(g,"ECHO ENVELOPE  /  SETTINGS RESPONSE",
+            {250,328,405,16},10,Theme::muted,false,juce::Justification::centred);
     } else if(type==SkellPresetAudioProcessor::ExternalVST3) {
         const auto name=processor.hostedVST3Name(slot);
         Theme::text(g,"EXTERNAL VST3 INSERT",{80,185,680,31},25,Theme::green,true);
@@ -2574,7 +2587,9 @@ void SlotEditor::paint(juce::Graphics&g) {
             area.lineTo((float)plot.getRight(),(float)plot.getBottom());
             area.lineTo((float)plot.getX(),(float)plot.getBottom());
             area.closeSubPath();g.fillPath(area);
-            g.setColour(Theme::green);g.strokePath(response,juce::PathStrokeType(2.7f));
+            g.setColour(Theme::green.withAlpha(.18f));
+            g.strokePath(response,juce::PathStrokeType(6.f));
+            g.setColour(Theme::white);g.strokePath(response,juce::PathStrokeType(1.8f));
             for(int band=0;band<8;++band){
                 if(!enabled[(size_t)band])continue;
                 const float hz=eqVisualFrequency(processor,slot,band,type);
@@ -2584,11 +2599,18 @@ void SlotEditor::paint(juce::Graphics&g) {
                 const float xx=(float)plot.getX()+
                     (float)(plot.getWidth()*std::log(hz/20.f)/std::log(1000.f));
                 const float yy=plot.getCentreY()-db*(plot.getHeight()/72.f);
-                const float size=band==activeEqBand?14.f:10.f;
-                g.setColour(band==activeEqBand?Theme::green:Theme::blue.withAlpha(.82f));
+                const bool active=band==activeEqBand;
+                const float size=active?19.f:15.f;
+                const auto bandColour=active?Theme::green:Theme::blue.withAlpha(.83f);
+                g.setColour(bandColour.withAlpha(.13f));
+                g.fillEllipse(xx-size*.7f,yy-size*.7f,size*1.4f,size*1.4f);
+                g.setColour(Theme::bg);
                 g.fillEllipse(xx-size*.5f,yy-size*.5f,size,size);
-                g.setColour(Theme::white.withAlpha(band==activeEqBand?.95f:.58f));
-                g.drawEllipse(xx-size*.5f,yy-size*.5f,size,size,1.3f);
+                g.setColour(bandColour);
+                g.drawEllipse(xx-size*.5f,yy-size*.5f,size,size,1.25f);
+                Theme::text(g,juce::String(band+1),
+                    {juce::roundToInt(xx)-9,juce::roundToInt(yy)-9,18,18},
+                    9.f,bandColour,true,juce::Justification::centred);
                 if(shape==1||shape==2)
                     Theme::text(g,shape==1?"HP":"LP",
                         {(int)(xx-15),(int)(yy-21),30,14},9,
@@ -3566,7 +3588,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"BELL + LOW CUT",{44,99,130,23},11,Theme::green,true);
         Theme::text(g,"RESPONSE FROM LIVE DSP COEFFICIENTS",{205,100,390,22},11,Theme::muted);
     }
-    if(type==SkellPresetAudioProcessor::EQ || type==SkellPresetAudioProcessor::DeEsser || type==SkellPresetAudioProcessor::EightBandToneFX) {
+    if(eqFace) {
         const juce::StringArray ticks{"20","50","100","200","500","1k","2k","5k","10k","20k"};
         constexpr float tickHz[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
         for(int i=0;i<ticks.size();i++){

@@ -1110,34 +1110,15 @@ public:
     void paint(juce::Graphics& g) override {
         Theme::select(selectedTheme);
         g.fillAll(Theme::bg);
-        // Subtle studio-console lighting gives the flat canvas depth while
-        // keeping neon-green labels legible in every approved theme.
+        // Keep the working canvas black. Preset artwork belongs in cards.
         g.setGradientFill(juce::ColourGradient(
-            Theme::panel.brighter(.12f),0.f,0.f,
-            Theme::bg,0.f,(float)Theme::height,false));
-        g.fillRect(0,0,Theme::width,Theme::height);
-        // Selected preset artwork as a full-UI, low-contrast wallpaper.
-        // The real modules and labels remain foreground components.
-        const auto cover=browser.selectedCover();
-        if(cover.isValid()) {
-            juce::Graphics::ScopedSaveState art(g);
-            g.setOpacity(.16f);
-            g.drawImageWithin(cover,0,0,Theme::width,Theme::height,
-                juce::RectanglePlacement::fillDestination);
-            g.setOpacity(1.f);
-            g.setColour(Theme::bg.withAlpha(.57f));
-            g.fillRect(0,0,Theme::width,Theme::height);
-        }
-        g.setGradientFill(juce::ColourGradient(
-            Theme::panelAlt.brighter(.08f),0.f,0.f,
-            Theme::panel.darker(.06f),0.f,76.f,false));
+            Theme::panel,0.f,0.f,
+            Theme::bg,0.f,76.f,false));
         g.fillRect(0,0,Theme::width,76);
         g.setColour(Theme::white.withAlpha(.065f));
         g.drawHorizontalLine(1,10.f,(float)Theme::width-10.f);
         g.setColour(Theme::stroke.withAlpha(.95f));
         g.drawHorizontalLine(75,0.f,(float)Theme::width);
-        g.setColour(Theme::green.withAlpha(.42f));
-        g.fillRect(76,74,110,1);
         // One typographic run avoids the clipped hyphen and inconsistent gaps.
         // PRESET stays neon green in the main Obsidian skin.
         juce::AttributedString brand;
@@ -1149,16 +1130,16 @@ public:
         brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,271.f);
-        wordmark.draw(g,juce::Rectangle<float>(75.f,18.f,271.f,38.f));
+        wordmark.draw(g,juce::Rectangle<float>(75.f,9.f,271.f,38.f));
         // The new tagline lives directly under SKELLPRESET, rather than
         // fighting the old waveform strip for the same 14 px.
-        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{76,54,190,15},
+        Theme::text(g,"ONE PLUGIN. EVERY PRESET.",{76,54,190,14},
                     10.3f,Theme::muted,true);
         // UI edition marker belongs with the title, not an isolated LIVE
         // badge. Binary package version stays 0.7.0 for old host projects.
         // Tuck the UI edition marker immediately under the final T in
         // PRESET; the actual VST3 binary version stays unchanged.
-        Theme::text(g,"v.01",{231,56,45,14},9.5f,
+        Theme::text(g,"v.01",{230,43,45,12},9.5f,
                     Theme::green.withAlpha(.83f),true);
         Theme::text(g,"PRESET",{356,12,332,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
@@ -1330,8 +1311,8 @@ public:
         viewSwitch.setBounds(796,27,176,37);
         // Bounded message-thread preset history in the top bar.
         // The two small actions never obscure the Power / Settings group.
-        undo.setBounds(984,31,32,30);
-        redo.setBounds(1025,31,32,30);
+        undo.setBounds(990,34,27,24);
+        redo.setBounds(1024,34,27,24);
         micButton.setBounds(0,0,44,36);
         micButton.setVisible(false);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.

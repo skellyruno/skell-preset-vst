@@ -44,15 +44,16 @@ public:
             const bool reverse=buttonCaption[0]==0x21B7;
             const float cx=bounds.getCentreX(),cy=bounds.getCentreY();
             juce::Graphics::ScopedSaveState saved(g);
-            if(reverse)
-                g.addTransform(juce::AffineTransform::scale(-1.f,1.f)
-                    .translated(2.f*cx,0.f));
+            const float iconScale=juce::jmin(1.f,bounds.getWidth()/37.f);
+            g.addTransform(juce::AffineTransform::translation(-cx,-cy)
+                .scaled(reverse?-iconScale:iconScale,iconScale)
+                .translated(cx,cy));
             juce::Path arc;
             arc.startNewSubPath(cx+10.2f,cy+7.f);
             arc.cubicTo(cx+14.8f,cy-7.f,cx+2.f,cy-10.6f,cx-6.8f,cy-5.f);
             arc.cubicTo(cx-10.f,cy-3.f,cx-10.8f,cy-1.f,cx-11.2f,cy+1.f);
             g.setColour(enabled?(over?accent:Theme::white):Theme::muted.withAlpha(.34f));
-            g.strokePath(arc,juce::PathStrokeType(2.35f,
+            g.strokePath(arc,juce::PathStrokeType(1.9f,
                 juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             juce::Path arrow;
             arrow.startNewSubPath(cx-14.f,cy-5.5f);

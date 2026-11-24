@@ -10,18 +10,18 @@ constexpr int width=1168, height=688;
  // but is no longer an offered theme. Existing projects render in Obsidian.
 enum Variant { Obsidian=0, Cream=1, Crimson=2 };
 inline thread_local int current = Obsidian;
-inline thread_local juce::Colour bg       {0xff060a0b};
-inline thread_local juce::Colour panel    {0xff0d1415};
-inline thread_local juce::Colour panelAlt {0xff151f20};
-inline thread_local juce::Colour stroke   {0xff38514a};
-inline thread_local juce::Colour green    {0xff67f990};
+inline thread_local juce::Colour bg       {0xff000000};
+inline thread_local juce::Colour panel    {0xff0a0b0b};
+inline thread_local juce::Colour panelAlt {0xff17191a};
+inline thread_local juce::Colour stroke   {0xff353c39};
+inline thread_local juce::Colour green    {0xff39ff55};
 inline thread_local juce::Colour blue     {0xff9ac9c6};
 inline thread_local juce::Colour pink     {0xffe08eaa};
 inline thread_local juce::Colour white    {0xffeff5f2};
-inline thread_local juce::Colour muted    {0xffa4b7b1};
+inline thread_local juce::Colour muted    {0xffaeb8b4};
 inline thread_local juce::Colour amber    {0xffe9b980};
 inline thread_local juce::Colour red      {0xfff67878};
-inline thread_local juce::Colour plot     {0xff080e0f};
+inline thread_local juce::Colour plot     {0xff050606};
 
 inline int clampVariant(int v) noexcept {
     return v==Crimson ? Crimson : Obsidian; // legacy Cream=1 -> Obsidian
@@ -41,12 +41,12 @@ inline void select(int v) {
         muted=juce::Colour(0xffc4aab6); amber=juce::Colour(0xffe8b983);
         red=juce::Colour(0xffff647b); plot=juce::Colour(0xff110d11);
     } else {
-        bg=juce::Colour(0xff060a0b); panel=juce::Colour(0xff0d1415);
-        panelAlt=juce::Colour(0xff151f20); stroke=juce::Colour(0xff38514a);
-        green=juce::Colour(0xff67f990); blue=juce::Colour(0xff9ac9c6);
+        bg=juce::Colour(0xff000000); panel=juce::Colour(0xff0a0b0b);
+        panelAlt=juce::Colour(0xff17191a); stroke=juce::Colour(0xff353c39);
+        green=juce::Colour(0xff39ff55); blue=juce::Colour(0xff9ac9c6);
         pink=juce::Colour(0xffe08eaa); white=juce::Colour(0xffeff5f2);
-        muted=juce::Colour(0xffa4b7b1); amber=juce::Colour(0xffe9b980);
-        red=juce::Colour(0xfff67878); plot=juce::Colour(0xff080e0f);
+        muted=juce::Colour(0xffaeb8b4); amber=juce::Colour(0xffe9b980);
+        red=juce::Colour(0xfff67878); plot=juce::Colour(0xff050606);
     }
 }
 inline void selectFor(const juce::AudioProcessorValueTreeState& state) {

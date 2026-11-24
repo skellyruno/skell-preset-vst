@@ -147,90 +147,59 @@ public:
             (actualPeak>.0005f || outputMeter.level>.0005f);
         const float activity=live?juce::jlimit(0.f,1.f,
             .48f*actualPeak+2.1f*rms):0.f;
-        const float outputPeak=audioFresh?outputMeter.level:0.f;
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
 
-        // A composed stage: angular light shafts and hand-etched details,
-        // intentionally no circular or elliptical neon decorations.
-        const juce::Rectangle<float> stageBounds{22.f,22.f,width-44.f,
-                                                  stage.scope.getY()-31.f};
-        g.setGradientFill(juce::ColourGradient(
-            Theme::panelAlt.withAlpha(.56f),stageBounds.getTopLeft(),
-            Theme::plot.withAlpha(.92f),stageBounds.getBottomRight(),false));
-        g.fillRoundedRectangle(stageBounds,10.f);
+        // Minimal midnight performance stage. All lighting is drawn in the
+        // native editor; reactive intensity is measured from actual audio.
+        const auto stageBounds=juce::Rectangle<float>(10.f,10.f,width-20.f,
+            stage.scope.getY()-18.f);
         const float centreX=width*.5f;
-        // Honest two-stage meters: INPUT is the processor's pre-rack peak,
-        // OUTPUT is post-FX; bars use the -60 to 0 dBFS log scale. Drawing
-        // these is bounded GUI work and never fabricates audio data.
-        const float meterWidth=juce::jmin(119.f,(width-70.f)*.28f);
-        // Leave an optical gap below the LIVE/dB header even at 70% scale.
-        const float meterY=stageBounds.getY()+55.f;
-        const auto levelBar=[&](float x,const MeterEnvelope& meter,
-                                const juce::String& label){
-            const auto bar=juce::Rectangle<float>(x,meterY,meterWidth,4.f);
-            g.setColour(Theme::stroke.withAlpha(.34f));
-            g.fillRoundedRectangle(bar,2.f);
-            const float fraction=meterFraction(audioFresh?meter.level:0.f);
-            if(fraction>0.f) {
-                g.setColour(meter.level>=1.f?Theme::red:accent.withAlpha(.78f));
-                g.fillRoundedRectangle(x,meterY,meterWidth*fraction,4.f,2.f);
-            }
-            // True peak-hold marker and quiet calibrated scale notches;
-            // 0 dB is at right edge, -60 dB at left edge.
-            for(const float position:{.25f,.5f,.75f}){
-                g.setColour(Theme::bg.withAlpha(.43f));
-                const float tick=x+meterWidth*position;
-                g.drawLine(tick,meterY,tick,meterY+4.f,.7f);
-            }
-            const float marker=meterFraction(audioFresh?meter.held:0.f);
-            if(marker>0.f){
-                const float mark=x+juce::jmin(meterWidth-1.f,meterWidth*marker);
-                g.setColour(meter.held>=1.f?Theme::red:Theme::white.withAlpha(.83f));
-                g.drawLine(mark,meterY-1.5f,mark,meterY+5.5f,1.15f);
-            }
-            juce::String title=label;
-            if(meterWidth>=95.f){
-                const float peak=audioFresh?meter.level:0.f;
-                const juce::String db=peak<1.e-5f?"-INF":
-                    juce::String(20.f*std::log10(peak),1);
-                title+="  "+db;
-            }
-            Theme::fittedText(g,title,
-                {juce::roundToInt(x),juce::roundToInt(meterY-15.f),
-                 juce::roundToInt(meterWidth),13},
-                 8.4f,Theme::muted,true);
-        };
-        levelBar(stageBounds.getX()+14.f,inputMeter,"IN / PRE");
-        levelBar(stageBounds.getRight()-meterWidth-14.f,outputMeter,"OUT / POST");
-        juce::Path backplate;
-        backplate.startNewSubPath(centreX-130.f*stage.scale,stage.originY+30.f);
-        backplate.lineTo(centreX-200.f*stage.scale,stage.scope.getY()-18.f);
-        backplate.lineTo(centreX-50.f*stage.scale,stage.scope.getY()-26.f);
-        backplate.lineTo(centreX,stage.originY+32.f);
-        backplate.closeSubPath();
-        g.setColour(accent.withAlpha(.025f+.055f*activity));
-        g.fillPath(backplate);
-        juce::Path rightBlade;
-        rightBlade.startNewSubPath(centreX+69.f*stage.scale,stage.originY+25.f);
-        rightBlade.lineTo(centreX+188.f*stage.scale,stage.scope.getY()-30.f);
-        rightBlade.lineTo(centreX+103.f*stage.scale,stage.scope.getY()-30.f);
-        rightBlade.closeSubPath();
-        g.setColour(accent.withAlpha(.035f+.064f*activity));
-        g.fillPath(rightBlade);
-        for(int i=0;i<7;++i) {
-            const float x=stageBounds.getX()+stageBounds.getWidth()*(i+1)/8.f;
-            const float top=stageBounds.getY()+8.f;
-            g.setColour(Theme::stroke.withAlpha(.10f+.02f*(i%2)));
-            g.drawLine(x,top,x,stage.scope.getY()-26.f,.65f);
+        const float horizon=stage.scope.getY()-stage.scale*31.f;
+        g.setColour(Theme::bg);
+        g.fillRoundedRectangle(stageBounds,8.f);
+        g.setGradientFill(juce::ColourGradient(
+            accent.withAlpha(.08f+.12f*activity),centreX,horizon-170.f*stage.scale,
+            Theme::bg,centreX+width*.43f,horizon-170.f*stage.scale,true));
+        g.fillRoundedRectangle(stageBounds,8.f);
+        // Wide, shallow stage floor with a restrained fog band.
+        const auto floor=juce::Rectangle<float>(stageBounds.getX(),horizon,
+            stageBounds.getWidth(),juce::jmax(1.f,stageBounds.getBottom()-horizon));
+        g.setGradientFill(juce::ColourGradient(
+            Theme::panelAlt.withAlpha(.80f),centreX,horizon,
+            Theme::bg,centreX,floor.getBottom(),false));
+        g.fillRect(floor);
+        g.setColour(accent.withAlpha(.12f+.20f*activity));
+        g.drawLine(stageBounds.getX()+14.f,horizon,stageBounds.getRight()-14.f,horizon,.8f);
+        // Two muted directional lights rather than a grid of meters.
+        for(int side:{-1,1}){
+            const float x=centreX+(float)side*stageBounds.getWidth()*.38f;
+            juce::Path beam;
+            beam.startNewSubPath(x,stageBounds.getY()+8.f);
+            beam.lineTo(centreX+(float)side*85.f*stage.scale,horizon);
+            beam.lineTo(centreX+(float)side*175.f*stage.scale,horizon);
+            beam.closeSubPath();
+            g.setGradientFill(juce::ColourGradient(
+                accent.withAlpha(.045f+.065f*activity),x,stageBounds.getY()+8.f,
+                accent.withAlpha(.008f),centreX,horizon,false));
+            g.fillPath(beam);
         }
-        const float beamAlpha=.10f+.14f*activity;
-        g.setColour(accent.withAlpha(beamAlpha));
-        g.drawLine(centreX-195.f*stage.scale,stage.originY+51.f,
-                   centreX-108.f*stage.scale,stage.scope.getY()-31.f,1.25f);
-        g.drawLine(centreX+200.f*stage.scale,stage.originY+49.f,
-                   centreX+95.f*stage.scale,stage.scope.getY()-31.f,1.25f);
+        // Distant tombstones frame the performer without competing for focus.
+        for(int side:{-1,1})for(int k=0;k<3;++k){
+            const float x=centreX+(float)side*(stageBounds.getWidth()*.23f+k*stageBounds.getWidth()*.075f);
+            const float h=(26.f+9.f*(float)(k%2))*stage.scale;
+            const float w=(17.f+3.f*(float)k)*stage.scale;
+            const float y=horizon-h;
+            g.setColour(Theme::panelAlt.withAlpha(.58f));
+            g.fillRoundedRectangle(x-w*.5f,y,w,h,3.f*stage.scale);
+            g.setColour(Theme::muted.withAlpha(.14f));
+            g.drawRoundedRectangle(x-w*.5f,y,w,h,3.f*stage.scale,.8f);
+        }
+        // Soft shadow anchors the skeleton to the stage.
+        g.setColour(Theme::bg.withAlpha(.90f));
+        g.fillEllipse(centreX-105.f*stage.scale,horizon+1.f,
+                      210.f*stage.scale,10.f*stage.scale);
 
         // Main character. Outline is defined as a full-bodied, standing
         // performer: anatomical pelvis/femurs/tibia/ribs, one arm gripping
@@ -504,26 +473,10 @@ public:
         // The trace and bone illumination are directly audio-reactive;
         // nothing is a fake spectrum or prerecorded animation.
         const auto scope=stage.scope;
-        g.setGradientFill(juce::ColourGradient(
-            Theme::plot.withAlpha(.97f),scope.getTopLeft(),
-            Theme::panelAlt.withAlpha(.86f),scope.getBottomRight(),false));
-        g.fillRoundedRectangle(scope,8.f);
-        g.setColour(accent.withAlpha(.29f));
-        g.drawRoundedRectangle(scope.reduced(.5f),8.f,1.f);
-        g.setColour(Theme::stroke.withAlpha(.43f));
+        // One uninterrupted audio trace floating over the black stage.
+        g.setColour(accent.withAlpha(.10f));
         g.drawLine(scope.getX()+9.f,scope.getCentreY(),
-                   scope.getRight()-9.f,scope.getCentreY(),.85f);
-        for(const float offset:{.25f,.75f}) {
-            g.setColour(Theme::stroke.withAlpha(.17f));
-            g.drawLine(scope.getX()+9.f,scope.getY()+scope.getHeight()*offset,
-                       scope.getRight()-9.f,scope.getY()+scope.getHeight()*offset,.65f);
-        }
-        // Quiet waveform grid is rectangular, never an orbit/ellipse.
-        for(int index=1;index<8;++index){
-            const float x=scope.getX()+scope.getWidth()*index/8.f;
-            g.setColour(Theme::stroke.withAlpha(.17f));
-            g.drawLine(x,scope.getY()+8.f,x,scope.getBottom()-8.f,.7f);
-        }
+                   scope.getRight()-9.f,scope.getCentreY(),.7f);
         juce::Path trace;
         for(int index=0;index<128;++index){
             const float raw=signal[(size_t)index];
@@ -547,30 +500,16 @@ public:
         g.setColour(accent.withAlpha(live?.95f:.43f));
         g.strokePath(trace,juce::PathStrokeType(live?1.85f:1.2f,
             juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-        // Measured waveform RMS, not a synthetic envelope or new processor.
-        if(scope.getHeight()>=52.f){
-            const float areaX=scope.getX()+11.f,areaY=scope.getBottom()-11.f;
-            const float areaW=juce::jmin(126.f,scope.getWidth()*.28f);
-            g.setColour(Theme::stroke.withAlpha(.55f));
-            g.fillRoundedRectangle(areaX,areaY,areaW,2.5f,1.f);
-            if(rms>.0005f) {
-                g.setColour(accent.withAlpha(.65f));
-                g.fillRoundedRectangle(areaX,areaY,areaW*meterFraction(rms),2.5f,1.f);
-            }
-            Theme::text(g,"WAVEFORM RMS",
-                {juce::roundToInt(areaX),juce::roundToInt(areaY-13.f),
-                 juce::roundToInt(areaW+18.f),12},8.1f,Theme::muted,true);
-        }
+        const auto status=juce::Rectangle<float>(stageBounds.getX()+15.f,
+            stageBounds.getY()+13.f,78.f,24.f);
+        g.setColour(Theme::bg.withAlpha(.84f));
+        g.fillRoundedRectangle(status,6.f);
+        g.setColour(live?accent:Theme::muted.withAlpha(.50f));
+        g.fillEllipse(status.getX()+10.f,status.getCentreY()-3.f,6.f,6.f);
         Theme::text(g,live?"LIVE":"IDLE",
-                    {juce::roundToInt(stage.scope.getX()+12.f),34,84,22},
-                    10.7f,live?accent:Theme::muted,true);
-        const juce::String db=outputPeak<1.e-6f?juce::String("-INF"):
-            juce::String(20.f*std::log10(outputPeak),1);
-        const bool clipping=audioFresh && outputMeter.held>=1.f;
-        Theme::text(g,clipping?"CLIP HOLD":db+" dBFS",
-                    {getWidth()-177,34,131,22},10.7f,
-                    clipping?Theme::red:Theme::muted,true,
-                    juce::Justification::centredRight);
+            {juce::roundToInt(status.getX()+23.f),juce::roundToInt(status.getY()),
+             52,24},10.7f,live?accent:Theme::muted,true);
+
     }
 private:
     SkellPresetAudioProcessor& processor;
