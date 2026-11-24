@@ -200,6 +200,16 @@ public:
             return juce::jlimit(0.,1.,(text.contains("%")||value>1.)?value/100.:value);
         };
         input.updateText();output.updateText();mix.updateText();
+        for(auto& value:masterValues){
+            value.setJustificationType(juce::Justification::centred);
+            value.setFont(juce::Font(juce::FontOptions(14.f,juce::Font::bold)));
+            value.setColour(juce::Label::textColourId,Theme::white);
+            value.setInterceptsMouseClicks(false,false);
+            addAndMakeVisible(value);
+        }
+        // SliderAttachment owns its listener; onValueChange is additive.
+        for(auto* s:{&input,&mix,&output})s->onValueChange=[this]{syncMasterReadouts();};
+        syncMasterReadouts();
         input.setTooltip("Input gain -24 to +24 dB · 0 dB is unity");
         mix.setTooltip("Global dry / wet mix · 100% is fully processed");
         output.setTooltip("Output gain -24 to +24 dB · 0 dB is unity");
@@ -299,6 +309,13 @@ public:
         addMouseListener(this,true); // Outside clicks on child panels dismiss the overlay.
         resized();refresh();startTimerHz(30);
     }
+    void syncMasterReadouts(){
+        const std::array<juce::Slider*,3> sliders{{&input,&mix,&output}};
+        for(size_t i=0;i<sliders.size();++i){
+            const auto value=sliders[i]->getTextFromValue(sliders[i]->getValue());
+            if(masterValues[i].getText()!=value)masterValues[i].setText(value,juce::dontSendNotification);
+        }
+    }
     void syncSizeControl(float scale) {
         constexpr float sizes[]{.70f,.85f,1.f,1.25f};
         int nearest=0;
@@ -325,8 +342,8 @@ public:
             "The home deck shows your real output signal. Choose a preset or select any rack slot to begin; the microphone controls are available separately.");
         steps.emplace_back(&powerButton,"POWER / BYPASS",
             "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
-        steps.emplace_back(&mix,"BLEND YOUR SOUND",
-            "The three bottom-right knobs control Input, dry/wet Mix, and Output.");
+        if(mix.isVisible())steps.emplace_back(&mix,"BLEND YOUR SOUND",
+            "The three Simple-mode knobs control Input, dry/wet Mix, and Output.");
         steps.emplace_back(&settings,"SETTINGS / SKELLWORLD",
             "Resize the interface or optionally join SkellWorld presence. This sends no audio, preset, chain or automation data.");
         return steps;
@@ -368,6 +385,7 @@ public:
             s->setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
             s->setColour(juce::Slider::textBoxOutlineColourId,juce::Colours::transparentBlack);
         }
+        for(auto& value:masterValues)value.setColour(juce::Label::textColourId,Theme::white);
         sizeSelect.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
         sizeSelect.setColour(juce::ComboBox::textColourId,Theme::white);
         sizeSelect.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
@@ -531,8 +549,16 @@ public:
         if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
             issues.add("Mode visibility did not match the requested workspace");
         for(const auto* master:{&input,&mix,&output})
-            if(!master->isVisible())
-                issues.add("Input/Mix/Output must be available in both workspaces");
+            if(master->isVisible()==advanced)
+                issues.add("Input/Mix/Output must remain Simple-only");
+        const std::array<const juce::Slider*,3> masterSliders{{&input,&mix,&output}};
+        for(size_t i=0;i<masterValues.size();++i){
+            const auto& value=masterValues[i];
+            if(value.isVisible()==advanced || !canvasBounds.contains(value.getBounds()) ||
+               value.getBounds().intersects(masterSliders[i]->getBounds()) ||
+               value.getText()!=masterSliders[i]->getTextFromValue(masterSliders[i]->getValue()))
+                issues.add("Master live numeric readout is clipped, stale, or in the wrong workspace");
+        }
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
         if(powerButton.isBypassed()!=(current==3))
             issues.add("Power indicator disagrees with host bypass state");
@@ -706,10 +732,12 @@ public:
                 std::abs(processor.state.getRawParameterValue("mix")->load()-.67f)<.02f &&
                 std::abs(processor.state.getRawParameterValue("output")->load()+2.f)<.05f;
         };
-        const bool automated=correctState();
+        const bool automated=correctState() && masterValues[0].getText()=="+3.0 dB" &&
+            masterValues[1].getText()=="67%" && masterValues[2].getText()=="-2.0 dB";
         viewSwitch.onClick();
-        const bool shownInAdvanced=input.isVisible() && mix.isVisible() &&
-            output.isVisible() && correctState();
+        const bool hiddenInAdvanced=!input.isVisible() && !mix.isVisible() &&
+            !output.isVisible() && !masterValues[0].isVisible() && !masterValues[1].isVisible() &&
+            !masterValues[2].isVisible() && correctState();
         viewSwitch.onClick();
         const bool recalled=input.isVisible() && mix.isVisible() && output.isVisible() &&
             correctState() && std::abs(input.getValue()-3.0)<.05 &&
@@ -717,7 +745,7 @@ public:
         input.setValue(oldMasters[0],juce::sendNotificationSync);
         mix.setValue(oldMasters[1],juce::sendNotificationSync);
         output.setValue(oldMasters[2],juce::sendNotificationSync);
-        if(!simpleShown || !automated || !shownInAdvanced || !recalled)
+        if(!simpleShown || !automated || !hiddenInAdvanced || !recalled)
             issues.add("Simple Input/Mix/Output visibility or automation recall regressed");
         for(int i=0;i<4;++i) {
             if(!macro[(size_t)i].isVisible()
@@ -1168,12 +1196,12 @@ public:
                 Theme::stroke.withAlpha(.39f));
             g.fillRoundedRectangle((float)(263+ix*10),651.f,7.f,11.f,1.4f);
         }
-        // Hardware dials show the true physical gain and mix readouts.
-        // The actual gain stages operate in dB; only dry/wet uses %.
-        {
+        // Simple-only master panel. The numeric labels are live children,
+        // not cached canvas paint, and cannot be obscured by the dials.
+        const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
+        const int viewMode=current==3?previousMode:(current==0?0:1);
+        if(viewMode==0){
         static constexpr const char* masterNames[]{"INPUT","MIX","OUTPUT"};
-        const float values[]{(float)input.getValue(),(float)mix.getValue(),
-                             (float)output.getValue()};
         for(int i=0;i<3;++i) {
             const int x=807+i*116;
             const auto card=juce::Rectangle<float>((float)x,639.f,110.f,46.f);
@@ -1181,16 +1209,10 @@ public:
             g.setColour(Theme::green.withAlpha(.78f));
             g.fillRoundedRectangle((float)x+7.f,645.f,2.f,9.f,1.f);
             Theme::text(g,masterNames[i],{x+52,642,54,14},11.4f,Theme::muted,true);
-            const auto readout=i==1
-                ?mix.getTextFromValue(values[i])
-                :(i==0?input.getTextFromValue(values[i])
-                     :output.getTextFromValue(values[i]));
-            Theme::fittedText(g,readout,
-                        {x+50,658,57,23},15.8f,Theme::white,true);
+            g.setColour(Theme::plot);
+            g.fillRoundedRectangle((float)x+49.f,657.f,58.f,23.f,3.f);
         }
         }
-        const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
-        const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
             Theme::panelBox(g,{14.f,90.f,1140.f,507.f},11.f);
             Theme::text(g,"SIMPLE  /  MACRO MIXER",{52,115,520,25},15.8f,Theme::green,true);
@@ -1328,9 +1350,12 @@ public:
         input.setBounds(810,642,45,40);
         mix.setBounds(926,642,45,40);
         output.setBounds(1042,642,45,40);
-        // Keep the original APVTS master controls available in both modes.
-        for(auto* control:{&input,&mix,&output})
-            control->setVisible(true);
+        for(auto* control:{&input,&mix,&output})control->setVisible(display==0);
+        for(size_t i=0;i<masterValues.size();++i){
+            masterValues[i].setBounds(856+(int)i*116,657,58,23);
+            masterValues[i].setVisible(display==0);
+        }
+        syncMasterReadouts();
         sizeSelect.setBounds(1094,648,69,26);
         settings.setBounds(1110,28,36,36);
         settingsPanel.setBounds(743,78,388,326);
@@ -1366,10 +1391,12 @@ public:
             s.setAlpha(bypass?.35f:1.f);
         }
         for(auto* s:{&input,&mix,&output}) {
-            s->setVisible(true);
+            s->setVisible(display==0);
             s->setEnabled(!bypass);
             s->setAlpha(bypass?.35f:1.f);
         }
+        for(auto& value:masterValues){value.setVisible(display==0);value.setAlpha(bypass?.50f:1.f);}
+        syncMasterReadouts();
         bypassShade.setVisible(bypass);
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
@@ -1413,6 +1440,7 @@ public:
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
         if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
+        if(display==0)syncMasterReadouts(); // host automation fallback, changes only
         const auto now=juce::Time::getMillisecondCounter();
         const unsigned count=processor.liveScopeSampleCount();
         const bool advancing=count!=lastScopeSampleCount;
@@ -1635,6 +1663,7 @@ private:
     std::array<SkellMacroKnob,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
     juce::Slider input,mix,output;
+    std::array<juce::Label,3> masterValues;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputAttachment,mixAttachment,outputAttachment;
     juce::ComboBox sizeSelect;
 };

@@ -9,14 +9,35 @@ bool isPagedEQ(int type) noexcept {
     return type==SkellPresetAudioProcessor::EightBandToneFX
         || type==SkellPresetAudioProcessor::StudioEQFX;
 }
-bool rotaryFace(int type) noexcept {
+// The actual face geometry follows the instrument, not a single generic row.
+enum class ControlFace { eqPairs, dynamicsChannel, rotaryBank, vocalChannel };
+ControlFace controlFace(int type) noexcept {
+    using P=SkellPresetAudioProcessor;
+    if(isPagedEQ(type) || type==P::EQ)return ControlFace::eqPairs;
     const auto family=std::string_view(skellpreset::registry::at(type).category);
-    return family=="Space" || family=="Motion" || family=="Pitch" ||
-        (family=="Tone" && !isPagedEQ(type) && type!=SkellPresetAudioProcessor::EQ);
+    if(family=="Dynamics")return ControlFace::dynamicsChannel;
+    if(family=="Vocal")return ControlFace::vocalChannel;
+    return ControlFace::rotaryBank;
+}
+bool rotaryControl(int type,int index) noexcept {
+    const auto face=controlFace(type);
+    // Dynamics: threshold/frequency and ratio/level are precision faders;
+    // timing/amount knobs use rotary motion. Vocal: four matching knobs.
+    return face==ControlFace::rotaryBank || face==ControlFace::vocalChannel ||
+        (face==ControlFace::dynamicsChannel && index>=2);
 }
 juce::Rectangle<int> parameterCardBounds(int type,int index) noexcept {
-    if(rotaryFace(type))return {28+index*215,403,204,113};
-    return {33+(index%2)*430,406+(index/2)*57,400,44};
+    if(controlFace(type)==ControlFace::eqPairs)
+        return {33+(index%2)*423,401+(index/2)*61,412,55};
+    return {33+index*211,401,202,120};
+}
+juce::Rectangle<int> parameterControlBounds(int type,int index) noexcept {
+    const auto card=parameterCardBounds(type,index);
+    if(controlFace(type)==ControlFace::eqPairs)
+        return {card.getX()+126,card.getY()+8,card.getWidth()-137,38};
+    if(rotaryControl(type,index))
+        return {card.getCentreX()-69,card.getY()+26,138,91};
+    return {card.getX()+12,card.getY()+33,card.getWidth()-24,72};
 }
 float eqGainAtY(int type,float y) noexcept {
     return juce::jlimit(0.f,1.f,.5f+(254.f-y)/206.f*
@@ -1806,19 +1827,18 @@ void SlotEditor::resized() {
     layoutParameterControls(processor.slotType(slot));
 }
 void SlotEditor::layoutParameterControls(int type){
-    const bool rotary=rotaryFace(type);
+    const bool paired=controlFace(type)==ControlFace::eqPairs;
     for(int k=0;k<4;++k){
         auto& control=knobs[(size_t)k];
+        const bool rotary=rotaryControl(type,k);
         const auto style=rotary?juce::Slider::RotaryHorizontalVerticalDrag:
             juce::Slider::LinearHorizontal;
-        if(control.getSliderStyle()!=style){
-            control.setSliderStyle(style);
-            control.setTextBoxStyle(rotary?juce::Slider::TextBoxBelow:
-                juce::Slider::TextBoxRight,false,rotary?96:92,rotary?20:24);
-        }
-        const auto card=parameterCardBounds(type,k);
-        control.setBounds(rotary?juce::Rectangle<int>(card.getX()+49,card.getY()+23,106,87):
-            juce::Rectangle<int>(card.getX()+135,card.getY()+5,257,30));
+        if(control.getSliderStyle()!=style)control.setSliderStyle(style);
+        const auto textPosition=paired?juce::Slider::TextBoxRight:juce::Slider::TextBoxBelow;
+        if(control.getTextBoxPosition()!=textPosition ||
+           control.getTextBoxWidth()!=(paired?112:132) || control.getTextBoxHeight()!=26)
+            control.setTextBoxStyle(textPosition,false,paired?112:132,26);
+        control.setBounds(parameterControlBounds(type,k));
     }
 }
 bool SlotEditor::testPopupLayoutsForTest() const {
@@ -3459,24 +3479,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }
     g.restoreState();
-    // Four native parameter cards remain integrated with the effect editor.
-    // Position is constant for muscle memory; tint and labels distinguish
-    // Space, Motion, Dynamics, Tone, Pitch and Vocal effects.
-    if(type!=SkellPresetAudioProcessor::Empty &&
-       type!=SkellPresetAudioProcessor::ExternalVST3) {
-        for(int k=0;k<4;++k) {
-            if(!knobs[(size_t)k].isVisible())continue;
-            const float x=156.f+(k%2)*430.f;
-            const float y=406.f+(k/2)*57.f;
-            const juce::Rectangle<float> card{x,y,276.f,42.f};
-            g.setColour(Theme::panelAlt.withAlpha(.78f));
-            g.fillRoundedRectangle(card,6.f);
-            g.setColour(Theme::stroke.withAlpha(.58f));
-            g.drawRoundedRectangle(card.reduced(.5f),6.f,.8f);
-            g.setColour(familyAccent.withAlpha(.39f));
-            g.fillRoundedRectangle(x+3.f,y+9.f,2.5f,24.f,1.f);
-        }
-    }
+    // Parameter cards are painted exactly once using the real control bounds below.
     // The graph is deliberately clipped to its plot rectangle. Titles and
     // numeric legends belong ABOVE it, after restoring the Graphics clip,
     // or they become invisible at the default 70% scale.
@@ -3704,13 +3707,20 @@ void SlotEditor::paint(juce::Graphics&g) {
         for(int i=0;i<4;++i) {
             if(!knobs[(size_t)i].isVisible())continue;
             const auto card=parameterCardBounds(type,i).toFloat();
-            const bool rotary=rotaryFace(type);
+            const bool paired=controlFace(type)==ControlFace::eqPairs;
             const auto tint=dynamics?Theme::amber:space?Theme::blue:
                 motion?Theme::pink:familyAccent;
-            g.setColour(Theme::panelAlt.withAlpha(.60f));
-            g.fillRoundedRectangle(card,5.f);
-            g.setColour(Theme::stroke.withAlpha(.74f));
-            g.drawRoundedRectangle(card.reduced(.5f),5.f,.8f);
+            g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.12f),card.getTopLeft(),
+                Theme::plot,card.getBottomRight(),false));
+            g.fillRoundedRectangle(card,7.f);
+            g.setColour(Theme::stroke.withAlpha(.9f));
+            g.drawRoundedRectangle(card.reduced(.6f),7.f,1.f);
+            if(!paired){
+                g.setColour(tint.withAlpha(.07f));
+                g.fillRoundedRectangle(card.getX()+4.f,card.getY()+4.f,card.getWidth()-8.f,23.f,4.f);
+                g.setColour(tint.withAlpha(.32f));
+                g.drawHorizontalLine((int)card.getY()+28,card.getX()+10.f,card.getRight()-10.f);
+            }
             g.setColour(tint.withAlpha(.63f));
             if(dynamics)
                 g.fillRoundedRectangle(card.getX()+2.f,card.getY()+6.f,2.f,
@@ -3720,11 +3730,11 @@ void SlotEditor::paint(juce::Graphics&g) {
                     card.getY()+3.f,.7f);
             else
                 g.fillEllipse(card.getX()+6.f,card.getY()+7.f,3.f,3.f);
-            const auto caption=rotary?card.toNearestInt().removeFromTop(22).reduced(10,0):
-                juce::Rectangle<int>((int)card.getX()+10,(int)card.getY()+7,120,26);
+            const auto caption=!paired?card.toNearestInt().removeFromTop(28).reduced(9,0):
+                juce::Rectangle<int>((int)card.getX()+11,(int)card.getY()+8,112,38);
             Theme::fittedText(g,labels[(size_t)i].toUpperCase(),caption,
-                11.8f,knobs[(size_t)i].isEnabled()?Theme::white:Theme::muted,true,
-                rotary?juce::Justification::centred:juce::Justification::centredLeft);
+                13.f,knobs[(size_t)i].isEnabled()?Theme::white:Theme::muted,true,
+                paired?juce::Justification::centredLeft:juce::Justification::centred);
         }
     }
     const juce::String gestureHint="DRAG GRAPH  /  X: "+
@@ -3746,7 +3756,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                     (type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage!=0)
                     ? juce::String("GRAPH READ-ONLY ON THIS PAGE  /  USE IN-PANEL CONTROLS")
                     : effectDetail.isNotEmpty()?effectDetail:effectTitle.isNotEmpty()?effectTitle:gestureHint,
-                    {30,386,838,17},10,Theme::muted);
+                    {30,379,838,20},11,Theme::muted);
 }
 void SlotEditor::updateGraphNode(juce::Point<float> point) {
     const int type=processor.slotType(slot);
@@ -4272,9 +4282,10 @@ bool SlotEditor::testIntegratedEffectLayout() const {
         const int type=processor.slotType(slot);
         const auto card=parameterCardBounds(type,i);
         if(!getLocalBounds().contains(r) || !getLocalBounds().contains(card) ||
-           !card.contains(r) || r.getY()<405 || r.getBottom()>516 ||
+           !card.contains(r) || r.getY()<405 || r.getBottom()>521 ||
            r.intersects(slotPower.getBounds()) ||
-           knobs[(size_t)i].getSliderStyle()!=(rotaryFace(type)?
+           knobs[(size_t)i].getTextBoxHeight()<26 ||
+           knobs[(size_t)i].getSliderStyle()!=(rotaryControl(type,i)?
                juce::Slider::RotaryHorizontalVerticalDrag:juce::Slider::LinearHorizontal))
             return false;
         for(int j=i+1;j<4;++j)

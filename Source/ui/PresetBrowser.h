@@ -138,6 +138,10 @@ private:
     DirectoryMode directoryMode() const;
     std::vector<DirectoryCard> directoryCards() const;
     int resultCount() const;
+    int directoryColumns() const noexcept {return getWidth()>=850?3:2;}
+    int pageCapacity() const;
+    juce::Rectangle<int> directoryCardBounds(int position) const;
+    int resultAt(juce::Point<int>) const;
     bool activateDirectoryRow(int index);
     bool goBackDirectory();
     bool hasDirectoryParent() const;

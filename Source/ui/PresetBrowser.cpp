@@ -489,7 +489,7 @@ void PresetBrowser::focusCard(int index){
     if(count<=0){keyboardCard=-1;scroll=0;hoveredCard=-1;hoveredStar=-1;repaint();return;}
     keyboardCard=juce::jlimit(0,count-1,index);
     if(keyboardCard<scroll)scroll=keyboardCard;
-    if(keyboardCard>=scroll+visibleRows())scroll=keyboardCard-visibleRows()+1;
+    if(keyboardCard>=scroll+pageCapacity())scroll=keyboardCard-pageCapacity()+1;
     hoveredCard=-1;hoveredStar=-1;repaint();
 }
 bool PresetBrowser::showVocalTabs() const {
@@ -518,6 +518,7 @@ void PresetBrowser::placeWithin(juce::Rectangle<int> usable,juce::Rectangle<int>
 }
 void PresetBrowser::resized(){
     search.setBounds(19,17,getWidth()-111,42);
+    search.setFont(juce::Font(juce::FontOptions(15.f)));
     search.setEnabled(!detailsOpen && !chooserActive);
     clearSearchButton.setEnabled(!detailsOpen && !chooserActive && search.getText().isNotEmpty());
     clearSearchButton.setBounds(getWidth()-86,22,66,31);
@@ -567,7 +568,7 @@ void PresetBrowser::resized(){
         importButton.setBounds(18,getHeight()-70,166,28);
         exportButton.setBounds(18,getHeight()-36,166,28);
     }
-    if(!detailsOpen){const int count=resultCount();scroll=juce::jlimit(0,std::max(0,count-visibleRows()),scroll);}
+    if(!detailsOpen){const int count=resultCount();scroll=juce::jlimit(0,std::max(0,count-pageCapacity()),scroll);}
 }
 void PresetBrowser::setChooserActive(bool active) {
     chooserActive=active;
@@ -976,6 +977,23 @@ std::vector<PresetBrowser::DirectoryCard> PresetBrowser::directoryCards() const 
 int PresetBrowser::resultCount() const {
     return directoryMode()==DirectoryMode::none?(int)filtered().size():(int)directoryCards().size();
 }
+int PresetBrowser::pageCapacity() const {
+    return directoryMode()==DirectoryMode::none?visibleRows():directoryColumns()*3;
+}
+juce::Rectangle<int> PresetBrowser::directoryCardBounds(int position) const {
+    const int cols=directoryColumns(),gap=10;
+    const int width=(getWidth()-224-(cols-1)*gap)/cols;
+    const int height=(getHeight()-151-2*gap)/3;
+    return {207+(position%cols)*(width+gap),110+(position/cols)*(height+gap),width,height};
+}
+int PresetBrowser::resultAt(juce::Point<int> p) const {
+    if(detailsOpen)return -1;
+    if(directoryMode()==DirectoryMode::none)
+        return presetCardHitForTest(false,p.x,p.y,getWidth(),visibleRows())?scroll+(p.y-110)/61:-1;
+    for(int i=0;i<pageCapacity();++i)
+        if(directoryCardBounds(i).contains(p))return scroll+i;
+    return -1;
+}
 bool PresetBrowser::activateDirectoryRow(int index){
     const auto mode=directoryMode();
     const auto cards=directoryCards();
@@ -1002,47 +1020,52 @@ bool PresetBrowser::goBackDirectory(){
     typeFilter.setSelectedId(1,juce::dontSendNotification);resetResults();return true;
 }
 void PresetBrowser::paintDirectory(juce::Graphics& g,const std::vector<DirectoryCard>& cards){
-    const int count=(int)cards.size();
-    const int rows=visibleRows();
-    const int start=juce::jlimit(0,std::max(0,count-rows),scroll);
+    const int count=(int)cards.size(),capacity=pageCapacity();
+    const int start=juce::jlimit(0,std::max(0,count-capacity),scroll);
     const int right=getWidth()-17;
     if(cards.empty()){
         Theme::fittedText(g,"NO ARTISTS IN THIS GROUP",{222,210,std::max(1,right-239),32},15.f,Theme::white,true);
-        Theme::fittedText(g,"Assign an artist and tier in Manage Library.",{222,250,std::max(1,right-239),26},11.f,Theme::muted);
+        Theme::fittedText(g,"Assign an artist and tier in Manage Library.",{222,250,std::max(1,right-239),26},12.f,Theme::muted);
         return;
     }
-    const std::array<juce::Colour,4> accents{{Theme::green,Theme::amber,Theme::pink,Theme::white}};
-    for(int n=0;n<rows && start+n<count;++n){
-        const int index=start+n,y=110+n*61;
-        const auto& card=cards[(size_t)index];
-        const auto bounds=juce::Rectangle<float>(207.f,(float)y,(float)std::max(1,right-207),56.f);
+    const std::array<juce::Colour,4> accents{{Theme::green,Theme::amber,Theme::pink,Theme::blue}};
+    for(int n=0;n<capacity && start+n<count;++n){
+        const int index=start+n;const auto& card=cards[(size_t)index];
+        const auto bounds=directoryCardBounds(n).toFloat();
         const bool hover=index==hoveredCard,focused=index==keyboardCard;
-        g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(hover?.18f:.07f),
-            bounds.getTopLeft(),Theme::panel.darker(.1f),bounds.getBottomRight(),false));
-        g.fillRoundedRectangle(bounds,7.f);
-        g.setColour(focused||hover?Theme::green.withAlpha(.8f):Theme::stroke);
-        g.drawRoundedRectangle(bounds.reduced(.6f),7.f,focused?1.6f:1.f);
-        const auto art=juce::Rectangle<float>(214.f,(float)y+5.f,56.f,46.f);
-        if(card.artIndex>=0 && card.artIndex<(int)userArtwork.size()){
+        const auto accent=accents[(size_t)artworkPaletteIndexForTest(card.id)];
+        g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(hover?.20f:.08f),
+            bounds.getTopLeft(),Theme::plot,bounds.getBottomRight(),false));
+        g.fillRoundedRectangle(bounds,8.f);
+        const auto art=bounds.reduced(6.f).removeFromTop(bounds.getHeight()-49.f);
+        if(card.artIndex>=0 && card.artIndex<(int)userArtwork.size() && userArtwork[(size_t)card.artIndex].isValid()){
             juce::Graphics::ScopedSaveState saved(g);g.reduceClipRegion(art.toNearestInt());
-            g.drawImageWithin(userArtwork[(size_t)card.artIndex],214,y+5,56,46,juce::RectanglePlacement::fillDestination);
-        }else paintCover(g,art,card.id,accents[(size_t)artworkPaletteIndexForTest(card.id)]);
-        Theme::fittedText(g,card.label,{282,y+5,std::max(1,right-326),22},15.f,Theme::white,true,juce::Justification::centredLeft);
-        juce::String summary=juce::String(card.main)+" MAIN  /  "+juce::String(card.adlib)+" ADLIB";
-        if(card.other>0)summary+="  /  "+juce::String(card.other)+" UNASSIGNED";
-        Theme::fittedText(g,summary,{282,y+30,std::max(1,right-326),18},10.f,Theme::muted,false,juce::Justification::centredLeft);
-        const float x=(float)right-20.f,cy=(float)y+28.f;
-        g.setColour(hover?Theme::green:Theme::muted);
-        g.drawLine(x-4.f,cy-6.f,x+2.f,cy,1.5f);g.drawLine(x+2.f,cy,x-4.f,cy+6.f,1.5f);
+            g.drawImageWithin(userArtwork[(size_t)card.artIndex],(int)art.getX(),(int)art.getY(),
+                (int)art.getWidth(),(int)art.getHeight(),juce::RectanglePlacement::fillDestination);
+        }else paintCover(g,art,card.id,accent);
+        g.setGradientFill(juce::ColourGradient(Theme::plot.withAlpha(.06f),art.getCentreX(),art.getY(),
+            Theme::plot.withAlpha(.75f),art.getCentreX(),art.getBottom(),false));
+        g.fillRoundedRectangle(art,5.f);
+        const int total=card.main+card.adlib+card.other;
+        const auto badge=juce::Rectangle<float>(art.getRight()-50.f,art.getY()+6.f,44.f,21.f);
+        g.setColour(Theme::bg.withAlpha(.92f));g.fillRoundedRectangle(badge,5.f);
+        Theme::fittedText(g,juce::String(total),badge.toNearestInt(),12.f,Theme::white,true,juce::Justification::centred);
+        const auto x=(int)bounds.getX()+10,y=(int)bounds.getBottom()-43,w=(int)bounds.getWidth()-20;
+        Theme::fittedText(g,card.label,{x,y,w,22},16.f,Theme::white,true,juce::Justification::centredLeft);
+        juce::String summary=juce::String(card.main)+" MAIN  ·  "+juce::String(card.adlib)+" ADLIB";
+        if(card.other>0)summary+="  ·  "+juce::String(card.other)+" OTHER";
+        Theme::fittedText(g,summary,{x,y+23,w,15},10.5f,Theme::muted,false,juce::Justification::centredLeft);
+        g.setColour(focused||hover?Theme::green.withAlpha(.88f):Theme::stroke);
+        g.drawRoundedRectangle(bounds.reduced(.6f),8.f,focused?2.f:1.f);
     }
-    if(count>rows){
-        const float rail=(float)(rows*61-5),thumb=juce::jmax(30.f,rail*rows/(float)count);
+    if(count>capacity){
+        const float rail=(float)(getHeight()-151),thumb=juce::jmax(30.f,rail*capacity/(float)count);
         g.setColour(Theme::stroke);g.fillRoundedRectangle((float)getWidth()-12.f,110.f,3.f,rail,1.5f);
         g.setColour(Theme::green);g.fillRoundedRectangle((float)getWidth()-12.f,
-            110.f+(rail-thumb)*(float)start/(float)(count-rows),3.f,thumb,1.5f);
+            110.f+(rail-thumb)*(float)start/(float)(count-capacity),3.f,thumb,1.5f);
     }
-    Theme::fittedText(g,"SELECT A GROUP TO BROWSE  /  "+juce::String(count)+" GROUPS",
-        {207,getHeight()-27,std::max(1,getWidth()-227),18},10.f,Theme::muted);
+    Theme::fittedText(g,"SELECT A COLLECTION  /  "+juce::String(count)+" GROUPS",
+        {207,getHeight()-27,std::max(1,getWidth()-227),18},11.f,Theme::muted);
 }
 void PresetBrowser::loadArtists() {
     artistKeys.clear();artistNames.clear();
@@ -1146,7 +1169,7 @@ void PresetBrowser::toggleFavorite(int entry) {
             "Favorites not saved","Check the Skell Preset library folder permissions.");
         return;
     }
-    scroll=juce::jlimit(0,std::max(0,resultCount()-visibleRows()),scroll);
+    scroll=juce::jlimit(0,std::max(0,resultCount()-pageCapacity()),scroll);
     hoveredCard=-1;hoveredStar=-1;
     // Starred-first sorting and fav: search can also reorder row identities.
     keyboardCard=-1;
@@ -1420,6 +1443,8 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     refreshArtistChoices();
     const auto tiers=directoryCards();
     const bool tierDirectory=directoryMode()==DirectoryMode::tiers && tiers.size()==3 && tiers[0].main>=1 && tiers[0].adlib>=1;
+    const bool gridHit=resultAt(directoryCardBounds(0).getCentre())==0 &&
+        resultAt({directoryCardBounds(0).getRight()+2,directoryCardBounds(0).getY()+4})==-1;
     const bool enteredTier=activateDirectoryRow(0) && directoryMode()==DirectoryMode::artists;
     const auto artistCards=directoryCards();
     int row=-1;
@@ -1503,7 +1528,7 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     search.setText(oldQuery,juce::dontSendNotification);
     categoryCountsDirty=true;showDetails(oldDetails);
     return banks.size()==5 && approvedOnly && factorySubmenu && tierMatch && tierExcluded && typeExcluded && pairMatch && artistMain && artistAdlib && tierDirectory && enteredTier && artistDirectory &&
-        enteredArtist && tabsWork && returnedArtist && returnedTier && genreDirectory &&
+        enteredArtist && gridHit && tabsWork && returnedArtist && returnedTier && genreDirectory &&
         personalOnly && artistsOnly && favoritesOnly && personalPreserved &&
         artistPreserved && favoritePreserved && taggedVisible &&
         tagEditable && !filterDuplicate &&
@@ -1774,8 +1799,10 @@ void PresetBrowser::paint(juce::Graphics&g) {
     g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
     g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),10.f,1.2f);
     g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,67.f,3.f,23.f),1.5f);
-    Theme::text(g,detailsOpen?"EDIT DETAILS":"LIBRARY",
-                {30,73,154,20},12,Theme::white,true);
+    g.setColour(Theme::stroke.withAlpha(.7f));
+    g.drawVerticalLine(196,105.f,(float)getHeight()-15.f);
+    Theme::text(g,detailsOpen?"MANAGE LIBRARY":"LIBRARY",
+                {30,73,154,20},13.5f,Theme::white,true);
     const auto directory=directoryMode();
     const auto entries=directory==DirectoryMode::none?filtered():std::vector<int>{};
     const auto cards=directory==DirectoryMode::none?std::vector<DirectoryCard>{}:directoryCards();
@@ -1787,8 +1814,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
     if(bank==2 && artistFilter.getSelectedId()>1)location+=" / "+artistFilter.getText();
     if(bank==4 && genreFilter.getSelectedId()>1)location+=" / "+genreFilter.getText();
     const int visibleCount=directory==DirectoryMode::none?(int)entries.size():(int)cards.size();
-    Theme::fittedText(g,location+"  /  "+juce::String(visibleCount),
-        {207,73,std::max(0,getWidth()-(detailsOpen?387:directory==DirectoryMode::none?(hasDirectoryParent()?455:387):(hasDirectoryParent()?455:230))),20},11.f,Theme::white,true,juce::Justification::centredLeft);
+    Theme::fittedText(g,location+"  /  " +juce::String(visibleCount),
+        {207,73,std::max(0,getWidth()-(detailsOpen?387:directory==DirectoryMode::none?(hasDirectoryParent()?455:387):(hasDirectoryParent()?455:230))),20},13.f,Theme::white,true,juce::Justification::centredLeft);
     if(detailsOpen)
         Theme::text(g,"ESC TO RETURN",{getWidth()-175,75,151,20},
             10,Theme::muted,false,juce::Justification::centredRight);
@@ -2115,16 +2142,15 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
                 chooseBank(index);grabKeyboardFocus();return;
             }
     }
-    if(!e.mods.isPopupMenu() &&
-       presetCardHitForTest(detailsOpen,e.x,e.y,getWidth(),visibleRows())){
-        const int row=(e.y-110)/61;
+    const int hit=resultAt(e.getPosition());
+    if(!e.mods.isPopupMenu() && hit>=0){
         if(directoryMode()!=DirectoryMode::none){
-            grabKeyboardFocus();activateDirectoryRow(scroll+row);return;
+            grabKeyboardFocus();activateDirectoryRow(hit);return;
         }
         const auto entries=filtered();
-        if(row>=0&&row<visibleRows() && scroll+row<(int)entries.size()){
-            keyboardCard=scroll+row;grabKeyboardFocus();
-            const int entry=entries[(size_t)(scroll+row)];
+        if(hit<(int)entries.size()){
+            keyboardCard=hit;grabKeyboardFocus();
+            const int entry=entries[(size_t)hit];
             if(e.x>=getWidth()-77 && e.x<=getWidth()-38)
                 toggleFavorite(entry);
             else
@@ -2163,8 +2189,7 @@ void PresetBrowser::mouseMove(const juce::MouseEvent& e){
             for(int i=0;i<banks.size();++i)
                 if(bankBounds(i).contains(e.getPosition())){nextBank=i;break;}
     }
-    const int candidate=presetCardHitForTest(detailsOpen,e.x,e.y,getWidth(),visibleRows())
-        ? (e.y-110)/61+scroll : -1;
+    const int candidate=resultAt(e.getPosition());
     const bool directory=directoryMode()!=DirectoryMode::none;
     const bool onStar=!directory && e.x>=getWidth()-77 && e.x<=getWidth()-38;
     // Avoid filtering all the cards for every pixel of mouse travel.
@@ -2198,13 +2223,13 @@ void PresetBrowser::mouseExit(const juce::MouseEvent&){
 void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel){
     if(detailsOpen || e.x<197 || e.y<102 || e.y>getHeight()-48 ||
        !std::isfinite(wheel.deltaY) || wheel.deltaY==0.f)return;
-    const int maxScroll=std::max(0,resultCount()-visibleRows());
+    const int maxScroll=std::max(0,resultCount()-pageCapacity());
     // One row per traditional wheel tick, so categories do not jump past
     // results; trackpads use small accumulated deltas on the message thread.
     browserWheelCarry=juce::jlimit(-1.f,1.f,
         (browserWheelCarry*wheel.deltaY<0.f?0.f:browserWheelCarry)+wheel.deltaY);
     if(std::abs(browserWheelCarry)<.18f)return;
-    const int direction=browserWheelCarry<0.f?1:-1;
+    const int direction=(browserWheelCarry<0.f?1:-1)*(directoryMode()==DirectoryMode::none?1:directoryColumns());
     browserWheelCarry=0.f;
     const int next=juce::jlimit(0,maxScroll,scroll+direction);
     if(scroll!=next){
@@ -2256,7 +2281,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     if(code==juce::KeyPress::pageUpKey ||
        code==juce::KeyPress::pageDownKey){
         const int next=(keyboardCard<0?scroll:keyboardCard)+
-            (code==juce::KeyPress::pageUpKey?-visibleRows():visibleRows());
+            (code==juce::KeyPress::pageUpKey?-pageCapacity():pageCapacity());
         focusCard(next);
         return true;
     }
