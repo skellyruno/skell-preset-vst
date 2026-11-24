@@ -369,6 +369,9 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     for(auto& e:engines)e.prepare(rate);
     micFrontEnd.prepare(rate);
     micGate.prepare(rate);
+#if defined(SKELL_PRESET_EXPERIMENTAL_CLUB_GATE_FINISH)
+    clubGateFinish.prepare(rate);
+#endif
     micGateWet.reset(rate,.020);
     micGateWet.setCurrentAndTargetValue(rawMic.gateOn->load()>.5f?1.f:0.f);
     micFrontWet.reset(rate,.020);
@@ -618,6 +621,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 rawMic.gateHold->load(),rawMic.gateRelease->load(),
                 rawMic.gateHysteresis->load());
     micGateWet.setTargetValue(rawMic.gateOn->load()>.5f?1.f:0.f);
+#if defined(SKELL_PRESET_EXPERIMENTAL_CLUB_GATE_FINISH)
+    clubGateFinish.setThresholdDb(rawMic.gateThreshold->load()-11.4f);
+#endif
     micFrontWet.setTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     const bool delta=rawGlobal.delta->load()>.5f;
     const float macroTone=rawGlobal.macros[0]->load();
@@ -822,8 +828,14 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float inputGain=inputSmooth.getNextValue();
             const float preL=l*inputGain,preR=r*inputGain;
             const float gateWet=micGateWet.getNextValue();
-            const float gateGain=gateWet>1.e-6f
-                ? 1.f+(micGate.processGain(preL,preR)-1.f)*gateWet : 1.f;
+            float gateGain=1.f;
+            if(gateWet>1.e-6f) {
+                float processedGain=micGate.processGain(preL,preR);
+#if defined(SKELL_PRESET_EXPERIMENTAL_CLUB_GATE_FINISH)
+                processedGain*=clubGateFinish.processGain(preL*processedGain,preR*processedGain);
+#endif
+                gateGain=1.f+(processedGain-1.f)*gateWet;
+            }
             const float gatedL=preL*gateGain,gatedR=preR*gateGain;
             const float micWet=micFrontWet.getNextValue();
             float frontL=gatedL,frontR=gatedR;

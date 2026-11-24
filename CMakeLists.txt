@@ -4,6 +4,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(SKELL_PRESET_PORTABLE_ONLY "Build portable DSP and MATCH tests without JUCE" OFF)
+option(SKELL_PRESET_EXPERIMENTAL_CLUB_GATE_FINISH "TEST ONLY: causal Club Gate B finishing trial; not a production build" OFF)
 enable_testing()
 add_subdirectory(tests)
 if(SKELL_PRESET_PORTABLE_ONLY)
@@ -104,6 +105,10 @@ target_sources(SkellPreset PRIVATE
     Source/match/MatchCore.h)
 target_compile_definitions(SkellPreset PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+if(SKELL_PRESET_EXPERIMENTAL_CLUB_GATE_FINISH)
+    message(WARNING "EXPERIMENTAL Club Gate B finish enabled; do not distribute as stable")
+    target_compile_definitions(SkellPreset PRIVATE SKELL_PRESET_EXPERIMENTAL_CLUB_GATE_FINISH=1)
+endif()
 # JUCE's in-process VST3 host is enabled only for Windows builds. Other
 # targets retain an explicit unsupported result rather than a dummy processor.
 if(WIN32)

@@ -159,3 +159,8 @@ add_test(NAME SkellPresetStudioNativeDSPTest COMMAND SkellPresetStudioNativeDSPT
 add_executable(SkellPresetMicGateTest test_mic_gate.cpp)
 target_compile_features(SkellPresetMicGateTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetMicGateTest COMMAND SkellPresetMicGateTest)
+
+# Portable experimental Club Gate B finish; production path is unchanged.
+add_executable(SkellPresetClubGateFinishTest test_club_gate_finish.cpp)
+target_compile_features(SkellPresetClubGateFinishTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetClubGateFinishTest COMMAND SkellPresetClubGateFinishTest)

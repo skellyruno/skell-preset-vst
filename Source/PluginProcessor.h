@@ -13,6 +13,7 @@
 #include "chain/AlchemistMatchDSP.h"
 #include "chain/MicModelDSP.h"
 #include "chain/MicGateDSP.h"
+#include "chain/ClubGateFinish.h"
 #include "chain/SkelldizerDSP.h"
 #include "chain/SpectralPitchFormant.h"
 #include "chain/VoxRackFX.h"
@@ -206,6 +207,7 @@ private:
     } rawMic;
     skellpreset::dsp::MicModelTone micFrontEnd;
     skellpreset::dsp::MicNoiseGate micGate;
+    skellpreset::dsp::ClubGateFinish clubGateFinish; // Fixed layout across renderer and plugin targets.
     juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet,micGateWet;
     struct RawGlobal {
         std::atomic<float>* mode=nullptr;std::atomic<float>* input=nullptr;
