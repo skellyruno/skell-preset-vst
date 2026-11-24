@@ -1465,6 +1465,7 @@ public:
         if(count!=lastScopeSampleCount) {
             lastScopeSampleCount=count;
             lastScopeFrameTimeMs=juce::Time::getMillisecondCounter();
+            idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());
             idle.setAudioFresh(count>0);
             if(idle.isVisible())idle.repaint();
             // The former top LIVE status was removed; do not repaint the

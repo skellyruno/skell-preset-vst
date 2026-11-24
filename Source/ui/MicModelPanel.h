@@ -20,6 +20,29 @@ class SkellMicModelPanel final : public juce::Component {
             repaint();
         }
         void chooseSelectedForTest() {choose(selected);}
+        static int rowHitForTest(int x,int y,int width) noexcept {
+            // Painted rows are 26 high, with 2px inert gutters.
+            if(x<4 || x>=width-4 || y<3 || y>=3+4*28)return -1;
+            const int offset=y-3;
+            return offset%28<26?offset/28:-1;
+        }
+        static bool testHitTargetsForTest() noexcept {
+            for(int width:{160,190,270}) {
+                for(int row=0;row<4;++row) {
+                    const int y=3+28*row;
+                    if(rowHitForTest(10,y,width)!=row ||
+                       rowHitForTest(width-5,y+25,width)!=row ||
+                       rowHitForTest(10,y+26,width)!=-1 ||
+                       rowHitForTest(10,y+27,width)!=-1)
+                        return false;
+                }
+                if(rowHitForTest(1,10,width)!=-1 ||
+                   rowHitForTest(10,0,width)!=-1 ||
+                   rowHitForTest(10,116,width)!=-1)
+                    return false;
+            }
+            return true;
+        }
         void paint(juce::Graphics& g) override {
             Theme::panelBox(g,getLocalBounds().toFloat(),6.f);
             const juce::StringArray sources{"NEUTRAL","CONDENSER","DYNAMIC","RIBBON"};
@@ -28,24 +51,45 @@ class SkellMicModelPanel final : public juce::Component {
                 const auto rect=juce::Rectangle<float>(4.f,(float)y,
                                       (float)getWidth()-8.f,26.f);
                 g.setColour(i==selected?Theme::green.withAlpha(.21f):
+                            i==hovered?Theme::panelAlt.brighter(.18f):
                             (i%2?Theme::panelAlt:Theme::plot));
                 g.fillRoundedRectangle(rect,4.f);
-                if(i==selected) {
-                    g.setColour(Theme::green.withAlpha(.78f));
+                if(i==selected || i==hovered) {
+                    g.setColour(i==selected?Theme::green.withAlpha(.78f):
+                               Theme::muted.withAlpha(.64f));
                     g.drawRoundedRectangle(rect.reduced(.6f),4.f,1.f);
+                }
+                if(hasKeyboardFocus(false) && i==selected){
+                    g.setColour(Theme::white.withAlpha(.52f));
+                    g.drawRoundedRectangle(rect.reduced(2.f),3.f,1.f);
                 }
                 Theme::text(g,sources[i],{13,y+3,getWidth()-26,20},
                             12,i==selected?Theme::green:Theme::white,true);
             }
         }
+        void mouseMove(const juce::MouseEvent& event) override {
+            const int row=rowHitForTest(event.x,event.y,getWidth());
+            if(row!=hovered){hovered=row;repaint();}
+            setMouseCursor(juce::MouseCursor(row>=0?
+                juce::MouseCursor::PointingHandCursor:
+                juce::MouseCursor::NormalCursor));
+        }
+        void mouseExit(const juce::MouseEvent&) override {
+            if(hovered>=0){hovered=-1;repaint();}
+            setMouseCursor(juce::MouseCursor::NormalCursor);
+        }
         void mouseDown(const juce::MouseEvent& event) override {
-            const int row=(event.y-3)/28;
-            if(row>=0&&row<4&&event.y>=3)choose(row);
+            const int row=rowHitForTest(event.x,event.y,getWidth());
+            if(row>=0)choose(row);
         }
         bool keyPressed(const juce::KeyPress& key) override {
             if(key==juce::KeyPress::upKey){setSelected(selected-1);return true;}
             if(key==juce::KeyPress::downKey){setSelected(selected+1);return true;}
-            if(key==juce::KeyPress::returnKey){choose(selected);return true;}
+            if(key==juce::KeyPress::homeKey){setSelected(0);return true;}
+            if(key==juce::KeyPress::endKey){setSelected(3);return true;}
+            if(key==juce::KeyPress::returnKey || key==juce::KeyPress::spaceKey){
+                choose(selected);return true;
+            }
             if(key==juce::KeyPress::escapeKey){setVisible(false);return true;}
             return false;
         }
@@ -54,7 +98,7 @@ class SkellMicModelPanel final : public juce::Component {
             setSelected(index);setVisible(false);
             if(onChoose)onChoose(selected);
         }
-        int selected=0;
+        int selected=0,hovered=-1;
     };
 public:
     explicit SkellMicModelPanel(SkellPresetAudioProcessor& p) : processor(p) {
@@ -542,7 +586,7 @@ public:
         sourceMenu.setVisible(false);
         setPhysical("micPreInput",oldSource);
         refresh();
-        return changed&&opened&&selected;
+        return changed&&opened&&selected&&sourceMenu.testHitTargetsForTest();
     }
 private:
     void setPhysical(const juce::String& id,float v) {

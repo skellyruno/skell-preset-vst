@@ -20,7 +20,44 @@ public:
     void setAudioFresh(bool fresh) {
         if(audioFresh==fresh)return;
         audioFresh=fresh;
+        if(!fresh){inputMeter={};outputMeter={};}
         repaint();
+    }
+    struct MeterEnvelope {
+        float level=0.f;
+        float held=0.f;
+        int holdFrames=0;
+    };
+    static void followPeak(MeterEnvelope& meter,float peak) noexcept {
+        peak=std::isfinite(peak)?juce::jmax(0.f,peak):0.f;
+        // Immediate attack, 30 Hz UI-only release; the actual audio buffer
+        // and every host automation parameter remain untouched.
+        meter.level=peak>=meter.level?peak:
+            meter.level*.80f+peak*.20f;
+        if(peak>=meter.held){
+            meter.held=peak;
+            meter.holdFrames=24; // ~800ms peak-hold at 30Hz
+        }else if(meter.holdFrames>0){
+            --meter.holdFrames;
+        }else{
+            meter.held=juce::jmax(meter.level,meter.held*.956f);
+        }
+    }
+    void setMeasuredPeaks(float input,float output) noexcept {
+        followPeak(inputMeter,input);
+        followPeak(outputMeter,output);
+    }
+    static bool testMeterEnvelopeForTest() noexcept {
+        MeterEnvelope m;
+        followPeak(m,.8f);
+        if(std::abs(m.level-.8f)>.0001f || m.held<.8f ||
+           m.holdFrames!=24)return false;
+        followPeak(m,0.f);
+        if(!(m.level<.8f && m.level>.60f) ||
+           m.held<.8f || m.holdFrames!=23)return false;
+        for(int i=0;i<150;++i)followPeak(m,0.f);
+        return m.level<.001f && m.held<.005f &&
+            m.holdFrames==0;
     }
     bool isAudioFreshForTest() const noexcept {return audioFresh;}
 
@@ -30,7 +67,7 @@ public:
         return juce::jlimit(0.f,1.f,(db+60.f)/60.f);
     }
     static bool testTelemetryScaleForTest() noexcept {
-        return meterFraction(0.f)==0.f &&
+        return testMeterEnvelopeForTest() && meterFraction(0.f)==0.f &&
             meterFraction(-1.f)==0.f &&
             meterFraction(std::numeric_limits<float>::quiet_NaN())==0.f &&
             std::abs(meterFraction(.01f)-1.f/3.f)<.002f &&
@@ -97,12 +134,8 @@ public:
         const bool live=audioFresh && actualPeak>.0005f;
         const float activity=live?juce::jlimit(0.f,1.f,
             .48f*actualPeak+2.1f*rms):0.f;
-        const float metered=processor.getOutputPeak();
-        const float outputPeak=audioFresh && std::isfinite(metered)?
-            juce::jmax(0.f,metered):0.f;
-        const float inputSample=processor.getInputPeak();
-        const float inputPeak=audioFresh && std::isfinite(inputSample)?
-            juce::jmax(0.f,inputSample):0.f;
+        const float outputPeak=audioFresh?outputMeter.level:0.f;
+        const float inputPeak=audioFresh?inputMeter.level:0.f;
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
@@ -122,20 +155,43 @@ public:
         const float meterWidth=juce::jmin(119.f,(width-70.f)*.28f);
         // Leave an optical gap below the LIVE/dB header even at 70% scale.
         const float meterY=stageBounds.getY()+55.f;
-        const auto levelBar=[&](float x,float peak,juce::String label){
+        const auto levelBar=[&](float x,const MeterEnvelope& meter,
+                                const juce::String& label){
             const auto bar=juce::Rectangle<float>(x,meterY,meterWidth,4.f);
             g.setColour(Theme::stroke.withAlpha(.34f));
             g.fillRoundedRectangle(bar,2.f);
-            const float fraction=meterFraction(peak);
+            const float fraction=meterFraction(audioFresh?meter.level:0.f);
             if(fraction>0.f) {
-                g.setColour(peak>=1.f?Theme::red:accent.withAlpha(.78f));
+                g.setColour(meter.level>=1.f?Theme::red:accent.withAlpha(.78f));
                 g.fillRoundedRectangle(x,meterY,meterWidth*fraction,4.f,2.f);
             }
-            Theme::text(g,label,{juce::roundToInt(x),juce::roundToInt(meterY-15.f),
-                        juce::roundToInt(meterWidth),13},8.4f,Theme::muted,true);
+            // True peak-hold marker and quiet calibrated scale notches;
+            // 0 dB is at right edge, -60 dB at left edge.
+            for(const float position:{.25f,.5f,.75f}){
+                g.setColour(Theme::bg.withAlpha(.43f));
+                const float tick=x+meterWidth*position;
+                g.drawLine(tick,meterY,tick,meterY+4.f,.7f);
+            }
+            const float marker=meterFraction(audioFresh?meter.held:0.f);
+            if(marker>0.f){
+                const float mark=x+juce::jmin(meterWidth-1.f,meterWidth*marker);
+                g.setColour(meter.held>=1.f?Theme::red:Theme::white.withAlpha(.83f));
+                g.drawLine(mark,meterY-1.5f,mark,meterY+5.5f,1.15f);
+            }
+            juce::String title=label;
+            if(meterWidth>=95.f){
+                const float peak=audioFresh?meter.level:0.f;
+                const juce::String db=peak<1.e-5f?"-INF":
+                    juce::String(20.f*std::log10(peak),1);
+                title+="  "+db;
+            }
+            Theme::fittedText(g,title,
+                {juce::roundToInt(x),juce::roundToInt(meterY-15.f),
+                 juce::roundToInt(meterWidth),13},
+                 8.4f,Theme::muted,true);
         };
-        levelBar(stageBounds.getX()+14.f,inputPeak,"IN  /  PRE RACK");
-        levelBar(stageBounds.getRight()-meterWidth-14.f,outputPeak,"OUT  /  POST FX");
+        levelBar(stageBounds.getX()+14.f,inputMeter,"IN / PRE");
+        levelBar(stageBounds.getRight()-meterWidth-14.f,outputMeter,"OUT / POST");
         juce::Path backplate;
         backplate.startNewSubPath(centreX-130.f*stage.scale,stage.originY+30.f);
         backplate.lineTo(centreX-200.f*stage.scale,stage.scope.getY()-18.f);
@@ -507,4 +563,5 @@ public:
 private:
     SkellPresetAudioProcessor& processor;
     bool audioFresh=false;
+    MeterEnvelope inputMeter,outputMeter;
 };
