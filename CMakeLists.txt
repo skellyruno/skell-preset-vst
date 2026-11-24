@@ -14,7 +14,10 @@ FetchContent_Declare(SkellNativeMatchHeaders
     SOURCE_SUBDIR _native_match_headers_only)
 FetchContent_MakeAvailable(SkellNativeMatchHeaders)
 set(_gate_header "${skellnativematchheaders_SOURCE_DIR}/SkellCore/include/SkellCore/ClubGate.h")
-file(SHA256 "${_gate_header}" _gate_hash)
+# Normalize Git checkout line endings only; the canonical LF content is still hash-checked.
+file(READ "${_gate_header}" _gate_contents)
+string(REPLACE "\r\n" "\n" _gate_contents "${_gate_contents}")
+string(SHA256 _gate_hash "${_gate_contents}")
 if(NOT _gate_hash STREQUAL "ab4a278f479fd851daa130834b17b3c91fc7363f0f781b462fbcc38d09ebce79")
     message(FATAL_ERROR "Shared Club Gate source differs from pinned native matching implementation")
 endif()
