@@ -22,8 +22,9 @@ bool visibleBoneAdlib(int index) {
 // One shared geometry model for painting, click hit-testing and UI regression.
 // The three genres have a visible MANUAL heading and never overlap controls.
 juce::Rectangle<int> bankBounds(int index) noexcept {
-    // Reserve one indented 33px row beneath Main Vocals for ADLIBS.
-    return {17,109+(index==0?0:38+index*38),168,33};
+    // Visual order: Main, Adlib, Genres, Artists, My Presets, Favorites.
+    constexpr int visualRows[]{0,4,3,5,2};
+    return {17,109+38*visualRows[index],168,33};
 }
 juce::Rectangle<int> adlibsBounds() noexcept {return {17,147,168,33};}
 juce::String singlePreviewName(int entry) {
@@ -540,11 +541,12 @@ void PresetBrowser::chooseExport() {
             if(file==juce::File{})return;
             if(!file.hasFileExtension(".skellpreset"))file=file.withFileExtension(".skellpreset");
             const auto previousUser=safe->activeUserPreset;
-            juce::String previousArtist,previousGenre;
+            juce::String previousArtist,previousGenre,previousType,previousPair;
             for(int i=0;i<(int)safe->userPresets.size();++i)
                 if(safe->userPresets[(size_t)i]==previousUser) {
                     previousArtist=safe->artistForUser(i);
                     previousGenre=safe->genreForUser(i);
+                    previousType=safe->vocalType(i);previousPair=safe->pairForUser(i);
                     break;
                 }
             auto oldCover=safe->activeArtworkDestination();
@@ -565,6 +567,17 @@ void PresetBrowser::chooseExport() {
                             safe->setArtistForUser(i,previousArtist);
                         if(previousGenre.isNotEmpty())
                             safe->setGenreForUser(i,previousGenre);
+                        if(previousType.isNotEmpty() || previousPair.isNotEmpty()){
+                            const auto beforeKeys=safe->organizationKeys,beforeValues=safe->organizationValues;
+                            const auto key=safe->favoriteKey(-i-1);
+                            safe->setOrganizationValue("type:"+key,previousType);
+                            safe->setOrganizationValue("pair:"+key,previousPair);
+                            if(!safe->saveOrganization()){
+                                safe->organizationKeys=beforeKeys;safe->organizationValues=beforeValues;
+                                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                                    "Preset organization not copied","The sound was saved, but the organization labels could not be copied.");
+                            }
+                        }
                         break;
                     }
             }
@@ -575,7 +588,7 @@ void PresetBrowser::chooseExport() {
                 if(oldCover!=newCover)
                     oldCover.copyFileTo(newCover);
             }
-            safe->scanLibrary();
+            safe->scanLibrary();safe->refreshArtistChoices();
             safe->refreshArtwork();
             if(safe->onCoverChanged)safe->onCoverChanged();
             safe->repaint();
@@ -766,7 +779,7 @@ void PresetBrowser::loadOrganization(){
 }
 bool PresetBrowser::saveOrganization() const {
     const auto file=organizationFile();
-    if(organizationKeys.size()>4096 || file.getParentDirectory().createDirectory().failed())return false;
+    if(organizationKeys.size()>4096 || file.getSize()>1024*1024 || file.getParentDirectory().createDirectory().failed())return false;
     juce::StringArray rows;
     for(int i=0;i<organizationKeys.size();++i)
         rows.add(organizationKeys[i]+"\t"+organizationValues[i]);
@@ -1005,7 +1018,7 @@ bool PresetBrowser::testBrowserKeyboardForTest(){
     keyPressed(juce::KeyPress(juce::KeyPress::homeKey,unmodified,0));
     const bool home=keyboardCard==0 && scroll==0;
     keyPressed(juce::KeyPress(juce::KeyPress::leftKey,unmodified,0));
-    const bool left=bank==0;
+    const bool left=bank==2;
     keyPressed(juce::KeyPress(juce::KeyPress::rightKey,unmodified,0));
     const bool right=bank==1;
     userPresets.resize(oldCount);
@@ -1147,8 +1160,7 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     search.setText({},juce::dontSendNotification);
     genreFilter.setSelectedId(1,juce::dontSendNotification);
     const auto tagged=filtered();
-    // The factory Adlibs submenu is Bone-only, but the personal preset
-    // and its genre remain available in My Presets and Favorites.
+    // The only factory Adlib remains Digital Bones; personal Adlibs are also visible.
     const bool taggedVisible=std::find(tagged.begin(),tagged.end(),entry)!=tagged.end();
     setOrganizationValue("tier:__skell_artist_probe__","Underground");
     setOrganizationValue("type:"+key,"adlib");
@@ -1167,7 +1179,29 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     const bool typeExcluded=filtered().empty();
     typeFilter.setSelectedId(1,juce::dontSendNotification);
     bank=1;search.setText("pair:__skell_pair_probe__",juce::dontSendNotification);
-    const auto paired=filtered();const bool pairMatch=paired.size()==1 && paired[0]==entry;
+    const int mainIndex=(int)userPresets.size();
+    userPresets.push_back(juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("__skell_browser_main_pair_probe__.skellpreset"));
+    const int mainEntry=-mainIndex-1;const auto mainKey=favoriteKey(mainEntry);
+    artistKeys.add(mainKey);artistNames.add("__skell_artist_probe__");
+    setOrganizationValue("type:"+mainKey,"main");
+    setOrganizationValue("pair:"+mainKey,"__skell_pair_probe__");
+    const auto paired=filtered();
+    const bool pairMatch=paired.size()==2 &&
+        std::find(paired.begin(),paired.end(),entry)!=paired.end() &&
+        std::find(paired.begin(),paired.end(),mainEntry)!=paired.end();
+    bank=2;artistTierFilter.setSelectedId(2,juce::dontSendNotification);refreshArtistChoices();
+    for(int i=0;i<artistFilter.getNumItems();++i)
+        if(artistFilter.getItemText(i)=="__skell_artist_probe__")
+            artistFilter.setSelectedId(artistFilter.getItemId(i),juce::dontSendNotification);
+    typeFilter.setSelectedId(2,juce::dontSendNotification);
+    const auto mainPair=filtered();const bool artistMain=mainPair.size()==1 && mainPair[0]==mainEntry;
+    typeFilter.setSelectedId(3,juce::dontSendNotification);
+    const auto adlibPair=filtered();const bool artistAdlib=adlibPair.size()==1 && adlibPair[0]==entry;
+    userPresets.pop_back();artistKeys.remove(artistKeys.size()-1);artistNames.remove(artistNames.size()-1);
+    artistTierFilter.setSelectedId(1,juce::dontSendNotification);refreshArtistChoices();
+    artistFilter.setSelectedId(1,juce::dontSendNotification);
+    typeFilter.setSelectedId(1,juce::dontSendNotification);
     search.setText({},juce::dontSendNotification);
     mainAdlibs=false;bank=4;
     // The editable personal tag remains in Edit Details, but Adlibs
@@ -1223,7 +1257,7 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     bank=oldBank;mainAdlibs=oldMainAdlibs;scroll=oldScroll;
     search.setText(oldQuery,juce::dontSendNotification);
     categoryCountsDirty=true;
-    return banks.size()==5 && approvedOnly && factorySubmenu && tierMatch && tierExcluded && typeExcluded && pairMatch &&
+    return banks.size()==5 && approvedOnly && factorySubmenu && tierMatch && tierExcluded && typeExcluded && pairMatch && artistMain && artistAdlib &&
         personalOnly && artistsOnly && favoritesOnly && personalPreserved &&
         artistPreserved && favoritePreserved && taggedVisible &&
         tagEditable && !filterDuplicate &&
@@ -1261,7 +1295,7 @@ std::vector<int> PresetBrowser::filtered() const {
             if(found)list.push_back(i);
         }
     }
-    // A direct, indented ADLIBS section lives UNDER Main Vocals. Factory
+    // The separate ADLIB PRESETS section uses the same curated factory program. Factory
     // program indices remain exactly as released; no preset file changes.
     // Only Digital Bones is published in the curated Adlibs and Favorites
     // lists. Hidden historical factory stars remain on disk for compatibility.
@@ -1572,11 +1606,16 @@ void PresetBrowser::paint(juce::Graphics&g) {
                 :juce::String(skellpreset::factoryPresets[(size_t)entry].name)));
         const juce::String userArtist=custom?artistForUser(-entry-1):juce::String{};
         const juce::String userGenre=custom?genreForUser(-entry-1):juce::String{};
-        const juce::String itemBank=custom
+        juce::String itemBank=custom
             ?(userGenre.isNotEmpty()?userGenre.toUpperCase()+
                  (userArtist.isNotEmpty()?"  ·  "+userArtist:juce::String{})
                 :(userArtist.isNotEmpty()?"ARTIST: "+userArtist:juce::String("My Presets")))
             :juce::String(skellpreset::factoryPresets[(size_t)entry].bank);
+        if(custom){
+            const auto type=vocalType(-entry-1);
+            if(type=="main")itemBank="MAIN  /  "+itemBank;
+            if(type=="adlib")itemBank="ADLIB  /  "+itemBank;
+        }
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         // Layered smoked-metal row rather than the old flat tile. This
@@ -1899,9 +1938,13 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     if(detailsOpen)return false;
     const auto entries=filtered();
     if(code==juce::KeyPress::leftKey || code==juce::KeyPress::rightKey){
-        const int next=juce::jlimit(0,banks.size()-1,
-            bank+(code==juce::KeyPress::leftKey?-1:1));
-        chooseBank(next);
+        constexpr std::array<int,6> navigation{{0,-1,4,2,1,3}};
+        const int current=bank==0 && mainAdlibs?-1:bank;
+        const int position=(int)std::distance(navigation.begin(),
+            std::find(navigation.begin(),navigation.end(),current));
+        const int next=navigation[(size_t)juce::jlimit(0,5,
+            position+(code==juce::KeyPress::leftKey?-1:1))];
+        if(next<0)chooseAdlibs();else chooseBank(next);
         return true;
     }
     if(code==juce::KeyPress::upKey || code==juce::KeyPress::downKey){
