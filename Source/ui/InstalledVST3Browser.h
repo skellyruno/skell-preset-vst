@@ -4,6 +4,7 @@
 #include "../host/InstalledVST3Index.h"
 #include "Theme.h"
 #include <functional>
+#include <array>
 #include <vector>
 
 // Native Skell visual browser. The index reads only directories and bundle
@@ -76,6 +77,28 @@ public:
         load.setColour(juce::TextButton::textColourOffId,Theme::green);
         repaint();
     }
+    // Responsive 4-action footer: wide and 390px layouts share exact
+    // rectangles with the hit-target regression instead of overlapping.
+    static std::array<juce::Rectangle<int>,4> footerBoundsFor(int w,int h) {
+        if(w>=472)
+            return {{ {17,h-40,90,27}, {115,h-40,155,27},
+                      {w-193,h-40,77,27}, {w-108,h-40,91,27} }};
+        return {{ {17,h-40,75,27}, {100,h-40,125,27},
+                  {w-157,h-40,64,27}, {w-85,h-40,68,27} }};
+    }
+    static bool testFooterBoundsForTest() {
+        for(int w:{390,422,471,472,600,860}) {
+            const int h=240;
+            const auto bounds=juce::Rectangle<int>(0,0,w,h);
+            const auto footer=footerBoundsFor(w,h);
+            for(size_t i=0;i<footer.size();++i){
+                if(!bounds.contains(footer[i]))return false;
+                for(size_t j=i+1;j<footer.size();++j)
+                    if(footer[i].intersects(footer[j]))return false;
+            }
+        }
+        return true;
+    }
     bool testLayoutForTest() const {
         const auto bounds=getLocalBounds();
         const juce::Component* controls[]{&search,&list,&rescan,&chooseFile,&cancel,&load};
@@ -86,7 +109,12 @@ public:
                 if(controls[i]->getBounds().intersects(controls[j]->getBounds()))
                     return false;
         }
-        return testSelectedFileRowForTest();
+        const auto expected=footerBoundsFor(getWidth(),getHeight());
+        return rescan.getBounds()==expected[0] &&
+               chooseFile.getBounds()==expected[1] &&
+               cancel.getBounds()==expected[2] &&
+               load.getBounds()==expected[3] &&
+               testFooterBoundsForTest() && testSelectedFileRowForTest();
     }
     static bool testSelectedFileRowForTest() {
         // Synthetic names only: no VST3 is instantiated or scanned.
@@ -105,10 +133,11 @@ public:
         const auto w=getWidth(),h=getHeight();
         search.setBounds(17,54,w-34,35);
         list.setBounds(17,112,w-34,h-165);
-        rescan.setBounds(17,h-40,90,27);
-        chooseFile.setBounds(115,h-40,155,27);
-        cancel.setBounds(w-193,h-40,77,27);
-        load.setBounds(w-108,h-40,91,27);
+        const auto footer=footerBoundsFor(w,h);
+        rescan.setBounds(footer[0]);
+        chooseFile.setBounds(footer[1]);
+        cancel.setBounds(footer[2]);
+        load.setBounds(footer[3]);
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
@@ -204,8 +233,10 @@ private:
             g.setColour(Theme::green.withAlpha(.65f));
             g.drawRoundedRectangle({3.f,2.f,(float)width-6.f,(float)height-4.f},4.f,1.f);
         }
-        Theme::text(g,item.name,{12,2,width-24,23},13,selected?Theme::green:Theme::white,true);
-        Theme::text(g,item.file.getFullPathName(),{13,24,width-27,16},9,Theme::muted);
+        Theme::fittedText(g,item.name,{12,2,width-24,23},13.f,
+                          selected?Theme::green:Theme::white,true);
+        Theme::fittedText(g,item.file.getFullPathName(),{13,24,width-27,16},
+                          9.f,Theme::muted);
     }
     void listBoxItemDoubleClicked(int row,const juce::MouseEvent&) override {
         if(row>=0 && row<(int)visible.size())loadSelected(row);

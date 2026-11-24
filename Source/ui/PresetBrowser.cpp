@@ -811,8 +811,11 @@ bool PresetBrowser::testBrowserKeyboardForTest(){
         userPresets.push_back(juce::File::getSpecialLocation(juce::File::tempDirectory)
             .getChildFile("__skell_keynav_probe_"+juce::String(i)+".skellpreset"));
     const bool visible=filtered().size()==12;
-    focusCard(0);
+    keyboardCard=-1; // first Down must target the FIRST row, not skip it
     const auto unmodified=juce::ModifierKeys();
+    keyPressed(juce::KeyPress(juce::KeyPress::downKey,unmodified,0));
+    const bool firstDown=keyboardCard==0 && scroll==0;
+    focusCard(0);
     keyPressed(juce::KeyPress(juce::KeyPress::downKey,unmodified,0));
     const bool down=keyboardCard==1 && scroll==0;
     keyPressed(juce::KeyPress(juce::KeyPress::endKey,unmodified,0));
@@ -839,7 +842,7 @@ bool PresetBrowser::testBrowserKeyboardForTest(){
             genreFilter.setSelectedId(genreFilter.getItemId(i),juce::dontSendNotification);
     showDetails(oldDetails);
     repaint();
-    return visible && down && end && pageUp && home && left && right;
+    return visible && firstDown && down && end && pageUp && home && left && right;
 }
 bool PresetBrowser::testBrowserLayoutForTest() {
     const bool oldDetails=detailsOpen;
@@ -1669,7 +1672,14 @@ void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWh
     const int direction=browserWheelCarry<0.f?1:-1;
     browserWheelCarry=0.f;
     const int next=juce::jlimit(0,maxScroll,scroll+direction);
-    if(scroll!=next){scroll=next;hoveredCard=-1;repaint();}
+    if(scroll!=next){
+        scroll=next;hoveredCard=-1;hoveredStar=-1;
+        // Mouse scrolling invalidates the old keyboard row, which may now
+        // be outside the six displayed cards. Enter then auditions the
+        // FIRST VISIBLE result rather than an off-screen preset.
+        keyboardCard=-1;
+        repaint();
+    }
 }
 bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     if(key==juce::KeyPress::escapeKey){
@@ -1692,7 +1702,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
         return true;
     }
     if(code==juce::KeyPress::upKey || code==juce::KeyPress::downKey){
-        focusCard((keyboardCard<0?0:keyboardCard)+
+        focusCard(keyboardCard<0?0:keyboardCard+
             (code==juce::KeyPress::upKey?-1:1));
         return true;
     }
@@ -1711,9 +1721,8 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     }
     if(code==juce::KeyPress::returnKey){
         if(entries.empty())return true;
-        const int index=juce::jlimit(0,(int)entries.size()-1,
-            keyboardCard<0?0:keyboardCard);
-        auditionEntry(entries[(size_t)index]);
+        const int index=auditionTargetForTest(keyboardCard,scroll,(int)entries.size());
+        if(index>=0)auditionEntry(entries[(size_t)index]);
         return true;
     }
     if(code==juce::KeyPress::spaceKey){
