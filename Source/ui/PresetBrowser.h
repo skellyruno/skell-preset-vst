@@ -62,7 +62,7 @@ private:
     juce::TextEditor search,artistEditor,categoryEditor;
     juce::ComboBox genrePicker,genreFilter,sortPicker,artistTierFilter,artistFilter,typeFilter,tierEditor,typeEditor;
     juce::TextEditor pairEditor;
-    juce::TextButton metadataButton{"SAVE ORGANIZATION"},relatedButton{"MATCHING PRESETS"};
+    juce::TextButton metadataButton{"SAVE ORGANIZATION"},relatedButton{"MATCHING PRESETS"},directoryBack{"BACK"};
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
         artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
         genreButton{"TAG"},detailsButton{"EDIT DETAILS"},
@@ -82,7 +82,7 @@ private:
     bool categoryCountsDirty=true;
     void refreshCategoryCounts();
     bool detailsOpen=false;
-    bool mainAdlibs=false; // subcategory nested under Main Vocals, not a bank/dropdown
+    bool mainAdlibs=false; // dedicated top-level Adlib Presets destination
     int adlibsCount=0; // cached on message thread with other category counts
     void showDetails(bool open);
     void chooseBank(int index);
@@ -120,6 +120,15 @@ private:
     void refreshGenreChoices();
     void refreshArtistChoices();
     void resetResults();
+    struct DirectoryCard {juce::String label;int id=0,main=0,adlib=0,other=0,artIndex=-1;};
+    enum class DirectoryMode { none,genres,tiers,artists };
+    DirectoryMode directoryMode() const;
+    std::vector<DirectoryCard> directoryCards() const;
+    int resultCount() const;
+    bool activateDirectoryRow(int index);
+    bool goBackDirectory();
+    bool hasDirectoryParent() const;
+    void paintDirectory(juce::Graphics&,const std::vector<DirectoryCard>&);
     juce::StringArray organizationKeys,organizationValues;
     juce::File organizationFile() const;
     juce::String organizationValue(const juce::String& key) const;
