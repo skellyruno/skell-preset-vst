@@ -13,7 +13,8 @@ bool isPagedEQ(int type) noexcept {
 enum class ControlFace { eqPairs, dynamicsChannel, rotaryBank, vocalChannel };
 ControlFace controlFace(int type) noexcept {
     using P=SkellPresetAudioProcessor;
-    if(isPagedEQ(type) || type==P::EQ)return ControlFace::eqPairs;
+    if(isPagedEQ(type) || type==P::EQ || type==P::AdlibFilter || type==P::Radio || type==P::MicModelFX)
+        return ControlFace::eqPairs;
     const auto family=std::string_view(skellpreset::registry::at(type).category);
     if(family=="Dynamics")return ControlFace::dynamicsChannel;
     if(family=="Vocal")return ControlFace::vocalChannel;
@@ -23,16 +24,20 @@ bool rotaryControl(int type,int index) noexcept {
     const auto face=controlFace(type);
     // Dynamics: threshold/frequency and ratio/level are precision faders;
     // timing/amount knobs use rotary motion. Vocal: four matching knobs.
+    if(type==SkellPresetAudioProcessor::ThreeBandDynamics)return true; // three bands and timing
+    if(type==SkellPresetAudioProcessor::SerialDynamicsFX)return true; // FET/Opto mix controls
     return face==ControlFace::rotaryBank || face==ControlFace::vocalChannel ||
         (face==ControlFace::dynamicsChannel && index>=2);
 }
-juce::Rectangle<int> parameterCardBounds(int type,int index) noexcept {
+juce::Rectangle<int> parameterCardBounds(int type,int index,bool compactLimiter=false) noexcept {
+    if(compactLimiter && type==SkellPresetAudioProcessor::StudioLimiterFX && index<2)
+        return {33+index*423,401,412,120};
     if(controlFace(type)==ControlFace::eqPairs)
         return {33+(index%2)*423,401+(index/2)*61,412,55};
     return {33+index*211,401,202,120};
 }
-juce::Rectangle<int> parameterControlBounds(int type,int index) noexcept {
-    const auto card=parameterCardBounds(type,index);
+juce::Rectangle<int> parameterControlBounds(int type,int index,bool compactLimiter=false) noexcept {
+    const auto card=parameterCardBounds(type,index,compactLimiter);
     if(controlFace(type)==ControlFace::eqPairs)
         return {card.getX()+126,card.getY()+8,card.getWidth()-137,38};
     if(rotaryControl(type,index))
@@ -1163,6 +1168,7 @@ void SlotEditor::updateLimiterCompactVisibility() {
     knobs[3].setVisible(limiterDetailsVisible);
     studioGateFloor.setVisible(limiterDetailsVisible);
     limiterMore.setButtonText(limiterDetailsVisible?"LESS":"MORE");
+    layoutParameterControls(SkellPresetAudioProcessor::StudioLimiterFX);
 }
 void SlotEditor::showLimiterPage(int page) {
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::StudioLimiterFX)return;
@@ -1838,7 +1844,7 @@ void SlotEditor::layoutParameterControls(int type){
         if(control.getTextBoxPosition()!=textPosition ||
            control.getTextBoxWidth()!=(paired?112:132) || control.getTextBoxHeight()!=26)
             control.setTextBoxStyle(textPosition,false,paired?112:132,26);
-        control.setBounds(parameterControlBounds(type,k));
+        control.setBounds(parameterControlBounds(type,k,!limiterDetailsVisible));
     }
 }
 bool SlotEditor::testPopupLayoutsForTest() const {
@@ -3706,7 +3712,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         const bool motion=family.equalsIgnoreCase("Motion");
         for(int i=0;i<4;++i) {
             if(!knobs[(size_t)i].isVisible())continue;
-            const auto card=parameterCardBounds(type,i).toFloat();
+            const auto card=parameterCardBounds(type,i,!limiterDetailsVisible).toFloat();
             const bool paired=controlFace(type)==ControlFace::eqPairs;
             const auto tint=dynamics?Theme::amber:space?Theme::blue:
                 motion?Theme::pink:familyAccent;
@@ -4280,7 +4286,8 @@ bool SlotEditor::testIntegratedEffectLayout() const {
     for(int i=0;i<4;++i) {
         const auto r=knobs[(size_t)i].getBounds();
         const int type=processor.slotType(slot);
-        const auto card=parameterCardBounds(type,i);
+        const bool compact=type==SkellPresetAudioProcessor::StudioLimiterFX && !limiterDetailsVisible;
+        const auto card=parameterCardBounds(type,i,compact);
         if(!getLocalBounds().contains(r) || !getLocalBounds().contains(card) ||
            !card.contains(r) || r.getY()<405 || r.getBottom()>521 ||
            r.intersects(slotPower.getBounds()) ||
@@ -4288,9 +4295,13 @@ bool SlotEditor::testIntegratedEffectLayout() const {
            knobs[(size_t)i].getSliderStyle()!=(rotaryControl(type,i)?
                juce::Slider::RotaryHorizontalVerticalDrag:juce::Slider::LinearHorizontal))
             return false;
-        for(int j=i+1;j<4;++j)
+        if(compact && i<2 && card.getWidth()<400)return false;
+        for(int j=i+1;j<4;++j){
+            // Hidden limiter parameters retain attachments but occupy no visible space.
+            if(compact && j>=2)continue;
             if(r.intersects(knobs[(size_t)j].getBounds()) ||
-               card.intersects(parameterCardBounds(type,j)))return false;
+               card.intersects(parameterCardBounds(type,j,compact)))return false;
+        }
     }
     return true;
 }

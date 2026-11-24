@@ -202,7 +202,9 @@ public:
         input.updateText();output.updateText();mix.updateText();
         for(auto& value:masterValues){
             value.setJustificationType(juce::Justification::centred);
-            value.setFont(juce::Font(juce::FontOptions(14.f,juce::Font::bold)));
+            value.setFont(Theme::font(14.f,true));
+            value.setBorderSize(juce::BorderSize<int>(0));
+            value.setMinimumHorizontalScale(.75f);
             value.setColour(juce::Label::textColourId,Theme::white);
             value.setInterceptsMouseClicks(false,false);
             addAndMakeVisible(value);
@@ -556,7 +558,8 @@ public:
             const auto& value=masterValues[i];
             if(value.isVisible()==advanced || !canvasBounds.contains(value.getBounds()) ||
                value.getBounds().intersects(masterSliders[i]->getBounds()) ||
-               value.getText()!=masterSliders[i]->getTextFromValue(masterSliders[i]->getValue()))
+               !masterSliders[i]->textFromValueFunction ||
+               value.getText()!=masterSliders[i]->textFromValueFunction(masterSliders[i]->getValue()))
                 issues.add("Master live numeric readout is clipped, stale, or in the wrong workspace");
         }
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
@@ -742,10 +745,16 @@ public:
         const bool recalled=input.isVisible() && mix.isVisible() && output.isVisible() &&
             correctState() && std::abs(input.getValue()-3.0)<.05 &&
             std::abs(mix.getValue()-.67)<.02 && std::abs(output.getValue()+2.0)<.05;
+        // Also test host-notified APVTS values at the extreme ends; this is
+        // independent of changing a slider through the UI.
+        setParam(processor,"input",24.f);setParam(processor,"mix",0.f);setParam(processor,"output",-24.f);
+        syncMasterReadouts();
+        const bool hostReadouts=masterValues[0].getText()=="+24.0 dB" &&
+            masterValues[1].getText()=="0%" && masterValues[2].getText()=="-24.0 dB";
         input.setValue(oldMasters[0],juce::sendNotificationSync);
         mix.setValue(oldMasters[1],juce::sendNotificationSync);
         output.setValue(oldMasters[2],juce::sendNotificationSync);
-        if(!simpleShown || !automated || !hiddenInAdvanced || !recalled)
+        if(!simpleShown || !automated || !hiddenInAdvanced || !recalled || !hostReadouts)
             issues.add("Simple Input/Mix/Output visibility or automation recall regressed");
         for(int i=0;i<4;++i) {
             if(!macro[(size_t)i].isVisible()

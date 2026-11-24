@@ -977,13 +977,18 @@ std::vector<PresetBrowser::DirectoryCard> PresetBrowser::directoryCards() const 
 int PresetBrowser::resultCount() const {
     return directoryMode()==DirectoryMode::none?(int)filtered().size():(int)directoryCards().size();
 }
+int PresetBrowser::directoryColumns() const {
+    return directoryMode()==DirectoryMode::tiers?2:getWidth()>=850?3:2;
+}
+int PresetBrowser::directoryRows() const {return directoryMode()==DirectoryMode::tiers?2:3;}
 int PresetBrowser::pageCapacity() const {
-    return directoryMode()==DirectoryMode::none?visibleRows():directoryColumns()*3;
+    return directoryMode()==DirectoryMode::none?visibleRows():directoryColumns()*directoryRows();
 }
 juce::Rectangle<int> PresetBrowser::directoryCardBounds(int position) const {
     const int cols=directoryColumns(),gap=10;
     const int width=(getWidth()-224-(cols-1)*gap)/cols;
-    const int height=(getHeight()-151-2*gap)/3;
+    const int rows=directoryRows();
+    const int height=(getHeight()-151-(rows-1)*gap)/rows;
     return {207+(position%cols)*(width+gap),110+(position/cols)*(height+gap),width,height};
 }
 int PresetBrowser::resultAt(juce::Point<int> p) const {
@@ -1441,10 +1446,14 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     search.setText({},juce::dontSendNotification);typeFilter.setSelectedId(1,juce::dontSendNotification);
     artistFilter.setSelectedId(1,juce::dontSendNotification);artistTierFilter.setSelectedId(1,juce::dontSendNotification);
     refreshArtistChoices();
+    scroll=0;keyboardCard=-1;
     const auto tiers=directoryCards();
     const bool tierDirectory=directoryMode()==DirectoryMode::tiers && tiers.size()==3 && tiers[0].main>=1 && tiers[0].adlib>=1;
     const bool gridHit=resultAt(directoryCardBounds(0).getCentre())==0 &&
         resultAt({directoryCardBounds(0).getRight()+2,directoryCardBounds(0).getY()+4})==-1;
+    focusCard(0);
+    keyPressed(juce::KeyPress(juce::KeyPress::rightKey,juce::ModifierKeys(),0));
+    const bool gridKeyboard=keyboardCard==1 && directoryMode()==DirectoryMode::tiers;
     const bool enteredTier=activateDirectoryRow(0) && directoryMode()==DirectoryMode::artists;
     const auto artistCards=directoryCards();
     int row=-1;
@@ -1528,7 +1537,7 @@ bool PresetBrowser::testMainVocalsPresetFilterForTest() {
     search.setText(oldQuery,juce::dontSendNotification);
     categoryCountsDirty=true;showDetails(oldDetails);
     return banks.size()==5 && approvedOnly && factorySubmenu && tierMatch && tierExcluded && typeExcluded && pairMatch && artistMain && artistAdlib && tierDirectory && enteredTier && artistDirectory &&
-        enteredArtist && gridHit && tabsWork && returnedArtist && returnedTier && genreDirectory &&
+        enteredArtist && gridHit && gridKeyboard && tabsWork && returnedArtist && returnedTier && genreDirectory &&
         personalOnly && artistsOnly && favoritesOnly && personalPreserved &&
         artistPreserved && favoritePreserved && taggedVisible &&
         tagEditable && !filterDuplicate &&
@@ -1912,37 +1921,24 @@ void PresetBrowser::paint(juce::Graphics&g) {
         g.drawLine(rect.getX()+84.f,rect.getY()+1.6f,
                    rect.getRight()-13.f,rect.getY()+1.6f,.7f);
         const juce::Image tileArt=custom
-            ?userArtwork[(size_t)(-entry-1)]
+            ?((size_t)(-entry-1)<userArtwork.size()?userArtwork[(size_t)(-entry-1)]:juce::Image{})
             :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
-        if(tileArt.isValid()) {
-            juce::Graphics::ScopedSaveState cardArtwork(g);
-            g.reduceClipRegion(rect.toNearestInt());
-            g.setOpacity(.30f);
-            g.drawImageWithin(tileArt,(int)rect.getX(),(int)rect.getY(),
-                (int)rect.getWidth(),(int)rect.getHeight(),
-                juce::RectanglePlacement::fillDestination);
-        }
+        // Preserve text contrast: artwork lives in its own thumbnail, not behind the title.
         const std::array<juce::Colour,4> accents{{Theme::green,Theme::amber,Theme::pink,Theme::white}};
         const int seed=custom?-entry:entry+1;
         const auto accent=accents[(size_t)artworkPaletteIndexForTest(seed)];
-        const auto cover=juce::Rectangle<float>(rect.getRight()-161.f,(float)y+5.f,145.f,46.f);
-        const juce::Image coverArt=custom
-            ?userArtwork[(size_t)(-entry-1)]
-            :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
+        const auto cover=juce::Rectangle<float>(rect.getX()+8.f,(float)y+5.f,65.f,46.f);
+        const auto& coverArt=tileArt;
         if(coverArt.isValid()) {
             // Full-bleed card artwork; graphics clipping keeps rounded card edges.
             juce::Graphics::ScopedSaveState artworkSave(g);
             g.reduceClipRegion(cover.toNearestInt());
             g.drawImageWithin(coverArt,(int)cover.getX(),(int)cover.getY(),
                               (int)cover.getWidth(),(int)cover.getHeight(),
-                              juce::RectanglePlacement::centred);
+                              juce::RectanglePlacement::fillDestination);
         } else paintCover(g,cover,seed,accent);
-        // Fade artwork into the text side; preserve the independent star
-        // action and a dark contrast floor behind names.
-        g.setGradientFill(juce::ColourGradient(
-            Theme::panel.withAlpha(.94f),cover.getX(),cover.getCentreY(),
-            Theme::panel.withAlpha(.08f),cover.getRight(),cover.getCentreY(),false));
-        g.fillRoundedRectangle(cover,5.f);
+        g.setColour(Theme::stroke.withAlpha(.8f));
+        g.drawRoundedRectangle(cover.reduced(.5f),5.f,1.f);
         g.setColour(Theme::bg.withAlpha(.84f));
         g.fillRoundedRectangle(rect.getRight()-76.f,rect.getY()+8.f,52.f,40.f,5.f);
         const bool loaded=custom
@@ -1966,10 +1962,10 @@ void PresetBrowser::paint(juce::Graphics&g) {
             g.fillRoundedRectangle(rect.getX(),rect.getY()+9.f,2.5f,
                                    rect.getHeight()-18.f,1.25f);
         }
-        Theme::fittedText(g,itemName,{222,y+7,juce::jmax(1,getWidth()-430),24},15.f,Theme::white,true,
+        Theme::fittedText(g,itemName,{292,y+5,juce::jmax(1,getWidth()-376),27},17.f,Theme::white,true,
                           juce::Justification::centredLeft);
         const auto bankColour=custom?Theme::green:Theme::blue;
-        Theme::fittedText(g,itemBank,{222,y+33,juce::jmax(1,getWidth()-430),16},11.f,bankColour,true,
+        Theme::fittedText(g,itemBank,{292,y+33,juce::jmax(1,getWidth()-376),17},11.5f,bankColour,true,
                           juce::Justification::centredLeft);
         // Independent star target: selecting a favorite must not audition the
         // preset or alter any audio/host automation IDs.
@@ -2003,7 +1999,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         // content, duplicate presets or heavy image loads in paint().
         const int entry=entries[0];
         const bool custom=entry<0;
-        const auto art=custom?userArtwork[(size_t)(-entry-1)]
+        const auto art=custom?((size_t)(-entry-1)<userArtwork.size()?userArtwork[(size_t)(-entry-1)]:juce::Image{})
             :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
         const auto frame=juce::Rectangle<float>(229.f,277.f,177.f,167.f);
         g.setColour(Theme::bg);g.fillRoundedRectangle(frame,8.f);
@@ -2249,7 +2245,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     }
     const bool command=key.getModifiers().isCommandDown();
     const int code=key.getKeyCode();
-    if(command && (code=='F' || code=='f')){
+    if(!detailsOpen && !chooserActive && command && (code=='F' || code=='f')){
         search.grabKeyboardFocus();
         search.selectAll();
         return true;
@@ -2258,6 +2254,9 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     const bool directory=directoryMode()!=DirectoryMode::none;
     const auto entries=directory?std::vector<int>{}:filtered();
     if(code==juce::KeyPress::leftKey || code==juce::KeyPress::rightKey){
+        if(directory && keyboardCard>=0 && !key.getModifiers().isAltDown()){
+            focusCard(keyboardCard+(code==juce::KeyPress::leftKey?-1:1));return true;
+        }
         constexpr std::array<int,6> navigation{{0,-1,4,2,1,3}};
         const int current=bank==0 && mainAdlibs?-1:bank;
         const int position=(int)std::distance(navigation.begin(),
@@ -2269,7 +2268,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
     }
     if(code==juce::KeyPress::upKey || code==juce::KeyPress::downKey){
         focusCard(keyboardCard<0?scroll:keyboardCard+
-            (code==juce::KeyPress::upKey?-1:1));
+            (code==juce::KeyPress::upKey?-1:1)*(directory?directoryColumns():1));
         return true;
     }
     if(code==juce::KeyPress::homeKey){
