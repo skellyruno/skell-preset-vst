@@ -197,7 +197,16 @@ private:
     void scanLibrary();
     // One rescan + choice refresh after any library mutation. Callers must not
     // scan again themselves: the old path scanned three times per save.
-    void refreshLibraryAfterChange();
+    void requestLibraryScan();
+    bool libraryScanInFlight=false,libraryScanQueued=false;
+    std::uint64_t libraryRevision=0;
+    void requestBackdrop();
+    bool backdropInFlight=false,backdropQueued=false;
+    std::uint64_t backdropRevision=0;
+    juce::File backdropPreset;
+    void startPresetRead(const juce::File& file,bool external);
+    bool loadInFlight=false;
+    bool coverWriteInFlight=false;
     // Thumbnail decode cache keyed by source path + modification stamp, so a
     // rescan only decodes covers that actually changed on disk.
     struct CoverCacheEntry {
@@ -228,7 +237,6 @@ private:
     juce::File backdropSource;
     juce::int64 backdropModified=-1;
     bool backdropLoaded=false;
-    bool copyToLibrary(const juce::File& file);
     void loadFactoryFromBrowser(int index);
     void loadUserFromBrowser(int index);
     void auditionEntry(int entry);

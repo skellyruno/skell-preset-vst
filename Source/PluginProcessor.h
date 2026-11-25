@@ -160,6 +160,8 @@ public:
                              [(size_t)juce::jlimit(0,4,chain)].load(std::memory_order_relaxed);
     }
 private:
+    friend class PresetBrowser;
+    juce::Result applyValidatedPresetDocument(const skellpreset::package::Document& doc);
     struct EngineSlot {
         skellpreset::dsp::SmoothedBiquad peak, highpass;
         skellpreset::dsp::Compressor comp;

@@ -10,7 +10,7 @@
 
 namespace {
 // Serialize library copy/name selection across instances in this process.
-// The save worker may wait; UI import must never wait on that worker.
+// Workers may wait; the message thread never takes this mutex.
 std::mutex libraryWriteMutex;
 // Direct Main Vocals > Adlibs submenu: no fifth top-level library bank.
  // Historical factory IDs and personal genre tags remain unchanged.
@@ -212,7 +212,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     genreButton.setTooltip("Add this genre to the selected preset. Multiple tags are allowed. Choose Uncategorized to clear all genre assignments.");
     addCategoryButton.setTooltip("Add a new category to the user library; no audio or preset ZIP changes.");
     genreButton.setEnabled(false);
-    scanLibrary();
+    requestLibraryScan();
     loadFavorites();
     loadArtists();
     loadCustomCategories();
@@ -389,10 +389,33 @@ void PresetBrowser::applyLibrarySnapshot(LibrarySnapshot snapshot) {
 void PresetBrowser::scanLibrary() {
     applyLibrarySnapshot(collectLibrary(libraryDirectory(),coverCache));
 }
-void PresetBrowser::refreshLibraryAfterChange() {
-    scanLibrary();
-    refreshArtistChoices();
-    refreshArtwork();
+void PresetBrowser::requestLibraryScan() {
+    if(preferencesReadOnly)return;
+    if(saveInFlight || loadInFlight || coverWriteInFlight || libraryScanInFlight) {
+        libraryScanQueued=true;
+        return;
+    }
+    libraryScanQueued=false;
+    libraryScanInFlight=true;
+    const auto revision=libraryRevision;
+    const auto folder=libraryDirectory();
+    const auto previous=coverCache;
+    juce::Component::SafePointer<PresetBrowser> safe(this);
+    juce::Thread::launch([safe,revision,folder,previous] {
+        auto snapshot=collectLibrary(folder,previous);
+        juce::MessageManager::callAsync([safe,revision,snapshot=std::move(snapshot)]() mutable {
+            if(!safe)return;
+            safe->libraryScanInFlight=false;
+            if(!safe->preferencesReadOnly && revision==safe->libraryRevision) {
+                safe->applyLibrarySnapshot(std::move(snapshot));
+                safe->refreshArtistChoices();
+                safe->refreshArtwork(false);
+                safe->resetResults();
+                if(safe->onCoverChanged)safe->onCoverChanged();
+            }
+            if(safe->libraryScanQueued)safe->requestLibraryScan();
+        });
+    });
 }
 
 juce::File PresetBrowser::activeArtworkDestination() const {
@@ -431,17 +454,10 @@ juce::File PresetBrowser::copyToLibraryFile(const juce::File& source,const juce:
         originalCover.copyFileTo(dest.withFileExtension(originalCover.getFileExtension()));
     return dest;
 }
-bool PresetBrowser::copyToLibrary(const juce::File& source) {
-    std::unique_lock<std::mutex> lock(libraryWriteMutex,std::try_to_lock);
-    if(!lock.owns_lock())return false;
-    const auto copied=copyToLibraryFile(source,libraryDirectory());
-    if(copied==juce::File{})return false;
-    ++selectionRevision;
-    activeUserPreset=copied;
-    return true;
-}
 void PresetBrowser::open() {
-    if(!saveInFlight)scanLibrary();
+    // The local renderer's synthetic fixtures are intentionally synchronous.
+    // Real editor opening keeps its previous snapshot until the worker returns.
+    if(preferencesReadOnly)scanLibrary();else requestLibraryScan();
     loadFavorites();loadArtists();
     loadCustomCategories();refreshGenreChoices();loadGenres();loadOrganization();
     artistTierFilter.setSelectedId(1,juce::dontSendNotification);
@@ -632,7 +648,7 @@ void PresetBrowser::setChooserActive(bool active) {
     refreshOrganizationEditor();
 }
 void PresetBrowser::chooseImport() {
-    if(chooserActive || saveInFlight)return;
+    if(chooserActive || saveInFlight || loadInFlight || coverWriteInFlight)return;
     setChooserActive(true);
     fileChooser=std::make_unique<juce::FileChooser>("Import native Skell-Preset", juce::File{}, "*.skellpreset");
     juce::Component::SafePointer<PresetBrowser> safe(this);
@@ -642,25 +658,80 @@ void PresetBrowser::chooseImport() {
             safe->setChooserActive(false);
             const auto file=chooser.getResult();
             if(file==juce::File{})return;
-            if(safe->onBeforeLoad)safe->onBeforeLoad();
-            const auto result=safe->processor.importPreset(file);
-            if(result.failed()) {
-                if(safe->onLoadFailed)safe->onLoadFailed();
-                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot import preset",result.getErrorMessage());
-                return;
-            }
-            const bool copied=safe->copyToLibrary(file);
-            if(copied)safe->refreshLibraryAfterChange();
-            if(safe->onLoaded)safe->onLoaded();
-            if(!copied)
-                juce::AlertWindow::showMessageBoxAsync(
-                    juce::AlertWindow::WarningIcon,"Preset loaded",
-                    "The sound was imported, but a library copy could not be saved.");
-            safe->repaint();
+            safe->startPresetRead(file,true);
         });
 }
+void PresetBrowser::startPresetRead(const juce::File& file,bool external) {
+    if(loadInFlight || coverWriteInFlight || (external && saveInFlight))return;
+    loadInFlight=true;
+    const auto selection=++selectionRevision;
+    const auto program=processor.getCurrentProgram();
+    if(external)++libraryRevision;
+    refreshSaveControls();
+    setSaveStatus("LOADING...");
+    const auto folder=libraryDirectory();
+    const auto previous=coverCache;
+    juce::Component::SafePointer<PresetBrowser> safe(this);
+    juce::Thread::launch([safe,file,external,selection,program,folder,previous] {
+        skellpreset::package::Document doc;
+        const auto result=skellpreset::package::read(file,doc);
+        juce::File copy=file;
+        LibrarySnapshot snapshot;
+        BackdropSnapshot backdrop;
+        if(result.wasOk()) {
+            if(external) {
+                std::lock_guard<std::mutex> lock(libraryWriteMutex);
+                copy=copyToLibraryFile(file,folder);
+                snapshot=collectLibrary(folder,previous);
+            }
+            backdrop=collectBackdrop(copy);
+        }
+        juce::MessageManager::callAsync([safe,external,selection,program,copy,result,doc=std::move(doc),
+                snapshot=std::move(snapshot),backdrop=std::move(backdrop)]() mutable {
+            if(!safe)return;
+            safe->loadInFlight=false;
+            if(external && snapshot.ok) {
+                safe->applyLibrarySnapshot(std::move(snapshot));
+                safe->refreshArtistChoices();
+                safe->resetResults();
+            }
+            if(selection==safe->selectionRevision && program==safe->processor.getCurrentProgram()) {
+                if(result.failed()) {
+                    safe->setSaveStatus("LOAD FAILED");
+                    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                        "Cannot load preset",result.getErrorMessage());
+                }else {
+                    const int previousMode=(int)safe->processor.state.getRawParameterValue("mode")->load();
+                    if(safe->onBeforeLoad)safe->onBeforeLoad();
+                    const auto applied=safe->processor.applyValidatedPresetDocument(doc);
+                    if(applied.failed()) {
+                        if(safe->onLoadFailed)safe->onLoadFailed();
+                        safe->setSaveStatus("LOAD FAILED");
+                    }else {
+                        if(!external && (previousMode==0 || previousMode==3))
+                            if(auto* mode=safe->processor.state.getParameter("mode"))
+                                mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
+                        safe->activeUserPreset=copy;
+                        ++safe->backdropRevision;
+                        safe->backdropPreset=copy;
+                        safe->applyBackdrop(std::move(backdrop));
+                        const int index=safe->activeUserIndex();
+                        if(index>=0)safe->rememberRecent(-index-1);
+                        safe->setSaveStatus(copy==juce::File{}?"LOADED - NO LIBRARY COPY":"LOADED");
+                        safe->refreshArtwork(false);
+                        if(safe->onLoaded)safe->onLoaded();
+                        if(safe->onCoverChanged)safe->onCoverChanged();
+                    }
+                }
+            }else safe->setSaveStatus({});
+            safe->refreshSaveControls();
+            if(safe->libraryScanQueued)safe->requestLibraryScan();
+            safe->repaint();
+        });
+    });
+}
 void PresetBrowser::saveActivePreset(bool chooseName) {
-    if(chooserActive || saveInFlight)return;
+    if(chooserActive || saveInFlight || loadInFlight || coverWriteInFlight)return;
     // Quick save rewrites the selected personal preset. Factory sounds and
     // never-saved chains must choose a name so no factory program is touched.
     if(!chooseName && activeUserPreset.existsAsFile()) {
@@ -711,6 +782,7 @@ void PresetBrowser::startPresetWrite(const juce::File& destination) {
         oldCover=activeUserPreset.withFileExtension(".jpg");
     pendingSave.oldCover=oldCover;
     saveInFlight=true;
+    ++libraryRevision;
     setSaveStatus("SAVING...");
     refreshSaveControls();
     const auto folder=libraryDirectory();
@@ -751,6 +823,7 @@ void PresetBrowser::completePresetWrite(const juce::File& libraryCopy,bool ok,
         saveInFlight=false;
         setSaveStatus("SAVE FAILED");
         refreshSaveControls();
+        if(libraryScanQueued)requestLibraryScan();
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
             "Cannot save preset",error);
         return;
@@ -764,6 +837,8 @@ void PresetBrowser::completePresetWrite(const juce::File& libraryCopy,bool ok,
        pendingSave.program==processor.getCurrentProgram() &&
        pendingSave.previousUser==activeUserPreset) {
         activeUserPreset=libraryCopy;
+        ++backdropRevision;
+        backdropPreset=libraryCopy;
         applyBackdrop(std::move(backdrop));
     }
     // Metadata follows the saved file, not whichever preset is now selected.
@@ -790,6 +865,7 @@ void PresetBrowser::completePresetWrite(const juce::File& libraryCopy,bool ok,
             }
     }
     saveInFlight=false;
+    if(libraryScanQueued)requestLibraryScan();
     refreshArtistChoices();
     refreshArtwork(false); // already decoded in the worker, or unchanged selection
     resetResults();
@@ -804,7 +880,7 @@ void PresetBrowser::setSaveStatus(const juce::String& text) {
     repaint();
 }
 void PresetBrowser::refreshSaveControls() {
-    const bool idle=!chooserActive && !saveInFlight;
+    const bool idle=!chooserActive && !saveInFlight && !loadInFlight && !coverWriteInFlight;
     importButton.setEnabled(idle);
     exportButton.setEnabled(idle);
     saveAsButton.setEnabled(idle);
@@ -1437,8 +1513,15 @@ bool PresetBrowser::testLibrarySnapshotForTest() {
     if(!cached.ok || cached.covers.size()!=1 || !cached.thumbnails[1].isValid())return false;
     if(!copied.withFileExtension(".png").deleteFile())return false;
     const auto removed=collectLibrary(folder,cached.covers);
-    return removed.ok && removed.files.size()==2 && removed.covers.empty() &&
-           !removed.thumbnails[1].isValid();
+    if(!removed.ok || removed.files.size()!=2 || !removed.covers.empty() ||
+       removed.thumbnails[1].isValid())return false;
+    // Large library with more entries than the existing 200-item display cap.
+    for(int i=0;i<220;++i)
+        if(!folder.getChildFile("Z"+juce::String(i).paddedLeft('0',3)+".skellpreset")
+                .replaceWithText("fixture"))return false;
+    const auto large=collectLibrary(folder,{});
+    return large.ok && large.files.size()==200 && large.thumbnails.size()==200 &&
+           large.files.front()==first && large.files.back().getFileName()=="Z197.skellpreset";
 }
 bool PresetBrowser::testBrowserLayoutForTest() {
     juce::ScopedValueSetter<bool> readOnly(preferencesReadOnly,true);
@@ -1875,20 +1958,42 @@ void PresetBrowser::refreshArtwork(bool decodeBackdrop) {
     genrePicker.setSelectedId(genreId,juce::dontSendNotification);
     refreshOrganizationEditor();
     refreshSaveControls();
-    if(decodeBackdrop) {
-        juce::File candidate;
-        if(activeUserPreset.existsAsFile()) {
-            candidate=activeUserPreset.withFileExtension(".png");
-            if(!candidate.existsAsFile())candidate=activeUserPreset.withFileExtension(".jpg");
-            if(!candidate.existsAsFile() || candidate.getSize()<=0 ||
-               candidate.getSize()>8*1024*1024)candidate={};
-        }
-        const auto modified=candidate==juce::File{}
-            ?juce::int64(-1):candidate.getLastModificationTime().toMilliseconds();
-        if(candidate!=backdropSource || modified!=backdropModified || !backdropLoaded)
-            applyBackdrop(collectBackdrop(activeUserPreset));
-    }
+    if(decodeBackdrop)requestBackdrop();
     repaint();
+}
+void PresetBrowser::requestBackdrop() {
+    if(backdropPreset!=activeUserPreset) {
+        backdropPreset=activeUserPreset;
+        selectedUserBackdrop={}; // never show the previous preset's full cover
+    }
+    const auto revision=++backdropRevision;
+    if(backdropPreset==juce::File{}) {
+        backdropQueued=false;
+        applyBackdrop({});
+        return;
+    }
+    if(preferencesReadOnly) {
+        applyBackdrop(collectBackdrop(backdropPreset));
+        return;
+    }
+    if(backdropInFlight){backdropQueued=true;return;}
+    backdropInFlight=true;
+    backdropQueued=false;
+    const auto preset=backdropPreset;
+    juce::Component::SafePointer<PresetBrowser> safe(this);
+    juce::Thread::launch([safe,preset,revision] {
+        auto snapshot=collectBackdrop(preset);
+        juce::MessageManager::callAsync([safe,preset,revision,snapshot=std::move(snapshot)]() mutable {
+            if(!safe)return;
+            safe->backdropInFlight=false;
+            if(revision==safe->backdropRevision && preset==safe->activeUserPreset) {
+                safe->applyBackdrop(std::move(snapshot));
+                if(safe->onCoverChanged)safe->onCoverChanged();
+                safe->repaint();
+            }
+            if(safe->backdropQueued)safe->requestBackdrop();
+        });
+    });
 }
 PresetBrowser::BackdropSnapshot PresetBrowser::collectBackdrop(const juce::File& preset) {
     BackdropSnapshot result;
@@ -1917,7 +2022,9 @@ void PresetBrowser::applyBackdrop(BackdropSnapshot snapshot) {
     selectedUserBackdrop=std::move(snapshot.image);
 }
 void PresetBrowser::chooseArtwork() {
-    if(chooserActive || saveInFlight || !canEditCover())return;
+    if(chooserActive || saveInFlight || loadInFlight || coverWriteInFlight || !canEditCover())return;
+    const auto destination=activeArtworkDestination(); // fix target before opening dialog
+    if(destination==juce::File{})return;
     setChooserActive(true);
     fileChooser=std::make_unique<juce::FileChooser>(
         "Choose artwork for "+(activeUserPreset.existsAsFile()?activeUserPreset.getFileNameWithoutExtension():juce::String("Alchemist")),
@@ -1925,48 +2032,57 @@ void PresetBrowser::chooseArtwork() {
     juce::Component::SafePointer<PresetBrowser> safe(this);
     fileChooser->launchAsync(juce::FileBrowserComponent::openMode |
         juce::FileBrowserComponent::canSelectFiles,
-        [safe](const juce::FileChooser& chooser) {
+        [safe,destination](const juce::FileChooser& chooser) {
             if(!safe)return;
             safe->setChooserActive(false);
             const auto file=chooser.getResult();
-            if(!file.existsAsFile())return;
-            if(file.getSize()<=0 || file.getSize()>8*1024*1024){
-                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                    "Artwork too large","Use a PNG/JPG image smaller than 8 MB.");return;
-            }
-            auto image=juce::ImageFileFormat::loadFrom(file);
-            if(!image.isValid() || image.getWidth()>4096 || image.getHeight()>4096){
-                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                    "Invalid artwork","Choose a valid image up to 4096 x 4096.");return;
-            }
-            const auto destination=safe->activeArtworkDestination();
-            if(destination==juce::File{} || destination.getParentDirectory().createDirectory().failed())return;
-            // Write-then-replace: a failed save must not destroy the previous cover.
-            juce::TemporaryFile staging(destination);
-            juce::PNGImageFormat png;
-            // Preserve the source image's aspect ratio in its saved cover.
-            // The browser builds its own lightweight 128x96 thumbnail.
-            // Never save only a 240x180 thumbnail as full-plugin wallpaper.
-            const float scale=std::min({1.f,1600.f/(float)image.getWidth(),
-                                            1000.f/(float)image.getHeight()});
-            auto coverImage=image.rescaled(
-                juce::jmax(1,juce::roundToInt(image.getWidth()*scale)),
-                juce::jmax(1,juce::roundToInt(image.getHeight()*scale)),
-                juce::Graphics::highResamplingQuality);
-            bool written=false;
-            {
-                juce::FileOutputStream output(staging.getFile());
-                if(output.openedOk()) {
-                    written=png.writeImageToStream(coverImage,output);
-                    output.flush();
-                }
-            }
-            if(!written || !staging.overwriteTargetFileWithTemporary()) {
-                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                    "Cannot save artwork","Your previous cover is unchanged. Check library permissions.");return;
-            }
-            safe->refreshLibraryAfterChange();
-            if(safe->onCoverChanged)safe->onCoverChanged();
+            if(file==juce::File{})return;
+            safe->coverWriteInFlight=true;
+            ++safe->libraryRevision;
+            safe->refreshSaveControls();
+            safe->setSaveStatus("SAVING COVER...");
+            juce::Thread::launch([safe,file,destination] {
+                const auto result=[&]() -> juce::Result {
+                    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>8*1024*1024)
+                        return juce::Result::fail("Use a PNG/JPG image smaller than 8 MB.");
+                    auto image=juce::ImageFileFormat::loadFrom(file);
+                    if(!image.isValid() || image.getWidth()>4096 || image.getHeight()>4096)
+                        return juce::Result::fail("Choose a valid image up to 4096 x 4096.");
+                    std::lock_guard<std::mutex> lock(libraryWriteMutex);
+                    if(destination.getParentDirectory().createDirectory().failed())
+                        return juce::Result::fail("Cannot create artwork directory.");
+                    juce::TemporaryFile staging(destination);
+                    juce::PNGImageFormat png;
+                    const float scale=std::min({1.f,1600.f/(float)image.getWidth(),
+                                                    1000.f/(float)image.getHeight()});
+                    auto resized=image.rescaled(
+                        juce::jmax(1,juce::roundToInt(image.getWidth()*scale)),
+                        juce::jmax(1,juce::roundToInt(image.getHeight()*scale)),
+                        juce::Graphics::highResamplingQuality);
+                    bool written=false;
+                    {
+                        juce::FileOutputStream out(staging.getFile());
+                        if(out.openedOk()) {
+                            written=png.writeImageToStream(resized,out);
+                            out.flush();
+                        }
+                    }
+                    if(!written || !staging.overwriteTargetFileWithTemporary())
+                        return juce::Result::fail("Your previous cover is unchanged. Check library permissions.");
+                    return juce::Result::ok();
+                }();
+                juce::MessageManager::callAsync([safe,result] {
+                    if(!safe)return;
+                    safe->coverWriteInFlight=false;
+                    safe->setSaveStatus(result.wasOk()?"COVER SAVED":"COVER FAILED");
+                    safe->refreshSaveControls();
+                    if(result.failed())
+                        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                            "Cannot save artwork",result.getErrorMessage());
+                    safe->requestLibraryScan();
+                    safe->requestBackdrop();
+                });
+            });
         });
 }
 void PresetBrowser::refreshCategoryCounts(){
@@ -2303,25 +2419,7 @@ void PresetBrowser::loadFactoryFromBrowser(int index) {
 }
 void PresetBrowser::loadUserFromBrowser(int index) {
     if(index<0 || index>=(int)userPresets.size())return;
-    const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
-    const auto file=userPresets[(size_t)index];
-    if(onBeforeLoad)onBeforeLoad();
-    const auto result=processor.importPreset(file);
-    if(result.failed()) {
-        if(onLoadFailed)onLoadFailed();
-        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-            "Cannot load saved preset",result.getErrorMessage());
-        return;
-    }
-    if(previousMode==0 || previousMode==3)
-        if(auto* mode=processor.state.getParameter("mode"))
-            mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
-    ++selectionRevision;
-    activeUserPreset=file;
-    rememberRecent(-index-1);
-    refreshArtwork();
-    if(onLoaded)onLoaded();
-    repaint();
+    startPresetRead(userPresets[(size_t)index],false);
 }
 void PresetBrowser::auditionEntry(int entry) {
     if(entry>=0)loadFactoryFromBrowser(entry);

@@ -1794,6 +1794,10 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
 juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     skellpreset::package::Document doc;
     if(const auto result=skellpreset::package::read(file,doc);result.failed())return result;
+    return applyValidatedPresetDocument(doc);
+}
+juce::Result SkellPresetAudioProcessor::applyValidatedPresetDocument(
+    const skellpreset::package::Document& doc) {
     // The entire document is validated before touching live parameters.
     for(const auto& slot:doc.slots){
         const auto prefix=slotPrefix(slot.slotId);
