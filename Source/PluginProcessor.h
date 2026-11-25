@@ -6,6 +6,7 @@
 #include "chain/BasicDSP.h"
 #include "chain/LiveAudioScope.h"
 #include "chain/LiveSpectrum.h"
+#include "chain/SlotVisualCapture.h"
 #include "chain/ClipRecorder.h"
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
@@ -158,6 +159,10 @@ public:
         const auto i=(size_t)juce::jlimit(0,slotCount-1,slot);
         slotInputScope[i].snapshot(input);slotOutputScope[i].snapshot(output);
     }
+    void requestSlotVisual(int slot) noexcept {slotVisual.request(slot);}
+    bool getSlotVisual(int slot,skellpreset::visual::SlotVisualCapture::Frame& frame) const noexcept {
+        return slotVisual.read(slot,frame);
+    }
     float getSlotDuckReductionDb(int slot) const noexcept {
         return slotDuckReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
     }
@@ -295,6 +300,7 @@ private:
     } rawGlobal;
     std::array<RawSlot,slotCount> rawSlots;
     std::array<skellpreset::visual::LiveAudioScope,slotCount> slotInputScope,slotOutputScope;
+    skellpreset::visual::SlotVisualCapture slotVisual;
     std::array<std::atomic<float>,slotCount> slotPeaks;
     std::array<std::atomic<float>,slotCount> slotGainReductionDb,slotDuckReductionDb;
     std::array<std::atomic<float>,slotCount> slotDeessReductionDb;

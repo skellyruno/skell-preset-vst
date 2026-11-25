@@ -1,4 +1,5 @@
 #include "../Source/chain/LiveSpectrum.h"
+#include "../Source/chain/SlotVisualCapture.h"
 #include <array>
 #include <limits>
 #define SKELL_REQUIRE(x) do { if(!(x)){std::fprintf(stderr,"FAIL %s:%d %s\n",__FILE__,__LINE__,#x);return 1;} } while(false)
@@ -52,6 +53,23 @@ int main() {
     }
     in.push(std::numeric_limits<float>::max(),-std::numeric_limits<float>::max());
     in.snapshot(input);SKELL_REQUIRE(input.back()==0.f);
-    std::puts("PASS: real spectrum, attenuation, silence, invalid samples, extreme values, six rates, Nyquist limits and reset");
+    // Selected-slot capture must never display another effect's data.
+    SlotVisualCapture selected;
+    SlotVisualCapture::Frame frame;
+    std::array<float,1024> l{},r{};
+    l.fill(.25f);r.fill(-.25f);
+    selected.request(2);
+    if(selected.beginBlock()!=2 || selected.read(2,frame))return 30;
+    selected.captureInput(l.data(),r.data(),1024);
+    selected.captureOutput(l.data(),r.data(),1024);
+    if(!selected.read(2,frame) || std::abs(frame.outputRms-.25f)>1.e-6f ||
+       std::abs(frame.sideRms-.25f)>1.e-6f || frame.output[1023]!=0.f)return 31;
+    selected.request(4);
+    if(selected.read(2,frame) || selected.read(4,frame) || selected.beginBlock()!=4)return 32;
+    r.fill(.25f);selected.captureInput(l.data(),r.data(),1024);selected.captureOutput(l.data(),r.data(),1024);
+    if(!selected.read(4,frame) || frame.sideRms!=0.f || frame.output[1023]!=.25f)return 33;
+    selected.request(-1);
+    if(selected.read(4,frame) || selected.beginBlock()!=-1)return 34;
+    std::puts("PASS: real spectrum, attenuation, silence, invalid samples, extreme values, six rates, Nyquist limits, selected slot capture and stereo RMS");
     return 0;
 }

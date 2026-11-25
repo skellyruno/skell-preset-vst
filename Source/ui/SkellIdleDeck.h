@@ -23,7 +23,7 @@ public:
     void setAudioFresh(bool fresh) {
         if(audioFresh==fresh)return;
         audioFresh=fresh;
-        if(!fresh){inputMeter={};outputMeter={};activityLevel=0.f;cachedSignal.fill(0.f);}
+        if(!fresh){inputMeter={};outputMeter={};activityLevel=0.f;cachedSignal.fill(0.f);stageBands.fill(0.f);}
         if(isShowing())repaint();
     }
     struct MeterEnvelope {
@@ -67,6 +67,16 @@ public:
     void tickAnimation(double nowMs) {
         if(!isShowing()){stageClock.pause();return;}
         crowdPhase=static_cast<float>(stageClock.tick(nowMs,hasAudibleOutput()?activityLevel:0.f));
+        if(audioFresh && (++spectrumTick%3u)==1u){
+            std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity> samples{};
+            processor.getLiveSpectrumOutput(samples);
+            const auto values=stageAnalyzer.analyze(samples,processor.preparedAudioRate());
+            for(size_t i=0;i<values.size();++i){
+                const float db=20.f*std::log10(std::max(.00025119f,values[i]));
+                const float v=juce::jlimit(0.f,1.f,(db+72.f)/72.f);
+                stageBands[i]+=(v-stageBands[i])*(v>stageBands[i]?.78f:.33f);
+            }
+        }
         repaint();
     }
     void visibilityChanged() override {stageClock.pause();}
@@ -189,6 +199,8 @@ public:
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
+        auto bandEnergy=[&](int first,int last){float sum=0.f;for(int i=first;i<last;++i)sum+=stageBands[(size_t)i];return sum/(last-first);};
+        const std::array<float,3> rigEnergy{{bandEnergy(0,12),bandEnergy(12,24),bandEnergy(24,36)}};
 
         // Minimal midnight performance stage. All lighting is drawn in the
         // native editor; reactive intensity is measured from actual audio.
@@ -230,7 +242,7 @@ public:
                 wedge.closeSubPath();
                 const auto tint=(beam==1?accent:Theme::blue);
                 g.setGradientFill(juce::ColourGradient(
-                    tint.withAlpha(.028f+.055f*activity),rigX,rigY,
+                    tint.withAlpha(.045f+.15f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));
                 g.fillPath(wedge);
             }
@@ -240,7 +252,7 @@ public:
                                    208.f*stage.scale,7.f*stage.scale,3.f*stage.scale);
             for(int lamp=0;lamp<3;++lamp) {
                 const float lx=centreX+(lamp-1)*92.f*stage.scale;
-                const int lit=lamp==1?juce::roundToInt(160+95*activity):juce::roundToInt(70+120*activity);
+                const int lit=juce::roundToInt(65+190*rigEnergy[(size_t)lamp]);
                 g.setColour(Theme::green.withAlpha(.10f));
                 g.fillEllipse(lx-9.f*stage.scale,rigY-3.f*stage.scale,
                               18.f*stage.scale,12.f*stage.scale);
@@ -477,9 +489,38 @@ public:
                 g.drawHorizontalLine(juce::roundToInt(pitTop),stageBounds.getX(),stageBounds.getRight());
             }
         }
+        // Side towers show actual output spectrum, arranged by increasing frequency.
+        // Kept outside the singer's silhouette and above the crowd.
+        if(width>=580.f && stageBounds.getHeight()>270.f){
+            const float towerW=juce::jlimit(78.f,150.f,width*.15f);
+            const float towerY=stageBounds.getY()+48.f;
+            const float towerH=juce::jlimit(80.f,160.f,feetY-towerY-12.f);
+            for(int side=0;side<2;++side){
+                const float x=side==0?stageBounds.getX()+18.f:stageBounds.getRight()-towerW-18.f;
+                const juce::Rectangle<float> tower(x,towerY,towerW,towerH);
+                g.setColour(Theme::bg.withAlpha(.68f));g.fillRoundedRectangle(tower,7.f);
+                g.setColour(Theme::stroke.withAlpha(.65f));g.drawRoundedRectangle(tower,7.f,.8f);
+                Theme::fittedText(g,side==0?"LOW / MID":"MID / HIGH",tower.withHeight(21.f).reduced(5.f,0.f).toNearestInt(),10.f,Theme::muted,true,juce::Justification::centred);
+                const auto graph=tower.reduced(9.f,0.f).withTrimmedTop(24.f).withTrimmedBottom(13.f);
+                for(int band=0;band<18;++band){
+                    const float v=stageBands[(size_t)(side*18+band)];
+                    const float bw=graph.getWidth()/18.f;
+                    const auto bar=juce::Rectangle<float>(graph.getX()+bw*band,graph.getY(),juce::jmax(1.f,bw-1.3f),graph.getHeight());
+                    g.setColour(Theme::stroke.withAlpha(.22f));g.fillRoundedRectangle(bar,1.f);
+                    if(v>.002f){
+                        const auto lit=bar.withTop(bar.getBottom()-bar.getHeight()*v);
+                        const auto tint=side==0?accent:Theme::blue;
+                        g.setGradientFill(juce::ColourGradient(tint.withAlpha(.92f),lit.getTopLeft(),tint.withAlpha(.17f),lit.getBottomLeft(),false));
+                        g.fillRoundedRectangle(lit,1.f);
+                    }
+                }
+            }
+        }
         // The trace and bone illumination are directly audio-reactive;
         // nothing is a fake spectrum or prerecorded animation.
         const auto scope=stage.scope;
+        g.setColour(Theme::bg.withAlpha(.72f));g.fillRoundedRectangle(scope.expanded(8.f,4.f),6.f);
+        g.setColour(Theme::stroke.withAlpha(.55f));g.drawRoundedRectangle(scope.expanded(8.f,4.f),6.f,.8f);
         // One uninterrupted audio trace floating over the black stage.
         g.setColour(accent.withAlpha(.10f));
         g.drawLine(scope.getX()+9.f,scope.getCentreY(),
@@ -537,6 +578,9 @@ private:
     float activityLevel=0.f,crowdPhase=0.f;
     skellpreset::stage::StageClock stageClock;
     std::array<float,128> cachedSignal{};
+    skellpreset::visual::LiveSpectrumAnalyzer stageAnalyzer;
+    std::array<float,skellpreset::visual::LiveSpectrumAnalyzer::bands> stageBands{};
+    unsigned spectrumTick=0;
 
     // Crowd figures are generated once and reused every frame. Keeping the
     // geometry data here means paint() does no hashing or allocation, and the

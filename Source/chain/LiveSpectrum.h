@@ -25,6 +25,20 @@ public:
             std::clamp(.5f*l+.5f*r,-8.f,8.f),std::memory_order_relaxed);
         count.store(index+1,std::memory_order_release);
     }
+    // Full-rate block capture; publish the cursor once per block.
+    // The bounded ring is for UI telemetry only, not audio playback.
+    void pushBlock(const float* left,const float* right,int frames) noexcept {
+        if(!left || frames<=0)return;
+        const auto start=count.load(std::memory_order_relaxed);
+        for(int n=std::max(0,frames-capacity);n<frames;++n) {
+            const float l=std::isfinite(left[n])?left[n]:0.f;
+            const float r=right?(std::isfinite(right[n])?right[n]:0.f):l;
+            data[(start+(unsigned)n)%capacity].store(std::clamp(.5f*l+.5f*r,-8.f,8.f),
+                                                       std::memory_order_relaxed);
+        }
+        count.store(start+(unsigned)frames,std::memory_order_release);
+    }
+    std::uint64_t samplesCaptured() const noexcept {return count.load(std::memory_order_acquire);}
     void snapshot(std::array<float,capacity>& out) const noexcept {
         const auto end=count.load(std::memory_order_acquire);
         for(unsigned i=0;i<(unsigned)capacity;++i) {

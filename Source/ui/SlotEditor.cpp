@@ -400,7 +400,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         const bool open=!livePanel.isVisible();
         dismissTransientOverlays();
         livePanel.setVisible(open);liveView.setButtonText(open?"CLEAN":"VISUAL");
-        if(open){livePanel.update(processor,slot);livePanel.toFront(false);}
+        if(open){processor.requestSlotVisual(slot);livePanel.update(processor,slot);livePanel.toFront(false);}
     };
     for(auto* slider:{&duckDepth,&duckThreshold,&duckAttack,&duckRelease}) {
         slider->setSliderStyle(juce::Slider::LinearHorizontal);
@@ -1493,7 +1493,7 @@ void SlotEditor::openModulePicker() {
     if(modulePicker.isVisible())modulePicker.hide();
     else {hideEmbeddedEditor();modulePicker.open(processor.slotType(slot));}
 }
-SlotEditor::~SlotEditor(){endGraphGesture();releaseEmbeddedEditor();}
+SlotEditor::~SlotEditor(){processor.requestSlotVisual(-1);endGraphGesture();releaseEmbeddedEditor();}
 void SlotEditor::select(int newSlot) {
     endGraphGesture();
     eqNodeMenu.close();
@@ -1682,7 +1682,7 @@ void SlotEditor::refreshIfChanged() {
         const auto caption=inlineShown?"DETACH UI":"OPEN UI";
         if(editExternal.getButtonText()!=caption)editExternal.setButtonText(caption);
     }
-    if(livePanel.isVisible())livePanel.update(processor,slot);
+    if(livePanel.isShowing() && hostedPresentation)livePanel.update(processor,slot);
     liveView.setButtonText(livePanel.isVisible()?"CLEAN":"VISUAL");
     if(duckPanel.isVisible()){
         duckPanel.setReduction(processor.getSlotDuckReductionDb(slot));

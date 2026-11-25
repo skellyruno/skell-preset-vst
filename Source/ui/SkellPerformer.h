@@ -25,7 +25,9 @@ public:
         const float react=juce::jlimit(0.f,1.f,activity);
         const float sway=std::sin(phase*.62f);
         const float beat=std::sin(phase*1.45f);
-        const float jawDrop=react*(2.2f+4.0f*(beat*.5f+.5f));
+        // Mouth opening follows measured vocal energy rather than a timed
+        // sine wave. Body sway remains theatrical set animation.
+        const float jawDrop=8.5f*std::sqrt(react);
         const auto ink=Theme::bg;
         const auto ivory=Theme::white;
         const auto stone=Theme::muted;

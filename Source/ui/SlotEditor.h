@@ -9,6 +9,7 @@
 #include <memory>
 #include <functional>
 #include "Theme.h"
+#include "SkellLiveEffectPanel.h"
 
 // The actual DSP parameter value is always painted beside the dial by
 // SlotEditor. The old normalized 0-100 hover badge was contradictory (e.g.
@@ -129,13 +130,14 @@ public:
         eqNodeMenu.close();
         endGraphGesture();
         duckPanel.setVisible(false);
-        livePanel.setVisible(false);
+        livePanel.setVisible(false);processor.requestSlotVisual(-1);
     }
     bool modulePickerVisibleForTest() const noexcept {return modulePicker.isVisible();}
     bool hasEmbeddedEditorForTest() const noexcept {return embeddedEditor!=nullptr;}
     void setHostedEditorPresentation(bool allowed) {
         hostedPresentation=allowed;
-        if(!allowed)hideEmbeddedEditor();
+        if(!allowed){hideEmbeddedEditor();processor.requestSlotVisual(-1);}
+        else processor.requestSlotVisual(livePanel.isShowing()?slot:-1);
     }
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
@@ -259,44 +261,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> duckSourceAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> parallelReturnAttachment;
     juce::TextButton liveView{"VISUAL"};
-    class LiveEffectPanel final:public juce::Component {
-    public:
-        void update(SkellPresetAudioProcessor& p,int slot) {
-            const auto now=juce::Time::getMillisecondCounter();
-            const auto count=p.liveScopeSampleCount();
-            if(count!=lastCount){lastCount=count;lastFrame=now;}
-            const bool fresh=lastFrame!=0 && (unsigned)(now-lastFrame)<400u;
-            if(fresh)p.getSlotScope(slot,in,out);else{in.fill(0);out.fill(0);}
-            gr=fresh?p.getSlotGainReductionDb(slot):0.f;
-            duck=fresh?p.getSlotDuckReductionDb(slot):0.f;
-            repaint();
-        }
-        void paint(juce::Graphics& g) override {
-            Theme::panelBox(g,getLocalBounds().toFloat(),8.f,true);
-            Theme::text(g,"LIVE SIGNAL / MONO TRACE",{18,12,getWidth()-36,24},14.f,Theme::white,true);
-            const auto graph=getLocalBounds().toFloat().reduced(20.f,0.f).withTrimmedTop(45.f).withTrimmedBottom(42.f);
-            g.setColour(Theme::stroke);g.drawHorizontalLine((int)graph.getCentreY(),graph.getX(),graph.getRight());
-            for(int i=0;i<8;++i)g.drawVerticalLine((int)(graph.getX()+i*graph.getWidth()/8.f),graph.getY(),graph.getBottom());
-            auto trace=[&](const auto& samples,juce::Colour colour){
-                juce::Path path;
-                for(size_t i=0;i<samples.size();++i){
-                    const float x=graph.getX()+graph.getWidth()*(float)i/(float)(samples.size()-1);
-                    const float y=graph.getCentreY()-graph.getHeight()*.47f*juce::jlimit(-1.f,1.f,samples[i]);
-                    if(i==0)path.startNewSubPath(x,y);else path.lineTo(x,y);
-                }
-                g.setColour(colour);g.strokePath(path,juce::PathStrokeType(1.5f));
-            };
-            trace(in,Theme::muted);trace(out,Theme::green);
-            Theme::text(g,"INPUT",{20,getHeight()-32,86,22},11.f,Theme::muted,true);
-            Theme::text(g,"OUTPUT / RETURN",{112,getHeight()-32,150,22},11.f,Theme::green,true);
-            Theme::fittedText(g,"GR "+juce::String(gr,1)+" dB   /   DUCK "+juce::String(duck,1)+" dB",
-                {280,getHeight()-32,getWidth()-300,22},11.f,Theme::white,true,juce::Justification::centredRight);
-        }
-    private:
-        std::array<float,128> in{},out{};
-        unsigned lastCount=0,lastFrame=0;
-        float gr=0.f,duck=0.f;
-    } livePanel;
+    SkellLiveEffectPanel livePanel;
     juce::ToggleButton duckOn{"DUCK WHEN VOCAL IS PRESENT"};
     juce::Slider duckDepth,duckThreshold,duckAttack,duckRelease;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> duckOnAttachment;

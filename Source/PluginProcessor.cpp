@@ -458,7 +458,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     // Finalize the previous take on the non-realtime preparation path.
     capture.stop();
     liveScope.reset();
-    liveSpectrumInput.reset();liveSpectrumOutput.reset();
+    liveSpectrumInput.reset();liveSpectrumOutput.reset();slotVisual.invalidate();
     rate=(std::isfinite(sampleRate)&&sampleRate>=8000.)?sampleRate:48000.;
     displayedRate.store(rate,std::memory_order_release);
     hostChunkCapacity=juce::jlimit(64,8192,juce::jmax(512,samplesPerBlock));
@@ -833,6 +833,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const int total=buffer.getNumSamples();
     if(channels<1 || total<=0)return;
     skellpreset::host::HostedVST3::AudioReadScope hostedBlock(hosted);
+    const int visualSlot=slotVisual.beginBlock();
     const bool monoSource=getTotalNumInputChannels()==1;
     // Query the host once per block, never inside the sample loop. The new
     // ducking delay uses a deterministic 120-BPM fallback when stopped/unknown.
@@ -911,6 +912,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         if(previousType!=c.type) {
             if(supportsWetSidechain(previousType) || supportsWetSidechain(c.type))e.voiceDuck.prepare(rate);
             slotInputScope[(size_t)s].reset();slotOutputScope[(size_t)s].reset();
+            if(s==visualSlot)slotVisual.invalidate();
         }
         if(c.type==Limiter || c.type==StudioLimiterFX)e.limiter.setTiming(c.limitAttack,c.limitRelease);
         if(supportsWetSidechain(c.type))
@@ -1138,6 +1140,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             auto& e=engines[(size_t)s];
             const auto& source=c.parallelReturn?sidechainWork:rackWork;
             slotInputScope[(size_t)s].push(source.getReadPointer(0),source.getReadPointer(1),frames);
+            const bool captureVisual=s==visualSlot;
+            if(captureVisual)slotVisual.captureInput(source.getReadPointer(0),source.getReadPointer(1),frames);
             if(c.type==ExternalVST3) {
                 auto* plugin=hostedBlock.get(s);
                 const int latency=hostedBlock.getLatency(s);
@@ -1163,6 +1167,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         std::max(std::abs(resultL),std::abs(resultR)));
                 }
                 slotOutputScope[(size_t)s].push(rackWork.getReadPointer(0),rackWork.getReadPointer(1),frames);
+                if(captureVisual)slotVisual.captureOutput(rackWork.getReadPointer(0),rackWork.getReadPointer(1),frames);
                 continue;
             }
             const bool keepTail=c.type==Limiter || c.type==StudioLimiterFX || c.type==Delay ||
@@ -1174,7 +1179,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 c.type==StudioPitchFormantFX;
             if(!keepTail && slotWetSmooth[(size_t)s].getCurrentValue()<.000001f
                 && slotWetSmooth[(size_t)s].getTargetValue()==0.f){
-                slotOutputScope[(size_t)s].push(source.getReadPointer(0),source.getReadPointer(1),frames);continue;
+                slotOutputScope[(size_t)s].push(source.getReadPointer(0),source.getReadPointer(1),frames);
+                if(captureVisual)slotVisual.captureOutput(source.getReadPointer(0),source.getReadPointer(1),frames);
+                continue;
             }
             // These controls are constant for the callback. In particular,
             // dbToGain() involves pow(): never call it on every audio sample.
@@ -1425,6 +1432,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             }
             const auto& measuredOutput=c.parallelReturn?hostWork:rackWork;
             slotOutputScope[(size_t)s].push(measuredOutput.getReadPointer(0),measuredOutput.getReadPointer(1),frames);
+            if(captureVisual)slotVisual.captureOutput(measuredOutput.getReadPointer(0),measuredOutput.getReadPointer(1),frames);
             if(c.type==VocalFeelOptoFX && c.on)
                 grMeter[(size_t)s]=std::max(grMeter[(size_t)s],
                                            e.vocalFeel.gainReductionDb());
