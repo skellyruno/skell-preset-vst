@@ -109,6 +109,28 @@ public:
         return juce::Result::fail("External VST3 hosting is available only in Windows builds");
        #endif
     }
+    // JUCE requires the layout to have one entry for *every* bus, including
+    // disabled sidechains. A one-input/one-output BusesLayout wrongly rejects
+    // ordinary stereo effects with optional auxiliary buses.
+    // Always keep the externally visible chain stereo, and never route
+    // unconnected sidechain audio to an uninitialised bus.
+    static juce::Result configureMainStereoBuses(juce::AudioProcessor& instance) {
+        auto layout=instance.getBusesLayout();
+        if(layout.inputBuses.isEmpty() || layout.outputBuses.isEmpty())
+            return juce::Result::fail("Hosted effects require main input and output buses");
+        layout.inputBuses.set(0,juce::AudioChannelSet::stereo());
+        layout.outputBuses.set(0,juce::AudioChannelSet::stereo());
+        for(int bus=1;bus<layout.inputBuses.size();++bus)
+            layout.inputBuses.set(bus,juce::AudioChannelSet::disabled());
+        for(int bus=1;bus<layout.outputBuses.size();++bus)
+            layout.outputBuses.set(bus,juce::AudioChannelSet::disabled());
+        if(!instance.setBusesLayout(layout))
+            return juce::Result::fail(
+                "Hosted VST3 rejected stereo main buses with auxiliary buses disabled");
+        if(instance.getTotalNumInputChannels()!=2 || instance.getTotalNumOutputChannels()!=2)
+            return juce::Result::fail("Hosted VST3 main stereo routing is unavailable");
+        return juce::Result::ok();
+    }
     juce::Result load(int slot,const juce::File& path,double sr,int block,
                       const juce::String& identifier={}) {
         if(!valid(slot))return juce::Result::fail("Invalid rack slot");
@@ -143,11 +165,8 @@ public:
         if(!instance)return juce::Result::fail(error.isNotEmpty()?error:"Could not instantiate VST3");
         if(isSkellPresetProductName(instance->getName()))
             return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
-        juce::AudioProcessor::BusesLayout stereo;
-        stereo.inputBuses.add(juce::AudioChannelSet::stereo());
-        stereo.outputBuses.add(juce::AudioChannelSet::stereo());
-        if(!instance->setBusesLayout(stereo))
-            return juce::Result::fail("Hosted VST3 must support stereo in/out");
+        const auto buses=configureMainStereoBuses(*instance);
+        if(buses.failed())return buses;
         instance->setPlayHead(&transport); // stable, owned copy of DAW timing
         instance->prepareToPlay(std::max(sr,8000.),std::max(block,64));
         const int latency=instance->getLatencySamples();

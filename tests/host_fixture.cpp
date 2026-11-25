@@ -7,12 +7,16 @@ public:
     SkellHostFixtureProcessor()
         : juce::AudioProcessor(BusesProperties()
             .withInput("Input",juce::AudioChannelSet::stereo(),true)
+            .withInput("Sidechain",juce::AudioChannelSet::mono(),false)
             .withOutput("Output",juce::AudioChannelSet::stereo(),true)) {}
     void prepareToPlay(double,int) override {}
     void releaseResources() override {}
     bool isBusesLayoutSupported(const BusesLayout& l) const override {
-        return l.getMainInputChannelSet()==juce::AudioChannelSet::stereo()
-            && l.getMainOutputChannelSet()==juce::AudioChannelSet::stereo();
+        return l.inputBuses.size()==2 && l.outputBuses.size()==1
+            && l.getMainInputChannelSet()==juce::AudioChannelSet::stereo()
+            && l.getMainOutputChannelSet()==juce::AudioChannelSet::stereo()
+            && (l.inputBuses[1]==juce::AudioChannelSet::disabled()
+                || l.inputBuses[1]==juce::AudioChannelSet::mono());
     }
     void processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&) override {
         // If an actual host forwards the expected transport snapshot, switch

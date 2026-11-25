@@ -50,6 +50,9 @@ int probeVST3(const juce::File& path,juce::String requestedId) {
     auto* instance=host.get(0);
     if(!instance){std::fprintf(stderr,"FAIL missing instance after load\n");return 44;}
     std::printf("INSTANCE name=%s latency=%d samples\n",host.getName(0).toRawUTF8(),host.getLatency(0));
+    std::printf("BUSES input=%d output=%d main-in=%d main-out=%d\n",
+        instance->getBusCount(true),instance->getBusCount(false),
+        instance->getMainBusNumInputChannels(),instance->getMainBusNumOutputChannels());
     stage("render 4 stereo buffers at 48 kHz / 256");
     juce::AudioBuffer<float> audio(2,256);
     juce::MidiBuffer midi;

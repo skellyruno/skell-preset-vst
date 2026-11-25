@@ -118,6 +118,16 @@ int main(int argc,char** argv) {
     if(!plugin || host.getLatency(0)!=0) {
         std::fprintf(stderr,"Fixture not loaded or wrong latency\n");return 4;
     }
+    // This fixture declares an optional, initially disabled sidechain bus.
+    // The old host supplied only one input layout entry and rejected it,
+    // although the main input/output were both stereo.
+    if(plugin->getBusCount(true)!=2 || plugin->getBusCount(false)!=1 ||
+       plugin->getChannelCountOfBus(true,1)!=0 ||
+       plugin->getMainBusNumInputChannels()!=2 ||
+       plugin->getMainBusNumOutputChannels()!=2){
+        std::fprintf(stderr,"Sidechain-aware stereo bus negotiation failed\n");
+        return 21;
+    }
     juce::AudioBuffer<float> audio(2,512);
     for(int ch=0;ch<2;++ch)
         for(int n=0;n<512;++n)
