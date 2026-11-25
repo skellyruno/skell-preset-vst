@@ -1,6 +1,11 @@
 # Skell Preset — STEREO separation handoff (2026-11-25)
 
-Status: **implemented, built, tested, not pushed**. Continue from this file.
+Status: **implemented, built, tested, committed and pushed** as `284934d` to
+`feature/studio-dynamics-delay-ui-20261121` (PR #90, still draft).
+CI run `45597656942` on that commit: **success** (portable-tests and
+windows-vst3 both green). The earlier `32a0729` run `45526096512` also passed.
+
+Remaining gaps are listed under "NOT done" at the end.
 
 ## What shipped in this working tree
 
@@ -100,10 +105,7 @@ Status: **implemented, built, tested, not pushed**. Continue from this file.
 
 ## NOT done — do these next
 
-1. **Nothing is committed or pushed.** Working tree holds all of it. Push to
-   PR #90 (draft) and let CI run; CI outcome for `32a0729` was never confirmed
-   either.
-2. **The STEREO knob is in the Simple master strip, not "next to MIC".**
+1. **The STEREO knob is in the Simple master strip, not "next to MIC".**
    No rotary MIC knob exists in this build — MIC is a 31×29 icon button in the
    rack header (`ChainPanel.cpp:236`, `micRegion {164,9,31,29}`) that toggles
    `micPanel`. Confirm with the owner whether they meant
@@ -111,31 +113,31 @@ Status: **implemented, built, tested, not pushed**. Continue from this file.
    or (c) the master-strip placement used here. If the header is wanted, the
    rack header has ~28 px of free space — not enough for a 74 px dial at the
    same scale, so the header layout needs rework first.
-3. **Numerical parity against real FL Studio is NOT established.** No
+2. **Numerical parity against real FL Studio is NOT established.** No
    Fruity Stereo Enhancer render or FL mixer separation capture was available.
    What is proven is that the implementation matches the *supplied R6 law*
    exactly. Do not claim FL parity.
-4. **"Restoring verified FL Studio mixer stereo separation values"** is not
+3. **"Restoring verified FL Studio mixer stereo separation values"** is not
    implemented. There is no verified source of those values, so nothing was
    invented. Factory programs all load neutral by design. If verified values
    arrive, add them per-preset.
-5. **52 protected program identities**: the test only asserts every factory
+4. **52 protected program identities**: the test only asserts every factory
    program resets separation to neutral; it does not re-assert the full
    55/52-ID ledger. Verify the protected-identity test still covers the count
    the owner expects (`test_factory_catalog_history.cpp`).
-6. **Supplied DSP is private.** `MixerStereoSeparation.h` is now in the repo.
+5. **Supplied DSP is private.** `MixerStereoSeparation.h` is now in the repo.
    Confirm distribution rights before any public release; the algorithm is
    the supplied enhancer law, so treat it as private until cleared.
-7. **Do not commit** `SKELLY_SOUND_MATCH_R7_PRIVATE_NOV24.zip`,
+6. **Do not commit** `SKELLY_SOUND_MATCH_R7_PRIVATE_NOV24.zip`,
    `_r6checkpoint/`, `_r7checkpoint/`, any `*.png`, `ui-*/`, `dist/`,
    `build-*.txt`, `cmake-log.txt`, `ctest-all.txt`, `build-ui.cmd`,
    `build-vst3.cmd`. All remain untracked.
-8. **Save a new private checkpoint to the Library** (R8) containing this
+7. **Save a new private checkpoint to the Library** (R8) containing this
    tree, since the R6 zip on the Desktop is a 0-byte placeholder and the real
    payload was recovered from `Downloads\SKELLY_SOUND_MATCH_R7_PRIVATE_NOV24.zip`.
-9. **Not validated in a DAW.** No FL Studio, no Windows VST3 host load of the
+8. **Not validated in a DAW.** No FL Studio, no Windows VST3 host load of the
    new binary. `--stereo-separation` exercises `processBlock` directly.
-10. **Performer/graveyard work from the previous handoff** (commit `32a0729`)
+9. **Performer/graveyard work from the previous handoff** (commit `32a0729`)
     is still in this tree and unverified by CI.
 
 ## Cleanup notes
