@@ -82,7 +82,26 @@ int main(int argc,char** argv) {
 
     skellpreset::host::HostedVST3 host;
     const juce::File fixture(juce::String::fromUTF8(argv[1]));
-    const auto loaded=host.load(0,fixture,48000.,512);
+    // Synthetic multi-class catalog exercises exact selection independently
+    // of the installed Image-Line software. Never accept an instrument or
+    // silently substitute a different class when a saved key is unavailable.
+    juce::OwnedArray<juce::PluginDescription> catalog;
+    for(int i=0;i<3;++i){
+        auto* d=catalog.add(new juce::PluginDescription());
+        d->name="Owned fixture "+juce::String(i);
+        d->fileOrIdentifier=fixture.getFullPathName();
+        d->pluginFormatName="VST3";d->uniqueId=100+i;d->isInstrument=i==0;
+    }
+    using Host=skellpreset::host::HostedVST3;
+    if(Host::chooseEffect(catalog,{})!=catalog[1] ||
+       Host::chooseEffect(catalog,Host::classKey(*catalog[2]))!=catalog[2] ||
+       Host::chooseEffect(catalog,Host::classKey(*catalog[0]))!=nullptr ||
+       Host::chooseEffect(catalog,"missing-class")!=nullptr)return 14;
+    catalog.add(new juce::PluginDescription(*catalog[2]));
+    if(Host::chooseEffect(catalog,Host::classKey(*catalog[2]))!=nullptr)return 15;
+    std::vector<Host::EffectChoice> choices;
+    if(Host::inspectEffects(fixture,choices).failed() || choices.size()!=1)return 16;
+    const auto loaded=host.load(0,fixture,48000.,512,choices[0].identifier);
     if(loaded.failed()) {
         std::fprintf(stderr,"Host instantiate failed: %s\n",
             loaded.getErrorMessage().toRawUTF8());
@@ -113,7 +132,11 @@ int main(int argc,char** argv) {
     if(host.getState(0).isEmpty()) {
         std::fprintf(stderr,"Hosted plug-in state was not captured\n");return 7;
     }
+    const auto savedKey=host.getIdentifier(0);
+    if(savedKey!=choices[0].identifier || host.load(0,fixture,48000.,512,"missing-class").wasOk() || host.get(0)!=plugin)return 17;
     host.release();
+    host.detach(0);
+    if(host.get(0)!=nullptr || host.getLatency(0)!=0 || host.getIdentifier(0).isNotEmpty())return 18;
     std::printf("PASS nested JUCE VST3 load, forwarded transport, stereo processing, PDC and state\n");
     return 0;
 }

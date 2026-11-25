@@ -674,10 +674,14 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     updateHostLatency();
 }
 juce::String SkellPresetAudioProcessor::moduleName(int type) const {return types[juce::jlimit(0,types.size()-1,type)];}
-juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path) {
+juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path,const juce::String& identifier) {
     if(slot<0 || slot>=slotCount)return juce::Result::fail("Invalid host slot");
-    const auto result=hosted.load(slot,path,rate,hostChunkCapacity);
+    const auto result=hosted.load(slot,path,rate,hostChunkCapacity,identifier);
     if(result.failed())return result;
+    const auto key=juce::String(slot+1);
+    state.state.setProperty("hostPath"+key,path.getFullPathName(),nullptr);
+    state.state.setProperty("hostClass"+key,hosted.getIdentifier(slot),nullptr);
+    state.state.removeProperty("hostState"+key,nullptr);
     setSlotType(slot,ExternalVST3);
     setSlotOn(slot,true);
     updateHostLatency();
@@ -713,10 +717,16 @@ void SkellPresetAudioProcessor::handleAsyncUpdate() {
         const auto key=juce::String(s+1);
         const auto path=state.state.getProperty("hostPath"+key).toString();
         const auto* type=rawSlots[(size_t)s].type;
-        if(path.isEmpty() || !type || (int)type->load()!=ExternalVST3)continue;
-        if(hosted.getFile(s).getFullPathName()!=path) {
-            const auto result=loadHostedVST3(s,juce::File(path));
-            if(result.failed())continue; // Missing third-party plugin stays dry/safe.
+        const auto identifier=state.state.getProperty("hostClass"+key).toString();
+        if(path.isEmpty() || !type || (int)type->load()!=ExternalVST3){
+            hosted.detach(s);continue;
+        }
+        if(!hosted.get(s) || hosted.getFile(s).getFullPathName()!=path ||
+           (identifier.isNotEmpty() && hosted.getIdentifier(s)!=identifier)) {
+            hosted.detach(s);
+            // Restore without modifying saved on/wet or selected program.
+            const auto result=hosted.load(s,juce::File(path),rate,hostChunkCapacity,identifier);
+            if(result.failed())continue; // Missing exact class stays dry.
         }
         const auto payload=state.state.getProperty("hostState"+key).toString();
         if(payload.isNotEmpty() && payload.length()<3*1024*1024) {
@@ -1807,12 +1817,19 @@ void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     snapshot.setProperty("program",savedProgram,nullptr);
     for(int s=0;s<slotCount;++s) {
         const auto index=juce::String(s+1);
-        snapshot.removeProperty("hostPath"+index,nullptr);
-        snapshot.removeProperty("hostState"+index,nullptr);
-        if(slotType(s)!=ExternalVST3)continue;
+        if(slotType(s)!=ExternalVST3){
+            snapshot.removeProperty("hostPath"+index,nullptr);
+            snapshot.removeProperty("hostState"+index,nullptr);
+            snapshot.removeProperty("hostClass"+index,nullptr);
+            continue;
+        }
+        // If the effect is missing, keep the original saved path/class/state
+        // rather than destroying its recall data on the next project save.
         const auto file=hosted.getFile(s);
-        if(file.getFullPathName().isEmpty())continue;
+        if(!hosted.get(s) || file.getFullPathName().isEmpty())continue;
+        snapshot.removeProperty("hostState"+index,nullptr);
         snapshot.setProperty("hostPath"+index,file.getFullPathName(),nullptr);
+        snapshot.setProperty("hostClass"+index,hosted.getIdentifier(s),nullptr);
         auto data=hosted.getState(s);
         if(data.getSize()>0 && data.getSize()<2*1024*1024)
             snapshot.setProperty("hostState"+index,data.toBase64Encoding(),nullptr);
@@ -1992,10 +2009,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         updateHostLatency();
         // Don't instantiate external code in setStateInformation(): hosts may
         // call this from threads that cannot safely load a plugin DLL.
-        bool restore=false;
-        for(int s=0;s<slotCount;++s)
-            if(loaded.hasProperty("hostPath"+juce::String(s+1))) {restore=true;break;}
-        if(restore)triggerAsyncUpdate();
+        triggerAsyncUpdate(); // also detach stale inserts on path-less state recall
     }
 }
 void SkellPresetAudioProcessor::addProgramIdentityListeners() {

@@ -958,27 +958,42 @@ void SlotEditor::syncEmbeddedEditor(){
 }
 void SlotEditor::loadVST3FromFile(const juce::File& path) {
     if(path.getFullPathName().isEmpty())return;
-    const auto result=processor.loadHostedVST3(slot,path);
-    if(result.failed())
-        juce::AlertWindow::showMessageBoxAsync(
-            juce::AlertWindow::WarningIcon,"VST3 could not load",
-            result.getErrorMessage());
-    else syncEmbeddedEditor();
-    graphSnapshotValid=false;
-    refreshIfChanged();
-    repaint();
+    std::vector<skellpreset::host::HostedVST3::EffectChoice> choices;
+    const auto inspected=skellpreset::host::HostedVST3::inspectEffects(path,choices);
+    if(inspected.failed()){
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+            "VST3 could not load",inspected.getErrorMessage());return;
+    }
+    const int target=slot;
+    juce::Component::SafePointer<SlotEditor> safe(this);
+    auto finish=[safe,target,path,choices](int id){
+        if(!safe || safe->selectedSlot()!=target || id<=0 || id>(int)choices.size())return;
+        if(safe->processor.slotType(target)!=SkellPresetAudioProcessor::ExternalVST3)return;
+        const auto result=safe->processor.loadHostedVST3(target,path,choices[(size_t)id-1].identifier);
+        if(result.failed())
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                "VST3 could not load",result.getErrorMessage());
+        else safe->syncEmbeddedEditor();
+        safe->graphSnapshotValid=false;safe->refreshIfChanged();safe->repaint();
+    };
+    if(choices.size()==1){finish(1);return;}
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Select an audio effect");
+    for(int i=0;i<(int)choices.size();++i)menu.addItem(i+1,choices[(size_t)i].name);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&loadExternal),std::move(finish));
 }
 void SlotEditor::chooseVST3File() {
     // Keep the asynchronous chooser alive until it returns.
     externalChooser=std::make_unique<juce::FileChooser>(
         "Choose an installed VST3 effect",juce::File{},"*.vst3",true);
+    const int target=slot;
     juce::Component::SafePointer<SlotEditor> safe(this);
     externalChooser->launchAsync(
         juce::FileBrowserComponent::openMode |
         juce::FileBrowserComponent::canSelectFiles |
         juce::FileBrowserComponent::canSelectDirectories,
-        [safe](const juce::FileChooser& chooser) {
-            if(!safe)return;
+        [safe,target](const juce::FileChooser& chooser) {
+            if(!safe || safe->selectedSlot()!=target)return;
             const auto path=chooser.getResult();
             if(path.getFullPathName().isEmpty())return;
             safe->loadVST3FromFile(path);

@@ -53,11 +53,58 @@ public:
        #endif
     }
 
-    juce::Result load(int slot,const juce::File& path,double sr,int block) {
+    struct EffectChoice {juce::String identifier,name;};
+    static juce::String classKey(const juce::PluginDescription& description) {
+        return description.createIdentifierString();
+    }
+    // Exact class matching, never a name-only guess. Empty key retains the
+    // legacy path-only project behavior and single-effect API.
+    static const juce::PluginDescription* chooseEffect(
+        const juce::OwnedArray<juce::PluginDescription>& descriptions,
+        const juce::String& identifier) {
+        const juce::PluginDescription* match=nullptr;
+        for(auto* description:descriptions){
+            if(description->isInstrument)continue;
+            if(identifier.isEmpty())return description;
+            if(classKey(*description)==identifier){
+                if(match)return nullptr; // ambiguous class identity
+                match=description;
+            }
+        }
+        return match;
+    }
+    static juce::Result inspectEffects(const juce::File& path,std::vector<EffectChoice>& choices) {
+        choices.clear();
+       #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
+        if(!path.exists() || !path.hasFileExtension("vst3"))
+            return juce::Result::fail("Choose an installed .vst3 bundle");
+        if(isSkellPresetProductName(path.getFileNameWithoutExtension()))
+            return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
+        juce::OwnedArray<juce::PluginDescription> descriptions;
+        juce::VST3PluginFormat scanner;
+        scanner.findAllTypesForFile(descriptions,path.getFullPathName());
+        for(auto* d:descriptions){
+            if(d->isInstrument || isSkellPresetProductName(d->name) ||
+               isSkellPresetProductName(d->descriptiveName))continue;
+            const auto key=classKey(*d);
+            if(key.isEmpty() || chooseEffect(descriptions,key)!=d)continue;
+            choices.push_back({key,d->name.isNotEmpty()?d->name:d->descriptiveName});
+        }
+        if(choices.empty())return juce::Result::fail("No supported audio effect classes found; check the bridge and licensed FL Studio installation.");
+        return juce::Result::ok();
+       #else
+        (void)path;
+        return juce::Result::fail("External VST3 hosting is available only in Windows builds");
+       #endif
+    }
+    juce::Result load(int slot,const juce::File& path,double sr,int block,
+                      const juce::String& identifier={}) {
         if(!valid(slot))return juce::Result::fail("Invalid rack slot");
        #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
         if(!path.exists() || !path.hasFileExtension(".vst3"))
             return juce::Result::fail("Choose an installed .vst3 bundle");
+        if(isSkellPresetProductName(path.getFileNameWithoutExtension()))
+            return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
         if(owned[(size_t)slot].size()>=8)
             return juce::Result::fail("Restart the DAW session before replacing this insert again");
         juce::OwnedArray<juce::PluginDescription> descriptions;
@@ -65,14 +112,14 @@ public:
         juce::VST3PluginFormat fallback;
         fallback.findAllTypesForFile(descriptions,path.getFullPathName());
         if(descriptions.isEmpty())return juce::Result::fail("No compatible audio VST3 effect found in bundle");
-        juce::PluginDescription* chosen=nullptr;
-        for(auto* description:descriptions)
-            if(!description->isInstrument) {chosen=description;break;}
+        const auto* chosen=chooseEffect(descriptions,identifier);
         // JUCE VST3 scans may report zero channels until the plug-in has been
         // instantiated; VST3 buses can also be dynamic. Do not reject a
         // valid audio effect using its uninitialized scanner channel counts.
         // Instead validate the real instance's stereo bus layout below.
-        if(!chosen)return juce::Result::fail("An audio VST3 effect is required (not an instrument)");
+        if(!chosen)return juce::Result::fail(identifier.isNotEmpty()?
+            "Saved effect class is unavailable or ambiguous; no substitute was loaded.":
+            "An audio VST3 effect is required (not an instrument)");
         if(isSkellPresetProductName(chosen->name)
            || isSkellPresetProductName(chosen->descriptiveName)
            || isSkellPresetProductName(path.getFileNameWithoutExtension()))
@@ -108,13 +155,27 @@ public:
                             (chosen->name.isNotEmpty()?chosen->name:
                              path.getFileNameWithoutExtension());
         locations[(size_t)slot]=path;
+        identifiers[(size_t)slot]=classKey(*chosen);
         latencies[(size_t)slot].store(latency,std::memory_order_release);
         active[(size_t)slot].store(pointer,std::memory_order_release);
         return juce::Result::ok();
        #else
-        (void)path;(void)sr;(void)block;
+        (void)path;(void)sr;(void)block;(void)identifier;
         return juce::Result::fail("External VST3 hosting is available only in Windows builds");
        #endif
+    }
+    juce::String getIdentifier(int slot) const {
+        return valid(slot)?identifiers[(size_t)slot]:juce::String{};
+    }
+    // Message thread only. Retain ownership so the callback cannot use a
+    // freed instance. Never substitute a previously loaded unrelated effect.
+    void detach(int slot) {
+        if(!valid(slot))return;
+        active[(size_t)slot].store(nullptr,std::memory_order_release);
+        latencies[(size_t)slot].store(0,std::memory_order_release);
+        names[(size_t)slot].clear();
+        identifiers[(size_t)slot].clear();
+        locations[(size_t)slot]=juce::File{};
     }
     juce::AudioPluginInstance* get(int slot) const noexcept {
         return valid(slot)?active[(size_t)slot].load(std::memory_order_acquire):nullptr;
@@ -172,7 +233,7 @@ private:
     std::array<std::atomic<int>,slotCount> latencies{};
     HostedTransport transport; // outlives all owned plug-ins at destruction
     std::array<std::vector<std::unique_ptr<juce::AudioPluginInstance>>,slotCount> owned;
-    std::array<juce::String,slotCount> names;
+    std::array<juce::String,slotCount> names,identifiers;
     std::array<juce::File,slotCount> locations;
 };
 } // namespace skellpreset::host

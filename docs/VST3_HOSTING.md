@@ -86,3 +86,6 @@ rejected before the nested instance is created.
 
 The original SkellCore DSP effects and your Skell-Preset native presets continue
 to work without loading any third-party code.
+
+### External FloopHole pilot (2026-11-25)
+Install the separately distributed upstream Windows x64 FloopHole v1.2.0 from https://github.com/FloopHole-Team/FloopHole/releases/tag/v1.2.0 and retain its license notices. A licensed local FL Studio installation is required. Skell does not bundle any bridge or Image-Line binary. Load FloopHole via External VST3; a multi-class bundle now prompts for a specific audio effect, and the DAW state stores the JUCE class identifier alongside path and opaque state. Missing exact classes are not silently replaced; old path-only states retain legacy selection. The installed bundle browser still indexes filenames only. Test actual licensed effects, native editor lifecycle, host tempo, state recall, dry/wet, PDC (upstream currently reports zero), multi-instance and crash behavior before production. Instruments remain excluded. Portable Skell preset export still rejects hosted slots. In-process bridge pilot is not sandboxed. No actual FloopHole runtime tested in CI; owned VST3 fixture and synthetic catalog exercise host selection. Local Quick4 unavailable: JUCE GitHub DNS failed.
