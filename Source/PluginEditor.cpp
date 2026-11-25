@@ -478,6 +478,11 @@ public:
         editingIdle=false;idle.setVisible(false);
         slot.openInstalledVST3BrowserForScreenshot();
     }
+    bool testLoadExternalFromNativeForTest(const juce::File& fixture) {
+        editingIdle=false;idle.setVisible(false);
+        slot.select(0);
+        return slot.testLoadExternalFromNativeForTest(fixture);
+    }
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
         // The idle screen is correct at startup, but local Quick4 must
         // capture the REAL requested effect once explicitly selected.
@@ -1760,4 +1765,7 @@ void SkellPresetAudioProcessorEditor::openModulePickerForScreenshot() {
 
 void SkellPresetAudioProcessorEditor::openInstalledVST3BrowserForScreenshot() {
     canvas->openInstalledVST3BrowserForScreenshot();
+}
+bool SkellPresetAudioProcessorEditor::testLoadExternalFromNativeForTest(const juce::File& fixture) {
+    return canvas->testLoadExternalFromNativeForTest(fixture);
 }

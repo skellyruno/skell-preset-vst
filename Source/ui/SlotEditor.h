@@ -124,6 +124,7 @@ public:
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
     bool testExternalBrowseCancel();
+    bool testLoadExternalFromNativeForTest(const juce::File& fixture);
     bool testEightBandGraphAndQ();
     bool testStudioEqSeventhBand();
     bool testStudioEqAddAndFilterTypes();

@@ -968,7 +968,8 @@ void SlotEditor::loadVST3FromFile(const juce::File& path) {
     juce::Component::SafePointer<SlotEditor> safe(this);
     auto finish=[safe,target,path,choices](int id){
         if(!safe || safe->selectedSlot()!=target || id<=0 || id>(int)choices.size())return;
-        if(safe->processor.slotType(target)!=SkellPresetAudioProcessor::ExternalVST3)return;
+        // The picker intentionally keeps the old effect until a successful load.
+        // Requiring ExternalVST3 before loading made every standard insert fail.
         const auto result=safe->processor.loadHostedVST3(target,path,choices[(size_t)id-1].identifier);
         if(result.failed())
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
@@ -4411,6 +4412,16 @@ bool SlotEditor::testEightBandGraphAndQ() {
     return good;
 }
 
+bool SlotEditor::testLoadExternalFromNativeForTest(const juce::File& fixture) {
+    processor.setSlotType(slot,SkellPresetAudioProcessor::Compressor);
+    processor.setSlotOn(slot,true);
+    refreshIfChanged();
+    const bool startedNative=processor.slotType(slot)==SkellPresetAudioProcessor::Compressor;
+    loadVST3FromFile(fixture);
+    const bool loaded=processor.slotType(slot)==SkellPresetAudioProcessor::ExternalVST3 &&
+        processor.hasHostedVST3(slot) && processor.hostedVST3Name(slot).isNotEmpty();
+    return startedNative && loaded;
+}
 bool SlotEditor::testExternalBrowseCancel() {
     const int oldType=processor.slotType(slot);
     const auto* power=processor.state.getRawParameterValue(

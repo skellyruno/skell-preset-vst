@@ -598,6 +598,19 @@ int strictSlotOrderSmoke(){
 
 // Windows desktop UI interaction/layout smoke; does NOT capture screenshots,
 // trigger the screenshot workflow, or open FL Studio. Uses the real editor.
+int uiExternalHostSmoke(const juce::File& fixture) {
+    auto plugin=std::make_unique<SkellPresetAudioProcessor>();
+    plugin->prepareToPlay(48000.,256);
+    std::unique_ptr<SkellPresetAudioProcessorEditor> editor(
+        static_cast<SkellPresetAudioProcessorEditor*>(plugin->createEditor()));
+    if(!editor || !editor->testLoadExternalFromNativeForTest(fixture)){
+        std::fprintf(stderr,"FAIL UI External VST3 load from native slot: %s\n",
+            fixture.getFullPathName().toRawUTF8());return 96;
+    }
+    editor.reset();plugin->releaseResources();
+    std::puts("PASS real JUCE UI loads owned VST3 fixture from native effect");
+    return 0;
+}
 int uiSmoke() {
     auto plugin=std::make_unique<SkellPresetAudioProcessor>();
     plugin->prepareToPlay(48000.,256);
@@ -2402,6 +2415,8 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--smoke-blank")return blankSmoke();
     if(argc==2 && juce::String(argv[1])=="--smoke-slot-order")return strictSlotOrderSmoke();
     if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
+    if(argc==3 && juce::String(argv[1])=="--ui-external-host-smoke")
+        return uiExternalHostSmoke(juce::File(juce::String::fromUTF8(argv[2])));
     if(argc==2 && juce::String(argv[1])=="--studio-smoke")return studioSmoke();
     if(argc==2 && juce::String(argv[1])=="--master-signal-smoke")return masterSignalSmoke();
     if(argc==2 && juce::String(argv[1])=="--native-trials-smoke")return nativeTrialsSmoke();

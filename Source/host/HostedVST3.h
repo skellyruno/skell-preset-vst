@@ -53,6 +53,17 @@ public:
        #endif
     }
 
+    // The current FloopHole Windows DLL calls discover(true) in InitDll.
+    // Nested in FL Studio, loading it can hang the DAW before JUCE returns.
+    static bool needsIsolatedHost(const juce::File& path) {
+        const auto name=path.getFileNameWithoutExtension()
+            .toLowerCase().removeCharacters(" -_.");
+        return name=="floophole" || name.startsWith("floophole_");
+    }
+    static juce::Result isolatedHostRequired() {
+        return juce::Result::fail(
+            "FloopHole needs an isolated host: its DLL scans FL Studio plugins during initialization and can freeze FL Studio when nested. Test it in a separate host until Skell has a sandboxed bridge.");
+    }
     struct EffectChoice {juce::String identifier,name;};
     static juce::String classKey(const juce::PluginDescription& description) {
         return description.createIdentifierString();
@@ -75,6 +86,7 @@ public:
     }
     static juce::Result inspectEffects(const juce::File& path,std::vector<EffectChoice>& choices) {
         choices.clear();
+        if(needsIsolatedHost(path))return isolatedHostRequired();
        #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
         if(!path.exists() || !path.hasFileExtension("vst3"))
             return juce::Result::fail("Choose an installed .vst3 bundle");
@@ -100,6 +112,7 @@ public:
     juce::Result load(int slot,const juce::File& path,double sr,int block,
                       const juce::String& identifier={}) {
         if(!valid(slot))return juce::Result::fail("Invalid rack slot");
+        if(needsIsolatedHost(path))return isolatedHostRequired();
        #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
         if(!path.exists() || !path.hasFileExtension(".vst3"))
             return juce::Result::fail("Choose an installed .vst3 bundle");

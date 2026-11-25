@@ -24,6 +24,7 @@ public:
     bool openRackContextMenuForScreenshot(int visualRow);
     void openModulePickerForScreenshot();
     void openInstalledVST3BrowserForScreenshot();
+    bool testLoadExternalFromNativeForTest(const juce::File& fixture);
     juce::StringArray getScreenshotLayoutIssues() const;
     juce::StringArray runScreenshotInteractionTests();
     bool showGuidedTourForScreenshot();

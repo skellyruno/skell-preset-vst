@@ -135,6 +135,10 @@ jobs:
           if (-not $fixture -or -not $runner) { throw 'Nested host fixture or probe executable missing' }
           & $runner.FullName $fixture.FullName
           if ($LASTEXITCODE -ne 0) { throw "Nested VST3 host regression failed: $LASTEXITCODE" }
+          $renderer = Get-ChildItem build -Recurse -File -Filter 'SkellPresetAlchemistRender.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Real-editor VST3 host smoke executable missing' }
+          & $renderer.FullName --ui-external-host-smoke $fixture.FullName
+          if ($LASTEXITCODE -ne 0) { throw "External VST3 UI loader regression failed: $LASTEXITCODE" }
       - name: Exercise Studio rack effects and native factory recall/audio/PDC/state
         shell: pwsh
         run: |

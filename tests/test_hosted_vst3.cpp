@@ -82,6 +82,12 @@ int main(int argc,char** argv) {
 
     skellpreset::host::HostedVST3 host;
     const juce::File fixture(juce::String::fromUTF8(argv[1]));
+    const auto unsafe=fixture.getParentDirectory().getChildFile("FloopHole.vst3");
+    std::vector<skellpreset::host::HostedVST3::EffectChoice> rejected;
+    if(!skellpreset::host::HostedVST3::needsIsolatedHost(unsafe) ||
+       host.load(0,unsafe,48000.,512).wasOk() ||
+       skellpreset::host::HostedVST3::inspectEffects(unsafe,rejected).wasOk() ||
+       !rejected.empty() || host.get(0)!=nullptr)return 19;
     // Synthetic multi-class catalog exercises exact selection independently
     // of the installed Image-Line software. Never accept an instrument or
     // silently substitute a different class when a saved key is unavailable.
