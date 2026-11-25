@@ -49,6 +49,24 @@ int main() {
     if(!require(!early && firstEcho && !wrongChannel,
                 "sample-accurate 25 ms first echo / true stereo"))return 4;
 
+    // Reading the two wet taps must not alter any audio sample or feedback.
+    {
+        skellpreset::studio::StereoDelay plain,observed;
+        plain.prepare(48000.);observed.prepare(48000.);
+        auto controls=defaults();controls[0]=0.f;controls[1]=0.f;controls[2]=.3f;
+        controls[3]=.2f;controls[9]=0.f;controls[10]=.5f;controls[11]=1.f;
+        plain.set(controls,120.);observed.set(controls,120.);
+        const auto times=observed.tapBaseMs();
+        if(std::abs(times[0]-25.f)>.01f || std::abs(times[1]-35.f)>.01f)return 16;
+        for(int n=0;n<2500;++n){
+            const float l=n==0?.5f:0.f,r=n==0?.25f:0.f;
+            std::array<float,2> tap{};
+            const auto a=plain.process(l,r,.5f),b=observed.process(l,r,.5f,&tap);
+            if(a!=b)return 17;
+            const float expectedL=n==1200?.125f:0.f,expectedR=n==1680?.0625f:0.f;
+            if(std::abs(tap[0]-expectedL)>1.e-5f || std::abs(tap[1]-expectedR)>1.e-5f)return 18;
+        }
+    }
     // Stress cross-feedback, saturation, diffusion, modulation and tempo.
     d.reset();p=defaults();
     p[2]=.76f;p[1]=.95f;p[7]=1.f;p[9]=.8f;p[15]=.85f;

@@ -18,8 +18,8 @@ public:
         published.store(0,std::memory_order_relaxed);
     }
     void push(const float* l,const float* r,int n,double sr) noexcept {
-        if(!l || n<=0)return;
-        const int stride=std::max(1,(int)std::ceil(std::clamp(sr,8000.,384000.)/12000.));
+        if(!l || n<=0 || !std::isfinite(sr) || sr<8000. || sr>384000.)return;
+        const int stride=std::max(1,(int)std::ceil(sr/12000.));
         for(int j=0;j<n;++j){
             const float a=std::isfinite(l[j])?std::clamp(l[j],-8.f,8.f):0.f;
             const float b=r?(std::isfinite(r[j])?std::clamp(r[j],-8.f,8.f):0.f):a;
@@ -84,19 +84,20 @@ inline float saturatorCore(float x,float drive,float blend,float denominator) no
     return std::tanh(x*drive*blend)/denominator;
 }
 struct TailReading {
-    bool armed=false,active=false;
+    bool armed=false,active=false,finished=false;
     float elapsed=0.f,reference=0.f,dropDb=0.f;
     void update(float input,float wet,float seconds) noexcept {
         if(!std::isfinite(input)||!std::isfinite(wet)||!std::isfinite(seconds))return;
         if(input>.001f){
-            armed=true;active=false;elapsed=0.f;reference=0.f;dropDb=0.f;return;
+            armed=true;active=false;finished=false;elapsed=0.f;reference=0.f;dropDb=0.f;return;
         }
-        if(!armed)return;
+        if(!armed || finished)return;
         if(!active && wet>.0001f){active=true;reference=wet;elapsed=0.f;}
         if(active){
             elapsed+=std::clamp(seconds,0.f,.25f);
             reference=std::max(reference,wet);
             dropDb=std::clamp(20.f*std::log10(std::max(1.e-8f,wet)/std::max(1.e-8f,reference)),-100.f,0.f);
+            if(dropDb<=-80.f || elapsed>=30.f)finished=true;
         }
     }
 };

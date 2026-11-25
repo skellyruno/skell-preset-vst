@@ -13,6 +13,8 @@ public:
         if(slot!=lastSlot || type!=lastType){
             lastSlot=slot;lastType=type;reset();
         }
+        const auto oldTransfer=transfer;
+        const float oldDeess=deessHz,oldGate=gateDb;
         deessHz=3500.f+p.getSlotParam(slot,0)*8000.f;
         if(type==P::Saturator){
             const auto* grit=p.state.getRawParameterValue("macro4");
@@ -24,6 +26,7 @@ public:
             for(size_t n=0;n<transfer.size();++n)transfer[n]=curveDist.sample(2.f*(float)n/(transfer.size()-1)-1.f);
         }
         gateDb=-75.f+p.getSlotParam(slot,0)*70.f;
+        const bool controlsChanged=oldTransfer!=transfer || oldDeess!=deessHz || oldGate!=gateDb;
         const auto now=juce::Time::getMillisecondCounter();
         skellpreset::visual::SlotVisualCapture::Frame frame;
         const bool available=p.getSlotVisual(slot,frame);
@@ -63,8 +66,9 @@ public:
             shift(wetHistory,wetAvailable?level(std::sqrt(.5f*(wetRms[0]*wetRms[0]+wetRms[1]*wetRms[1]))):0.f);
         }else if((unsigned)(now-lastFrame)>=400u){
             if(fresh){reset();repaint();}
+            else if(controlsChanged)repaint();
             return;
-        }else return;
+        }else {if(controlsChanged)repaint();return;}
         repaint();
     }
     bool testLayoutForTest() const noexcept {return getWidth()>=600 && getHeight()>=190;}
@@ -140,11 +144,16 @@ public:
                 noteTrace(pitchInHistory,Theme::muted);noteTrace(pitchOutHistory,accent);
             }else if(transferView){
                 const auto area=graph.reduced(10.f,6.f);
-                g.setColour(Theme::muted.withAlpha(.5f));g.drawLine(area.getX(),area.getBottom(),area.getRight(),area.getY(),.9f);
+                float fullScale=1.f;
+                for(float value:transfer)if(std::isfinite(value))fullScale=std::max(fullScale,std::abs(value));
+                fullScale=std::ceil(fullScale);
+                const float unity=area.getHeight()*.5f/fullScale;
+                g.setColour(Theme::muted.withAlpha(.5f));g.drawLine(area.getX(),area.getCentreY()+unity,area.getRight(),area.getCentreY()-unity,.9f);
+                Theme::fittedText(g,"Y: +/-"+juce::String(fullScale,0)+" FS",area.withHeight(14.f).toNearestInt(),9.f,Theme::muted,false,juce::Justification::centredRight);
                 juce::Path path;
                 for(size_t n=0;n<transfer.size();++n){
                     const float x=area.getX()+area.getWidth()*(float)n/(transfer.size()-1);
-                    const float y=area.getCentreY()-std::clamp(transfer[n],-1.f,1.f)*area.getHeight()*.5f;
+                    const float y=area.getCentreY()-std::clamp(transfer[n]/fullScale,-1.f,1.f)*area.getHeight()*.5f;
                     if(n==0)path.startNewSubPath(x,y);else path.lineTo(x,y);
                 }
                 g.setColour(accent.withAlpha(.18f));g.strokePath(path,juce::PathStrokeType(5.f));
@@ -262,7 +271,7 @@ public:
             g.setColour(accent.withAlpha(.8f));g.strokePath(trace,juce::PathStrokeType(1.2f));
         }
         const juce::String legend=pitch?juce::String("DETECTED MONOPHONIC INPUT / OUTPUT / C2-C6"):
-            transferView?juce::String("STATIC CORE RESPONSE / -1 TO +1 / BEFORE RACK MIX"):
+            transferView?juce::String("STATIC CORE RESPONSE / INPUT +/-1 FS / BEFORE RACK MIX"):
             taps?juce::String("BASE TAP TIME / MEASURED WET ENERGY / NOT DRY SIGNAL"):
             room?(tail.active?"OBSERVED TAIL "+juce::String(tail.elapsed,2)+" s / RELATIVE DROP":juce::String("WET ENERGY / WAITING FOR INPUT TO FALL SILENT")):
             stereo?juce::String("ACTUAL OUTPUT / MID-SIDE"):

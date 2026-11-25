@@ -90,9 +90,16 @@ int main() {
         if(std::abs(reading.hz-110.f)>1.f || reading.confidence<.8f || std::abs(reading.midi-45.f)>.15f)return 41;
     }
     pitch.fill(0.f);if(estimatePitch(pitch,12000.f).hz!=0.f)return 42;
+    history.reset();history.push(l.data(),l.data(),1024,std::numeric_limits<double>::quiet_NaN());
+    float rejectedRate=0.f;if(history.snapshot(pitch,rejectedRate))return 45;
+    unsigned rng=12345u;for(auto& value:pitch){rng=1664525u*rng+1013904223u;value=(float)(rng>>8)/8388608.f-1.f;}
+    if(estimatePitch(pitch,12000.f).hz!=0.f)return 46;
     if(saturatorCore(0.f,2.f,1.f,1.2f)!=0.f || std::abs(saturatorCore(.5f,2.f,1.f,1.2f)-std::tanh(1.f)/1.2f)>1.e-6f)return 43;
     TailReading tail;tail.update(.1f,.2f,.02f);tail.update(0.f,.1f,.02f);tail.update(0.f,.01f,.1f);
     if(!tail.active || std::abs(tail.dropDb+20.f)>.01f || std::abs(tail.elapsed-.12f)>.001f)return 44;
-    std::puts("PASS: pitch history at four rates, exact drive core and observed tail drop");
+    tail.update(0.f,0.f,.1f);const float finishedAt=tail.elapsed;
+    tail.update(0.f,0.f,.1f);if(!tail.finished || tail.elapsed!=finishedAt)return 47;
+    tail.update(.1f,.1f,.02f);if(tail.active || tail.finished)return 48;
+    std::puts("PASS: pitch history at four rates, silence/noise rejection, exact drive core and observed tail drop");
     return 0;
 }
