@@ -117,6 +117,7 @@ std::array<juce::String,4> titles(int type) {
         case 42:return {"Drive","Unused","Colour","Mix"};
         case 43:return {"Amount","Colour","Voice","Parallel"};
         case 44:return {"Voice","Sens","Low","Mid"};
+        case 45:return {"Mid Air","High Air","Protection","Trim"};
         default:return {"Level","Tone","Time","Blend"};
     }
 }
@@ -552,6 +553,8 @@ void SlotEditor::applyKnobReadouts() {
                 if(i==2)return juce::String(2.+20.*v,1)+" dB";
                 return juce::String(35.+245.*v,0)+" ms";
             }
+            if(module==SkellPresetAudioProcessor::SkellAirFX)
+                return i==3?juce::String(24.*v-12.,1)+" dB":juce::String(juce::roundToInt(v*100.))+"%";
             if(module==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
                 const int parameter=suitePage*4+i;
                 if(parameter==0)return v<.25?"MALE":v<.75?"MALE 2":"FEMALE";
@@ -766,6 +769,8 @@ void SlotEditor::applyKnobReadouts() {
                 if(i==2)return juce::jlimit(0.,1.,(value-2.)/20.);
                 return juce::jlimit(0.,1.,(value-35.)/245.);
             }
+            if(module==SkellPresetAudioProcessor::SkellAirFX)
+                return i==3?juce::jlimit(0.,1.,(value+12.)/24.):juce::jlimit(0.,1.,value/100.);
             if(module==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
                 const int parameter=suitePage*4+i;
                 if(parameter==0) {

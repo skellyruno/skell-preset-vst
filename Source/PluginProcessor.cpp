@@ -91,6 +91,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension9=state.getRawParameterValue(prefix+"fxExt9");
         r.extension10=state.getRawParameterValue(prefix+"fxExt10");
         r.extension11=state.getRawParameterValue(prefix+"fxExt11");
+        r.extension12=state.getRawParameterValue(prefix+"fxExt12");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         r.duckOn=state.getRawParameterValue(prefix+"duckOn");
@@ -352,6 +353,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         fl(pre+"limitAttack","Slot "+juce::String(slot)+" limiter attack ms",0.f,3.f,0.f);
         fl(pre+"limitRelease","Slot "+juce::String(slot)+" limiter release ms",5.f,500.f,70.f);
     }
+    // Append a new two-choice selector; never renormalize existing automation.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt12",1},
+            "Slot "+juce::String(slot)+" Skell Air effect",
+            juce::StringArray{"None","Skell Air"},0));
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -370,6 +377,7 @@ void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
     micModel.prepare(sampleRate);skelldizer.prepare(sampleRate);
     harshness.prepare(sampleRate);noiseControl.prepare(sampleRate);
     studioPitch.prepare(sampleRate);
+    skellAir.prepare(sampleRate);
     pitchDry.prepare(skellpreset::dsp::SpectralPitchFormant::latencySamples);
     delay.prepare(sampleRate);studioDelay.prepare(sampleRate);
     vocalFeel.prepare(sampleRate);
@@ -528,7 +536,9 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int adlib=raw.extension9?juce::jlimit(0,4,(int)raw.extension9->load()):0;
     const int vocalFeel=raw.extension10?juce::jlimit(0,1,(int)raw.extension10->load()):0;
     const int vocalSuite=raw.extension11?juce::jlimit(0,1,(int)raw.extension11->load()):0;
+    const int air=raw.extension12?juce::jlimit(0,1,(int)raw.extension12->load()):0;
     if(oldType!=Empty)return oldType;
+    if(air>0)return SkellAirFX;
     if(vocalSuite>0)return VocalFeelSuiteFX;
     if(vocalFeel>0)return VocalFeelOptoFX;
     if(adlib>0)return (int)StudioDelayFX+adlib;
@@ -548,13 +558,20 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
     const bool newStudio=chosen>SkelldizerFX && slotType(slot)!=chosen;
+    if(chosen!=SkellAirFX)setReal(id+"fxExt12",0.f);
     if(chosen!=VocalFeelSuiteFX)setReal(id+"fxExt11",0.f);
     if(chosen!=VocalFeelOptoFX)setReal(id+"fxExt10",0.f);
     if(chosen<=StudioDelayFX)setReal(id+"fxExt9",0.f);
     if(chosen<=StudioFastDistFX)setReal(id+"fxExt8",0.f);
     if(chosen<=SkelldizerFX)setReal(id+"fxExt7",0.f);
     if(chosen<=MicModelFX)setReal(id+"fxExt6",0.f);
-    if(chosen==VocalFeelSuiteFX) {
+    if(chosen==SkellAirFX) {
+        setReal(id+"type",(float)Empty);
+        for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5",
+                                "fxExt6","fxExt7","fxExt8","fxExt9","fxExt10","fxExt11"})
+            setReal(id+choice,0.f);
+        setReal(id+"fxExt12",1.f);
+    } else if(chosen==VocalFeelSuiteFX) {
         setReal(id+"type",(float)Empty);
         for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5",
                                 "fxExt6","fxExt7","fxExt8","fxExt9","fxExt10"})
@@ -641,6 +658,10 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(newStudio) {
         // First selection only; imported preset parameters restore afterward.
         for(int k=0;k<16;++k)setSlotParam(slot,k,.5f);
+        if(chosen==SkellAirFX) {
+            setSlotParam(slot,0,0.f);setSlotParam(slot,1,0.f);
+            setSlotParam(slot,2,1.f);setSlotParam(slot,3,.5f);
+        }
         if(chosen==VocalFeelSuiteFX) {
             for(int k=0;k<16;++k)
                 setSlotParam(slot,k,skellpreset::dsp::vocalFeelNeutral[(size_t)k]);
@@ -974,6 +995,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             case VocalFeelOptoFX:
                 e.vocalFeel.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
+            case SkellAirFX:
+                e.skellAir.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
             case VocalFeelSuiteFX:
                 e.vocalSuite.set(c.p);
                 e.vocalSuite.beginBlock();
@@ -1158,6 +1182,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case VocalFeelOptoFX: {
                         const auto y=e.vocalFeel.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case SkellAirFX: {
+                        const auto y=e.skellAir.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case VocalFeelSuiteFX: {
@@ -1980,6 +2008,19 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             }
             if(validProgram)selectedProgram=parsedProgram;
         }
+        // Legacy snapshots have no Skell Air selector.
+        for(int slot=1;slot<=slotCount;++slot) {
+            const auto id="s"+juce::String(slot)+"_fxExt12";
+            bool present=false;
+            for(int i=0;i<loaded.getNumChildren();++i)
+                if(loaded.getChild(i).getProperty("id").toString()==id) {present=true;break;}
+            if(!present) {
+                juce::ValueTree child(juce::Identifier("PARAM"));
+                child.setProperty("id",id,nullptr);
+                child.setProperty("value",0.f,nullptr);
+                loaded.appendChild(child,nullptr);
+            }
+        }
         // Old host snapshots may lack this generation; avoid retaining a
         // previous Suite insert when recalling an older project.
         for(int slot=1;slot<=slotCount;++slot) {
@@ -2107,7 +2148,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
         const auto prefix=slotPrefix(slot);
         for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
                                 "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
-                                "fxExt8","fxExt9","fxExt10","fxExt11","eqLowCut","eqHighCut"})add(prefix+suffix);
+                                "fxExt8","fxExt9","fxExt10","fxExt11","fxExt12","eqLowCut","eqHighCut"})add(prefix+suffix);
         for(int parameter=1;parameter<=16;++parameter)
             add(prefix+"p"+juce::String(parameter));
         for(int band=1;band<=8;++band) {
