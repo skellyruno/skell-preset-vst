@@ -1909,12 +1909,17 @@ void SlotEditor::paint(juce::Graphics&g) {
         type==SkellPresetAudioProcessor::StudioEQFX ||
         type==SkellPresetAudioProcessor::EightBandToneFX ||
         type==SkellPresetAudioProcessor::DeEsser;
-    g.setGradientFill(juce::ColourGradient(
-        Theme::plot,plot.getTopLeft(),
-        echoFace?Theme::bg:Theme::panelAlt.darker(.44f),plot.getBottomRight(),false));
-    g.fillRoundedRectangle(plot,6.f);
-    g.setColour(familyAccent.withAlpha(.31f));
-    g.drawRoundedRectangle(plot.reduced(.6f),6.f,1.1f);
+    // The empty slot has no graph to plot, so it does not draw an empty graph
+    // frame: the call-to-action card is the whole surface.
+    const bool boxedFace=type!=SkellPresetAudioProcessor::Empty;
+    if(boxedFace) {
+        g.setGradientFill(juce::ColourGradient(
+            Theme::plot,plot.getTopLeft(),
+            echoFace?Theme::bg:Theme::panelAlt.darker(.44f),plot.getBottomRight(),false));
+        g.fillRoundedRectangle(plot,6.f);
+        g.setColour(familyAccent.withAlpha(.31f));
+        g.drawRoundedRectangle(plot.reduced(.6f),6.f,1.1f);
+    }
     // Distinct instrument families use the same precise clickable graph
     // bounds, but restrained different structural accents.
     g.setColour(familyAccent.withAlpha(.35f));
@@ -1924,18 +1929,42 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(type==SkellPresetAudioProcessor::Empty) {
         // An empty slot has no DSP and no editable graph. Do not draw a grid
         // or a drag affordance that cannot change anything; show a truthful
-        // call to action instead.
-        const auto card=plot.reduced(plot.getWidth()*.26f,plot.getHeight()*.20f);
-        g.setColour(Theme::panelAlt.withAlpha(.88f));
+        // call to action that names the real action (the + button in the rack
+        // opens the module picker) and the families available in it.
+        const auto card=plot.reduced(plot.getWidth()*.16f,plot.getHeight()*.16f);
+        g.setColour(Theme::panelAlt.withAlpha(.90f));
         g.fillRoundedRectangle(card,10.f);
         g.setColour(Theme::stroke.withAlpha(.9f));
         g.drawRoundedRectangle(card.reduced(.7f),10.f,1.2f);
-        Theme::fittedText(g,"EMPTY SLOT",
-            card.withHeight(34.f).translated(0.f,card.getHeight()*.26f).toNearestInt(),
+        const float top=card.getY()+card.getHeight()*.22f;
+        const auto titleArea=juce::Rectangle<float>(
+            card.getX(),top,card.getWidth(),30.f).toNearestInt();
+        const auto hintArea=juce::Rectangle<float>(
+            card.getX(),top+32.f,card.getWidth(),22.f).toNearestInt();
+        Theme::fittedText(g,"EMPTY SLOT",titleArea,
             19.f,Theme::white,true,juce::Justification::centred);
-        Theme::fittedText(g,"PRESS + IN THE RACK TO ADD A PROCESSOR",
-            card.withHeight(24.f).translated(0.f,card.getHeight()*.26f+36.f).toNearestInt(),
-            12.f,Theme::muted,true,juce::Justification::centred);
+        Theme::fittedText(g,"PRESS + IN THE RACK TO ADD A PROCESSOR",hintArea,
+            11.5f,Theme::muted,true,juce::Justification::centred);
+        // Effect families the picker actually offers, one per catalog category.
+        static constexpr const char* familyNames[]{
+            "DYNAMICS","EQ + TONE","SPACE","MODULATION","PITCH","VOCAL","ADLIB","EXTERNAL"};
+        const float chipY=top+60.f;
+        const float chipH=19.f;
+        const float gap=6.f;
+        float chipW=(card.getWidth()-gap*7.f)/8.f;
+        chipW=juce::jmax(38.f,chipW);
+        const float total=chipW*8.f+gap*7.f;
+        float chipX=card.getCentreX()-total*.5f;
+        for(const char* entry:familyNames) {
+            const auto chip=juce::Rectangle<float>(chipX,chipY,chipW,chipH);
+            g.setColour(Theme::bg.withAlpha(.55f));
+            g.fillRoundedRectangle(chip,3.6f);
+            g.setColour(Theme::stroke.withAlpha(.72f));
+            g.drawRoundedRectangle(chip,3.6f,.85f);
+            Theme::fittedText(g,entry,chip.toNearestInt().reduced(3,0),
+                              8.4f,Theme::muted,true,juce::Justification::centred);
+            chipX+=chipW+gap;
+        }
     }
     constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
     const bool emptyFace=type==SkellPresetAudioProcessor::Empty;
@@ -3461,7 +3490,10 @@ void SlotEditor::paint(juce::Graphics&g) {
         g.setColour(Theme::green);
         g.strokePath(handle,juce::PathStrokeType(2.2f));
         }
-    } else {
+    } else if(type!=SkellPresetAudioProcessor::Empty) {
+        // The empty slot already paints its own call-to-action card above.
+        // Painting a second instruction here is what caused the overlapping
+        // "EMPTY SLOT" / "SELECT A MODULE" headings.
         Theme::text(g,"SELECT A MODULE FROM THE DROPDOWN",{170,234,500,25},16,Theme::muted,true,juce::Justification::centred);
     }
     g.restoreState();
@@ -3698,7 +3730,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     const juce::String gestureHint="DRAG GRAPH  /  X: "+
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
     Theme::text(g,type==SkellPresetAudioProcessor::Empty
-                    ? juce::String("EMPTY SLOT  /  PRESS + IN THE RACK TO ADD A PROCESSOR")
+                    ? juce::String("NO PROCESSOR LOADED  /  RACK SLOT KEEPS ITS POSITION AND AUTOMATION")
                     : type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
                   isModulationOrbEffect(type) && modOrbView ? "MODULATION ORB IS VISUAL ONLY / EDIT IN-PANEL CONTROLS" :

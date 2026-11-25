@@ -53,6 +53,10 @@ struct Document {
     bool micGateOn = false;
     float micGateThreshold = -45.f, micGateRelease = 160.f, micGateHold = 55.f;
     float micGateAttackMs=4.f,micGateHysteresisDb=3.f,micGateDepth=1.f;
+    // Optional v2 extension: native output-stage stereo separation, raw
+    // -96..+96 (negative widens, positive merges, 0 neutral). Absent in older
+    // packages, so every existing preset loads at verified neutral.
+    int stereoSeparation = 0;
     std::array<float, 8> macros {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
     std::array<Slot, slotCount> slots = [] {
         std::array<Slot, slotCount> result {};

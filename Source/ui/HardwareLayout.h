@@ -4,6 +4,8 @@
 namespace skellpreset::face {
 inline bool eq(int type) noexcept {return type==1 || type==26 || type==34;}
 inline bool limiter(int type) noexcept {return type==3 || type==35;}
+// Classic Saturator exposes exactly two DSP parameters (Drive, Character).
+inline bool saturator(int type) noexcept {return type==5;}
 inline bool hardware(int type) noexcept {return !eq(type) && type!=0 && type!=12 && type!=32;}
 inline bool dynamics(int type) noexcept {
     return type==2 || type==19 || type==27 || type==36 || type==43;
@@ -11,6 +13,9 @@ inline bool dynamics(int type) noexcept {
 inline bool space(int type) noexcept {return type==6 || type==7 || type==9 || type==18 || type==24 || type==38;}
 inline juce::Rectangle<int> control(int type,int index) noexcept {
     if(limiter(type))return {42+index*222,203,202,246};
+    // Saturator: two large dials flanking a real transfer-curve screen.
+    if(saturator(type))return index==0?juce::Rectangle<int>{36,196,204,250}
+                                      :juce::Rectangle<int>{666,196,204,250};
     if(type==4 || type==29) {
         if(index==0)return {45,177,260,282};
         return {328+(index-1)*181,302,170,181};

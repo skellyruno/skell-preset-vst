@@ -106,6 +106,7 @@ juce::var toJson(const Document& d) {
     global->setProperty("micGateAttackMs",d.micGateAttackMs);
     global->setProperty("micGateHysteresisDb",d.micGateHysteresisDb);
     global->setProperty("micGateDepth",d.micGateDepth);
+    global->setProperty("stereoSeparation",d.stereoSeparation);
     juce::Array<juce::var> macros;
     for (float value : d.macros) macros.add(value);
     global->setProperty("macros", juce::var(macros));
@@ -215,6 +216,12 @@ juce::Result fromJson(const juce::var& root, Document& out) {
     if(hasJsonProperty(globals,"micGateDepth") &&
        !decodeFloat(globals.getProperty("micGateDepth",{}),0.f,1.f,candidate.micGateDepth))
         return juce::Result::fail("Invalid mic gate reduction");
+    // Stereo separation is a strict integer in the supplied raw range. Absent
+    // in pre-R6 archives, where candidate.stereoSeparation stays at neutral 0.
+    if(hasJsonProperty(globals,"stereoSeparation") &&
+       !decodeInteger(globals.getProperty("stereoSeparation",{}),-96,96,
+                      candidate.stereoSeparation))
+        return juce::Result::fail("Invalid stereo separation");
     // Schema-v2 macros were added as an optional extension. Older v1/v2
     // archives without the property retain neutral 50% host defaults.
     // If present (including explicit null), the array remains strictly

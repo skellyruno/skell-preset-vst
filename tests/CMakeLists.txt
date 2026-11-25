@@ -189,3 +189,9 @@ add_test(NAME SkellPresetVocalFeelOptoTest COMMAND SkellPresetVocalFeelOptoTest)
 add_executable(SkellPresetStudioDelayTest test_studio_delay.cpp)
 target_compile_features(SkellPresetStudioDelayTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetStudioDelayTest COMMAND SkellPresetStudioDelayTest)
+
+# Native output-stage stereo separation (Stereo Enhancer matrix, raw -96..96,
+# 10 ms sample-count smoothing, exact neutral bypass, mono compatibility).
+add_executable(SkellPresetStereoSeparationTest test_stereo_separation.cpp)
+target_compile_features(SkellPresetStereoSeparationTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetStereoSeparationTest COMMAND SkellPresetStereoSeparationTest)

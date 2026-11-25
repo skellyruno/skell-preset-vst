@@ -54,7 +54,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
     const float db=skellpreset::dsp::gainToDb(peak);
     const float level=juce::jlimit(0.f,1.f,(db+60.f)/60.f);
     const float reduction=processor.getSlotGainReductionDb(slot);
-    const auto output=peak>0.00001f?juce::String(db,1)+" dBFS":juce::String("— dBFS");
+    const auto output=peak>0.00001f?juce::String(db,1)+" dBFS":juce::String("-inf dBFS");
     const auto gr=juce::String(reduction,1)+" dB";
     if(limiter(type)) {
         meter(g,{754.f,177.f,106.f,310.f},level,"OUTPUT",output,true);
@@ -124,10 +124,85 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
             const float rms=processor.getSuiteReturnRms(slot,i);
             const float fraction=juce::jlimit(0.f,1.f,(skellpreset::dsp::gainToDb(rms)+55.f)/55.f);
             meter(g,{43.f+165.f*i,460.f,156.f,49.f},fraction,returns[i],
-                  rms>.00001f?juce::String(skellpreset::dsp::gainToDb(rms),1)+" dBFS":"— dBFS");
+                  rms>.00001f?juce::String(skellpreset::dsp::gainToDb(rms),1)+" dBFS":"-inf dBFS");
         }
     } else if(type==31 || type==40 || type==42) {
         meter(g,{65.f,477.f,773.f,38.f},level,"OUTPUT",output);
+    } else if(saturator(type)) {
+        // Dedicated saturation face. Drive and Character are the only two
+        // parameters the DSP reads, so the centre of the panel is a truthful
+        // tanh transfer curve computed from the same drive/blend the audio
+        // path uses, not a decorative ring.
+        const float driveParam=processor.getSlotParam(slot,0);
+        const float character=processor.getSlotParam(slot,1);
+        const float macroGrit=processor.state.getRawParameterValue("macro4")->load();
+        const float drive=std::pow(10.f,(driveParam*24.f+10.f*(macroGrit-.5f))/20.f);
+        const float blend=.5f+character;
+        const float denom=std::max(.5f,drive*.6f);
+        const auto screen=juce::Rectangle<float>(272.f,176.f,362.f,282.f);
+        g.setGradientFill(juce::ColourGradient(
+            juce::Colour(0xff070d0a),screen.getTopLeft(),
+            juce::Colour(0xff020504),screen.getBottomRight(),false));
+        g.fillRoundedRectangle(screen,7.f);
+        g.setColour(Theme::stroke.withAlpha(.55f));
+        g.drawRoundedRectangle(screen,7.f,1.f);
+        // Graticule plus the 1:1 reference diagonal.
+        const auto plot=screen.reduced(26.f,22.f);
+        g.setColour(Theme::stroke.withAlpha(.22f));
+        for(int line=1;line<4;++line) {
+            const float f=(float)line/4.f;
+            g.drawVerticalLine((int)(plot.getX()+plot.getWidth()*f),plot.getY(),plot.getBottom());
+            g.drawHorizontalLine((int)(plot.getY()+plot.getHeight()*f),plot.getX(),plot.getRight());
+        }
+        g.setColour(Theme::muted.withAlpha(.26f));
+        g.drawLine(plot.getX(),plot.getBottom(),plot.getRight(),plot.getY(),.9f);
+        // Drawn transfer function matching tanh(x*drive*blend)/denom. The
+        // vertical axis is normalized to this setting's own full-scale output
+        // so the plot fills the screen while the curvature and the amount of
+        // compression remain exactly what the DSP applies.
+        const float fullScale=std::tanh(1.1f*drive*blend)/denom;
+        const float yScale=fullScale>.0001f?plot.getHeight()*.46f/fullScale:0.f;
+        juce::Path curve;
+        for(int i=0;i<=96;++i) {
+            const float t=(float)i/96.f;
+            const float inLevel=(t*2.f-1.f)*1.1f;
+            const float outLevel=std::tanh(inLevel*drive*blend)/denom;
+            const float x=plot.getX()+plot.getWidth()*t;
+            const float y=juce::jlimit(plot.getY(),plot.getBottom(),
+                                       plot.getCentreY()-outLevel*yScale);
+            if(i==0)curve.startNewSubPath(x,y);else curve.lineTo(x,y);
+        }
+        g.setColour(Theme::green.withAlpha(.16f));
+        g.strokePath(curve,juce::PathStrokeType(6.f,
+            juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        g.setColour(Theme::green.withAlpha(.88f));
+        g.strokePath(curve,juce::PathStrokeType(2.f,
+            juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        // Live operating point: where the current slot output sits on the curve.
+        if(peak>.00002f) {
+            const float inLevel=juce::jlimit(-1.1f,1.1f,std::sqrt(peak)*1.1f);
+            const float outLevel=std::tanh(inLevel*drive*blend)/denom;
+            const float px=plot.getCentreX()+plot.getWidth()*.5f*(inLevel/1.1f);
+            const float py=juce::jlimit(plot.getY(),plot.getBottom(),
+                                        plot.getCentreY()-outLevel*(yScale>0.f?yScale:1.f));
+            g.setColour(Theme::white.withAlpha(.22f));
+            g.fillEllipse(px-7.f,py-7.f,14.f,14.f);
+            g.setColour(Theme::white);
+            g.fillEllipse(px-2.4f,py-2.4f,4.8f,4.8f);
+        }
+        Theme::text(g,"TRANSFER  /  IN -> OUT",{286,184,300,16},9.f,Theme::muted,true);
+        Theme::fittedText(g,juce::String(drive,2)+"x DRIVE",{286,432,200,16},10.f,
+                          Theme::green,true);
+        Theme::fittedText(g,output,{436,432,190,16},10.f,Theme::muted,true,
+                          juce::Justification::centredRight);
+        // Harmonic balance readout driven by the real Character value.
+        Theme::text(g,"ODD-HARMONIC WEIGHT",{286,450,220,14},8.6f,Theme::muted,true);
+        const auto bar=juce::Rectangle<float>(286.f,466.f,330.f,5.f);
+        g.setColour(Theme::stroke.withAlpha(.60f));
+        g.fillRoundedRectangle(bar,2.5f);
+        g.setColour(Theme::green.withAlpha(.82f));
+        g.fillRoundedRectangle(bar.withWidth(
+            bar.getWidth()*(.12f+.76f*juce::jlimit(0.f,1.f,character))),2.5f);
     } else {
         // Dedicated central hardware instrument, with a live level ring and
         // a purpose-specific description. No generic frequency/XY graph.

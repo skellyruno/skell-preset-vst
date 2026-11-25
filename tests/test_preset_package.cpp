@@ -54,6 +54,7 @@ int main(){
               && loaded.micGateRelease==160.f
               && loaded.micGateHold==55.f
                && loaded.micGateAttackMs==4.f && loaded.micGateHysteresisDb==3.f && loaded.micGateDepth==1.f
+              && loaded.stereoSeparation==0
               && !loaded.slots[0].duckOn
               && loaded.slots[0].duckDepth==.65f
               && loaded.slots[0].duckAttack==12.f
@@ -88,6 +89,8 @@ int main(){
     first.micGateOn=true;first.micGateThreshold=-31.f;
     first.micGateRelease=250.f;first.micGateHold=83.f;
     first.micGateAttackMs=11.f;first.micGateHysteresisDb=7.f;first.micGateDepth=.6f;
+    // Output-stage stereo separation persists as a strict integer.
+    first.stereoSeparation=-43;
     first.macros.fill(.5f);
     first.macros[0]=.86f;
     auto path=testFile(dir,"roundtrip");
@@ -104,6 +107,7 @@ int main(){
           &&second.micGateOn &&second.micGateThreshold==-31.f
           &&second.micGateRelease==250.f &&second.micGateHold==83.f
            &&second.micGateAttackMs==11.f &&second.micGateHysteresisDb==7.f &&second.micGateDepth==.6f
+          &&second.stereoSeparation==-43
           &&second.slots[2].duckOn &&!second.slots[3].duckOn
           &&second.slots[2].duckDepth==.73f
           &&second.slots[2].duckThreshold==-28.f

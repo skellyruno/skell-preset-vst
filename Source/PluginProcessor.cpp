@@ -129,6 +129,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawGlobal.gate=state.getRawParameterValue("globalGate");
     rawGlobal.threshold=state.getRawParameterValue("gateThreshold");
     rawGlobal.delta=state.getRawParameterValue("delta");
+    rawGlobal.stereoSeparation=state.getRawParameterValue("stereoSeparation");
     for(int k=0;k<4;k++)rawGlobal.macros[(size_t)k]=state.getRawParameterValue("macro"+juce::String(k+1));
     addProgramIdentityListeners();
     // New instances start with a clean, latency-free rack. APVTS slot type
@@ -322,6 +323,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     fl("micGateAttackMs","Mic gate attack ms",.5f,25.f,4.f);
     fl("micGateHysteresisDb","Mic gate hysteresis dB",0.f,12.f,3.f);
     fl("micGateDepth","Mic gate reduction",0.f,1.f,1.f);
+    // Native output-stage stereo separation. Appended last so every earlier
+    // host ID keeps its published index/normalization. The raw range is the
+    // supplied -96..+96 (negative widens, positive merges to mono, 0 neutral).
+    // Integer steps keep host automation and the UI readout on the same grid.
+    p.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"stereoSeparation",1},
+        "Stereo separation",
+        juce::NormalisableRange<float>(-96.f,96.f,1.f),0.f));
     // NEW, appended option. Never add to fxExt9: its host choice range is
     // published and changing its normalization would break saved DAW states.
     for(int slot=1;slot<=slotCount;++slot)
@@ -451,6 +460,12 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
         for(auto& meter:channel)meter.store(0.f,std::memory_order_relaxed);
     micFrontEnd.prepare(rate);
     micInputGate.prepare(rate);
+    // Output-stage separation is prepared with the processor's own sample rate
+    // so its 10 ms glide is always the exact host rate, then snapped to the
+    // current parameter without waiting for the first block.
+    stereoSeparation.prepare(rate);
+    if(auto* raw=rawGlobal.stereoSeparation)
+        stereoSeparation.setRaw(juce::roundToInt(raw->load()));
     micFrontWet.reset(rate,.020);
     micFrontWet.setCurrentAndTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     micGateWet.reset(rate,.020);
@@ -674,6 +689,33 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     updateHostLatency();
 }
 juce::String SkellPresetAudioProcessor::moduleName(int type) const {return types[juce::jlimit(0,types.size()-1,type)];}
+// Reports which loaded, enabled effects a Simple macro actually modulates.
+// Mirrors the exact switch in processBlock: Tone feeds the classic EQ band
+// gain, Punch the classic Compressor threshold, Space the Reverb/Delay return
+// and Grit the Saturator drive (plus the classic Limiter drive). Anything the
+// macro cannot reach is deliberately absent so the Simple view can mark the
+// dial as inactive instead of implying control that does not exist.
+juce::StringArray SkellPresetAudioProcessor::macroTargets(int macroIndex) const {
+    juce::StringArray targets;
+    for(int slot=0;slot<activeSlotCount();++slot) {
+        const int id=slotIdAt(slot);
+        if(id<0 || id>=slotCount)continue;
+        const auto& raw=rawSlots[(size_t)id];
+        if(raw.on && raw.on->load()<=.5f)continue;   // bypassed slots are inert
+        const int type=slotType(id);
+        if(type==Empty)continue;
+        bool matches=false;
+        switch(macroIndex) {
+            case 0: matches=(type==EQ); break;
+            case 1: matches=(type==Compressor); break;
+            case 2: matches=(type==Reverb || type==Delay); break;
+            case 3: matches=(type==Saturator || type==Limiter); break;
+            default: break;
+        }
+        if(matches)targets.add(moduleName(type));
+    }
+    return targets;
+}
 juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path) {
     if(slot<0 || slot>=slotCount)return juce::Result::fail("Invalid host slot");
     const auto result=hosted.load(slot,path,rate,hostChunkCapacity);
@@ -1298,16 +1340,35 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 grMeter[(size_t)s]=std::max(grMeter[(size_t)s],
                                            e.vocalFeel.gainReductionDb());
         }
+        // Final output stage. Stereo separation runs after the complete vocal
+        // chain (including stereo modulation, delay and reverb) and after the
+        // dry/wet blend, so it shapes the finished voice rather than one rack
+        // slot. It precedes the master output gain and the power/bypass blend,
+        // and therefore also precedes the metering and clip capture below, so
+        // any level it adds is visible rather than hidden behind the fader.
+        // The matrix is pure gain: no delay, no latency, no added side signal.
+        if(auto* raw=rawGlobal.stereoSeparation)
+            stereoSeparation.setRaw(juce::roundToInt(raw->load()));
         for(int n=0;n<frames;++n) {
+            const float mix=mixSmooth.getNextValue();
             const float dryL=dryWork.getSample(0,n);
             const float dryR=dryWork.getSample(1,n);
             const float wetL=rackWork.getSample(0,n);
             const float wetR=rackWork.getSample(1,n);
-            const float mix=mixSmooth.getNextValue();
+            // The wet scratch becomes the mixed scratch: it is read here and
+            // never needed again, so no extra per-block allocation is added.
+            rackWork.setSample(0,n,dryL+(wetL-dryL)*mix);
+            rackWork.setSample(1,n,dryR+(wetR-dryR)*mix);
+        }
+        stereoSeparation.process(rackWork.getWritePointer(0),
+                                 rackWork.getWritePointer(1),frames);
+        for(int n=0;n<frames;++n) {
+            const float dryL=dryWork.getSample(0,n);
+            const float dryR=dryWork.getSample(1,n);
+            const float mixedL=rackWork.getSample(0,n);
+            const float mixedR=rackWork.getSample(1,n);
             const float outGain=outputSmooth.getNextValue();
             const float blend=bypassSmooth.getNextValue();
-            const float mixedL=dryL+(wetL-dryL)*mix;
-            const float mixedR=dryR+(wetR-dryR)*mix;
             const float finalL=(delta?mixedL-dryL:mixedL)*outGain;
             const float finalR=(delta?mixedR-dryR:mixedR)*outGain;
             const float outputL=bypassWork.getSample(0,n)+
@@ -1623,6 +1684,9 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     else if(index==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
         loadNativeStages(skellpreset::alchemist_serial_dynamics_blend_trial::stages);
     setReal("mode",1);setReal("mix",1);setReal("input",0);setReal("output",0);
+    // Every factory program restores the output stage to verified neutral.
+    // No factory carries an invented separation value.
+    setReal("stereoSeparation",0);
     // Calibrated against protected 15s OFFLINE v2.5 (~-20.0 LUFS,
     // -4.03 dBTP), not the ~6.8dB louder original FL recording chain.
     // This is factory-specific; existing user and Alchemist programs
@@ -1664,6 +1728,9 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
     doc.micGateAttackMs=value("micGateAttackMs");
     doc.micGateHysteresisDb=value("micGateHysteresisDb");
     doc.micGateDepth=value("micGateDepth");
+    // Stored as a strict integer in the supplied raw range.
+    doc.stereoSeparation=juce::jlimit(-96,96,
+        juce::roundToInt(value("stereoSeparation")));
     for(int i=0;i<8;++i)doc.macros[(size_t)i]=value("macro"+juce::String(i+1));
     for(int position=0;position<slotCount;++position){
         auto& dst=doc.slots[(size_t)position];
@@ -1742,6 +1809,10 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     setReal("micGateAttackMs",doc.micGateAttackMs);
     setReal("micGateHysteresisDb",doc.micGateHysteresisDb);
     setReal("micGateDepth",doc.micGateDepth);
+    // Pre-R6 packages have no separation field; the document default is 0,
+    // so every existing preset loads verified neutral rather than inheriting
+    // whatever the previous program left on the control.
+    setReal("stereoSeparation",(float)doc.stereoSeparation);
     for(int i=0;i<8;++i)setReal("macro"+juce::String(i+1),doc.macros[(size_t)i]);
     name=doc.name;
     emptyRackIdentity.store(false,std::memory_order_release);
@@ -1946,7 +2017,9 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         // of inheriting settings from a previously loaded modern preset.
         struct GateLegacyDefault {const char* id;float initial;};
         constexpr GateLegacyDefault defaults[]{
-            {"micGateAttackMs",4.f},{"micGateHysteresisDb",3.f},{"micGateDepth",1.f}
+            {"micGateAttackMs",4.f},{"micGateHysteresisDb",3.f},{"micGateDepth",1.f},
+            // Pre-R6 snapshots predate the output-stage separation control.
+            {"stereoSeparation",0.f}
         };
         for(const auto& def:defaults) {
             bool present=false;
@@ -2008,7 +2081,8 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
                         "adapt","adaptAmount","globalGate","gateThreshold","laneMode",
                         "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim",
                         "micGateOn","micGateThreshold","micGateRelease","micGateHold",
-                        "micGateAttackMs","micGateHysteresisDb","micGateDepth"})
+                        "micGateAttackMs","micGateHysteresisDb","micGateDepth",
+                        "stereoSeparation"})
         add(id);
     for(int macro=1;macro<=8;++macro)add("macro"+juce::String(macro));
     for(const auto* lane:{"A","B","C"}) {

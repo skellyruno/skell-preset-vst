@@ -126,6 +126,13 @@ target_include_directories(SkellPreset PRIVATE "${skellworldpresenceheaders_SOUR
 target_include_directories(SkellPreset PRIVATE "${skelladlibfxheaders_SOURCE_DIR}/SkellCore/include")
 target_compile_features(SkellPreset PRIVATE cxx_std_17)
 
+# UI strings carry UTF-8 glyphs (star, separator dot, arrow, en dash). Without
+# /utf-8 MSVC decodes BOM-less sources as the system code page and those
+# literals reach the editor as mojibake such as "â..." on the preset tiles.
+if(MSVC)
+    target_compile_options(SkellPreset PRIVATE /utf-8)
+endif()
+
 if(MSVC)
     target_compile_options(SkellPreset PRIVATE /W4 /WX /permissive-)
 else()
@@ -187,6 +194,7 @@ if(SKELL_PRESET_BUILD_UI_RENDERER)
         # The real JUCE editor and rack processor are large; keep the test-only
         # screenshot harness off the 1 MiB default Windows executable stack.
         target_link_options(SkellPresetUIRenderer PRIVATE /STACK:8388608)
+        target_compile_options(SkellPresetUIRenderer PRIVATE /utf-8)
     endif()
 endif()
 
@@ -210,6 +218,13 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
         SkellPresetAssets SkellCore::DSP SkellCore::UI
         juce::juce_audio_formats juce::juce_audio_utils juce::juce_gui_extra)
     target_compile_features(SkellPresetAlchemistRender PRIVATE cxx_std_17)
+    if(MSVC)
+        # The full processor plus a prepared editor is larger than the 1 MiB
+        # default Windows stack; this harness needs the same headroom as the
+        # UI renderer or it faults before the first check.
+        target_link_options(SkellPresetAlchemistRender PRIVATE /STACK:8388608)
+        target_compile_options(SkellPresetAlchemistRender PRIVATE /utf-8)
+    endif()
     add_test(NAME SkellPresetAlchemistNativeRenderSmoke
         COMMAND SkellPresetAlchemistRender --smoke)
     add_test(NAME SkellPresetBlankStartupStateRestore
@@ -221,6 +236,8 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
     # Real JUCE editor interaction/layout probe, no images or screenshot workflow.
     add_test(NAME SkellPresetWindowsUIInteractionSmoke
         COMMAND SkellPresetAlchemistRender --ui-smoke)
+    add_test(NAME SkellPresetStereoSeparationProcessor
+        COMMAND SkellPresetAlchemistRender --stereo-separation)
     add_test(NAME SkellPresetAlchemistMonoWavRenderSmoke
         COMMAND SkellPresetAlchemistRender --smoke-mono)
     add_test(NAME SkellPresetNativeSoundMatchTrialSmoke

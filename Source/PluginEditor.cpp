@@ -8,7 +8,9 @@
 #include "ui/SkellPowerButton.h"
 #include "ui/SkellSettingsButton.h"
 #include "ui/SkellActionButton.h"
+#include "ui/SkellModeSwitch.h"
 #include "ui/SkellMacroKnob.h"
+#include "ui/SkellStereoSeparationKnob.h"
 #include "ui/SkellSettingsPanel.h"
 #include "ui/SkellIdleDeck.h"
 #include "chain/AlchemistNativePreset.h"
@@ -97,16 +99,14 @@ public:
         // microphone trigger at the top right of the effect rack.
         micButton.setVisible(false);
         chain.onMicRequest=[this] {if(micButton.onClick)micButton.onClick();};
-        // One view-switch control plus one independent bypass toggle.
-        style(viewSwitch);style(powerButton);
+        // One segmented workspace switch plus one independent bypass toggle.
+        style(powerButton);
         addAndMakeVisible(viewSwitch);addAndMakeVisible(powerButton);
-        viewSwitch.onClick=[this] {
+        viewSwitch.onModeChange=[this](int mode) {
             browser.setVisible(false);micPanel.setVisible(false);
-            const int current=(int)processor.state.getRawParameterValue("mode")->load();
-            const int view=current==3?previousMode:(current==0?0:1);
-            previousMode=view==0?1:0;
+            previousMode=mode==0?1:0;
             processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
-            setParam(processor,"mode",(float)previousMode);
+            setParam(processor,"mode",(float)mode);
             refresh();
         };
         powerButton.onClick=[this] {
@@ -126,8 +126,8 @@ public:
             auto& s=macro[(size_t)k];
             s.onReadoutVisibilityChange=[this] {
                 // Values live on the Canvas behind the hosted slider.
-                // Repaint the footer only on interaction transitions.
-                repaint(juce::Rectangle<int>(14,480,1144,160));
+                // Repaint only the dial window, never the whole Simple page.
+                repaint(juce::Rectangle<int>(40,196,1090,352));
             };
             s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
             constexpr float pi=juce::MathConstants<float>::pi;
@@ -171,6 +171,15 @@ public:
         inputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"input",input);
         mixAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"mix",mix);
         outputAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.state,"output",output);
+        // Output-stage stereo separation. Same APVTS binding path as the other
+        // master controls, so automation and host gestures are untouched.
+        stereoSeparation.setThemeSource(&p.state);
+        addAndMakeVisible(stereoSeparation);
+        stereoSeparationAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            p.state,"stereoSeparation",stereoSeparation);
+        // The attachment replaces our formatter with the host one. Re-apply so
+        // the dial and its readout keep the percentage + direction wording.
+        stereoSeparation.applyReadoutFormat();
         // Input and Output drive real -24..+24 dB gain stages. Show actual
         // dB instead of a pseudo-percent where 50% ambiguously meant unity.
         // This is PRESENTATION ONLY: physical ranges, APVTS IDs and DSP
@@ -207,6 +216,7 @@ public:
         }
         // SliderAttachment owns its listener; onValueChange is additive.
         for(auto* s:{&input,&mix,&output})s->onValueChange=[this]{syncMasterReadouts();};
+        stereoSeparation.onValueChange=[this]{syncMasterReadouts();};
         syncMasterReadouts();
         input.setTooltip("Input gain -24 to +24 dB · 0 dB is unity");
         mix.setTooltip("Global dry / wet mix · 100% is fully processed");
@@ -313,6 +323,15 @@ public:
             const auto value=sliders[i]->getTextFromValue(sliders[i]->getValue());
             if(masterValues[i].getText()!=value)masterValues[i].setText(value,juce::dontSendNotification);
         }
+        // Sep reads out percentage plus direction, so the neutral detent is
+        // unambiguous and a widen or merge move is never colour-only.
+        const auto sep=juce::roundToInt(stereoSeparation.getValue());
+        const auto text=SkellStereoSeparationKnob::readoutFor((double)sep);
+        if(masterValues[3].getText()!=text)
+            masterValues[3].setText(text,juce::dontSendNotification);
+        // The direction prefix needs more room than a plain dB readout and
+        // must never ellipsize at the 70% default scale.
+        masterValues[3].setMinimumHorizontalScale(.62f);
     }
     void syncSizeControl(float scale) {
         constexpr float sizes[]{.70f,.85f,1.f,1.25f};
@@ -369,8 +388,8 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(juce::TextButton* b:std::array<juce::TextButton*,8>{{
-            &preset,&viewSwitch,&undo,&redo,&powerButton,&settings,&record,&micButton}})
+        for(juce::TextButton* b:std::array<juce::TextButton*,7>{{
+            &preset,&undo,&redo,&powerButton,&settings,&record,&micButton}})
             style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
@@ -488,6 +507,18 @@ public:
         slot.select(physicalSlot);
         refresh();
     }
+    // Flips between the Simple and Advanced workspaces. Used by the segmented
+    // header switch, the keyboard shortcut and the native UI self-tests so all
+    // three paths exercise exactly the same state transition.
+    void toggleView() {
+        browser.setVisible(false);micPanel.setVisible(false);
+        const int current=(int)processor.state.getRawParameterValue("mode")->load();
+        const int view=current==3?previousMode:(current==0?0:1);
+        previousMode=view==0?1:0;
+        processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
+        setParam(processor,"mode",(float)previousMode);
+        refresh();
+    }
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
@@ -550,7 +581,10 @@ public:
         for(const auto* master:{&input,&mix,&output})
             if(master->isVisible()==advanced)
                 issues.add("Input/Mix/Output must remain Simple-only");
-        const std::array<const juce::Slider*,3> masterSliders{{&input,&mix,&output}};
+        // All four output-stage controls own a live readout, so the check walks
+        // the real control list instead of assuming the original three.
+        const std::array<const juce::Slider*,4> masterSliders{
+            {&input,&mix,&output,&stereoSeparation}};
         for(size_t i=0;i<masterValues.size();++i){
             const auto& value=masterValues[i];
             if(value.isVisible()==advanced || !canvasBounds.contains(value.getBounds()) ||
@@ -564,7 +598,7 @@ public:
             issues.add("Power indicator disagrees with host bypass state");
         if(!advanced) {
             for(int i=0;i<4;++i) {
-                const auto card=juce::Rectangle<int>(78+i*254,339,220,214);
+                const auto card=juce::Rectangle<int>(40+i*268,196,252,352);
                 if(!card.contains(macro[(size_t)i].getBounds()))
                     issues.add("Simple macro dial escapes its card");
                 for(int j=i+1;j<4;++j)
@@ -577,6 +611,20 @@ public:
                mix.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag ||
                output.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag)
                 issues.add("Master hardware rotary controls too small or incorrect");
+            // The STEREO dial joins the same hardware group, so it must match
+            // that geometry and stay clear of its neighbour and its readout.
+            if(!stereoSeparation.isVisible() ||
+               stereoSeparation.getWidth()<44 || stereoSeparation.getHeight()<39 ||
+               stereoSeparation.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag)
+                issues.add("STEREO separation dial missing from the Simple master group");
+            if(stereoSeparation.getBounds().intersects(output.getBounds()))
+                issues.add("STEREO separation dial overlaps the OUTPUT dial");
+            if(masterValues[3].getBounds().intersects(stereoSeparation.getBounds()))
+                issues.add("STEREO readout overlaps its own dial");
+            if(!stereoSeparation.textFromValueFunction ||
+               masterValues[3].getText()!=stereoSeparation.textFromValueFunction(
+                   stereoSeparation.getValue()))
+                issues.add("STEREO readout is stale or missing its direction label");
         }
         if(!preset.getButtonText().contains(processor.presetName().toUpperCase()))
             issues.add("Preset selector no longer displays the loaded preset name");
@@ -709,9 +757,9 @@ public:
             issues.add("The two visible factory presets must use the requested names");
         preset.onClick();
         if(browser.isVisible())issues.add("Preset selector did not close browser");
-        viewSwitch.onClick();
+        toggleView();
         if(chain.isVisible())issues.add("Simple mode failed to hide the rack");
-        viewSwitch.onClick();
+        toggleView();
         if(!chain.isVisible())issues.add("Advanced mode toggle failed");
         powerButton.onClick();
         if(!bypassShade.isVisible() || !powerButton.isBypassed())
@@ -734,11 +782,11 @@ public:
         };
         const bool automated=correctState() && masterValues[0].getText()=="+3.0 dB" &&
             masterValues[1].getText()=="67%" && masterValues[2].getText()=="-2.0 dB";
-        viewSwitch.onClick();
+        toggleView();
         const bool hiddenInAdvanced=!input.isVisible() && !mix.isVisible() &&
             !output.isVisible() && !masterValues[0].isVisible() && !masterValues[1].isVisible() &&
             !masterValues[2].isVisible() && correctState();
-        viewSwitch.onClick();
+        toggleView();
         const bool recalled=input.isVisible() && mix.isVisible() && output.isVisible() &&
             correctState() && std::abs(input.getValue()-3.0)<.05 &&
             std::abs(mix.getValue()-.67)<.02 && std::abs(output.getValue()+2.0)<.05;
@@ -1168,11 +1216,11 @@ public:
         Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{75,subY,editionX-83,16},
                           10.5f,Theme::muted,true,juce::Justification::centredLeft);
         editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
-        Theme::text(g,"PRESET",{431,12,349,14},10,Theme::muted,true);
+        Theme::text(g,"PRESET",{431,12,318,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
         Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
-                    {796,12,176,14},9,Theme::muted,true);
+                    {758,12,214,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(661,0.f,(float)Theme::width);
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withMultipliedBrightness(.88f),0.f,662.f,
@@ -1206,88 +1254,131 @@ public:
         const int viewMode=current==3?previousMode:(current==0?0:1);
         if(viewMode==0){
             Theme::panelBox(g,{14.f,90.f,1140.f,568.f},11.f);
-            Theme::text(g,"SIMPLE  /  MACRO MIXER",{52,115,520,25},15.8f,Theme::green,true);
-            Theme::fittedText(g,processor.presetName(),{74,164,988,69},47,Theme::white,true);
-            Theme::text(g,"YOUR SOUND, WITHOUT THE CLUTTER",{79,248,900,24},16.0f,Theme::white.withAlpha(.86f),true);
-            Theme::text(g,"FOUR MACROS  /  OPEN ADVANCED TO EDIT EACH EFFECT",{79,278,960,24},14.6f,Theme::muted);
-            // Expanded live scope in the Simple view: this is actual
-            // post-effects output, not a random waveform drawn for decoration.
-            Theme::text(g,processor.isCapturing()?"RECORDING":
-                idle.hasAudibleOutput()?"LIVE AUDIO":"IDLE",{79,306,110,20},13,
-                processor.isCapturing()?Theme::red:idle.hasAudibleOutput()?Theme::green:Theme::muted,true);
-            g.setColour(Theme::stroke.withAlpha(.48f));
-            g.drawHorizontalLine(317,202.f,1077.f);
+            // One identity band: preset name, state lamp and live trace share
+            // a single horizontal strip instead of stacking four headings over
+            // dead space. This is the whole Simple-mode introduction.
+            Theme::text(g,"SIMPLE  /  MACRO MIXER",{40,104,300,18},12.4f,Theme::green,true);
+            const auto name=processor.presetName().toUpperCase();
+            Theme::fittedText(g,name,{38,124,700,52},38,Theme::white,true);
+            const bool live=idle.hasAudibleOutput();
+            const auto stateColour=processor.isCapturing()?Theme::red:
+                live?Theme::green:Theme::muted;
+            const auto stateText=processor.isCapturing()?"REC":
+                live?"LIVE":"IDLE";
+            // Activity badge, top-right of the identity band.
+            const auto badge=juce::Rectangle<float>(1026.f,130.f,110.f,30.f);
+            g.setColour(stateColour.withAlpha(.13f));
+            g.fillRoundedRectangle(badge,5.f);
+            g.setColour(stateColour.withAlpha(.62f));
+            g.drawRoundedRectangle(badge,5.f,.9f);
+            g.setColour(stateColour);
+            g.fillEllipse(badge.getX()+11.f,badge.getCentreY()-3.f,6.f,6.f);
+            Theme::fittedText(g,stateText,
+                badge.withTrimmedLeft(24.f).toNearestInt(),11.f,stateColour,true);
+            // Live scope shares the row with the name instead of owning a band.
+            g.setColour(Theme::stroke.withAlpha(.42f));
+            g.drawHorizontalLine(180,38.f,1130.f);
             std::array<float,128> waveform{};
             if(idle.hasFreshAudio())processor.getLiveWaveform(waveform);
             juce::Path simpleScope;
             for(std::size_t n=0;n<waveform.size();++n) {
-                const float x=205.f+(float)n*867.f/(waveform.size()-1);
-                const float sample=std::isfinite(waveform[n])?
+                const float x=742.f+(float)n*388.f/(waveform.size()-1);
+                const float sample2=std::isfinite(waveform[n])?
                     juce::jlimit(-1.f,1.f,waveform[n]):0.f;
-                const float y=317.f-sample*10.f;
+                const float y=158.f-sample2*22.f;
                 if(n==0)simpleScope.startNewSubPath(x,y);
                 else simpleScope.lineTo(x,y);
             }
             g.setColour(processor.isCapturing()?Theme::red:
-                Theme::green.withAlpha(idle.hasAudibleOutput()?.9f:.28f));
-            g.strokePath(simpleScope,juce::PathStrokeType(1.7f));
+                Theme::green.withAlpha(live?.88f:.24f));
+            g.strokePath(simpleScope,juce::PathStrokeType(1.6f));
             static constexpr const char* labels[]{"TONE","PUNCH","SPACE","GRIT"};
             static constexpr const char* hints[]{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
             for(int k=0;k<4;k++){
-                const float x=78.f+254.f*k;
+                const float x=40.f+268.f*k;
                 const auto raw=processor.state.getRawParameterValue(
                     "macro"+juce::String(k+1));
                 const float amount=juce::jlimit(0.f,1.f,raw?raw->load():.5f);
-                const auto face=juce::Rectangle<float>(x,339.f,220.f,214.f);
+                const auto targets=processor.macroTargets(k);
+                const bool active=!targets.isEmpty();
+                const auto face=juce::Rectangle<float>(x,196.f,252.f,352.f);
                 g.setGradientFill(juce::ColourGradient(
-                    Theme::panelAlt.brighter(.055f),face.getTopLeft(),
-                    Theme::panelAlt.darker(.12f),face.getBottomRight(),false));
-                g.fillRoundedRectangle(face,9.f);
-                g.setColour(Theme::stroke.withAlpha(.91f));
-                g.drawRoundedRectangle(face.reduced(.5f),9.f,1.f);
-                // One status tick and a hardware dial; all motion below is
-                // derived from the actual host-automated macro, not a mock meter.
-                g.setColour(Theme::green.withAlpha(.22f+.60f*amount));
-                g.fillRoundedRectangle(x+17.f,354.f,3.f,20.f,1.5f);
-                Theme::text(g,labels[k],{(int)x+28,349,177,27},
-                            16,Theme::white,true);
-                Theme::text(g,hints[k],{(int)x+20,377,180,18},
-                            10.5f,Theme::muted,true,
-                            juce::Justification::centred);
-                // Mini hardware scale stays subtle and never competes with
-                // the real rotary control drawn by SkellCore LookAndFeel.
+                    Theme::panelAlt.brighter(active?.075f:.035f),face.getTopLeft(),
+                    Theme::panelAlt.darker(.16f),face.getBottomRight(),false));
+                g.fillRoundedRectangle(face,10.f);
+                g.setColour(active?Theme::stroke.withAlpha(.95f):
+                            Theme::stroke.withAlpha(.42f));
+                g.drawRoundedRectangle(face.reduced(.5f),10.f,1.f);
+                // Header: name on the left, live target count on the right.
+                Theme::text(g,labels[k],{(int)x+20,210,150,24},
+                            15.5f,active?Theme::white:Theme::muted.withAlpha(.72f),true);
+                Theme::fittedText(g,active?juce::String(targets.size())+" FX":"NO FX",
+                    {(int)x+150,214,84,18},9.6f,
+                    active?Theme::green.withAlpha(.80f):Theme::muted.withAlpha(.55f),
+                    true,juce::Justification::centredRight);
+                Theme::text(g,hints[k],{(int)x+20,234,212,16},
+                            9.6f,Theme::muted.withAlpha(active?.92f:.55f),true);
+                // Scale arc behind the hosted rotary.
                 constexpr float pi=juce::MathConstants<float>::pi;
-                const float centreX=x+109.f,centreY=454.f,rad=62.f;
+                const float centreX=x+126.f,centreY=330.f,rad=74.f;
                 for(int tick=0;tick<=10;++tick){
                     const float a=(1.25f+1.5f*(float)tick/10.f)*pi;
                     const float dx=std::sin(a),dy=-std::cos(a);
-                    const float tickInner=rad-1.5f,tickOuter=rad+2.5f;
-                    g.setColour(tick<=juce::roundToInt(amount*10.f)
-                        ?Theme::green.withAlpha(.20f+.37f*amount)
-                        :Theme::muted.withAlpha(.21f));
-                    g.drawLine(centreX+dx*tickInner,centreY+dy*tickInner,
-                               centreX+dx*tickOuter,centreY+dy*tickOuter,1.4f);
+                    const bool lit=tick<=juce::roundToInt(amount*10.f);
+                    g.setColour(active?(lit?Theme::green.withAlpha(.22f+.42f*amount)
+                                          :Theme::muted.withAlpha(.22f))
+                                      :Theme::muted.withAlpha(.10f));
+                    g.drawLine(centreX+dx*(rad-2.f),centreY+dy*(rad-2.f),
+                               centreX+dx*(rad+3.5f),centreY+dy*(rad+3.5f),1.5f);
                 }
-                // Macro value is useful even when not hovering. At 70%
-                // scale the old hover-only readout left four expensive
-                // looking but opaque knobs with no numeric feedback.
-                Theme::text(g,juce::String(juce::roundToInt(amount*100.f))+"%",
-                    {(int)x+55,510,110,29},21,Theme::green,true,
-                    juce::Justification::centred);
-                const auto meter=juce::Rectangle<float>(x+19.f,543.f,182.f,2.f);
-                g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,1.f);
-                if(amount>.0001f){
-                    g.setColour(Theme::green.withAlpha(.53f));
-                    g.fillRoundedRectangle(meter.withWidth(182.f*amount),1.f);
+                // Inactive macros say why, instead of pretending to work.
+                if(!active) {
+                    g.setColour(Theme::bg.withAlpha(.42f));
+                    g.fillRoundedRectangle(face.reduced(1.f),9.f);
+                }
+                const auto pct=juce::Rectangle<int>((int)x+56,432,140,34);
+                Theme::text(g,juce::String(juce::roundToInt(amount*100.f))+"%",pct,
+                            22.f,active?Theme::green:Theme::muted.withAlpha(.62f),
+                            true,juce::Justification::centred);
+                Theme::fittedText(g,active?targets.joinIntoString(" + "):
+                                        "LOAD A MATCHING EFFECT",
+                    {(int)x+30,470,192,18},9.2f,
+                    active?Theme::muted.withAlpha(.90f):Theme::muted.withAlpha(.58f),
+                    true,juce::Justification::centred);
+                const auto meter2=juce::Rectangle<float>(x+30.f,500.f,192.f,3.f);
+                g.setColour(Theme::stroke.withAlpha(active?.85f:.40f));
+                g.fillRoundedRectangle(meter2,1.5f);
+                if(active && amount>.0001f){
+                    g.setColour(Theme::green.withAlpha(.58f));
+                    g.fillRoundedRectangle(meter2.withWidth(192.f*amount),1.5f);
                 }
             }
         }
         if(viewMode==0) {
-            const char* masterNames[]{"INPUT","MIX","OUTPUT"};
-            for(int i=0;i<3;++i) {
-                const int x=150+i*300;
-                Theme::panelBox(g,{(float)x,563.f,268.f,86.f},6.f);
-                Theme::text(g,masterNames[i],{x+108,574,142,18},11.5f,Theme::muted,true);
+            // Master row: one continuous hardware strip rather than three
+            // floating boxes, so Input / Mix / Output read as one output stage.
+            const auto strip=juce::Rectangle<float>(40.f,562.f,1088.f,88.f);
+            g.setGradientFill(juce::ColourGradient(
+                Theme::panelAlt.brighter(.05f),strip.getTopLeft(),
+                Theme::panelAlt.darker(.14f),strip.getBottomRight(),false));
+            g.fillRoundedRectangle(strip,9.f);
+            g.setColour(Theme::stroke.withAlpha(.88f));
+            g.drawRoundedRectangle(strip.reduced(.5f),9.f,1.f);
+            const char* masterNames[]{"INPUT","MIX","OUTPUT","STEREO"};
+            // STEREO already names its unit in the readout ("72% WIDE"), so it
+            // deliberately has no second stacked unit label to collide with.
+            const char* masterUnits[]{"dB","%","dB",""};
+            for(int i=0;i<4;++i) {
+                const float x=strip.getX()+18.f+(float)i*272.f;
+                if(i>0) {
+                    g.setColour(Theme::stroke.withAlpha(.55f));
+                    g.drawVerticalLine((int)(x-6.f),strip.getY()+12.f,strip.getBottom()-12.f);
+                }
+                Theme::text(g,masterNames[i],{(int)x+94,574,120,16},10.6f,
+                            Theme::muted,true);
+                if(*masterUnits[i])
+                    Theme::fittedText(g,masterUnits[i],{(int)x+94,592,120,14},8.6f,
+                                      Theme::muted.withAlpha(.62f),true);
             }
         }
     }
@@ -1322,8 +1413,8 @@ public:
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
-        preset.setBounds(431,27,349,37);
-        viewSwitch.setBounds(796,27,176,37);
+        preset.setBounds(431,27,318,37);
+        viewSwitch.setBounds(758,27,214,37);
         // Bounded message-thread preset history in the top bar.
         // The two small actions never obscure the Power / Settings group.
         undo.setBounds(990,34,27,24);
@@ -1340,17 +1431,23 @@ public:
             // Original Simple-mode hardware cards and rotary controls;
             // Advanced hides them without changing automatable macro IDs.
             knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-            knob.setBounds(127+i*254,398,120,113);
+            // Centred in each 252px card: card x = 40 + 268*i, dial diameter 150.
+            knob.setBounds(91+i*268,255,150,150);
             knob.setVisible(display==0);
         }
         // Keep all three original APVTS controls Simple-only and usable
         // even when the plugin is displayed at its default 70% scale.
-        input.setBounds(164,567,78,78);
-        mix.setBounds(464,567,78,78);
-        output.setBounds(764,567,78,78);
+        // Four equal output-stage cells: INPUT, MIX, OUTPUT, STEREO.
+        // The 1088px strip holds 272px per cell, keeping every dial at the
+        // original 74px diameter with room for its label and readout.
+        input.setBounds(58,570,74,74);
+        mix.setBounds(330,570,74,74);
+        output.setBounds(602,570,74,74);
+        stereoSeparation.setBounds(874,570,74,74);
         for(auto* control:{&input,&mix,&output})control->setVisible(display==0);
+        stereoSeparation.setVisible(display==0);
         for(size_t i=0;i<masterValues.size();++i){
-            masterValues[i].setBounds(258+(int)i*300,600,142,29);
+            masterValues[i].setBounds(140+(int)i*272,584,150,30);
             masterValues[i].setVisible(display==0);
         }
         syncMasterReadouts();
@@ -1405,10 +1502,13 @@ public:
         micButton.setColour(juce::TextButton::textColourOffId,
             micPanel.anyActive()?Theme::green:Theme::white);
         preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
-        viewSwitch.setButtonText(display==0?"GO ADVANCED":"GO SIMPLE");
-        viewSwitch.setTooltip(display==0?"Open full effect chain":"Switch to four macros");
+        // Segmented workspace switch: each half selects its mode directly and
+        // the lit half always mirrors the real "mode" parameter.
+        viewSwitch.setAdvanced(display!=0,false);
+        viewSwitch.setTooltip(display==0?
+            "Simple workspace active; click ADVANCED for the full effect chain":
+            "Advanced workspace active; click SIMPLE for the four macros");
         powerButton.setBypassed(bypass);
-        viewSwitch.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         // UI state must reflect the current host/program state *now*, not at
         // the next 30Hz timer tick. This also prevents stale module names
         // during screenshot capture and fast A/B preset auditioning.
@@ -1656,13 +1756,16 @@ private:
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
-    SkellActionButton viewSwitch;
+    SkellModeSwitch viewSwitch;
     SkellPowerButton powerButton;
     std::array<SkellMacroKnob,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
     juce::Slider input,mix,output;
-    std::array<juce::Label,3> masterValues;
+    // Bipolar output-stage separation dial beside the master hardware group.
+    SkellStereoSeparationKnob stereoSeparation;
+    std::array<juce::Label,4> masterValues;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputAttachment,mixAttachment,outputAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> stereoSeparationAttachment;
     juce::ComboBox sizeSelect;
 };
 

@@ -2394,6 +2394,242 @@ int lowEndOverrideSmoke() {
     return 0;
 }
 
+// Output-stage stereo separation exercised through the REAL processor at
+// 44.1/48/96/192 kHz: neutral null, mono compatibility, mid/side response,
+// automation smoothing, peak safety, block-size consistency, preset recall
+// and factory neutrality.
+int stereoSeparationSmoke() {
+    int failures = 0;
+    auto fail = [&failures](const char* what) {
+        std::fprintf(stderr, "FAIL: %s\n", what);
+        ++failures;
+    };
+    auto setP = [](SkellPresetAudioProcessor& p, const char* id, float real) {
+        if (auto* param = p.state.getParameter(id))
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
+                param->setValueNotifyingHost(
+                    ranged->getNormalisableRange().convertTo0to1(real));
+    };
+    auto valueOf = [](SkellPresetAudioProcessor& p, const char* id) {
+        auto* raw = p.state.getRawParameterValue(id);
+        return raw ? raw->load() : 0.f;
+    };
+    auto fill = [](juce::AudioBuffer<float>& b, int index, int chunk, bool mono) {
+        for (int n = 0; n < b.getNumSamples(); ++n) {
+            const float t = (float)(index * chunk + n) / 48000.f;
+            const float l = .22f * std::sin(2.f * juce::MathConstants<float>::pi * 220.f * t)
+                          + .11f * std::sin(2.f * juce::MathConstants<float>::pi * 1370.f * t);
+            const float r = .19f * std::sin(2.f * juce::MathConstants<float>::pi * 330.f * t)
+                          + .07f * std::sin(2.f * juce::MathConstants<float>::pi * 910.f * t);
+            b.setSample(0, n, l);
+            b.setSample(1, n, mono ? l : r);
+        }
+    };
+    auto peakOf = [](const juce::AudioBuffer<float>& b) {
+        double p = 0.;
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int n = 0; n < b.getNumSamples(); ++n)
+                p = std::max(p, (double)std::abs(b.getSample(ch, n)));
+        return p;
+    };
+
+    for (double rate : {44100., 48000., 96000., 192000.}) {
+        SkellPresetAudioProcessor plugin;
+        plugin.prepareToPlay(rate, blockSize);
+        // A brand-new instance is the Empty Rack: no slots, no mic stage. That
+        // isolates the output stage so a residual cannot be blamed on an
+        // effect's own stereo colouring.
+        setP(plugin, "mix", 1.f);
+        setP(plugin, "input", 0.f);
+        setP(plugin, "output", 0.f);
+        setP(plugin, "stereoSeparation", 0.f);
+
+        // Neutral null against a second reference pass after leaving neutral.
+        std::vector<float> reference;
+        for (int block = 0; block < 8; ++block) {
+            juce::AudioBuffer<float> b(2, blockSize);
+            fill(b, block, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(b, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int n = 0; n < blockSize; ++n)
+                    reference.push_back(b.getSample(ch, n));
+        }
+        setP(plugin, "stereoSeparation", 96.f);
+        for (int block = 0; block < 8; ++block) {
+            juce::AudioBuffer<float> drain(2, blockSize);
+            fill(drain, block, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(drain, midi);
+        }
+        setP(plugin, "stereoSeparation", 0.f);
+        for (int block = 0; block < 4; ++block) {
+            juce::AudioBuffer<float> drain(2, blockSize);
+            fill(drain, block, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(drain, midi);
+        }
+        size_t cursor = 0;
+        double nullDiff = 0.;
+        for (int block = 0; block < 8; ++block) {
+            juce::AudioBuffer<float> b(2, blockSize);
+            fill(b, block, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(b, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int n = 0; n < blockSize; ++n)
+                    nullDiff = std::max(nullDiff,
+                        (double)std::abs(b.getSample(ch, n) - reference[cursor++]));
+        }
+        if (nullDiff != 0.) fail("neutral separation is not bit-exactly transparent");
+
+        // Mono compatibility at every position. The processor derives mono
+        // operation from the declared bus layout, so this case advertises a
+        // genuine mono input rather than a two-channel buffer of equal sides.
+        for (int raw : {-96, -40, 0, 55, 96}) {
+            SkellPresetAudioProcessor mono;
+            mono.setPlayConfigDetails(1, 2, rate, blockSize);
+            mono.prepareToPlay(rate, 512);
+            
+            setP(mono, "mix", 1.f);
+            setP(mono, "input", 0.f);
+            setP(mono, "output", 0.f);
+            setP(mono, "stereoSeparation", (float)raw);
+            for (int block = 0; block < 4; ++block) {
+                juce::AudioBuffer<float> drain(2, blockSize);
+                fill(drain, block, blockSize, true);
+                juce::MidiBuffer midi;
+                mono.processBlock(drain, midi);
+            }
+            double side = 0.;
+            for (int block = 0; block < 5; ++block) {
+                juce::AudioBuffer<float> b(2, blockSize);
+                fill(b, block, blockSize, true);
+                juce::MidiBuffer midi;
+                mono.processBlock(b, midi);
+                for (int n = 0; n < blockSize; ++n)
+                    side = std::max(side, (double)std::abs(
+                        b.getSample(0, n) - b.getSample(1, n)));
+            }
+            if (side != 0.) fail("mono input gained a side signal");
+        }
+
+        // Peak safety and finiteness.
+        for (int raw : {-96, -60, 0, 60, 96}) {
+            setP(plugin, "stereoSeparation", (float)raw);
+            for (int block = 0; block < 4; ++block) {
+                juce::AudioBuffer<float> drain(2, blockSize);
+                fill(drain, block, blockSize, false);
+                juce::MidiBuffer midi;
+                plugin.processBlock(drain, midi);
+            }
+            double inPeak = 0., outPeak = 0.;
+            for (int block = 0; block < 5; ++block) {
+                juce::AudioBuffer<float> b(2, blockSize);
+                fill(b, block, blockSize, false);
+                inPeak = std::max(inPeak, peakOf(b));
+                juce::MidiBuffer midi;
+                plugin.processBlock(b, midi);
+                outPeak = std::max(outPeak, peakOf(b));
+            }
+            const double bound = (double)skellpreset::dsp::MixerStereoSeparation
+                ::peakGainBound(raw) * inPeak + 1.e-5;
+            if (outPeak > bound) fail("output exceeded the matrix peak bound");
+            if (!std::isfinite(outPeak) || outPeak >= 4.0)
+                fail("output was not finite and bounded");
+        }
+
+        // Automation smoothing: no sample-to-sample step on a full swing.
+        {
+            setP(plugin, "stereoSeparation", -96.f);
+            for (int block = 0; block < 4; ++block) {
+                juce::AudioBuffer<float> drain(2, blockSize);
+                fill(drain, block, blockSize, false);
+                juce::MidiBuffer midi;
+                plugin.processBlock(drain, midi);
+            }
+            setP(plugin, "stereoSeparation", 96.f);
+            juce::AudioBuffer<float> b(2, blockSize);
+            fill(b, 20, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(b, midi);
+            double step = 0.;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int n = 1; n < blockSize; ++n)
+                    step = std::max(step, (double)std::abs(
+                        b.getSample(ch, n) - b.getSample(ch, n - 1)));
+            if (step >= .6) fail("automation swing stepped instead of gliding");
+        }
+
+        // Block-size consistency of the separation matrix itself. The plugin's
+        // 20 ms master smoothing is intentionally block-rate dependent, so
+        // verifying the output stage means driving the module directly with an
+        // identical absolute sample grid chopped into different block sizes.
+        {
+            const size_t total = (size_t)(rate * .12);
+            std::vector<float> srcL(total), srcR(total);
+            for (size_t i = 0; i < total; ++i) {
+                const float t = (float)i / (float)rate;
+                srcL[i] = .22f * std::sin(2.f * juce::MathConstants<float>::pi * 220.f * t)
+                        + .11f * std::sin(2.f * juce::MathConstants<float>::pi * 1370.f * t);
+                srcR[i] = .19f * std::sin(2.f * juce::MathConstants<float>::pi * 330.f * t)
+                        + .07f * std::sin(2.f * juce::MathConstants<float>::pi * 910.f * t);
+            }
+            auto renderAt = [&](int chunk) {
+                skellpreset::dsp::MixerStereoSeparation sep;
+                sep.prepare(rate);
+                sep.setRaw(96);
+                auto l = srcL, r = srcR;
+                for (size_t offset = 0; offset < total; offset += (size_t)chunk) {
+                    const int n = (int)std::min((size_t)chunk, total - offset);
+                    sep.process(l.data() + offset, r.data() + offset, n);
+                }
+                return std::make_pair(l, r);
+            };
+            const auto small = renderAt(127);
+            const auto large = renderAt(512);
+            double diff = 0.;
+            for (size_t i = 0; i < total; ++i) {
+                diff = std::max(diff, (double)std::abs(small.first[i] - large.first[i]));
+                diff = std::max(diff, (double)std::abs(small.second[i] - large.second[i]));
+            }
+            if (diff != 0.) fail("block-size change altered the separation result");
+        }
+    }
+
+    // Preset recall through export/import.
+    {
+        SkellPresetAudioProcessor plugin;
+        plugin.prepareToPlay(48000., blockSize);
+        plugin.loadFactoryPreset(0);
+        setP(plugin, "stereoSeparation", -61.f);
+        const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getNonexistentChildFile("skell-stereo-recall-", ".skellpreset", false);
+        if (!plugin.exportPreset(file).wasOk()) fail("export with separation failed");
+        setP(plugin, "stereoSeparation", 88.f);
+        if (!plugin.importPreset(file).wasOk()) fail("import with separation failed");
+        if (std::abs(valueOf(plugin, "stereoSeparation") + 61.f) >= .01f)
+            fail("preset recall lost the saved separation");
+        file.deleteFile();
+    }
+
+    // Every factory program loads at verified neutral.
+    {
+        SkellPresetAudioProcessor plugin;
+        plugin.prepareToPlay(48000., blockSize);
+        for (int preset = 0; preset < (int)skellpreset::factoryPresets.size(); ++preset) {
+            setP(plugin, "stereoSeparation", 77.f);
+            plugin.loadFactoryPreset(preset);
+            if (valueOf(plugin, "stereoSeparation") != 0.f)
+                fail("factory preset did not reset separation to neutral");
+        }
+    }
+
+    if (failures == 0)
+        std::puts("PASS Stereo separation: 44.1/48/96/192k null, mono, peaks, smoothing, block size, recall, factories");
+    return failures == 0 ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc,char** argv) {
@@ -2409,6 +2645,7 @@ int main(int argc,char** argv) {
     if(argc==2 && juce::String(argv[1])=="--percent-smoke")return percentDisplaySmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
+    if(argc==2 && juce::String(argv[1])=="--stereo-separation")return stereoSeparationSmoke();
     if(argc==7 && juce::String(argv[1])=="--factory-override") {
         const int factory=skellpreset::factoryIndexForRecipe(juce::String(argv[2]).getIntValue());
         const float hpf=std::strtof(argv[3],nullptr);
@@ -2440,3 +2677,4 @@ int main(int argc,char** argv) {
     return render(juce::File(juce::String::fromUTF8(argv[1])),
                   juce::File(juce::String::fromUTF8(argv[2])));
 }
+
