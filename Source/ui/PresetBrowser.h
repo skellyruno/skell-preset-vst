@@ -3,6 +3,7 @@
 #include "../PluginProcessor.h"
 #include <array>
 #include <functional>
+#include <map>
 #include <memory>
 #include <vector>
 class PresetBrowser final:public juce::Component,public juce::SettableTooltipClient {
@@ -78,7 +79,8 @@ private:
     juce::ComboBox genrePicker,genreFilter,sortPicker,artistTierFilter,artistFilter,typeFilter,tierEditor,typeEditor;
     juce::TextEditor pairEditor;
     juce::TextButton metadataButton{"SAVE ORGANIZATION"},relatedButton{"MATCHING PRESETS"},directoryBack{"BACK"};
-    juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},
+    juce::TextButton importButton{"IMPORT"},exportButton{"SAVE"},
+        saveAsButton{"SAVE AS…"},
         artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
         genreButton{"TAG"},detailsButton{"MANAGE LIBRARY"},
         addCategoryButton{"ADD CATEGORY"},clearSearchButton{"CLEAR"};
@@ -86,7 +88,20 @@ private:
     bool chooserActive=false;
     void setChooserActive(bool active);
     void chooseImport();
-    void chooseExport();
+    // SAVE overwrites the selected personal preset; factories and never-saved
+    // chains open SAVE AS. A second click can never queue a duplicate write.
+    void saveActivePreset(bool chooseName);
+    void startPresetWrite(const juce::File& destination);
+    void completePresetWrite(const juce::File& destination,bool ok,const juce::String& error);
+    void setSaveStatus(const juce::String& text);
+    void refreshSaveControls();
+    bool saveInFlight=false;
+    juce::String saveStatus;
+    struct SaveMeta {
+        juce::File previousUser,oldCover;
+        juce::String artist,genre,type,pair;
+    };
+    SaveMeta pendingSave;
     void chooseArtwork();
     void refreshArtwork();
     int bank=0,scroll=0,hoveredCard=-1,hoveredStar=-1,keyboardCard=-1,
@@ -176,6 +191,19 @@ private:
     bool canEditCover() const;
     void reloadAlchemistArtwork();
     void scanLibrary();
+    // One rescan + choice refresh after any library mutation. Callers must not
+    // scan again themselves: the old path scanned three times per save.
+    void refreshLibraryAfterChange();
+    // Thumbnail decode cache keyed by source path + modification stamp, so a
+    // rescan only decodes covers that actually changed on disk.
+    struct CoverCacheEntry {
+        juce::int64 modified=0,size=0;
+        juce::Image thumbnail;
+    };
+    std::map<juce::String,CoverCacheEntry> coverCache;
+    juce::File backdropSource;
+    juce::int64 backdropModified=-1;
+    bool backdropLoaded=false;
     bool copyToLibrary(const juce::File& file);
     void loadFactoryFromBrowser(int index);
     void loadUserFromBrowser(int index);

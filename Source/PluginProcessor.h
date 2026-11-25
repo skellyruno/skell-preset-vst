@@ -72,6 +72,10 @@ public:
     void clearRackToEmpty();
     // Message-thread only, validated native .skellpreset ZIP packages.
     juce::Result exportPreset(const juce::File& file) const;
+    // Snapshot of the live chain. Runs on the message thread so the ZIP
+    // writer can compress the result later on a background thread without
+    // ever touching APVTS or host parameter state off the message thread.
+    juce::Result makePresetDocument(skellpreset::package::Document&) const;
     juce::Result importPreset(const juce::File& file);
     void reorderSlot(int from,int to);
     // Remove an extra rack row without renumbering any APVTS slot identity.

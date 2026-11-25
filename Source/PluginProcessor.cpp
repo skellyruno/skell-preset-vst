@@ -1709,8 +1709,9 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     state.state.setProperty("presetBank",preset.bank,nullptr);
     updateHostLatency();
 }
-juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) const {
-    skellpreset::package::Document doc;
+juce::Result SkellPresetAudioProcessor::makePresetDocument(
+    skellpreset::package::Document& doc) const {
+    doc={};
     doc.name=name;
     doc.activeSlotCount=activeSlotCount();
     doc.bank=state.state.getProperty("presetBank","My Presets").toString();
@@ -1757,6 +1758,13 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
         dst.eqLowCut=value(prefix+"eqLowCut");
         dst.eqHighCut=value(prefix+"eqHighCut");
     }
+    return juce::Result::ok();
+}
+juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) const {
+    skellpreset::package::Document doc;
+    if(const auto status=makePresetDocument(doc);status.failed())return status;
+    // The caller may be on the message thread; ZIP compression and the
+    // atomic file replace are the only work left here.
     return skellpreset::package::write(file,doc);
 }
 juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {

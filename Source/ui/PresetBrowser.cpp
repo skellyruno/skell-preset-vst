@@ -184,13 +184,14 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
         scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;browserWheelCarry=0.f;repaint();
     };
     addAndMakeVisible(categoryEditor);
-    for(auto* button:{&importButton,&exportButton,&artworkButton,
+    for(auto* button:{&importButton,&exportButton,&saveAsButton,&artworkButton,
                       &artistButton,&genreButton,&detailsButton,&addCategoryButton,
                       &clearSearchButton})
         addAndMakeVisible(*button);
     detailsButton.setTooltip("Manage import, save, artist, genre, pairing and cover artwork.");
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
-    exportButton.setTooltip("Save the active chain, slot order, macros and global controls");
+    exportButton.setTooltip("Overwrite the selected personal preset with the active chain. A factory sound saves a new library copy instead.");
+    saveAsButton.setTooltip("Save the active chain, slot order, macros and global controls as a new personal preset");
     artworkButton.setTooltip("Choose a cover for Alchemist or any selected saved preset");
     artworkButton.setEnabled(false);
     artistButton.setEnabled(false);
@@ -216,7 +217,8 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     refreshArtwork();
     detailsButton.onClick=[this]{showDetails(!detailsOpen);};
     importButton.onClick=[this] {chooseImport();};
-    exportButton.onClick=[this] {chooseExport();};
+    exportButton.onClick=[this] {saveActivePreset(false);};
+    saveAsButton.onClick=[this] {saveActivePreset(true);};
     artworkButton.onClick=[this] {chooseArtwork();};
     artistButton.onClick=[this] {
         if(!activeUserPreset.existsAsFile())return;
@@ -311,7 +313,7 @@ void PresetBrowser::applyTheme() {
     categoryEditor.setColour(juce::TextEditor::backgroundColourId,Theme::plot);
     categoryEditor.setColour(juce::TextEditor::textColourId,Theme::white);
     categoryEditor.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
-    for(auto* button:{&importButton,&exportButton,&artworkButton,
+    for(auto* button:{&importButton,&exportButton,&saveAsButton,&artworkButton,
                        &artistButton,&genreButton,&detailsButton,&addCategoryButton,
                        &clearSearchButton}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panel);
@@ -344,16 +346,36 @@ void PresetBrowser::scanLibrary() {
     if(userPresets.size()>200)userPresets.resize(200);
     userArtwork.clear();userArtwork.resize(userPresets.size());
     reloadAlchemistArtwork();
+    // Keep only cache entries whose cover file still exists and is unchanged;
+    // a save no longer re-decodes every cover in the library.
+    std::map<juce::String,CoverCacheEntry> kept;
     for(size_t i=0;i<userPresets.size();++i) {
         const auto base=userPresets[i];
         auto cover=base.withFileExtension(".png");
         if(!cover.existsAsFile())cover=base.withFileExtension(".jpg");
-        if(cover.existsAsFile() && cover.getSize()>0 && cover.getSize()<=8*1024*1024) {
-            auto image=juce::ImageFileFormat::loadFrom(cover);
-            if(image.isValid() && image.getWidth()<=4096 && image.getHeight()<=4096)
-                userArtwork[i]=image.rescaled(128,96,juce::Graphics::mediumResamplingQuality);
+        if(!cover.existsAsFile() || cover.getSize()<=0 ||
+           cover.getSize()>8*1024*1024)continue;
+        const auto key=cover.getFullPathName();
+        const auto modified=cover.getLastModificationTime().toMilliseconds();
+        const auto size=cover.getSize();
+        auto found=coverCache.find(key);
+        if(found!=coverCache.end() && found->second.modified==modified &&
+           found->second.size==size && found->second.thumbnail.isValid()) {
+            userArtwork[i]=found->second.thumbnail;
+            kept.emplace(key,found->second);
+            continue;
         }
+        auto image=juce::ImageFileFormat::loadFrom(cover);
+        if(!image.isValid() || image.getWidth()>4096 || image.getHeight()>4096)continue;
+        userArtwork[i]=image.rescaled(128,96,juce::Graphics::mediumResamplingQuality);
+        kept.emplace(key,CoverCacheEntry{modified,size,userArtwork[i]});
     }
+    coverCache=std::move(kept);
+}
+void PresetBrowser::refreshLibraryAfterChange() {
+    scanLibrary();
+    refreshArtistChoices();
+    refreshArtwork();
 }
 
 juce::File PresetBrowser::activeArtworkDestination() const {
@@ -390,7 +412,7 @@ bool PresetBrowser::copyToLibrary(const juce::File& source) {
     const auto folder=libraryDirectory();
     if(folder.createDirectory().failed())return false;
     if(source.getParentDirectory()==folder) {
-        activeUserPreset=source;scanLibrary();refreshArtwork();return true;
+        activeUserPreset=source;return true;
     }
     const auto dest=folder.getNonexistentChildFile(
         juce::File::createLegalFileName(source.getFileNameWithoutExtension()),
@@ -403,8 +425,6 @@ bool PresetBrowser::copyToLibrary(const juce::File& source) {
     if(originalCover.existsAsFile() && originalCover.getSize()>0 &&
        originalCover.getSize()<=8*1024*1024)
         originalCover.copyFileTo(dest.withFileExtension(originalCover.getFileExtension()));
-    scanLibrary();
-    refreshArtwork();
     return true;
 }
 void PresetBrowser::open() {
@@ -541,6 +561,7 @@ void PresetBrowser::resized(){
     directoryBack.setBounds(207,69,64,29);
     detailsButton.setBounds(18,detailsOpen?112:getHeight()-38,166,28);
     importButton.setVisible(detailsOpen);exportButton.setVisible(detailsOpen);
+    saveAsButton.setVisible(detailsOpen);
     for(auto* control:{static_cast<juce::Component*>(&artistEditor),
                        static_cast<juce::Component*>(&artistButton),
                        static_cast<juce::Component*>(&genrePicker),
@@ -572,7 +593,8 @@ void PresetBrowser::resized(){
         addCategoryButton.setBounds(18,393,166,29);
         artworkButton.setBounds(18,429,166,29);
         importButton.setBounds(18,464,166,28);
-        exportButton.setBounds(18,498,166,28);
+        exportButton.setBounds(18,496,80,28);
+        saveAsButton.setBounds(104,496,80,28);
     }else{
         genreFilter.setBounds(18,337,166,27);
         artistTierFilter.setBounds(18,337,166,27);
@@ -585,9 +607,8 @@ void PresetBrowser::resized(){
 }
 void PresetBrowser::setChooserActive(bool active) {
     chooserActive=active;
-    importButton.setEnabled(!active);
-    exportButton.setEnabled(!active);
-    artworkButton.setEnabled(!active && canEditCover());
+    refreshSaveControls();
+    artworkButton.setEnabled(!active && !saveInFlight && canEditCover());
     artistButton.setEnabled(!active && activeUserPreset.existsAsFile());
     artistEditor.setEnabled(!active && activeUserPreset.existsAsFile());
     genreButton.setEnabled(!active && activeUserPreset.existsAsFile());
@@ -615,6 +636,7 @@ void PresetBrowser::chooseImport() {
                 return;
             }
             const bool copied=safe->copyToLibrary(file);
+            if(copied)safe->refreshLibraryAfterChange();
             if(safe->onLoaded)safe->onLoaded();
             if(!copied)
                 juce::AlertWindow::showMessageBoxAsync(
@@ -623,8 +645,14 @@ void PresetBrowser::chooseImport() {
             safe->repaint();
         });
 }
-void PresetBrowser::chooseExport() {
-    if(chooserActive)return;
+void PresetBrowser::saveActivePreset(bool chooseName) {
+    if(chooserActive || saveInFlight)return;
+    // Quick save rewrites the selected personal preset. Factory sounds and
+    // never-saved chains must choose a name so no factory program is touched.
+    if(!chooseName && activeUserPreset.existsAsFile()) {
+        startPresetWrite(activeUserPreset);
+        return;
+    }
     setChooserActive(true);
     const auto base=juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
     const auto initial=base.getChildFile(juce::File::createLegalFileName(processor.presetName())+".skellpreset");
@@ -639,64 +667,102 @@ void PresetBrowser::chooseExport() {
             auto file=chooser.getResult();
             if(file==juce::File{})return;
             if(!file.hasFileExtension(".skellpreset"))file=file.withFileExtension(".skellpreset");
-            const auto previousUser=safe->activeUserPreset;
-            juce::String previousArtist,previousGenre,previousType,previousPair;
-            for(int i=0;i<(int)safe->userPresets.size();++i)
-                if(safe->userPresets[(size_t)i]==previousUser) {
-                    previousArtist=safe->artistForUser(i);
-                    previousGenre=safe->genreForUser(i);
-                    previousType=safe->vocalType(i);previousPair=safe->pairForUser(i);
-                    break;
-                }
-            auto oldCover=safe->activeArtworkDestination();
-            if(!oldCover.existsAsFile() && previousUser.existsAsFile())
-                oldCover=previousUser.withFileExtension(".jpg");
-            const auto result=safe->processor.exportPreset(file);
-            if(result.failed()) {
-                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,"Cannot save preset",result.getErrorMessage());
-                return;
-            }
-            const bool copied=safe->copyToLibrary(file);
-            // Save-as should retain artist/category labels on the NEW library
-            // copy, without changing the original .skellpreset or metadata.
-            if(copied && safe->activeUserPreset!=previousUser) {
-                for(int i=0;i<(int)safe->userPresets.size();++i)
-                    if(safe->userPresets[(size_t)i]==safe->activeUserPreset) {
-                        if(previousArtist.isNotEmpty())
-                            safe->setArtistForUser(i,previousArtist);
-                        if(previousGenre.isNotEmpty())
-                            safe->setGenreForUser(i,previousGenre);
-                        if(previousType.isNotEmpty() || previousPair.isNotEmpty()){
-                            const auto beforeKeys=safe->organizationKeys,beforeValues=safe->organizationValues;
-                            const auto key=safe->favoriteKey(-i-1);
-                            safe->setOrganizationValue("type:"+key,previousType);
-                            safe->setOrganizationValue("pair:"+key,previousPair);
-                            if(!safe->saveOrganization()){
-                                safe->organizationKeys=beforeKeys;safe->organizationValues=beforeValues;
-                                juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                                    "Preset organization not copied","The sound was saved, but the organization labels could not be copied.");
-                            }
-                        }
-                        break;
-                    }
-            }
-            // Saving a tweaked Alchemist or personal preset should preserve
-            // its current cover even if the destination preset name changes.
-            if(oldCover.existsAsFile() && safe->activeUserPreset.existsAsFile()) {
-                const auto newCover=safe->activeUserPreset.withFileExtension(".png");
-                if(oldCover!=newCover)
-                    oldCover.copyFileTo(newCover);
-            }
-            safe->scanLibrary();safe->refreshArtistChoices();
-            safe->refreshArtwork();
-            if(safe->onCoverChanged)safe->onCoverChanged();
-            safe->repaint();
-            juce::AlertWindow::showMessageBoxAsync(
-                copied?juce::AlertWindow::InfoIcon:juce::AlertWindow::WarningIcon,
-                copied?"Preset saved":"Preset exported",
-                copied?file.getFullPathName():
-                   file.getFullPathName()+"\nThe file was exported, but no library copy was saved.");
+            safe->startPresetWrite(file);
         });
+}
+void PresetBrowser::startPresetWrite(const juce::File& destination) {
+    if(saveInFlight)return;
+    const auto target=destination.hasFileExtension(".skellpreset")
+        ?destination:destination.withFileExtension(".skellpreset");
+    // The live chain snapshot must be taken on the message thread; only the
+    // JSON/ZIP compression moves to a background thread.
+    skellpreset::package::Document doc;
+    if(const auto status=processor.makePresetDocument(doc);status.failed()) {
+        completePresetWrite(target,false,status.getErrorMessage());
+        return;
+    }
+    pendingSave=SaveMeta{};
+    pendingSave.previousUser=activeUserPreset;
+    for(int i=0;i<(int)userPresets.size();++i)
+        if(userPresets[(size_t)i]==activeUserPreset) {
+            pendingSave.artist=artistForUser(i);
+            pendingSave.genre=genreForUser(i);
+            pendingSave.type=vocalType(i);pendingSave.pair=pairForUser(i);
+            break;
+        }
+    auto oldCover=activeArtworkDestination();
+    if(!oldCover.existsAsFile() && activeUserPreset.existsAsFile())
+        oldCover=activeUserPreset.withFileExtension(".jpg");
+    pendingSave.oldCover=oldCover;
+    saveInFlight=true;
+    setSaveStatus("SAVING...");
+    refreshSaveControls();
+    juce::Component::SafePointer<PresetBrowser> safe(this);
+    juce::Thread::launch([safe,target,doc] {
+        const auto result=skellpreset::package::write(target,doc);
+        juce::MessageManager::callAsync([safe,target,result] {
+            if(!safe)return;
+            safe->completePresetWrite(target,result.wasOk(),result.getErrorMessage());
+        });
+    });
+}
+void PresetBrowser::completePresetWrite(const juce::File& destination,bool ok,
+                                        const juce::String& error) {
+    saveInFlight=false;
+    if(!ok) {
+        setSaveStatus("SAVE FAILED");
+        refreshSaveControls();
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+            "Cannot save preset",error);
+        return;
+    }
+    const bool copied=copyToLibrary(destination);
+    // Saving under a new name keeps the artist/category labels on the new
+    // library copy without altering the original archive or its metadata.
+    if(copied && activeUserPreset!=pendingSave.previousUser) {
+        for(int i=0;i<(int)userPresets.size();++i)
+            if(userPresets[(size_t)i]==activeUserPreset) {
+                if(pendingSave.artist.isNotEmpty())
+                    setArtistForUser(i,pendingSave.artist);
+                if(pendingSave.genre.isNotEmpty())
+                    setGenreForUser(i,pendingSave.genre);
+                if(pendingSave.type.isNotEmpty() || pendingSave.pair.isNotEmpty()) {
+                    const auto beforeKeys=organizationKeys,beforeValues=organizationValues;
+                    const auto key=favoriteKey(-i-1);
+                    setOrganizationValue("type:"+key,pendingSave.type);
+                    setOrganizationValue("pair:"+key,pendingSave.pair);
+                    if(!saveOrganization()) {
+                        organizationKeys=beforeKeys;organizationValues=beforeValues;
+                        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                            "Preset organization not copied",
+                            "The sound was saved, but the organization labels could not be copied.");
+                    }
+                }
+                break;
+            }
+    }
+    // Preserve the current cover when the destination name differs.
+    if(pendingSave.oldCover.existsAsFile() && activeUserPreset.existsAsFile()) {
+        const auto newCover=activeUserPreset.withFileExtension(".png");
+        if(pendingSave.oldCover!=newCover)
+            pendingSave.oldCover.copyFileTo(newCover);
+    }
+    refreshLibraryAfterChange();
+    if(onCoverChanged)onCoverChanged();
+    setSaveStatus(copied?"SAVED":"EXPORTED - NO LIBRARY COPY");
+    refreshSaveControls();
+    repaint();
+}
+void PresetBrowser::setSaveStatus(const juce::String& text) {
+    saveStatus=text;
+    repaint();
+}
+void PresetBrowser::refreshSaveControls() {
+    const bool idle=!chooserActive && !saveInFlight;
+    importButton.setEnabled(idle);
+    exportButton.setEnabled(idle);
+    saveAsButton.setEnabled(idle);
+    exportButton.setButtonText(activeUserPreset.existsAsFile()?"SAVE":"SAVE COPY");
 }
 int PresetBrowser::visibleFactoryPresetsForTest() const {
     int count=0;
@@ -1309,7 +1375,8 @@ bool PresetBrowser::testBrowserLayoutForTest() {
            !bounds.contains(directoryBack.getBounds()) ||
            directoryBack.getBounds().intersects(sortPicker.getBounds()) ||
            directoryBack.isVisible()!=(!expanded && hasDirectoryParent()))return false;
-        if(search.isEnabled()==expanded || importButton.isVisible()!=expanded || exportButton.isVisible()!=expanded ||
+        if(search.isEnabled()==expanded || importButton.isVisible()!=expanded ||
+           exportButton.isVisible()!=expanded || saveAsButton.isVisible()!=expanded ||
            artistEditor.isVisible()!=expanded ||
            artistButton.isVisible()!=expanded ||
            genrePicker.isVisible()!=expanded ||
@@ -1319,9 +1386,9 @@ bool PresetBrowser::testBrowserLayoutForTest() {
            addCategoryButton.isVisible()!=expanded ||
            genreFilter.isVisible() || artistTierFilter.isVisible() || artistFilter.isVisible() || typeFilter.isVisible())return false;
         for(const auto& tab:vocalTabs)if(tab.isVisible()!=showVocalTabs() || (tab.isVisible() && !bounds.contains(tab.getBounds())))return false;
-        const std::array<const juce::Component*,20> widgets{{
+        const std::array<const juce::Component*,21> widgets{{
             &detailsButton,&genrePicker,&genreButton,&artistEditor,
-            &artistButton,&importButton,&exportButton,&artworkButton,
+            &artistButton,&importButton,&exportButton,&saveAsButton,&artworkButton,
             &categoryEditor,&addCategoryButton,&genreFilter,&artistTierFilter,&artistFilter,&typeFilter,
              &tierEditor,&typeEditor,&pairEditor,&metadataButton,&relatedButton,&directoryBack}};
         for(size_t i=0;i<widgets.size();++i){
@@ -1725,22 +1792,32 @@ void PresetBrowser::refreshArtwork() {
             genreId=genrePicker.getItemId(i);
     genrePicker.setSelectedId(genreId,juce::dontSendNotification);
     refreshOrganizationEditor();
+    refreshSaveControls();
     // 128x96 thumbnails are only for cards; never scale them to wallpaper.
-    selectedUserBackdrop={};
+    // The full-resolution backdrop is cached by path + modification stamp so
+    // selecting the same preset twice does not re-decode a 1600x1000 image.
+    juce::File candidate;
     if(activeUserPreset.existsAsFile()) {
-        auto candidate=activeUserPreset.withFileExtension(".png");
+        candidate=activeUserPreset.withFileExtension(".png");
         if(!candidate.existsAsFile())candidate=activeUserPreset.withFileExtension(".jpg");
-        if(candidate.existsAsFile() && candidate.getSize()>0 &&
-            candidate.getSize()<=8*1024*1024) {
-            auto img=juce::ImageFileFormat::loadFrom(candidate);
-            if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096) {
-                const float scale=std::min({1.f,1600.f/(float)img.getWidth(),
-                                                1000.f/(float)img.getHeight()});
-                selectedUserBackdrop=img.rescaled(
-                    juce::jmax(1,juce::roundToInt(img.getWidth()*scale)),
-                    juce::jmax(1,juce::roundToInt(img.getHeight()*scale)),
-                    juce::Graphics::highResamplingQuality);
-            }
+        if(!candidate.existsAsFile() || candidate.getSize()<=0 ||
+           candidate.getSize()>8*1024*1024)candidate={};
+    }
+    const auto modified=candidate==juce::File{}
+        ?juce::int64(-1):candidate.getLastModificationTime().toMilliseconds();
+    if(candidate==backdropSource && modified==backdropModified && backdropLoaded)
+        {repaint();return;}
+    backdropSource=candidate;backdropModified=modified;backdropLoaded=true;
+    selectedUserBackdrop={};
+    if(candidate!=juce::File{}) {
+        auto img=juce::ImageFileFormat::loadFrom(candidate);
+        if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096) {
+            const float scale=std::min({1.f,1600.f/(float)img.getWidth(),
+                                            1000.f/(float)img.getHeight()});
+            selectedUserBackdrop=img.rescaled(
+                juce::jmax(1,juce::roundToInt(img.getWidth()*scale)),
+                juce::jmax(1,juce::roundToInt(img.getHeight()*scale)),
+                juce::Graphics::highResamplingQuality);
         }
     }
     repaint();
@@ -1794,8 +1871,7 @@ void PresetBrowser::chooseArtwork() {
                 juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
                     "Cannot save artwork","Your previous cover is unchanged. Check library permissions.");return;
             }
-            safe->scanLibrary();
-            safe->refreshArtwork();
+            safe->refreshLibraryAfterChange();
             if(safe->onCoverChanged)safe->onCoverChanged();
         });
 }
@@ -1905,6 +1981,10 @@ void PresetBrowser::paint(juce::Graphics&g) {
             {207,416,getWidth()-230,24},11.f,Theme::muted);
         Theme::fittedText(g,"Use the same pairing name on complementary sounds.",
             {207,442,getWidth()-230,24},11.f,Theme::muted);
+        if(saveStatus.isNotEmpty())
+            Theme::fittedText(g,saveStatus,{207,474,getWidth()-230,20},
+                10.5f,saveStatus.startsWith("SAVE FAILED")?Theme::red:Theme::green,
+                true,juce::Justification::centredLeft);
     }
     // Don't draw clickable library cards beneath Edit Details input fields.
     // Children on that page remain visible and keyboard accessible.
