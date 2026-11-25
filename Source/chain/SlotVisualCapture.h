@@ -1,5 +1,6 @@
 #pragma once
 #include "LiveSpectrum.h"
+#include "VisualAnalysis.h"
 namespace skellpreset::visual {
 // A single on-demand stereo measurement pair per processor. The message
 // thread requests a slot; only the audio callback resets/writes capture.
@@ -10,6 +11,10 @@ public:
     static constexpr int stereoPoints=128;
     struct Frame {
         Samples input{},output{};
+        PitchHistory::Samples pitchInput{},pitchOutput{};
+        float pitchRate=0.f;
+        bool pitchReady=false,returnAvailable=false;
+        std::array<float,2> returnRms{},tapMs{};
         std::array<float,stereoPoints> mid{},side{};
         float inputRms=0.f,outputRms=0.f,sideRms=0.f,correlation=0.f,leftRms=0.f,rightRms=0.f;
         std::uint64_t serial=0;
@@ -24,21 +29,31 @@ public:
         const auto next=requested.load(std::memory_order_acquire);
         if(next!=active){
             published.store(0,std::memory_order_release);
-            input.reset();output.reset();active=next;
+            input.reset();output.reset();pitchIn.reset();pitchOut.reset();active=next;
         }
         return (int)(active&31u)-1;
     }
     void invalidate() noexcept {
         published.store(0,std::memory_order_release);
-        input.reset();output.reset();
+        input.reset();output.reset();pitchIn.reset();pitchOut.reset();
     }
-    void captureInput(const float* l,const float* r,int n) noexcept {
+    void captureInput(const float* l,const float* r,int n,bool pitch=false,double sr=48000.) noexcept {
         sequence.fetch_add(1,std::memory_order_acq_rel); // odd while the pair is being written
         input.pushBlock(l,r,n);
+        pitchMode=pitch;pitchSampleRate=sr;
+        if(pitch)pitchIn.push(l,r,n,sr);
+        wetAvailable.store(false,std::memory_order_relaxed);
         inRms.store(rms(l,r,n,false),std::memory_order_relaxed);
+    }
+    void setReturn(float l,float r,float timeL=0.f,float timeR=0.f) noexcept {
+        wetLeft.store(l,std::memory_order_relaxed);wetRight.store(r,std::memory_order_relaxed);
+        tapLeft.store(timeL,std::memory_order_relaxed);tapRight.store(timeR,std::memory_order_relaxed);
+        wetAvailable.store(true,std::memory_order_relaxed);
     }
     void captureOutput(const float* l,const float* r,int n) noexcept {
         output.pushBlock(l,r,n);
+        if(pitchMode)pitchOut.push(l,r,n,pitchSampleRate);
+        pitchAvailable.store(pitchMode,std::memory_order_relaxed);
         double ll=0.,rr=0.,lr=0.,ss=0.;
         if(l && n>0){
             for(int i=0;i<n;++i){
@@ -84,6 +99,15 @@ public:
             frame.mid[(size_t)i]=midPoints[(size_t)i].load(std::memory_order_relaxed);
             frame.side[(size_t)i]=sidePoints[(size_t)i].load(std::memory_order_relaxed);
         }
+        frame.pitchReady=false;
+        if(pitchAvailable.load(std::memory_order_relaxed)){
+            float outputRate=0.f;
+            frame.pitchReady=pitchIn.snapshot(frame.pitchInput,frame.pitchRate) &&
+                pitchOut.snapshot(frame.pitchOutput,outputRate) && outputRate==frame.pitchRate;
+        }
+        frame.returnAvailable=wetAvailable.load(std::memory_order_relaxed);
+        frame.returnRms={wetLeft.load(std::memory_order_relaxed),wetRight.load(std::memory_order_relaxed)};
+        frame.tapMs={tapLeft.load(std::memory_order_relaxed),tapRight.load(std::memory_order_relaxed)};
         frame.serial=output.samplesCaptured();
         return sequence.load(std::memory_order_acquire)==before &&
                published.load(std::memory_order_acquire)==key &&
@@ -103,6 +127,10 @@ private:
         return (float)std::sqrt(energy/n);
     }
     LiveSpectrumCapture input,output;
+    PitchHistory pitchIn,pitchOut;
+    bool pitchMode=false;double pitchSampleRate=48000.;
+    std::atomic<bool> pitchAvailable{false},wetAvailable{false};
+    std::atomic<float> wetLeft{0},wetRight{0},tapLeft{0},tapRight{0};
     std::atomic<unsigned> requested{0},published{0},sequence{0};
     unsigned active=0; // audio thread only
     std::atomic<float> inRms{0},outRms{0},side{0},left{0},right{0},correlation{0};

@@ -23,7 +23,7 @@ public:
     void setAudioFresh(bool fresh) {
         if(audioFresh==fresh)return;
         audioFresh=fresh;
-        if(!fresh){inputMeter={};outputMeter={};activityLevel=0.f;cachedSignal.fill(0.f);stageBands.fill(0.f);}
+        if(!fresh){inputMeter={};outputMeter={};activityLevel=0.f;vocalActivity=0.f;cachedSignal.fill(0.f);stageBands.fill(0.f);}
         if(isShowing())repaint();
     }
     struct MeterEnvelope {
@@ -62,6 +62,7 @@ public:
         // Smooth the measured animation on the UI timer, not during paint.
         // Fast attack and gentler release avoid flickering between frames.
         activityLevel=followActivity(activityLevel,target);
+        vocalActivity=followActivity(vocalActivity,juce::jlimit(0.f,1.f,inputMeter.level*3.f));
 
     }
     void tickAnimation(double nowMs) {
@@ -222,6 +223,21 @@ public:
         const bool bypassed=mode && (int)mode->load()==3;
         backdrop.draw(g,stageBounds,horizon);
         backdrop.atmosphere(g,stageBounds,horizon,crowdPhase,activity);
+        // A layered eclipse behind the performer, distinct from the signal rail.
+        // Its radiance follows real output bands; no simulated frequency data.
+        if(stageBounds.getHeight()>220.f){
+            juce::Graphics::ScopedSaveState eclipse(g);g.reduceClipRegion(stageBounds.toNearestInt());
+            const float cx=centreX,cy=stage.originY+120.f*stage.scale,r=110.f*stage.scale;
+            g.setGradientFill(juce::ColourGradient(accent.withAlpha(.055f+.09f*rigEnergy[1]),cx,cy,
+                Theme::bg.withAlpha(0.f),cx+r*1.8f,cy,true));
+            g.fillEllipse(cx-r*1.8f,cy-r*1.8f,r*3.6f,r*3.6f);
+            for(int ring=0;ring<3;++ring){
+                const float radius=r*(.80f+.15f*ring);
+                juce::Path arc;arc.addCentredArc(cx,cy,radius,radius,0.f,.22f+ring*.3f,5.9f-ring*.32f,true);
+                g.setColour((ring==1?Theme::blue:accent).withAlpha(.11f+.16f*rigEnergy[(size_t)ring]));
+                g.strokePath(arc,juce::PathStrokeType(juce::jmax(.7f,1.3f*stage.scale)));
+            }
+        }
         // Restrained moving key light leaves the static environment cached.
         g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.055f+.05f*activity),
             centreX-65.f,feetY-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,feetY-70.f,true));
@@ -310,7 +326,7 @@ public:
             juce::Graphics::ScopedSaveState performerLayer(g);
             g.reduceClipRegion(stageBounds.toNearestInt());
             performer.draw(g,stage.originX,stage.originY,stage.scale,
-                           activity,crowdPhase);
+                           activity,crowdPhase,vocalActivity);
         }
 
         // A deep, cheering skeleton pit between the camera and the boards: we
@@ -579,7 +595,7 @@ private:
     SkellPresetAudioProcessor& processor;
     bool audioFresh=false;
     MeterEnvelope inputMeter,outputMeter;
-    float activityLevel=0.f,crowdPhase=0.f;
+    float activityLevel=0.f,crowdPhase=0.f,vocalActivity=0.f;
     skellpreset::stage::StageClock stageClock;
     std::array<float,128> cachedSignal{};
     skellpreset::visual::LiveSpectrumAnalyzer stageAnalyzer;

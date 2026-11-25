@@ -77,5 +77,22 @@ int main() {
     selected.request(-1);
     if(selected.read(4,frame) || selected.beginBlock()!=-1)return 34;
     std::puts("PASS: real spectrum, attenuation, silence, invalid samples, extreme values, six rates, Nyquist limits, selected slot capture and stereo RMS");
+    PitchHistory history;history.reset();
+    PitchHistory::Samples pitch{};
+    for(double rate:{44100.,48000.,96000.,192000.}){
+        history.reset();
+        for(int block=0;block<160;++block){
+            for(int n=0;n<1024;++n){const double time=(block*1024+n)/rate;l[(size_t)n]=(float)(.25*std::sin(twoPi*110.*time)+.08*std::sin(twoPi*220.*time));}
+            history.push(l.data(),l.data(),1024,rate);
+        }
+        float sr=0.f;if(!history.snapshot(pitch,sr))return 40;
+        const auto reading=estimatePitch(pitch,sr);
+        if(std::abs(reading.hz-110.f)>1.f || reading.confidence<.8f || std::abs(reading.midi-45.f)>.15f)return 41;
+    }
+    pitch.fill(0.f);if(estimatePitch(pitch,12000.f).hz!=0.f)return 42;
+    if(saturatorCore(0.f,2.f,1.f,1.2f)!=0.f || std::abs(saturatorCore(.5f,2.f,1.f,1.2f)-std::tanh(1.f)/1.2f)>1.e-6f)return 43;
+    TailReading tail;tail.update(.1f,.2f,.02f);tail.update(0.f,.1f,.02f);tail.update(0.f,.01f,.1f);
+    if(!tail.active || std::abs(tail.dropDb+20.f)>.01f || std::abs(tail.elapsed-.12f)>.001f)return 44;
+    std::puts("PASS: pitch history at four rates, exact drive core and observed tail drop");
     return 0;
 }

@@ -1141,7 +1141,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const auto& source=c.parallelReturn?sidechainWork:rackWork;
             slotInputScope[(size_t)s].push(source.getReadPointer(0),source.getReadPointer(1),frames);
             const bool captureVisual=s==visualSlot;
-            if(captureVisual)slotVisual.captureInput(source.getReadPointer(0),source.getReadPointer(1),frames);
+            if(captureVisual)slotVisual.captureInput(source.getReadPointer(0),source.getReadPointer(1),frames,c.type==StudioPitchFormantFX,rate);
             if(c.type==ExternalVST3) {
                 auto* plugin=hostedBlock.get(s);
                 const int latency=hostedBlock.getLatency(s);
@@ -1193,6 +1193,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float saturatorBlend=.5f+c.p[1];
             const float saturatorDenom=std::max(.5f,saturatorDrive*.6f);
             const float exciterDrive=1.f+10.f*c.p[0];
+            const bool observeWet=captureVisual && (c.type==Delay || c.type==StudioDelayFX || c.type==VoxRackRoom);
+            double wetEnergyL=0.,wetEnergyR=0.;
+            std::array<float,2> observedEcho{};
             for(int n=0;n<frames;++n) {
                 float l=source.getSample(0,n);
                 float r=source.getSample(1,n);
@@ -1366,8 +1369,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         wetL=y.left;wetR=y.right;break;
                     }
                     case Saturator: {
-                        wetL=std::tanh(l*saturatorDrive*saturatorBlend)/saturatorDenom;
-                        wetR=std::tanh(r*saturatorDrive*saturatorBlend)/saturatorDenom;
+                        wetL=skellpreset::visual::saturatorCore(l,saturatorDrive,saturatorBlend,saturatorDenom);
+                        wetR=skellpreset::visual::saturatorCore(r,saturatorDrive,saturatorBlend,saturatorDenom);
                         break;
                     }
                     case Exciter: {
@@ -1378,7 +1381,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     case StudioDelayFX: {
                         // Studio Delay owns an independently adjustable dry
                         // level; only attenuate its internal echo return.
-                        const auto y=e.studioDelay.process(l,r,duckGain);
+                        const auto y=e.studioDelay.process(l,r,duckGain,observeWet?&observedEcho:nullptr);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case Delay: {
@@ -1419,6 +1422,11 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     l=aligned[0];r=aligned[1];
                 }
                 const float wet=slotWetSmooth[(size_t)s].getNextValue();
+                if(observeWet){
+                    const double a=(c.type==StudioDelayFX?observedEcho[0]:wetL)*wet;
+                    const double b=(c.type==StudioDelayFX?observedEcho[1]:wetR)*wet;
+                    wetEnergyL+=a*a;wetEnergyR+=b*b;
+                }
                 const float processedL=c.parallelReturn?wetL*wet:l+(wetL-l)*wet;
                 const float processedR=c.parallelReturn?wetR*wet:r+(wetR-r)*wet;
                 if(c.parallelReturn) {
@@ -1433,7 +1441,15 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             }
             const auto& measuredOutput=c.parallelReturn?hostWork:rackWork;
             slotOutputScope[(size_t)s].push(measuredOutput.getReadPointer(0),measuredOutput.getReadPointer(1),frames);
-            if(captureVisual)slotVisual.captureOutput(measuredOutput.getReadPointer(0),measuredOutput.getReadPointer(1),frames);
+            if(captureVisual){
+                if(observeWet){
+                    std::array<float,2> times{};
+                    if(c.type==StudioDelayFX)times=e.studioDelay.tapBaseMs();
+                    else if(c.type==Delay)times.fill((float)(1000.*e.delay.samples/rate));
+                    slotVisual.setReturn((float)std::sqrt(wetEnergyL/frames),(float)std::sqrt(wetEnergyR/frames),times[0],times[1]);
+                }
+                slotVisual.captureOutput(measuredOutput.getReadPointer(0),measuredOutput.getReadPointer(1),frames);
+            }
             if(c.type==VocalFeelOptoFX && c.on)
                 grMeter[(size_t)s]=std::max(grMeter[(size_t)s],
                                            e.vocalFeel.gainReductionDb());

@@ -84,8 +84,10 @@ public:
         glide=1.-std::exp(-1./(sr*.025));
         shapeDenom=std::max(.001f,std::tanh(drive));
     }
-    std::array<float,2> process(float left,float right,float echoDuck=1.f) noexcept {
-        if(history[0].empty()||diffuser[0].empty())return {left,right};
+    std::array<float,2> tapBaseMs() const noexcept {return {(float)(1000.*delayL/sr),(float)(1000.*delayR/sr)};}
+    std::array<float,2> process(float left,float right,float echoDuck=1.f,
+                                std::array<float,2>* observedEcho=nullptr) noexcept {
+        if(history[0].empty()||diffuser[0].empty()){if(observedEcho)*observedEcho={};return {left,right};}
         const float l=std::isfinite(left)?std::clamp(left,-8.f,8.f):0.f;
         const float r=std::isfinite(right)?std::clamp(right,-8.f,8.f):0.f;
         delayL+=(targetL-delayL)*glide;
@@ -128,6 +130,7 @@ public:
         if(++diffWrite==diffuser[0].size())diffWrite=0;
         const float echoGain=(mode==3?0.f:wet)*
             (std::isfinite(echoDuck)?std::clamp(echoDuck,0.f,1.f):1.f);
+        if(observedEcho)*observedEcho={echoGain*echo[0],echoGain*echo[1]};
         return {std::clamp(dry*l+echoGain*echo[0],-8.f,8.f),
                 std::clamp(dry*r+echoGain*echo[1],-8.f,8.f)};
     }

@@ -14,12 +14,30 @@ public:
             lastSlot=slot;lastType=type;reset();
         }
         deessHz=3500.f+p.getSlotParam(slot,0)*8000.f;
+        if(type==P::Saturator){
+            const auto* grit=p.state.getRawParameterValue("macro4");
+            const float drive=std::pow(10.f,(p.getSlotParam(slot,0)*24.f+10.f*((grit?grit->load():.5f)-.5f))/20.f);
+            for(size_t n=0;n<transfer.size();++n){const float x=2.f*(float)n/(transfer.size()-1)-1.f;
+                transfer[n]=skellpreset::visual::saturatorCore(x,drive,.5f+p.getSlotParam(slot,1),std::max(.5f,drive*.6f));}
+        }else if(type==P::StudioFastDistFX){
+            curveDist.set(p.getSlotParam(slot,0),p.getSlotParam(slot,1),p.getSlotParam(slot,2),p.getSlotParam(slot,3),p.getSlotParam(slot,4));
+            for(size_t n=0;n<transfer.size();++n)transfer[n]=curveDist.sample(2.f*(float)n/(transfer.size()-1)-1.f);
+        }
         gateDb=-75.f+p.getSlotParam(slot,0)*70.f;
         const auto now=juce::Time::getMillisecondCounter();
         skellpreset::visual::SlotVisualCapture::Frame frame;
         const bool available=p.getSlotVisual(slot,frame);
         if(available && frame.serial!=lastSerial){
+            const float elapsed=lastSerial && frame.serial>lastSerial?(float)((frame.serial-lastSerial)/p.preparedAudioRate()):0.f;
             lastSerial=frame.serial;lastFrame=now;fresh=true;
+            wetAvailable=frame.returnAvailable;tapMs=frame.tapMs;wetRms=frame.returnRms;
+            if(wetAvailable && type==P::VoxRackRoom)tail.update(frame.inputRms,std::sqrt(.5f*(wetRms[0]*wetRms[0]+wetRms[1]*wetRms[1])),elapsed);
+            if(type==P::StudioPitchFormantFX && frame.pitchReady && (ticks&1u)==0){
+                pitchIn=skellpreset::visual::estimatePitch(frame.pitchInput,frame.pitchRate);
+                pitchOut=skellpreset::visual::estimatePitch(frame.pitchOutput,frame.pitchRate);
+                shift(pitchInHistory,pitchIn.hz>0.f?pitchIn.midi:-1.f);
+                shift(pitchOutHistory,pitchOut.hz>0.f?pitchOut.midi:-1.f);
+            }
             inputRms=frame.inputRms;outputRms=frame.outputRms;sideRms=frame.sideRms;
             gr=std::max(p.getSlotGainReductionDb(slot),p.getSlotDeessReductionDb(slot));
             duck=p.getSlotDuckReductionDb(slot);
@@ -41,7 +59,8 @@ public:
                 wave[i]=frame.output[frame.output.size()-wave.size()+i];
                 inputWave[i]=frame.input[frame.input.size()-inputWave.size()+i];
             }
-            shift(leftHistory,level(leftRms));shift(rightHistory,level(rightRms));
+            shift(leftHistory,level(wetAvailable?wetRms[0]:leftRms));shift(rightHistory,level(wetAvailable?wetRms[1]:rightRms));
+            shift(wetHistory,wetAvailable?level(std::sqrt(.5f*(wetRms[0]*wetRms[0]+wetRms[1]*wetRms[1]))):0.f);
         }else if((unsigned)(now-lastFrame)>=400u){
             if(fresh){reset();repaint();}
             return;
@@ -54,6 +73,10 @@ public:
         Theme::panelBox(g,bounds,8.f,true);
         if(bounds.getWidth()<300 || bounds.getHeight()<140)return;
         const bool stereo=isStereo(lastType),drive=isDrive(lastType);
+        const bool pitch=lastType==P::StudioPitchFormantFX;
+        const bool transferView=lastType==P::Saturator || lastType==P::StudioFastDistFX;
+        const bool taps=lastType==P::Delay || lastType==P::StudioDelayFX;
+        const bool room=lastType==P::VoxRackRoom;
         const bool deess=lastType==P::DeEsser,gate=lastType==P::Gate;
         const bool dynamics=isDynamics(lastType) && !deess && !gate;
         const bool delay=lastType==P::Delay || lastType==P::StudioDelayFX ||
@@ -62,7 +85,7 @@ public:
         const auto accent=dynamics || gate || deess?Theme::amber:space || stereo?Theme::blue:Theme::green;
         auto inner=bounds.reduced(14.f,9.f);
         auto top=inner.removeFromTop(24.f);
-        const auto heading=stereo?"STEREO / VECTOR FIELD":drive?"DRIVE / WAVE SHAPE":deess?"DE-ESS / SIBILANCE":gate?"GATE / LEVEL + THRESHOLD":dynamics?"DYNAMICS / REDUCTION":delay?"DELAY / LEFT + RIGHT HISTORY":space?"SPACE / ENERGY HISTORY":"SPECTRUM / BEFORE + AFTER";
+        const auto heading=pitch?"PITCH / DETECTED NOTES":transferView?"DRIVE / CORE TRANSFER":taps?"DELAY / LIVE WET TAPS":room?"ROOM / MEASURED WET TAIL":stereo?"STEREO / VECTOR FIELD":drive?"DRIVE / WAVE SHAPE":deess?"DE-ESS / SIBILANCE":gate?"GATE / LEVEL + THRESHOLD":dynamics?"DYNAMICS / REDUCTION":delay?"DELAY / LEFT + RIGHT HISTORY":space?"SPACE / ENERGY HISTORY":"SPECTRUM / BEFORE + AFTER";
         Theme::fittedText(g,heading,
             top.withTrimmedRight(110.f).toNearestInt(),13.f,Theme::white,true);
         Theme::fittedText(g,fresh?"LIVE":"WAITING FOR AUDIO",top.removeFromRight(110.f).toNearestInt(),10.f,
@@ -102,7 +125,57 @@ public:
         };
         {
             juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(graph.toNearestInt());
-            if(stereo){
+            if(pitch){
+                auto noteTrace=[&](const auto& history,juce::Colour tint){
+                    juce::Path path;bool started=false;
+                    for(size_t n=0;n<history.size();++n){
+                        if(history[n]<0.f){started=false;continue;}
+                        const float x=graph.getX()+graph.getWidth()*(float)n/(history.size()-1);
+                        const float y=graph.getBottom()-std::clamp((history[n]-36.f)/48.f,0.f,1.f)*graph.getHeight();
+                        if(!started){path.startNewSubPath(x,y);started=true;}else path.lineTo(x,y);
+                        g.setColour(tint.withAlpha(.75f));g.fillEllipse(x-1.2f,y-1.2f,2.4f,2.4f);
+                    }
+                    g.setColour(tint);g.strokePath(path,juce::PathStrokeType(1.5f));
+                };
+                noteTrace(pitchInHistory,Theme::muted);noteTrace(pitchOutHistory,accent);
+            }else if(transferView){
+                const auto area=graph.reduced(10.f,6.f);
+                g.setColour(Theme::muted.withAlpha(.5f));g.drawLine(area.getX(),area.getBottom(),area.getRight(),area.getY(),.9f);
+                juce::Path path;
+                for(size_t n=0;n<transfer.size();++n){
+                    const float x=area.getX()+area.getWidth()*(float)n/(transfer.size()-1);
+                    const float y=area.getCentreY()-std::clamp(transfer[n],-1.f,1.f)*area.getHeight()*.5f;
+                    if(n==0)path.startNewSubPath(x,y);else path.lineTo(x,y);
+                }
+                g.setColour(accent.withAlpha(.18f));g.strokePath(path,juce::PathStrokeType(5.f));
+                g.setColour(accent);g.strokePath(path,juce::PathStrokeType(1.8f));
+            }else if(taps){
+                auto history=graph.withTrimmedTop(47.f);
+                for(int ch=0;ch<2;++ch){
+                    const float y=graph.getY()+12.f+ch*20.f;
+                    const float x=graph.getX()+16.f+std::clamp(tapMs[(size_t)ch]/6200.f,0.f,1.f)*(graph.getWidth()-32.f);
+                    const auto tint=ch==0?Theme::blue:Theme::green;
+                    g.setColour(tint.withAlpha(.24f));g.drawLine(graph.getX()+12.f,y,graph.getRight()-12.f,y,1.f);
+                    if(wetAvailable){
+                        const float radius=3.f+7.f*level(wetRms[(size_t)ch]);
+                        g.setColour(tint.withAlpha(.25f));g.fillEllipse(x-radius,y-radius,2.f*radius,2.f*radius);
+                        g.setColour(tint);g.fillEllipse(x-2.f,y-2.f,4.f,4.f);
+                    }
+                    Theme::fittedText(g,juce::String(ch==0?"L ":"R ")+juce::String(tapMs[(size_t)ch],1)+" ms",
+                        juce::Rectangle<int>((int)graph.getRight()-90,(int)y-8,80,16),9.f,tint,true);
+                }
+                // Live return history, independent of the direct signal.
+                auto small=[&](const auto& values,juce::Colour tint){
+                    juce::Path path;
+                    for(size_t n=0;n<values.size();++n){const float x=history.getX()+history.getWidth()*(float)n/(values.size()-1);
+                        const float y=history.getBottom()-values[n]*history.getHeight();
+                        if(n==0)path.startNewSubPath(x,y);else path.lineTo(x,y);}
+                    g.setColour(tint);g.strokePath(path,juce::PathStrokeType(1.5f));
+                };
+                small(leftHistory,Theme::blue);small(rightHistory,Theme::green);
+            }else if(room){
+                plot(inputHistory,Theme::muted,false);plot(wetHistory,accent,true);
+            }else if(stereo){
                 const float radius=graph.getHeight()*.44f;
                 const auto centre=graph.getCentre();
                 g.setColour(Theme::bg);g.fillEllipse(centre.x-radius,centre.y-radius,2*radius,2*radius);
@@ -157,7 +230,7 @@ public:
         if(dynamics){
             Theme::text(g,"0",graph.getSmallestIntegerContainer().withHeight(13).translated(3,0),9,Theme::muted);
             Theme::text(g,"-24 dB",graph.getSmallestIntegerContainer().withTop((int)graph.getBottom()-14).translated(3,0),9,Theme::muted);
-        }else if(!space && !stereo && !drive && !gate){
+        }else if(!space && !stereo && !drive && !gate && !pitch){
             Theme::text(g,"80 Hz",footer.removeFromLeft(68.f).toNearestInt(),9,Theme::muted);
             Theme::fittedText(g,"9 kHz",footer.removeFromRight(68.f).toNearestInt(),9,Theme::muted,false,juce::Justification::centredRight);
         }
@@ -166,9 +239,16 @@ public:
             Theme::text(g,label,row.removeFromTop(12.f).toNearestInt(),9.f,Theme::muted,true);
             Theme::text(g,value,row.toNearestInt(),13.f,colour,true);
         };
-        metric("INPUT RMS",db(inputRms),Theme::white);
-        metric("OUTPUT RMS",db(outputRms),accent);
-        metric(stereo?"CORRELATION":deess || gate || dynamics?"REDUCTION":space?"DUCK":"SIDE RMS",
+        if(pitch){
+            metric("INPUT NOTE",note(pitchIn),Theme::white);
+            metric("OUTPUT NOTE",note(pitchOut),accent);
+        }else{
+            metric("INPUT RMS",db(inputRms),Theme::white);
+            metric("OUTPUT RMS",db(outputRms),accent);
+        }
+        if(pitch)metric("OUTPUT CONF.",pitchOut.hz>0.f?juce::String(juce::roundToInt(pitchOut.confidence*100.f))+"%":juce::String("--"),accent);
+        else if(room)metric("TAIL DROP",tail.active?juce::String(tail.dropDb,1)+" dB":juce::String("--"),accent);
+        else metric(stereo?"CORRELATION":deess || gate || dynamics?"REDUCTION":space?"DUCK":"SIDE RMS",
                stereo?(fresh && outputRms>1.e-6f?juce::String(correlation,2):juce::String("--")):
                deess || gate || dynamics?juce::String(gr,1)+" dB":space?juce::String(duck,1)+" dB":db(sideRms),accent);
         // The small footer trace is actual full-rate output, not a generated wave.
@@ -181,7 +261,11 @@ public:
             }
             g.setColour(accent.withAlpha(.8f));g.strokePath(trace,juce::PathStrokeType(1.2f));
         }
-        const juce::String legend=stereo?juce::String("ACTUAL OUTPUT / MID-SIDE"):
+        const juce::String legend=pitch?juce::String("DETECTED MONOPHONIC INPUT / OUTPUT / C2-C6"):
+            transferView?juce::String("STATIC CORE RESPONSE / -1 TO +1 / BEFORE RACK MIX"):
+            taps?juce::String("BASE TAP TIME / MEASURED WET ENERGY / NOT DRY SIGNAL"):
+            room?(tail.active?"OBSERVED TAIL "+juce::String(tail.elapsed,2)+" s / RELATIVE DROP":juce::String("WET ENERGY / WAITING FOR INPUT TO FALL SILENT")):
+            stereo?juce::String("ACTUAL OUTPUT / MID-SIDE"):
             drive?juce::String("INPUT / OUTPUT WAVEFORM / 128 SAMPLES"):
             deess?"DE-ESS CENTER "+juce::String(deessHz/1000.f,2)+" kHz / BEFORE + AFTER":
             gate?juce::String("INPUT / OUTPUT LEVEL / -72 TO 0 dBFS"):
@@ -192,6 +276,12 @@ public:
             footer.toNearestInt(),10.f,Theme::muted,false,juce::Justification::centred);
     }
 private:
+    static juce::String note(skellpreset::visual::PitchReading p){
+        if(p.hz<=0.f)return "--";
+        constexpr const char* names[]{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+        const int n=juce::roundToInt(p.midi);
+        return juce::String(names[n%12])+juce::String(n/12-1)+"  "+juce::String(p.hz,0)+" Hz";
+    }
     static bool isStereo(int t) noexcept {
         return t==P::AdlibDoubler || t==P::StereoWidth || t==P::VocalChorusFX || t==P::VocalFlangerFX || t==P::VocalVibratoFX || t==P::AdlibMotion;
     }
@@ -217,9 +307,18 @@ private:
         grHistory.fill(0);duckHistory.fill(0);wave.fill(0);inputWave.fill(0);
         leftHistory.fill(0);rightHistory.fill(0);mid.fill(0);side.fill(0);
         correlation=leftRms=rightRms=0.f;
+        pitchIn={};pitchOut={};pitchInHistory.fill(-1.f);pitchOutHistory.fill(-1.f);
+        wetHistory.fill(0.f);wetAvailable=false;wetRms={};tapMs={};tail={};
         inputRms=outputRms=sideRms=gr=duck=0.f;lastSerial=0;lastFrame=0;fresh=false;ticks=0;
     }
     Analyzer analyzer;
+    skellpreset::visual::PitchReading pitchIn{},pitchOut{};
+    skellpreset::visual::TailReading tail;
+    skellpreset::studio::FastDist curveDist;
+    std::array<float,129> transfer{};
+    std::array<float,historySize> pitchInHistory{},pitchOutHistory{},wetHistory{};
+    std::array<float,2> wetRms{},tapMs{};
+    bool wetAvailable=false;
     std::array<float,Analyzer::bands> inBands{},outBands{};
     std::array<float,historySize> inputHistory{},outputHistory{},grHistory{},duckHistory{};
     std::array<float,128> wave{},inputWave{},mid{},side{};
