@@ -981,7 +981,10 @@ void SlotEditor::loadVST3FromFile(const juce::File& path) {
     juce::PopupMenu menu;
     menu.addSectionHeader("Select an audio effect");
     for(int i=0;i<(int)choices.size();++i)menu.addItem(i+1,choices[(size_t)i].name);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&loadExternal),std::move(finish));
+    // This picker is opened from a native Compressor/EQ slot too. The
+    // LOAD VST3 button is only visible *after* ExternalVST3 is loaded,
+    // so anchoring a multi-class menu to it makes the popup inaccessible.
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),std::move(finish));
 }
 void SlotEditor::chooseVST3File() {
     // Keep the asynchronous chooser alive until it returns.
