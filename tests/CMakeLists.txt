@@ -185,3 +185,13 @@ add_test(NAME SkellPresetVocalFeelOptoTest COMMAND SkellPresetVocalFeelOptoTest)
 add_executable(SkellPresetStudioDelayTest test_studio_delay.cpp)
 target_compile_features(SkellPresetStudioDelayTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetStudioDelayTest COMMAND SkellPresetStudioDelayTest)
+
+# Offline saved-state interchange: never replaces existing effect IDs or controls.
+add_executable(SkellPresetFlRawStateTest test_fl_raw_state.cpp)
+target_compile_features(SkellPresetFlRawStateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetFlRawStateTest COMMAND SkellPresetFlRawStateTest)
+add_executable(SkellPresetDynamicsPeakHistoryTest test_dynamics_peak_history.cpp)
+target_compile_features(SkellPresetDynamicsPeakHistoryTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetDynamicsPeakHistoryTest COMMAND SkellPresetDynamicsPeakHistoryTest)
+add_executable(SkellPresetStateInspect ../tools/state_inspect.cpp)
+target_compile_features(SkellPresetStateInspect PRIVATE cxx_std_17)
