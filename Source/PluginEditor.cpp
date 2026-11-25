@@ -905,8 +905,20 @@ public:
             issues.add("Removing an extra rack row changes stable physical IDs");
         if(!chain.testRackControlsAndWet())
             issues.add("Rack wet trim and green bypass dot did not update or restore host parameters");
-        if(!chain.testSidechainDock())
-            issues.add("Sidechain dock failed to link/unlink supported physical effects without changing rack wet/order");
+        // Keep this regression independent of the owner's approved Alchemist
+        // chain, which deliberately has no sidechain-capable effects. Exercise
+        // the actual APVTS link gestures on a throwaway native processor so
+        // the UI smoke never changes the loaded factory sound or rack order.
+        {
+            auto dockFixture=std::make_unique<SkellPresetAudioProcessor>();
+            dockFixture->setSlotType(0,SkellPresetAudioProcessor::StudioDelayFX);
+            dockFixture->setSlotType(1,SkellPresetAudioProcessor::AdlibDoubler);
+            dockFixture->setSlotType(2,SkellPresetAudioProcessor::Reverb);
+            dockFixture->setSlotType(3,SkellPresetAudioProcessor::Compressor);
+            ChainPanel fixtureDock(*dockFixture);
+            if(!fixtureDock.testSidechainDock())
+                issues.add("Sidechain dock failed to link/unlink supported physical effects without changing rack wet/order");
+        }
         if(!chain.triggerReplaceForTest(0) || !slot.modulePickerVisibleForTest())
             issues.add("Rack double-click replacement did not open effect library");
         slot.openModulePicker();
