@@ -219,7 +219,7 @@ private:
     struct CachedHostedView {
         juce::AudioPluginInstance* host=nullptr;
         std::unique_ptr<juce::AudioProcessorEditor> editor;
-        bool attempted=false, fitRequested=false;
+        bool attempted=false, fitRequested=false, rejectedFit=false;
     };
     // One view per physical rack slot. The processor retains retired
     // instances until shutdown; prune stale views on the message thread.

@@ -161,6 +161,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "File-only native FL discovery failed: $LASTEXITCODE" }
           & $diagnostic.FullName --vst3 $fixture.FullName
           if ($LASTEXITCODE -ne 0) { throw "Separate-process VST3 probe failed: $LASTEXITCODE" }
+          $report = Join-Path $env:RUNNER_TEMP 'skell-diagnostic-report.txt'
+          & $diagnostic.FullName --report $report --vst3 $fixture.FullName
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $report)) { throw 'Diagnostic report worker failed' }
+          $reportText = Get-Content -LiteralPath $report -Raw
+          if ($reportText -notmatch 'PASS scan / instantiate / stereo render' -or $reportText -notmatch 'EXIT 0') {
+              throw 'Diagnostic report missing audio result or exit status'
+          }
+          Write-Host 'PASS diagnostic worker persists actual fixture scan/load/render report'
       - name: Exercise Studio rack effects and native factory recall/audio/PDC/state
         shell: pwsh
         run: |

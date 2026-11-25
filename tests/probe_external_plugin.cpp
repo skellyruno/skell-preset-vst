@@ -97,13 +97,17 @@ int main(int argc,char** argv) {
             juce::StringArray args{exe.getFullPathName(),"--report",log.getFullPathName(),"--vst3",path};
             std::cout<<"Testing in a separate process (25-second timeout)...\n"<<std::flush;
             if(!child.start(args,0)){
-                std::cout<<"FAIL: could not launch diagnostic worker.\n";
+                log.appendText("FAIL: could not launch diagnostic worker.\n");
             }else if(!child.waitForProcessToFinish(25000)){
-                child.kill();
+                const bool stopped=child.kill();
                 child.waitForProcessToFinish(2000);
-                log.appendText("\nFAIL timeout: worker terminated after 25 seconds.\n");
+                log.appendText(stopped?"\nFAIL timeout: worker terminated after 25 seconds.\n":
+                    "\nFAIL timeout: worker did not terminate cleanly.\n");
+            }else{
+                log.appendText("\nWorker exit code: "+juce::String((juce::int64)child.getExitCode())+"\n");
             }
             if(log.existsAsFile())std::cout<<log.loadFileAsString().toStdString()<<"\n";
+            else std::cout<<"FAIL: unable to write the report file.\n";
             std::cout<<"Report: "<<log.getFullPathName().toStdString()<<"\n";
         }
         std::cout<<"Press Enter to close.\n"<<std::flush;

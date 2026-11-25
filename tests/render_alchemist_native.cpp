@@ -603,12 +603,18 @@ int uiExternalHostSmoke(const juce::File& fixture) {
     plugin->prepareToPlay(48000.,256);
     std::unique_ptr<SkellPresetAudioProcessorEditor> editor(
         static_cast<SkellPresetAudioProcessorEditor*>(plugin->createEditor()));
-    if(!editor || !editor->testLoadExternalFromNativeForTest(fixture)){
-        std::fprintf(stderr,"FAIL UI External VST3 load from native slot: %s\n",
+    if(!editor)return 96;
+    // A real Windows peer is necessary to exercise JUCE's hosted HWND
+    // attachment and visibility transitions, not just logical bounds.
+    editor->addToDesktop(juce::ComponentPeer::windowHasTitleBar);
+    editor->setVisible(true);
+    if(!editor->getPeer() || !editor->testLoadExternalFromNativeForTest(fixture)){
+        std::fprintf(stderr,"FAIL UI External VST3 load/retained native editor/bounds: %s\n",
             fixture.getFullPathName().toRawUTF8());return 96;
     }
+    editor->setVisible(false);
     editor.reset();plugin->releaseResources();
-    std::puts("PASS real JUCE UI loads owned VST3 fixture from native effect");
+    std::puts("PASS native peer VST3 editor bounds, eight slot round trips and view reuse");
     return 0;
 }
 int uiSmoke() {

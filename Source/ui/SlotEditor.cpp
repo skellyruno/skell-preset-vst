@@ -925,6 +925,7 @@ void SlotEditor::releaseEmbeddedEditor(){
     cached.editor.reset();
     cached.attempted=false;
     cached.fitRequested=false;
+    cached.rejectedFit=false;
 }
 juce::Rectangle<int> SlotEditor::hostedEditorArea() const {
     auto area=getLocalBounds().reduced(18,0);
@@ -937,7 +938,7 @@ void SlotEditor::layoutEmbeddedEditor(){
     auto& view=*embeddedEditor;
     auto& cached=hostedViews[(size_t)slot];
     const auto area=hostedEditorArea();
-    if(area.isEmpty()){view.setVisible(false);return;}
+    if(area.isEmpty() || cached.rejectedFit){view.setVisible(false);return;}
     // Windows VST3 editors wrap real HWNDs, not ordinary JUCE drawings.
     // An affine transform alone does NOT scale a third-party child window.
     // Request supported native sizing/scaling, then check actual dimensions.
@@ -958,12 +959,12 @@ void SlotEditor::layoutEmbeddedEditor(){
     }
     const auto fits=[&]{return view.getWidth()>0 && view.getHeight()>0 &&
         view.getWidth()<=area.getWidth() && view.getHeight()<=area.getHeight();};
-    if(!fits()){view.setVisible(false);return;}
+    if(!fits()){cached.rejectedFit=true;view.setVisible(false);return;}
     view.setCentrePosition(area.getCentre());
     if(!view.isVisible()){
         view.setVisible(true);
         // VST3 native attachment may immediately change the requested size.
-        if(!fits()){view.setVisible(false);return;}
+        if(!fits()){cached.rejectedFit=true;view.setVisible(false);return;}
         view.setCentrePosition(area.getCentre());
     }
 }
@@ -985,6 +986,7 @@ void SlotEditor::syncEmbeddedEditor(){
             cached.host=actual;
             cached.attempted=false;
             cached.fitRequested=false;
+            cached.rejectedFit=false;
         }
     }
     if(!hostedPresentation || !isVisible() || modulePicker.isVisible() ||
