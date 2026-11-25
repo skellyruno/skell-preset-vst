@@ -195,3 +195,8 @@ add_test(NAME SkellPresetStudioDelayTest COMMAND SkellPresetStudioDelayTest)
 add_executable(SkellPresetStereoSeparationTest test_stereo_separation.cpp)
 target_compile_features(SkellPresetStereoSeparationTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetStereoSeparationTest COMMAND SkellPresetStereoSeparationTest)
+
+# Isolated limiter-inspired gate release research, not shipping signal routing.
+add_executable(SkellPresetLimiterGateCandidateTest test_limiter_gate_candidate.cpp)
+target_compile_features(SkellPresetLimiterGateCandidateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetLimiterGateCandidateTest COMMAND SkellPresetLimiterGateCandidateTest)
