@@ -1263,6 +1263,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case Gate: {
                         const float g=e.gate.processGain(std::max(std::abs(l),std::abs(r)));
+                        minimumGain[(size_t)s]=std::min(minimumGain[(size_t)s],g);
                         wetL=l*g;wetR=r*g;break;
                     }
                     case DeEsser: {

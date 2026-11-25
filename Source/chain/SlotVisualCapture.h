@@ -7,9 +7,11 @@ namespace skellpreset::visual {
 class SlotVisualCapture final {
 public:
     using Samples=std::array<float,LiveSpectrumCapture::capacity>;
+    static constexpr int stereoPoints=128;
     struct Frame {
         Samples input{},output{};
-        float inputRms=0.f,outputRms=0.f,sideRms=0.f;
+        std::array<float,stereoPoints> mid{},side{};
+        float inputRms=0.f,outputRms=0.f,sideRms=0.f,correlation=0.f,leftRms=0.f,rightRms=0.f;
         std::uint64_t serial=0;
     };
     void request(int slot) noexcept {
@@ -37,8 +39,32 @@ public:
     }
     void captureOutput(const float* l,const float* r,int n) noexcept {
         output.pushBlock(l,r,n);
-        outRms.store(rms(l,r,n,false),std::memory_order_relaxed);
-        side.store(rms(l,r,n,true),std::memory_order_relaxed);
+        double ll=0.,rr=0.,lr=0.,ss=0.;
+        if(l && n>0){
+            for(int i=0;i<n;++i){
+                const double a=bounded(l[i]),b=r?bounded(r[i]):a;
+                ll+=a*a;rr+=b*b;lr+=a*b;
+                const double d=.5*(a-b);ss+=d*d;
+            }
+            for(int i=0;i<stereoPoints;++i){
+                const int index=(int)((std::int64_t)i*(n-1)/(stereoPoints-1));
+                const float a=bounded(l[index]),b=r?bounded(r[index]):a;
+                midPoints[(size_t)i].store(.5f*(a+b),std::memory_order_relaxed);
+                sidePoints[(size_t)i].store(.5f*(a-b),std::memory_order_relaxed);
+            }
+        }else {
+            for(int i=0;i<stereoPoints;++i){
+                midPoints[(size_t)i].store(0.f,std::memory_order_relaxed);
+                sidePoints[(size_t)i].store(0.f,std::memory_order_relaxed);
+            }
+        }
+        const double count=std::max(1,n);
+        outRms.store((float)std::sqrt((ll+rr)*.5/count),std::memory_order_relaxed);
+        side.store((float)std::sqrt(ss/count),std::memory_order_relaxed);
+        left.store((float)std::sqrt(ll/count),std::memory_order_relaxed);
+        right.store((float)std::sqrt(rr/count),std::memory_order_relaxed);
+        correlation.store(ll*rr>1.e-24?(float)std::clamp(lr/std::sqrt(ll*rr),-1.,1.):0.f,
+                          std::memory_order_relaxed);
         published.store(active,std::memory_order_release);
         sequence.fetch_add(1,std::memory_order_release); // even when both sides are published
     }
@@ -52,12 +78,19 @@ public:
         frame.inputRms=inRms.load(std::memory_order_relaxed);
         frame.outputRms=outRms.load(std::memory_order_relaxed);
         frame.sideRms=side.load(std::memory_order_relaxed);
+        frame.leftRms=left.load(std::memory_order_relaxed);frame.rightRms=right.load(std::memory_order_relaxed);
+        frame.correlation=correlation.load(std::memory_order_relaxed);
+        for(int i=0;i<stereoPoints;++i){
+            frame.mid[(size_t)i]=midPoints[(size_t)i].load(std::memory_order_relaxed);
+            frame.side[(size_t)i]=sidePoints[(size_t)i].load(std::memory_order_relaxed);
+        }
         frame.serial=output.samplesCaptured();
         return sequence.load(std::memory_order_acquire)==before &&
                published.load(std::memory_order_acquire)==key &&
                requested.load(std::memory_order_acquire)==key && frame.serial>0;
     }
 private:
+    static float bounded(float v) noexcept {return std::isfinite(v)?std::clamp(v,-8.f,8.f):0.f;}
     static float rms(const float* l,const float* r,int n,bool difference) noexcept {
         if(!l || n<=0)return 0.f;
         double energy=0.;
@@ -72,6 +105,7 @@ private:
     LiveSpectrumCapture input,output;
     std::atomic<unsigned> requested{0},published{0},sequence{0};
     unsigned active=0; // audio thread only
-    std::atomic<float> inRms{0},outRms{0},side{0};
+    std::atomic<float> inRms{0},outRms{0},side{0},left{0},right{0},correlation{0};
+    std::array<std::atomic<float>,stereoPoints> midPoints{},sidePoints{};
 };
 }

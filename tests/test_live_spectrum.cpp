@@ -64,11 +64,16 @@ int main() {
     if(selected.read(2,frame))return 35; // do not expose an incomplete pair
     selected.captureOutput(l.data(),r.data(),1024);
     if(!selected.read(2,frame) || std::abs(frame.outputRms-.25f)>1.e-6f ||
-       std::abs(frame.sideRms-.25f)>1.e-6f || frame.output[1023]!=0.f)return 31;
+       std::abs(frame.sideRms-.25f)>1.e-6f || frame.output[1023]!=0.f ||
+       std::abs(frame.correlation+1.f)>1.e-6f || frame.mid[0]!=0.f || frame.side[0]!=.25f ||
+       frame.leftRms!=.25f || frame.rightRms!=.25f)return 31;
     selected.request(4);
     if(selected.read(2,frame) || selected.read(4,frame) || selected.beginBlock()!=4)return 32;
     r.fill(.25f);selected.captureInput(l.data(),r.data(),1024);selected.captureOutput(l.data(),r.data(),1024);
-    if(!selected.read(4,frame) || frame.sideRms!=0.f || frame.output[1023]!=.25f)return 33;
+    if(!selected.read(4,frame) || frame.sideRms!=0.f || frame.output[1023]!=.25f ||
+       frame.correlation!=1.f || frame.mid[0]!=.25f || frame.side[0]!=0.f)return 33;
+    l.fill(0.f);r.fill(0.f);selected.captureInput(l.data(),r.data(),1024);selected.captureOutput(l.data(),r.data(),1024);
+    if(!selected.read(4,frame) || frame.correlation!=0.f || frame.outputRms!=0.f)return 36;
     selected.request(-1);
     if(selected.read(4,frame) || selected.beginBlock()!=-1)return 34;
     std::puts("PASS: real spectrum, attenuation, silence, invalid samples, extreme values, six rates, Nyquist limits, selected slot capture and stereo RMS");
