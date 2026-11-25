@@ -36,8 +36,20 @@ public:
         for(int ch=0;ch<buffer.getNumChannels();++ch)
             buffer.applyGain(ch,0,buffer.getNumSamples(),gain);
     }
-    bool hasEditor() const override {return false;}
-    juce::AudioProcessorEditor* createEditor() override {return nullptr;}
+    bool hasEditor() const override {return true;}
+    juce::AudioProcessorEditor* createEditor() override {
+        class FixtureEditor final:public juce::AudioProcessorEditor {
+        public:
+            explicit FixtureEditor(juce::AudioProcessor& p):juce::AudioProcessorEditor(p){
+                setResizable(true,false);setResizeLimits(200,120,1600,1000);setSize(620,300);
+            }
+            void paint(juce::Graphics& g) override {
+                g.fillAll(juce::Colours::black);g.setColour(juce::Colours::white);
+                g.drawText("Owned host editor fixture",getLocalBounds(),juce::Justification::centred);
+            }
+        };
+        return new FixtureEditor(*this);
+    }
     const juce::String getName() const override {return "Skell Host Fixture"; }
     bool acceptsMidi() const override{return false;}
     bool producesMidi() const override{return false;}

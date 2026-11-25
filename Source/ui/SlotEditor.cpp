@@ -912,49 +912,106 @@ void SlotEditor::applyKnobReadouts() {
     eqQSlider.updateText();
     for(auto& knob:knobs)knob.updateText();
 }
-void SlotEditor::releaseEmbeddedEditor(){
-    if(!embeddedEditor)return;
-    removeChildComponent(embeddedEditor.get());
-    // Destroy before the hosted processor, on the JUCE GUI/message thread.
-    embeddedEditor.reset();
+void SlotEditor::hideEmbeddedEditor(){
+    if(embeddedEditor)embeddedEditor->setVisible(false);
+    embeddedEditor=nullptr;
     embeddedHost=nullptr;
+}
+void SlotEditor::releaseEmbeddedEditor(){
+    // Explicit detach only: destroy the cached editor before opening a
+    // separate native window, never merely because another slot was selected.
+    hideEmbeddedEditor();
+    auto& cached=hostedViews[(size_t)slot];
+    cached.editor.reset();
+    cached.attempted=false;
+    cached.fitRequested=false;
+}
+juce::Rectangle<int> SlotEditor::hostedEditorArea() const {
+    auto area=getLocalBounds().reduced(18,0);
+    area.removeFromTop(85);
+    area.removeFromBottom(28);
+    return area;
 }
 void SlotEditor::layoutEmbeddedEditor(){
     if(!embeddedEditor)return;
-    // Fill the effect deck instead of shrinking third-party editors into a
-    // 251px-high letterbox. Keep the top bar for detach/window fallback.
-    constexpr float x=18.f,y=85.f,w=870.f,h=437.f;
-    const float editorWidth=(float)juce::jmax(1,embeddedEditor->getWidth());
-    const float editorHeight=(float)juce::jmax(1,embeddedEditor->getHeight());
-    // Fit small third-party editors UP as well as large ones down, while
-    // retaining their native aspect and hit-test coordinates. Bound the
-    // optional enlargement to 135% to keep text/raster UIs legible; any
-    // incompatible editor can still be detached at native size.
-    const float scale=juce::jlimit(.1f,1.35f,
-        juce::jmin(w/editorWidth,h/editorHeight));
-    embeddedEditor->setTransform(juce::AffineTransform::scale(scale));
-    const float actualW=editorWidth*scale,actualH=editorHeight*scale;
-    embeddedEditor->setTopLeftPosition(
-        juce::roundToInt(x+(w-actualW)*.5f),
-        juce::roundToInt(y+(h-actualH)*.5f));
+    auto& view=*embeddedEditor;
+    auto& cached=hostedViews[(size_t)slot];
+    const auto area=hostedEditorArea();
+    if(area.isEmpty()){view.setVisible(false);return;}
+    // Windows VST3 editors wrap real HWNDs, not ordinary JUCE drawings.
+    // An affine transform alone does NOT scale a third-party child window.
+    // Request supported native sizing/scaling, then check actual dimensions.
+    if(!cached.fitRequested && (view.getWidth()>area.getWidth() ||
+                                 view.getHeight()>area.getHeight())){
+        cached.fitRequested=true;
+        const float ratio=juce::jmin(float(area.getWidth())/float(juce::jmax(1,view.getWidth())),
+                                     float(area.getHeight())/float(juce::jmax(1,view.getHeight())));
+        if(view.isResizable()){
+            view.setBoundsConstrained({area.getX(),area.getY(),
+                juce::jmax(1,juce::roundToInt(view.getWidth()*ratio)),
+                juce::jmax(1,juce::roundToInt(view.getHeight()*ratio))});
+        }else{
+            // JUCE forwards this to IPlugViewContentScaleSupport when offered.
+            // A fixed-size plugin that ignores it uses the detached fallback.
+            view.setScaleFactor(juce::jlimit(.1f,1.f,ratio));
+        }
+    }
+    const auto fits=[&]{return view.getWidth()>0 && view.getHeight()>0 &&
+        view.getWidth()<=area.getWidth() && view.getHeight()<=area.getHeight();};
+    if(!fits()){view.setVisible(false);return;}
+    view.setCentrePosition(area.getCentre());
+    if(!view.isVisible()){
+        view.setVisible(true);
+        // VST3 native attachment may immediately change the requested size.
+        if(!fits()){view.setVisible(false);return;}
+        view.setCentrePosition(area.getCentre());
+    }
+}
+void SlotEditor::setHostedEditorPresentation(bool allowed){
+    if(hostedPresentation==allowed)return;
+    hostedPresentation=allowed;
+    if(!allowed)hideEmbeddedEditor();
+    else syncEmbeddedEditor();
 }
 void SlotEditor::syncEmbeddedEditor(){
-    if(processor.slotType(slot)!=SkellPresetAudioProcessor::ExternalVST3){
-        releaseEmbeddedEditor();return;
+    // Clean up only when a slot's actual processor has been replaced.
+    for(int k=0;k<SkellPresetAudioProcessor::slotCount;++k){
+        auto& cached=hostedViews[(size_t)k];
+        auto* actual=processor.slotType(k)==SkellPresetAudioProcessor::ExternalVST3
+            ?processor.hostedVST3InstanceForUI(k):nullptr;
+        if(cached.host!=actual){
+            if(embeddedEditor && embeddedEditor==cached.editor.get())hideEmbeddedEditor();
+            cached.editor.reset();
+            cached.host=actual;
+            cached.attempted=false;
+            cached.fitRequested=false;
+        }
     }
-    auto* instance=processor.hostedVST3InstanceForUI(slot);
-    if(embeddedHost==instance && embeddedEditor)return;
-    releaseEmbeddedEditor();
-    if(!instance || !instance->hasEditor())return;
-    // Do not take an editor already displayed by a floating host window.
-    if(instance->getActiveEditor()!=nullptr)return;
-    auto* view=instance->createEditorIfNeeded();
-    if(!view)return; // unsupported editor remains usable via window fallback
-    embeddedHost=instance;
-    embeddedEditor.reset(view);
-    addAndMakeVisible(*view);
+    if(!hostedPresentation || !isVisible() || modulePicker.isVisible() ||
+       installedBrowser.isVisible() || processor.slotType(slot)!=SkellPresetAudioProcessor::ExternalVST3){
+        hideEmbeddedEditor();return;
+    }
+    auto& cached=hostedViews[(size_t)slot];
+    auto* instance=cached.host;
+    if(!instance || !instance->hasEditor()){hideEmbeddedEditor();return;}
+    if(!cached.editor){
+        // An active detached window must remain the sole view of this instance.
+        if(instance->getActiveEditor()!=nullptr || cached.attempted)return;
+        cached.attempted=true;
+        auto* view=instance->createEditorIfNeeded();
+        if(!view)return;
+        cached.editor.reset(view);
+        ++hostedViewCreations;
+        view->setVisible(false);
+        addChildComponent(*view);
+    }
+    if(embeddedEditor!=cached.editor.get()){
+        hideEmbeddedEditor();
+        embeddedHost=instance;
+        embeddedEditor=cached.editor.get();
+        embeddedEditor->toFront(false);
+    }
     layoutEmbeddedEditor();
-    view->toFront(false);
 }
 void SlotEditor::loadVST3FromFile(const juce::File& path) {
     if(path.getFullPathName().isEmpty())return;
@@ -1451,11 +1508,11 @@ void SlotEditor::openModulePicker() {
     if(modulePicker.isVisible())modulePicker.hide();
     else modulePicker.open(processor.slotType(slot));
 }
-SlotEditor::~SlotEditor(){endGraphGesture();}
+SlotEditor::~SlotEditor(){endGraphGesture();hideEmbeddedEditor();}
 void SlotEditor::select(int newSlot) {
     endGraphGesture();
     eqNodeMenu.close();
-    if(slot!=newSlot)releaseEmbeddedEditor();
+    if(slot!=newSlot)hideEmbeddedEditor();
     slot=juce::jlimit(0,SkellPresetAudioProcessor::slotCount-1,newSlot);
     eqBank=0;activeEqBand=0;matchPage=0;limiterPage=0;
     lastPeakLevel=-1;lastGainReductionStep=-1;lastDeessStep=-1;
@@ -1522,6 +1579,7 @@ void SlotEditor::select(int newSlot) {
 void SlotEditor::refreshIfChanged() {
     const auto prefix="s"+juce::String(slot+1)+"_";
     const int type=processor.slotType(slot);
+    syncEmbeddedEditor(); // also observe native resize and instance replacement on unchanged DSP state
     if(eqNodeMenu.isVisible() &&
        (type!=SkellPresetAudioProcessor::StudioEQFX || !studioEqBandEnabled(contextEqBand)))
         eqNodeMenu.close();
@@ -1700,7 +1758,6 @@ void SlotEditor::refreshIfChanged() {
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
     if(!external && !externalBrowsePending && installedBrowser.isVisible())
         installedBrowser.hide();
-    syncEmbeddedEditor();
     loadExternal.setVisible(external);
     editExternal.setVisible(external && processor.hasHostedVST3(slot)
                             && processor.hostedVST3InstanceForUI(slot)->hasEditor());
@@ -2557,8 +2614,8 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,name.isEmpty()?"NO PLUGIN LOADED":name.toUpperCase(),
             {81,225,720,34},17,Theme::white,true);
         Theme::text(g,name.isEmpty()?"Choose LOAD VST3 below to select a plug-in.":
-            (embeddedEditor?"HOSTED EDITOR EMBEDDED / OPEN IN WINDOW TO DETACH":
-                            "OPEN IN WINDOW IF THE PLUGIN HAS ITS OWN EDITOR"),
+            (embeddedEditor && embeddedEditor->isVisible()?"HOSTED EDITOR EMBEDDED / OPEN IN WINDOW TO DETACH":
+                            "USE DETACH UI FOR FIXED-SIZE OR INCOMPATIBLE EDITORS"),
             {83,270,720,23},13,Theme::muted);
         Theme::text(g,"IN-PROCESS HOST  /  THIRD-PARTY CODE RUNS INSIDE YOUR DAW",
             {85,313,735,20},11,Theme::amber);
@@ -4423,7 +4480,27 @@ bool SlotEditor::testLoadExternalFromNativeForTest(const juce::File& fixture) {
     loadVST3FromFile(fixture);
     const bool loaded=processor.slotType(slot)==SkellPresetAudioProcessor::ExternalVST3 &&
         processor.hasHostedVST3(slot) && processor.hostedVST3Name(slot).isNotEmpty();
-    return startedNative && loaded;
+    if(!startedNative || !loaded)return false;
+    auto* const instance=processor.hostedVST3InstanceForUI(slot);
+    setHostedEditorPresentation(true);
+    syncEmbeddedEditor();
+    if(!embeddedEditor || !embeddedEditor->isVisible())return false;
+    auto* const view=embeddedEditor;
+    const auto creations=hostedViewCreations;
+    const int original=slot;
+    const int other=(slot+1)%SkellPresetAudioProcessor::slotCount;
+    for(int pass=0;pass<8;++pass){
+        select(other);
+        if(view->isVisible())return false;
+        select(original);
+        if(embeddedEditor!=view || hostedViewCreations!=creations ||
+           processor.hostedVST3InstanceForUI(original)!=instance ||
+           !view->isVisible() || !hostedEditorArea().contains(view->getBounds()))return false;
+    }
+    setHostedEditorPresentation(false);
+    if(view->isVisible())return false;
+    setHostedEditorPresentation(true);
+    return embeddedEditor==view && hostedViewCreations==creations && view->isVisible();
 }
 bool SlotEditor::testExternalBrowseCancel() {
     const int oldType=processor.slotType(slot);

@@ -3,6 +3,10 @@
 #include "../Source/host/FLNativeDiscovery.h"
 #include <cmath>
 #include <cstdio>
+#include <iostream>
+#if JUCE_WINDOWS
+ #include <io.h>
+#endif
 
 namespace {
 void stage(const char* text) { std::printf("STAGE %s\n",text); std::fflush(stdout); }
@@ -76,6 +80,54 @@ int probeVST3(const juce::File& path,juce::String requestedId) {
 }
 }
 int main(int argc,char** argv) {
+    // Explorer launches without arguments. Keep a visible interactive console
+    // and run the actual VST3 probe as a bounded child, not in this launcher.
+    if(argc==1){
+        std::cout << "SKELL PLUGIN DIAGNOSTIC\n"
+                     "Close your DAW first. Paste or drag the full path of a failing .vst3 bundle below.\n"
+                     "Press Enter to test it (or Enter on an empty line to quit).\n> " << std::flush;
+        std::string input;
+        std::getline(std::cin,input);
+        const auto path=juce::String::fromUTF8(input.c_str()).trim().unquoted();
+        if(path.isNotEmpty()){
+            const auto log=juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                .getChildFile("Skell-Plugin-Diagnostic-"+juce::Uuid().toString()+".txt");
+            const auto exe=juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+            juce::ChildProcess child;
+            juce::StringArray args{exe.getFullPathName(),"--report",log.getFullPathName(),"--vst3",path};
+            std::cout<<"Testing in a separate process (25-second timeout)...\n"<<std::flush;
+            if(!child.start(args,0)){
+                std::cout<<"FAIL: could not launch diagnostic worker.\n";
+            }else if(!child.waitForProcessToFinish(25000)){
+                child.kill();
+                child.waitForProcessToFinish(2000);
+                log.appendText("\nFAIL timeout: worker terminated after 25 seconds.\n");
+            }
+            if(log.existsAsFile())std::cout<<log.loadFileAsString().toStdString()<<"\n";
+            std::cout<<"Report: "<<log.getFullPathName().toStdString()<<"\n";
+        }
+        std::cout<<"Press Enter to close.\n"<<std::flush;
+        std::getline(std::cin,input);
+        return 0;
+    }
+    if(argc==5 && juce::String(argv[1])=="--report" && juce::String(argv[3])=="--vst3"){
+        // Redirect inside worker; no shell quoting, no full pipe deadlock.
+        #if JUCE_WINDOWS
+        FILE* stream=nullptr;
+        const auto file=juce::File(juce::String::fromUTF8(argv[2]));
+        if(_wfreopen_s(&stream,file.getFullPathName().toWideCharPointer(),L"w",stdout)!=0)return 46;
+        if(_dup2(_fileno(stdout),_fileno(stderr))!=0)return 46;
+        std::setvbuf(stdout,nullptr,_IONBF,0);
+        std::setvbuf(stderr,nullptr,_IONBF,0);
+        juce::ScopedJuceInitialiser_GUI gui;
+        stage("interactive worker started");
+        const auto code=probeVST3(juce::File(juce::String::fromUTF8(argv[4])),{});
+        std::printf("EXIT %d\n",code);
+        return code;
+        #else
+        return 46;
+        #endif
+    }
     if(argc==2 && juce::String(argv[1])=="--self-test")return selfTest();
     if(argc==3 && juce::String(argv[1])=="--fl-native"){
         const auto root=std::filesystem::u8path(argv[2]);

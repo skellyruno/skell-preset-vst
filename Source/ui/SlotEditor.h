@@ -102,6 +102,7 @@ public:
     void select(int newSlot);
     void applyTheme();
     void refreshIfChanged(); // only redraw when DSP controls or type change
+    void setHostedEditorPresentation(bool allowed);
     int selectedSlot()const noexcept{return slot;}
     bool moduleSelectorMatchesAudio() const noexcept {
         return moduleBox.getSelectedId()==processor.slotType(slot)+1;
@@ -215,8 +216,20 @@ private:
     // Owned UI view, never created in the audio callback. Each installed
     // plugin may expose a JUCE wrapper editor; unsupported editors use
     // the original separate-window path without affecting DSP processing.
-    std::unique_ptr<juce::AudioProcessorEditor> embeddedEditor;
+    struct CachedHostedView {
+        juce::AudioPluginInstance* host=nullptr;
+        std::unique_ptr<juce::AudioProcessorEditor> editor;
+        bool attempted=false, fitRequested=false;
+    };
+    // One view per physical rack slot. The processor retains retired
+    // instances until shutdown; prune stale views on the message thread.
+    std::array<CachedHostedView,SkellPresetAudioProcessor::slotCount> hostedViews;
+    juce::AudioProcessorEditor* embeddedEditor=nullptr;
     juce::AudioPluginInstance* embeddedHost=nullptr;
+    bool hostedPresentation=true;
+    unsigned hostedViewCreations=0;
+    void hideEmbeddedEditor();
+    juce::Rectangle<int> hostedEditorArea() const;
     void releaseEmbeddedEditor();
     void syncEmbeddedEditor();
     void layoutEmbeddedEditor();

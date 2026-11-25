@@ -49,12 +49,14 @@ public:
             editingIdle=false;
             micPanel.setVisible(false); // effect editor must never sit behind MIC
             idle.setVisible(false);
+            slot.setHostedEditorPresentation(true);
             slot.select(s);chain.setSelectedSlot(s);
         };
         chain.onClearSelection=[this]{
             editingIdle=true;
             micPanel.setVisible(false); // show complete Home deck, not stale MIC
             slot.dismissTransientOverlays();
+            slot.setHostedEditorPresentation(false);
             chain.setSelectedSlot(-1);
             idle.setVisible(slot.isVisible());
             idle.toFront(false);
@@ -63,6 +65,7 @@ public:
         chain.onReplaceRequest=[this](int s){
             editingIdle=false;idle.setVisible(false);
             micPanel.setVisible(false);
+            slot.setHostedEditorPresentation(true);
             slot.select(s);
             chain.setSelectedSlot(s);
             slot.openModulePicker();
@@ -480,6 +483,8 @@ public:
     }
     bool testLoadExternalFromNativeForTest(const juce::File& fixture) {
         editingIdle=false;idle.setVisible(false);
+        slot.setVisible(true);
+        slot.setHostedEditorPresentation(true);
         slot.select(0);
         return slot.testLoadExternalFromNativeForTest(fixture);
     }
@@ -1381,6 +1386,8 @@ public:
         const bool bypass=m==3;
         const int display=bypass?previousMode:(m==0?0:1);
         chain.setVisible(display==1);slot.setVisible(display==1);
+        slot.setHostedEditorPresentation(display==1 && !bypass && !editingIdle &&
+            !browser.isVisible() && !micPanel.isVisible() && !settingsPanel.isVisible());
         idle.setVisible(display==1 && editingIdle);
         chain.setAlpha(bypass?.30f:1.f);slot.setAlpha(bypass?.30f:1.f);
         chain.setEnabled(!bypass);slot.setEnabled(!bypass);
@@ -1442,6 +1449,8 @@ public:
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
+        slot.setHostedEditorPresentation(display==1 && m!=3 && !editingIdle &&
+            !browser.isVisible() && !micPanel.isVisible() && !settingsPanel.isVisible());
         if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
         if(display==0)syncMasterReadouts(); // host automation fallback, changes only
         const auto now=juce::Time::getMillisecondCounter();
@@ -1574,6 +1583,7 @@ public:
         if(key==juce::KeyPress::escapeKey&&browser.isVisible()){browser.setVisible(false);return true;}
         if(key==juce::KeyPress::escapeKey && slot.isVisible()){
             editingIdle=true;idle.setVisible(true);chain.setSelectedSlot(-1);
+            slot.setHostedEditorPresentation(false);
             idle.toFront(false);return true;
         }
         return false;
