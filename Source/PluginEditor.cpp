@@ -719,6 +719,8 @@ public:
             issues.add("Main Vocals must show exactly Alchemist and Deuce");
         if(!browser.testMainVocalsPresetFilterForTest())
             issues.add("Main Vocals, My Presets, Artists, Favorites or manual genre filter regressed");
+        if(!browser.testLibrarySnapshotForTest())
+            issues.add("Preset library snapshot/copy/cover-cache regression failed");
         if(!browser.testBrowserLayoutForTest())
             issues.add("Preset browser custom category controls or cover preview overlap");
         if(!SkellIdleDeck::testStageGeometryForTest())

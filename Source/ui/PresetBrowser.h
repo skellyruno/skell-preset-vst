@@ -29,6 +29,7 @@ public:
     int visibleFactoryPresetsForTest() const;
     bool canSetCoverForTest() const {return canEditCover();}
     bool testMainVocalsPresetFilterForTest(); // primary whitelist and independent artists/favorites
+    bool testLibrarySnapshotForTest(); // isolated temporary library, no user data
     bool testBrowserLayoutForTest(); // visible, nonoverlapping controls on both pages
     bool testBrowserKeyboardForTest(); // roving result focus without triggering audio loads
     bool testBrowserSortingForTest(); // no data mutation during sorting
@@ -56,6 +57,7 @@ public:
     void loadFactoryForHistoryTest(int index) {juce::ScopedValueSetter<bool> guard(preferencesReadOnly,true);loadFactoryFromBrowser(index);}
     juce::File historySelection() const {return activeUserPreset;}
     void restoreHistorySelection(const juce::File& selection) {
+        ++selectionRevision;
         activeUserPreset=selection;
         refreshArtwork();
     }
@@ -92,18 +94,21 @@ private:
     // chains open SAVE AS. A second click can never queue a duplicate write.
     void saveActivePreset(bool chooseName);
     void startPresetWrite(const juce::File& destination);
-    void completePresetWrite(const juce::File& destination,bool ok,const juce::String& error);
     void setSaveStatus(const juce::String& text);
     void refreshSaveControls();
     bool saveInFlight=false;
     juce::String saveStatus;
     struct SaveMeta {
         juce::File previousUser,oldCover;
-        juce::String artist,genre,type,pair;
+        juce::String artist,type,pair;
+        juce::StringArray genres;
+        std::uint64_t selection=0;
+        int program=-1;
     };
     SaveMeta pendingSave;
+    std::uint64_t selectionRevision=0;
     void chooseArtwork();
-    void refreshArtwork();
+    void refreshArtwork(bool decodeBackdrop=true);
     int bank=0,scroll=0,hoveredCard=-1,hoveredStar=-1,keyboardCard=-1,
         hoveredBank=-1;
     bool hoveredAdlibs=false;
@@ -189,7 +194,6 @@ private:
     juce::File libraryDirectory() const;
     juce::File activeArtworkDestination() const;
     bool canEditCover() const;
-    void reloadAlchemistArtwork();
     void scanLibrary();
     // One rescan + choice refresh after any library mutation. Callers must not
     // scan again themselves: the old path scanned three times per save.
@@ -200,7 +204,27 @@ private:
         juce::int64 modified=0,size=0;
         juce::Image thumbnail;
     };
-    std::map<juce::String,CoverCacheEntry> coverCache;
+    using CoverCache=std::map<juce::String,CoverCacheEntry>;
+    struct LibrarySnapshot {
+        bool ok=false;
+        std::vector<juce::File> files;
+        std::vector<juce::Image> thumbnails;
+        CoverCache covers;
+        juce::Image alchemist;
+    };
+    struct BackdropSnapshot {
+        juce::File source;
+        juce::int64 modified=-1;
+        juce::Image image;
+    };
+    static LibrarySnapshot collectLibrary(const juce::File& folder,const CoverCache& previous);
+    void applyLibrarySnapshot(LibrarySnapshot snapshot);
+    static BackdropSnapshot collectBackdrop(const juce::File& preset);
+    void applyBackdrop(BackdropSnapshot snapshot);
+    static juce::File copyToLibraryFile(const juce::File& source,const juce::File& folder);
+    void completePresetWrite(const juce::File& libraryCopy,bool ok,const juce::String& error,
+                             LibrarySnapshot snapshot,BackdropSnapshot backdrop);
+    CoverCache coverCache;
     juce::File backdropSource;
     juce::int64 backdropModified=-1;
     bool backdropLoaded=false;

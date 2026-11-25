@@ -5,8 +5,13 @@
 #include <algorithm>
 #include <cmath>
 #include <array>
+#include <mutex>
+#include <utility>
 
 namespace {
+// Serialize library copy/name selection across instances in this process.
+// The save worker may wait; UI import must never wait on that worker.
+std::mutex libraryWriteMutex;
 // Direct Main Vocals > Adlibs submenu: no fifth top-level library bank.
  // Historical factory IDs and personal genre tags remain unchanged.
 const juce::StringArray banks{"Main Presets","My Presets","Artists","Favorites","Genres"};
@@ -207,7 +212,6 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     genreButton.setTooltip("Add this genre to the selected preset. Multiple tags are allowed. Choose Uncategorized to clear all genre assignments.");
     addCategoryButton.setTooltip("Add a new category to the user library; no audio or preset ZIP changes.");
     genreButton.setEnabled(false);
-    reloadAlchemistArtwork();
     scanLibrary();
     loadFavorites();
     loadArtists();
@@ -329,48 +333,61 @@ juce::File PresetBrowser::libraryDirectory() const {
         .getChildFile("Skell Audio").getChildFile("Skell-Preset")
         .getChildFile("Presets");
 }
-void PresetBrowser::scanLibrary() {
-    categoryCountsDirty=true;
-    userPresets.clear();
-    const auto folder=libraryDirectory();
-    if(folder.createDirectory().failed())return;
+PresetBrowser::LibrarySnapshot PresetBrowser::collectLibrary(
+    const juce::File& folder,const CoverCache& previous) {
+    LibrarySnapshot result;
+    if(folder.createDirectory().failed())return result;
     juce::Array<juce::File> files;
     folder.findChildFiles(files,juce::File::findFiles,false,"*.skellpreset");
     for(const auto& item:files)
         if(item.getSize()>0 && item.getSize()<=4*1024*1024)
-            userPresets.push_back(item);
-    std::sort(userPresets.begin(),userPresets.end(),
+            result.files.push_back(item);
+    std::sort(result.files.begin(),result.files.end(),
         [](const juce::File& a,const juce::File& b) {
             return a.getFileName().compareIgnoreCase(b.getFileName())<0;
         });
-    if(userPresets.size()>200)userPresets.resize(200);
-    userArtwork.clear();userArtwork.resize(userPresets.size());
-    reloadAlchemistArtwork();
-    // Keep only cache entries whose cover file still exists and is unchanged;
-    // a save no longer re-decodes every cover in the library.
-    std::map<juce::String,CoverCacheEntry> kept;
-    for(size_t i=0;i<userPresets.size();++i) {
-        const auto base=userPresets[i];
-        auto cover=base.withFileExtension(".png");
-        if(!cover.existsAsFile())cover=base.withFileExtension(".jpg");
+    if(result.files.size()>200)result.files.resize(200);
+    result.thumbnails.resize(result.files.size());
+    const auto factoryCover=folder.getChildFile("Covers").getChildFile("Alchemist.png");
+    if(factoryCover.existsAsFile() && factoryCover.getSize()>0 &&
+       factoryCover.getSize()<=8*1024*1024) {
+        auto image=juce::ImageFileFormat::loadFrom(factoryCover);
+        if(image.isValid() && image.getWidth()<=4096 && image.getHeight()<=4096)
+            result.alchemist=image.rescaled(1200,900,juce::Graphics::highResamplingQuality);
+    }
+    for(size_t i=0;i<result.files.size();++i) {
+        auto cover=result.files[i].withFileExtension(".png");
+        if(!cover.existsAsFile())cover=result.files[i].withFileExtension(".jpg");
         if(!cover.existsAsFile() || cover.getSize()<=0 ||
            cover.getSize()>8*1024*1024)continue;
         const auto key=cover.getFullPathName();
         const auto modified=cover.getLastModificationTime().toMilliseconds();
         const auto size=cover.getSize();
-        auto found=coverCache.find(key);
-        if(found!=coverCache.end() && found->second.modified==modified &&
+        const auto found=previous.find(key);
+        if(found!=previous.end() && found->second.modified==modified &&
            found->second.size==size && found->second.thumbnail.isValid()) {
-            userArtwork[i]=found->second.thumbnail;
-            kept.emplace(key,found->second);
+            result.thumbnails[i]=found->second.thumbnail;
+            result.covers.emplace(key,found->second);
             continue;
         }
         auto image=juce::ImageFileFormat::loadFrom(cover);
         if(!image.isValid() || image.getWidth()>4096 || image.getHeight()>4096)continue;
-        userArtwork[i]=image.rescaled(128,96,juce::Graphics::mediumResamplingQuality);
-        kept.emplace(key,CoverCacheEntry{modified,size,userArtwork[i]});
+        result.thumbnails[i]=image.rescaled(128,96,juce::Graphics::mediumResamplingQuality);
+        result.covers.emplace(key,CoverCacheEntry{modified,size,result.thumbnails[i]});
     }
-    coverCache=std::move(kept);
+    result.ok=true;
+    return result;
+}
+void PresetBrowser::applyLibrarySnapshot(LibrarySnapshot snapshot) {
+    if(!snapshot.ok)return; // keep the prior view if enumeration cannot start
+    categoryCountsDirty=true;
+    userPresets=std::move(snapshot.files);
+    userArtwork=std::move(snapshot.thumbnails);
+    coverCache=std::move(snapshot.covers);
+    alchemistArtwork=std::move(snapshot.alchemist);
+}
+void PresetBrowser::scanLibrary() {
+    applyLibrarySnapshot(collectLibrary(libraryDirectory(),coverCache));
 }
 void PresetBrowser::refreshLibraryAfterChange() {
     scanLibrary();
@@ -389,14 +406,6 @@ bool PresetBrowser::canEditCover() const {
     return activeUserPreset.existsAsFile() ||
         processor.loadedFactoryPresetIndex()==alchemistIndex;
 }
-void PresetBrowser::reloadAlchemistArtwork() {
-    alchemistArtwork={};
-    const auto path=libraryDirectory().getChildFile("Covers").getChildFile("Alchemist.png");
-    if(!path.existsAsFile()||path.getSize()<=0||path.getSize()>8*1024*1024)return;
-    auto img=juce::ImageFileFormat::loadFrom(path);
-    if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096)
-        alchemistArtwork=img.rescaled(1200,900,juce::Graphics::highResamplingQuality);
-}
 juce::Image PresetBrowser::selectedCover() const {
     if(activeUserPreset.existsAsFile()) {
         for(size_t i=0;i<userPresets.size();++i)
@@ -408,27 +417,32 @@ juce::Image PresetBrowser::selectedCover() const {
     return {};
 }
 
-bool PresetBrowser::copyToLibrary(const juce::File& source) {
-    const auto folder=libraryDirectory();
-    if(folder.createDirectory().failed())return false;
-    if(source.getParentDirectory()==folder) {
-        activeUserPreset=source;return true;
-    }
+juce::File PresetBrowser::copyToLibraryFile(const juce::File& source,const juce::File& folder) {
+    if(folder.createDirectory().failed())return {};
+    if(source.getParentDirectory()==folder)return source;
     const auto dest=folder.getNonexistentChildFile(
         juce::File::createLegalFileName(source.getFileNameWithoutExtension()),
         ".skellpreset",true);
-    if(!source.copyFileTo(dest))return false;
-    activeUserPreset=dest;
-    // Preserve a validated cover in the personal library if it exists.
+    if(!source.copyFileTo(dest))return {};
     auto originalCover=source.withFileExtension(".png");
     if(!originalCover.existsAsFile())originalCover=source.withFileExtension(".jpg");
     if(originalCover.existsAsFile() && originalCover.getSize()>0 &&
        originalCover.getSize()<=8*1024*1024)
         originalCover.copyFileTo(dest.withFileExtension(originalCover.getFileExtension()));
+    return dest;
+}
+bool PresetBrowser::copyToLibrary(const juce::File& source) {
+    std::unique_lock<std::mutex> lock(libraryWriteMutex,std::try_to_lock);
+    if(!lock.owns_lock())return false;
+    const auto copied=copyToLibraryFile(source,libraryDirectory());
+    if(copied==juce::File{})return false;
+    ++selectionRevision;
+    activeUserPreset=copied;
     return true;
 }
 void PresetBrowser::open() {
-    scanLibrary();loadFavorites();loadArtists();
+    if(!saveInFlight)scanLibrary();
+    loadFavorites();loadArtists();
     loadCustomCategories();refreshGenreChoices();loadGenres();loadOrganization();
     artistTierFilter.setSelectedId(1,juce::dontSendNotification);
     typeFilter.setSelectedId(1,juce::dontSendNotification);refreshArtistChoices();
@@ -674,19 +688,21 @@ void PresetBrowser::startPresetWrite(const juce::File& destination) {
     if(saveInFlight)return;
     const auto target=destination.hasFileExtension(".skellpreset")
         ?destination:destination.withFileExtension(".skellpreset");
-    // The live chain snapshot must be taken on the message thread; only the
-    // JSON/ZIP compression moves to a background thread.
+    // Snapshot APVTS and metadata on the message thread. The worker owns
+    // only value copies: ZIP, library copy, cover decode and enumeration.
     skellpreset::package::Document doc;
     if(const auto status=processor.makePresetDocument(doc);status.failed()) {
-        completePresetWrite(target,false,status.getErrorMessage());
+        completePresetWrite({},false,status.getErrorMessage(),{},{});
         return;
     }
     pendingSave=SaveMeta{};
     pendingSave.previousUser=activeUserPreset;
+    pendingSave.selection=selectionRevision;
+    pendingSave.program=processor.getCurrentProgram();
     for(int i=0;i<(int)userPresets.size();++i)
         if(userPresets[(size_t)i]==activeUserPreset) {
             pendingSave.artist=artistForUser(i);
-            pendingSave.genre=genreForUser(i);
+            pendingSave.genres=genresForUser(i);
             pendingSave.type=vocalType(i);pendingSave.pair=pairForUser(i);
             break;
         }
@@ -697,17 +713,40 @@ void PresetBrowser::startPresetWrite(const juce::File& destination) {
     saveInFlight=true;
     setSaveStatus("SAVING...");
     refreshSaveControls();
+    const auto folder=libraryDirectory();
+    const auto oldCoverFile=pendingSave.oldCover;
+    const auto previousCovers=coverCache;
     juce::Component::SafePointer<PresetBrowser> safe(this);
-    juce::Thread::launch([safe,target,doc] {
-        const auto result=skellpreset::package::write(target,doc);
-        juce::MessageManager::callAsync([safe,target,result] {
+    juce::Thread::launch([safe,target,doc,folder,oldCoverFile,previousCovers] {
+        juce::File libraryCopy;
+        LibrarySnapshot snapshot;
+        BackdropSnapshot backdrop;
+        const auto result=[&] {
+            std::lock_guard<std::mutex> lock(libraryWriteMutex);
+            const auto written=skellpreset::package::write(target,doc);
+            if(written.failed())return written;
+            libraryCopy=copyToLibraryFile(target,folder);
+            if(libraryCopy!=juce::File{}) {
+                if(oldCoverFile.existsAsFile()) {
+                    const auto newCover=libraryCopy.withFileExtension(oldCoverFile.getFileExtension());
+                    if(oldCoverFile!=newCover)oldCoverFile.copyFileTo(newCover);
+                }
+                backdrop=collectBackdrop(libraryCopy);
+            }
+            snapshot=collectLibrary(folder,previousCovers);
+            return written;
+        }();
+        juce::MessageManager::callAsync([safe,libraryCopy,result,
+                                       snapshot=std::move(snapshot),backdrop=std::move(backdrop)]() mutable {
             if(!safe)return;
-            safe->completePresetWrite(target,result.wasOk(),result.getErrorMessage());
+            safe->completePresetWrite(libraryCopy,result.wasOk(),result.getErrorMessage(),
+                                      std::move(snapshot),std::move(backdrop));
         });
     });
 }
-void PresetBrowser::completePresetWrite(const juce::File& destination,bool ok,
-                                        const juce::String& error) {
+void PresetBrowser::completePresetWrite(const juce::File& libraryCopy,bool ok,
+                                        const juce::String& error,LibrarySnapshot snapshot,
+                                        BackdropSnapshot backdrop) {
     if(!ok) {
         saveInFlight=false;
         setSaveStatus("SAVE FAILED");
@@ -716,24 +755,25 @@ void PresetBrowser::completePresetWrite(const juce::File& destination,bool ok,
             "Cannot save preset",error);
         return;
     }
-    const bool copied=copyToLibrary(destination);
-    // A newly copied preset is not in userPresets until the scan. Copy artwork
-    // before that one scan, preserving its true file extension and old cover.
-    if(copied && pendingSave.oldCover.existsAsFile() && activeUserPreset.existsAsFile()) {
-        const auto newCover=activeUserPreset.withFileExtension(pendingSave.oldCover.getFileExtension());
-        if(pendingSave.oldCover!=newCover)
-            pendingSave.oldCover.copyFileTo(newCover);
+    const bool copied=libraryCopy!=juce::File{};
+    const bool indexed=snapshot.ok;
+    applyLibrarySnapshot(std::move(snapshot));
+    // The user can keep auditioning while saving. Never replace a newer
+    // selection with the file belonging to an earlier snapshot.
+    if(copied && pendingSave.selection==selectionRevision &&
+       pendingSave.program==processor.getCurrentProgram() &&
+       pendingSave.previousUser==activeUserPreset) {
+        activeUserPreset=libraryCopy;
+        applyBackdrop(std::move(backdrop));
     }
-    scanLibrary();
-    // Saving under a new name keeps the artist/category labels on the new
-    // library copy without altering the original archive or its metadata.
-    if(copied && activeUserPreset!=pendingSave.previousUser) {
+    // Metadata follows the saved file, not whichever preset is now selected.
+    if(copied && libraryCopy!=pendingSave.previousUser) {
         for(int i=0;i<(int)userPresets.size();++i)
-            if(userPresets[(size_t)i]==activeUserPreset) {
+            if(userPresets[(size_t)i]==libraryCopy) {
                 if(pendingSave.artist.isNotEmpty())
                     setArtistForUser(i,pendingSave.artist);
-                if(pendingSave.genre.isNotEmpty())
-                    setGenreForUser(i,pendingSave.genre);
+                for(const auto& genre:pendingSave.genres)
+                    setGenreForUser(i,genre);
                 if(pendingSave.type.isNotEmpty() || pendingSave.pair.isNotEmpty()) {
                     const auto beforeKeys=organizationKeys,beforeValues=organizationValues;
                     const auto key=favoriteKey(-i-1);
@@ -749,11 +789,13 @@ void PresetBrowser::completePresetWrite(const juce::File& destination,bool ok,
                 break;
             }
     }
-    refreshArtistChoices();
-    refreshArtwork();
     saveInFlight=false;
+    refreshArtistChoices();
+    refreshArtwork(false); // already decoded in the worker, or unchanged selection
+    resetResults();
     if(onCoverChanged)onCoverChanged();
-    setSaveStatus(copied?"SAVED":"EXPORTED - NO LIBRARY COPY");
+    setSaveStatus(!copied?"EXPORTED - NO LIBRARY COPY":
+                  !indexed?"SAVED - REFRESH LIBRARY":"SAVED");
     refreshSaveControls();
     repaint();
 }
@@ -766,6 +808,7 @@ void PresetBrowser::refreshSaveControls() {
     importButton.setEnabled(idle);
     exportButton.setEnabled(idle);
     saveAsButton.setEnabled(idle);
+    artworkButton.setEnabled(idle && canEditCover());
     exportButton.setButtonText(activeUserPreset.existsAsFile()?"SAVE":"SAVE COPY");
 }
 int PresetBrowser::visibleFactoryPresetsForTest() const {
@@ -1362,6 +1405,41 @@ bool PresetBrowser::testBrowserKeyboardForTest(){
     repaint();
     return visible && firstDown && down && end && pageUp && home && left && right;
 }
+bool PresetBrowser::testLibrarySnapshotForTest() {
+    const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("skell-browser-snapshot","",true);
+    struct Cleanup {juce::File path;~Cleanup(){path.deleteRecursively();}} cleanup{root};
+    if(root.createDirectory().failed())return false;
+    const auto folder=root.getChildFile("Library");
+    const auto source=root.getChildFile("B.skellpreset");
+    if(!source.replaceWithText("fixture") || folder.createDirectory().failed())return false;
+    const auto first=folder.getChildFile("A.skellpreset");
+    if(!first.replaceWithText("fixture"))return false;
+    const auto cover=source.withFileExtension(".png");
+    {
+        juce::Image image(juce::Image::RGB,32,24,true);
+        juce::PNGImageFormat png;
+        juce::FileOutputStream out(cover);
+        if(!out.openedOk() || !png.writeImageToStream(image,out))return false;
+        out.flush();
+    }
+    const auto copied=copyToLibraryFile(source,folder);
+    if(copied==juce::File{} || !copied.withFileExtension(".png").existsAsFile())return false;
+    const auto initial=collectLibrary(folder,{});
+    if(!initial.ok || initial.files.size()!=2 || initial.files[0]!=first ||
+       initial.files[1]!=copied || initial.thumbnails.size()!=2 ||
+       initial.thumbnails[0].isValid() || !initial.thumbnails[1].isValid() ||
+       initial.covers.size()!=1)return false;
+    const auto backdrop=collectBackdrop(copied);
+    if(!backdrop.image.isValid() || backdrop.image.getWidth()!=32 ||
+       backdrop.image.getHeight()!=24)return false;
+    const auto cached=collectLibrary(folder,initial.covers);
+    if(!cached.ok || cached.covers.size()!=1 || !cached.thumbnails[1].isValid())return false;
+    if(!copied.withFileExtension(".png").deleteFile())return false;
+    const auto removed=collectLibrary(folder,cached.covers);
+    return removed.ok && removed.files.size()==2 && removed.covers.empty() &&
+           !removed.thumbnails[1].isValid();
+}
 bool PresetBrowser::testBrowserLayoutForTest() {
     juce::ScopedValueSetter<bool> readOnly(preferencesReadOnly,true);
     if(!testViewSwitchForTest())return false;
@@ -1777,8 +1855,8 @@ std::vector<int> PresetBrowser::filtered() const {
     }
     return list;
 }
-void PresetBrowser::refreshArtwork() {
-    artworkButton.setEnabled(!chooserActive && canEditCover());
+void PresetBrowser::refreshArtwork(bool decodeBackdrop) {
+    artworkButton.setEnabled(!chooserActive && !saveInFlight && canEditCover());
     artistButton.setEnabled(!chooserActive && activeUserPreset.existsAsFile());
     artistEditor.setEnabled(!chooserActive && activeUserPreset.existsAsFile());
     genreButton.setEnabled(!chooserActive && activeUserPreset.existsAsFile());
@@ -1797,37 +1875,49 @@ void PresetBrowser::refreshArtwork() {
     genrePicker.setSelectedId(genreId,juce::dontSendNotification);
     refreshOrganizationEditor();
     refreshSaveControls();
-    // 128x96 thumbnails are only for cards; never scale them to wallpaper.
-    // The full-resolution backdrop is cached by path + modification stamp so
-    // selecting the same preset twice does not re-decode a 1600x1000 image.
-    juce::File candidate;
-    if(activeUserPreset.existsAsFile()) {
-        candidate=activeUserPreset.withFileExtension(".png");
-        if(!candidate.existsAsFile())candidate=activeUserPreset.withFileExtension(".jpg");
-        if(!candidate.existsAsFile() || candidate.getSize()<=0 ||
-           candidate.getSize()>8*1024*1024)candidate={};
-    }
-    const auto modified=candidate==juce::File{}
-        ?juce::int64(-1):candidate.getLastModificationTime().toMilliseconds();
-    if(candidate==backdropSource && modified==backdropModified && backdropLoaded)
-        {repaint();return;}
-    backdropSource=candidate;backdropModified=modified;backdropLoaded=true;
-    selectedUserBackdrop={};
-    if(candidate!=juce::File{}) {
-        auto img=juce::ImageFileFormat::loadFrom(candidate);
-        if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096) {
-            const float scale=std::min({1.f,1600.f/(float)img.getWidth(),
-                                            1000.f/(float)img.getHeight()});
-            selectedUserBackdrop=img.rescaled(
-                juce::jmax(1,juce::roundToInt(img.getWidth()*scale)),
-                juce::jmax(1,juce::roundToInt(img.getHeight()*scale)),
-                juce::Graphics::highResamplingQuality);
+    if(decodeBackdrop) {
+        juce::File candidate;
+        if(activeUserPreset.existsAsFile()) {
+            candidate=activeUserPreset.withFileExtension(".png");
+            if(!candidate.existsAsFile())candidate=activeUserPreset.withFileExtension(".jpg");
+            if(!candidate.existsAsFile() || candidate.getSize()<=0 ||
+               candidate.getSize()>8*1024*1024)candidate={};
         }
+        const auto modified=candidate==juce::File{}
+            ?juce::int64(-1):candidate.getLastModificationTime().toMilliseconds();
+        if(candidate!=backdropSource || modified!=backdropModified || !backdropLoaded)
+            applyBackdrop(collectBackdrop(activeUserPreset));
     }
     repaint();
 }
+PresetBrowser::BackdropSnapshot PresetBrowser::collectBackdrop(const juce::File& preset) {
+    BackdropSnapshot result;
+    if(!preset.existsAsFile())return result;
+    auto candidate=preset.withFileExtension(".png");
+    if(!candidate.existsAsFile())candidate=preset.withFileExtension(".jpg");
+    if(!candidate.existsAsFile() || candidate.getSize()<=0 ||
+       candidate.getSize()>8*1024*1024)return result;
+    result.source=candidate;
+    result.modified=candidate.getLastModificationTime().toMilliseconds();
+    auto img=juce::ImageFileFormat::loadFrom(candidate);
+    if(img.isValid() && img.getWidth()<=4096 && img.getHeight()<=4096) {
+        const float scale=std::min({1.f,1600.f/(float)img.getWidth(),
+                                        1000.f/(float)img.getHeight()});
+        result.image=img.rescaled(
+            juce::jmax(1,juce::roundToInt(img.getWidth()*scale)),
+            juce::jmax(1,juce::roundToInt(img.getHeight()*scale)),
+            juce::Graphics::highResamplingQuality);
+    }
+    return result;
+}
+void PresetBrowser::applyBackdrop(BackdropSnapshot snapshot) {
+    backdropSource=std::move(snapshot.source);
+    backdropModified=snapshot.modified;
+    backdropLoaded=true;
+    selectedUserBackdrop=std::move(snapshot.image);
+}
 void PresetBrowser::chooseArtwork() {
-    if(chooserActive || !canEditCover())return;
+    if(chooserActive || saveInFlight || !canEditCover())return;
     setChooserActive(true);
     fileChooser=std::make_unique<juce::FileChooser>(
         "Choose artwork for "+(activeUserPreset.existsAsFile()?activeUserPreset.getFileNameWithoutExtension():juce::String("Alchemist")),
@@ -2197,6 +2287,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
 void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;
     if(onBeforeLoad)onBeforeLoad();
+    ++selectionRevision;
     activeUserPreset=juce::File{};
     const int previousMode=(int)processor.state.getRawParameterValue("mode")->load();
     processor.loadFactoryPreset(index);
@@ -2225,6 +2316,7 @@ void PresetBrowser::loadUserFromBrowser(int index) {
     if(previousMode==0 || previousMode==3)
         if(auto* mode=processor.state.getParameter("mode"))
             mode->setValueNotifyingHost(mode->convertTo0to1((float)previousMode));
+    ++selectionRevision;
     activeUserPreset=file;
     rememberRecent(-index-1);
     refreshArtwork();
