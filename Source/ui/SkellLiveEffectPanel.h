@@ -34,12 +34,13 @@ public:
                 }
             }
             for(size_t i=0;i<wave.size();++i)wave[i]=frame.output[i*8];
-        }else if(!available || (unsigned)(now-lastFrame)>=400u){
+        }else if((unsigned)(now-lastFrame)>=400u){
             if(fresh){reset();repaint();}
             return;
         }else return;
         repaint();
     }
+    bool testLayoutForTest() const noexcept {return getWidth()>=600 && getHeight()>=190;}
     void paint(juce::Graphics& g) override {
         const auto bounds=getLocalBounds().toFloat();
         Theme::panelBox(g,bounds,8.f,true);

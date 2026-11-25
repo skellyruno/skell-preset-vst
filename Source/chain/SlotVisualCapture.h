@@ -31,6 +31,7 @@ public:
         input.reset();output.reset();
     }
     void captureInput(const float* l,const float* r,int n) noexcept {
+        sequence.fetch_add(1,std::memory_order_acq_rel); // odd while the pair is being written
         input.pushBlock(l,r,n);
         inRms.store(rms(l,r,n,false),std::memory_order_relaxed);
     }
@@ -39,17 +40,21 @@ public:
         outRms.store(rms(l,r,n,false),std::memory_order_relaxed);
         side.store(rms(l,r,n,true),std::memory_order_relaxed);
         published.store(active,std::memory_order_release);
+        sequence.fetch_add(1,std::memory_order_release); // even when both sides are published
     }
     bool read(int slot,Frame& frame) const noexcept {
         if(slot<0 || slot>=16)return false;
         const auto key=requested.load(std::memory_order_acquire);
         if((key&31u)!=(unsigned)slot+1 || published.load(std::memory_order_acquire)!=key)return false;
+        const auto before=sequence.load(std::memory_order_acquire);
+        if(before&1u)return false;
         input.snapshot(frame.input);output.snapshot(frame.output);
         frame.inputRms=inRms.load(std::memory_order_relaxed);
         frame.outputRms=outRms.load(std::memory_order_relaxed);
         frame.sideRms=side.load(std::memory_order_relaxed);
         frame.serial=output.samplesCaptured();
-        return published.load(std::memory_order_acquire)==key &&
+        return sequence.load(std::memory_order_acquire)==before &&
+               published.load(std::memory_order_acquire)==key &&
                requested.load(std::memory_order_acquire)==key && frame.serial>0;
     }
 private:
@@ -65,7 +70,7 @@ private:
         return (float)std::sqrt(energy/n);
     }
     LiveSpectrumCapture input,output;
-    std::atomic<unsigned> requested{0},published{0};
+    std::atomic<unsigned> requested{0},published{0},sequence{0};
     unsigned active=0; // audio thread only
     std::atomic<float> inRms{0},outRms{0},side{0};
 };

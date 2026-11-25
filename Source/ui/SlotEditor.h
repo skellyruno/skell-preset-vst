@@ -181,6 +181,7 @@ public:
     void mouseUp(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
     bool testEffectPageShortcutsForTest();
+    bool testLiveViewForTest();
 private:
     void paintHardware(juce::Graphics&,int type);
     std::array<juce::String,4> titlesForHardware(int type) const;

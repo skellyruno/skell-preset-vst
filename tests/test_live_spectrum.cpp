@@ -61,6 +61,7 @@ int main() {
     selected.request(2);
     if(selected.beginBlock()!=2 || selected.read(2,frame))return 30;
     selected.captureInput(l.data(),r.data(),1024);
+    if(selected.read(2,frame))return 35; // do not expose an incomplete pair
     selected.captureOutput(l.data(),r.data(),1024);
     if(!selected.read(2,frame) || std::abs(frame.outputRms-.25f)>1.e-6f ||
        std::abs(frame.sideRms-.25f)>1.e-6f || frame.output[1023]!=0.f)return 31;

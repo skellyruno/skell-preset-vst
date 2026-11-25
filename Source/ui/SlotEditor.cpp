@@ -4043,6 +4043,21 @@ bool SlotEditor::keyPressed(const juce::KeyPress& key) {
     graphSnapshotValid=false;repaint();
     return true;
 }
+bool SlotEditor::testLiveViewForTest() {
+    const int previous=processor.slotType(slot);
+    processor.setSlotType(slot,SkellPresetAudioProcessor::EQ);select(slot);
+    const auto oldWet=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_wet")->load();
+    bool ok=liveView.isVisible() && !livePanel.isVisible();
+    liveView.onClick();
+    ok=ok && livePanel.isVisible() && livePanel.testLayoutForTest() &&
+       getLocalBounds().contains(livePanel.getBounds()) && liveView.getButtonText()=="CLEAN";
+    liveView.onClick();
+    ok=ok && !livePanel.isVisible() && liveView.getButtonText()=="VISUAL" &&
+       processor.slotType(slot)==SkellPresetAudioProcessor::EQ &&
+       processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_wet")->load()==oldWet;
+    processor.setSlotType(slot,previous);select(slot);
+    return ok;
+}
 bool SlotEditor::testEffectPageShortcutsForTest() {
     const int previousType=processor.slotType(slot);
     const int previousSlot=slot;

@@ -67,6 +67,10 @@ public:
     void tickAnimation(double nowMs) {
         if(!isShowing()){stageClock.pause();return;}
         crowdPhase=static_cast<float>(stageClock.tick(nowMs,hasAudibleOutput()?activityLevel:0.f));
+        updateSpectrum();
+        repaint();
+    }
+    void updateSpectrum() {
         if(audioFresh && (++spectrumTick%3u)==1u){
             std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity> samples{};
             processor.getLiveSpectrumOutput(samples);
@@ -77,8 +81,8 @@ public:
                 stageBands[i]+=(v-stageBands[i])*(v>stageBands[i]?.78f:.33f);
             }
         }
-        repaint();
     }
+    const auto& spectrumBands() const noexcept {return stageBands;}
     void visibilityChanged() override {stageClock.pause();}
     static float followActivity(float previous,float next) noexcept {
         previous=std::isfinite(previous)?juce::jlimit(0.f,1.f,previous):0.f;
@@ -150,13 +154,13 @@ public:
         // deep crowd pit. Reserving the pit keeps the audience cinematic
         // instead of a thin strip pressed under the figure's feet.
         const float stageBottom=out.scope.getY()-18.f;
-        const float headroom=h>=350.f?juce::jmin(44.f,h*.085f):0.f;
+        const float headroom=h>=350.f?juce::jmin(34.f,h*.055f):0.f;
         const float stageTop=12.f+headroom;
         const float available=juce::jmax(0.f,stageBottom-stageTop);
         // Keep enough room for the smallest supported figure before the pit
         // takes its share, so tiny frames still produce a valid layout.
         const float pitMax=juce::jmax(0.f,available-372.f*.30f);
-        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,176.f,stageBottom*.30f));
+        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f?.25f:.30f)));
         const float feet=stageBottom-pitHeight;
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
             // Let the performer read as the headliner, using the space recovered

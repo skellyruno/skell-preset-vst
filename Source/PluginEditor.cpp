@@ -962,6 +962,7 @@ public:
             issues.add("Mic Modeling profile cards failed to update stable host parameters");
         if(!slot.testModOrbToggle())
             issues.add("Modulation orb/graph toggle is not reversible");
+        if(!slot.testLiveViewForTest())issues.add("Live effect view layout, toggle or rack wet preservation failed");
         if(!slot.testEffectPageShortcutsForTest())
             issues.add("Effect editor numeric/arrow pages and Ctrl+F/Escape overlay keyboard regression");
         // This drives the same XY mutation code as real mouse dragging:
@@ -1304,7 +1305,7 @@ public:
             if(idle.hasFreshAudio())processor.getLiveWaveform(waveform);
             juce::Path simpleScope;
             for(std::size_t n=0;n<waveform.size();++n) {
-                const float x=742.f+(float)n*388.f/(waveform.size()-1);
+                const float x=742.f+(float)n*262.f/(waveform.size()-1);
                 const float sample2=std::isfinite(waveform[n])?
                     juce::jlimit(-1.f,1.f,waveform[n]):0.f;
                 const float y=158.f-sample2*22.f;
@@ -1333,6 +1334,26 @@ public:
             }
         }
         if(viewMode==0) {
+            // A compact measured spectrum occupies the unused space below
+            // the four macros without moving their controls or labels.
+            const juce::Rectangle<float> bandRail(40.f,485.f,1088.f,58.f);
+            g.setColour(Theme::bg.withAlpha(.58f));g.fillRoundedRectangle(bandRail,7.f);
+            g.setColour(Theme::stroke.withAlpha(.65f));g.drawRoundedRectangle(bandRail,7.f,.8f);
+            Theme::text(g,"OUTPUT SPECTRUM",{53,492,160,18},10.5f,Theme::muted,true);
+            Theme::text(g,"80 Hz - 9 kHz",{53,510,160,20},11.f,Theme::white);
+            const auto graph=bandRail.withTrimmedLeft(185.f).reduced(10.f,9.f);
+            const auto& values=idle.spectrumBands();
+            const float step=graph.getWidth()/(float)values.size();
+            for(size_t n=0;n<values.size();++n){
+                const auto bar=juce::Rectangle<float>(graph.getX()+step*(float)n,graph.getY(),step-3.f,graph.getHeight());
+                g.setColour(Theme::stroke.withAlpha(.32f));g.fillRoundedRectangle(bar,2.f);
+                const float value=juce::jlimit(0.f,1.f,values[n]);
+                if(value>0.f){
+                    const auto lit=bar.withTop(bar.getBottom()-bar.getHeight()*value);
+                    g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.9f),lit.getTopLeft(),
+                        Theme::green.withAlpha(.18f),lit.getBottomLeft(),false));g.fillRoundedRectangle(lit,2.f);
+                }
+            }
             // Master row: one continuous hardware strip rather than three
             // floating boxes, so Input / Mix / Output read as one output stage.
             const auto strip=juce::Rectangle<float>(40.f,562.f,1088.f,88.f);
@@ -1564,7 +1585,7 @@ public:
             if(activeView==0 || (activeView==3 && previousMode==0))
                 // The current Simple waveform is painted in the identity band.
                 // Invalidate the real trace and activity badge, not the knob row.
-                repaint(juce::Rectangle<int>(738,126,400,55));
+                {idle.updateSpectrum();repaint(juce::Rectangle<int>(738,126,400,55));repaint(40,485,1088,58);}
         } else if(lastScopeFrameTimeMs!=0u &&
                   (unsigned)(juce::Time::getMillisecondCounter()-
                              lastScopeFrameTimeMs)>=400u) {
@@ -1573,7 +1594,7 @@ public:
             // the visible stage has a separate elapsed-time animation clock.
             if(idle.hasFreshAudio()){
                 idle.setAudioFresh(false);
-                if(display==0)repaint(juce::Rectangle<int>(738,126,400,55));
+                if(display==0){repaint(juce::Rectangle<int>(738,126,400,55));repaint(40,485,1088,58);}
             }
         }
         // Motion does not depend on audio block cadence. Hidden views do not
