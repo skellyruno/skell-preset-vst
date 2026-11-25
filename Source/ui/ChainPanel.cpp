@@ -471,7 +471,7 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.fillRoundedRectangle(linkButton,4.f);
     Theme::text(g,sidechainLinkMode?"DONE":"LINK",{137,dockTop+3,62,19},
         10.f,Theme::green,true,juce::Justification::centred);
-    Theme::fittedText(g,"VOCAL  /  "+juce::String(links)+" SC",{18,dockTop+23,119,18},
+    Theme::fittedText(g,sidechainLinkMode?juce::String("CLICK FX TO LINK"):"VOCAL  /  "+juce::String(links)+" SC",{18,dockTop+23,119,18},
         10.f,links?Theme::green:Theme::muted,true);
     const bool canEdit=sidechainParameter(selected)!=nullptr;
     Theme::text(g,"EDIT",{143,dockTop+23,53,18},10.f,
@@ -632,7 +632,7 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
                 onSidechainEdit(selected);
                 repaint();
             }
-        } else {
+        } else if(e.x>=137 && e.y<dockTop+23) {
             cancelPointerGestures();
             sidechainLinkMode=!sidechainLinkMode;
             grabKeyboardFocus();

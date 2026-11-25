@@ -78,6 +78,10 @@ private:
 // Compact JUCE popup with real APVTS attachments and no audio-thread GUI.
 class SkellWetDuckPanel final:public juce::Component {
 public:
+    void setReduction(float db) {
+        const int step=juce::jlimit(0,120,juce::roundToInt(db*2.f));
+        if(step!=reduction){reduction=step;repaint(10,getHeight()-27,getWidth()-20,23);}
+    }
     void paint(juce::Graphics& g) override {
         Theme::panelBox(g,getLocalBounds().toFloat().reduced(1.f),8.f,true);
         Theme::text(g,"VOCAL SIDECHAIN / DUCK FX RETURNS",
@@ -86,9 +90,11 @@ public:
         Theme::text(g,"THRESHOLD",{17,125,86,20},11,Theme::white,true);
         Theme::text(g,"ATTACK",{17,166,86,20},11,Theme::white,true);
         Theme::text(g,"RELEASE",{17,207,86,20},11,Theme::white,true);
-        Theme::fittedText(g,"DRY VOCAL TRIGGERS / 0 PDC / NO SIDECHAIN BUS",
-                          {17,getHeight()-17,getWidth()-33,12},9,Theme::muted);
+        Theme::fittedText(g,"POST-MIC VOCAL   /   DUCK: "+juce::String(reduction*.5f,1)+" dB",
+                          {17,getHeight()-23,getWidth()-33,18},10,reduction>0?Theme::green:Theme::muted);
     }
+private:
+    int reduction=0;
 };
 class SlotEditor final:public juce::Component {
 public:
@@ -221,6 +227,8 @@ private:
     // the original separate-window path without affecting DSP processing.
     std::unique_ptr<juce::AudioProcessorEditor> embeddedEditor;
     juce::AudioPluginInstance* embeddedHost=nullptr;
+    bool embeddedFitRequested=false;
+    bool embeddedFitRejected=false;
     void releaseEmbeddedEditor();
     void syncEmbeddedEditor();
     void layoutEmbeddedEditor();

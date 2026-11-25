@@ -111,7 +111,7 @@ public:
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
-    juce::Result loadHostedVST3(int slot,const juce::File& path);
+    juce::Result loadHostedVST3(int slot,const juce::File& path,const juce::String& identifier={});
     void openHostedVST3Editor(int slot);
     void closeHostedVST3Editors();
     juce::String hostedVST3Name(int slot) const {return hosted.getName(slot);}
@@ -150,6 +150,9 @@ public:
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
+    float getSlotDuckReductionDb(int slot) const noexcept {
+        return slotDuckReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
+    }
     float getSlotGainReductionDb(int slot) const noexcept {
         return slotGainReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
     }
@@ -283,7 +286,7 @@ private:
     } rawGlobal;
     std::array<RawSlot,slotCount> rawSlots;
     std::array<std::atomic<float>,slotCount> slotPeaks;
-    std::array<std::atomic<float>,slotCount> slotGainReductionDb;
+    std::array<std::atomic<float>,slotCount> slotGainReductionDb,slotDuckReductionDb;
     std::array<std::atomic<float>,slotCount> slotDeessReductionDb;
     std::array<std::array<std::atomic<float>,5>,slotCount> suiteReturnRms;
     std::atomic<float> inputPeak{0},outputPeak{0};

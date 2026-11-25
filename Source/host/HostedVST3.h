@@ -89,7 +89,74 @@ public:
        #endif
     }
 
-    juce::Result load(int slot,const juce::File& path,double sr,int block) {
+    struct EffectChoice {juce::String identifier,name,vendor;};
+    static juce::String classKey(const juce::PluginDescription& description) {
+        return description.createIdentifierString();
+    }
+    // Exact class matching, never a name-only guess. Empty key retains the
+    // legacy path-only project behavior and single-effect API.
+    static const juce::PluginDescription* chooseEffect(
+        const juce::OwnedArray<juce::PluginDescription>& descriptions,
+        const juce::String& identifier) {
+        const juce::PluginDescription* match=nullptr;
+        for(auto* description:descriptions){
+            if(description->isInstrument)continue;
+            if(identifier.isEmpty())return description;
+            if(classKey(*description)==identifier){
+                if(match)return nullptr; // ambiguous class identity
+                match=description;
+            }
+        }
+        return match;
+    }
+    static juce::Result inspectEffects(const juce::File& path,std::vector<EffectChoice>& choices) {
+        choices.clear();
+       #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
+        if(!path.exists() || !path.hasFileExtension("vst3"))
+            return juce::Result::fail("Choose an installed .vst3 bundle");
+        if(isSkellPresetProductName(path.getFileNameWithoutExtension()))
+            return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
+        juce::OwnedArray<juce::PluginDescription> descriptions;
+        juce::VST3PluginFormat scanner;
+        scanner.findAllTypesForFile(descriptions,path.getFullPathName());
+        for(auto* d:descriptions){
+            if(d->isInstrument || isSkellPresetProductName(d->name) ||
+               isSkellPresetProductName(d->descriptiveName))continue;
+            const auto key=classKey(*d);
+            if(key.isEmpty() || chooseEffect(descriptions,key)!=d)continue;
+            choices.push_back({key,d->name.isNotEmpty()?d->name:d->descriptiveName,d->manufacturerName});
+        }
+        if(choices.empty())return juce::Result::fail("No supported audio effect classes found; check the bridge and licensed FL Studio installation.");
+        return juce::Result::ok();
+       #else
+        (void)path;
+        return juce::Result::fail("External VST3 hosting is available only in Windows builds");
+       #endif
+    }
+    // JUCE requires the layout to have one entry for *every* bus, including
+    // disabled sidechains. A one-input/one-output BusesLayout wrongly rejects
+    // ordinary stereo effects with optional auxiliary buses.
+    // Always keep the externally visible chain stereo, and never route
+    // unconnected sidechain audio to an uninitialised bus.
+    static juce::Result configureMainStereoBuses(juce::AudioProcessor& instance) {
+        auto layout=instance.getBusesLayout();
+        if(layout.inputBuses.isEmpty() || layout.outputBuses.isEmpty())
+            return juce::Result::fail("Hosted effects require main input and output buses");
+        layout.inputBuses.set(0,juce::AudioChannelSet::stereo());
+        layout.outputBuses.set(0,juce::AudioChannelSet::stereo());
+        for(int bus=1;bus<layout.inputBuses.size();++bus)
+            layout.inputBuses.set(bus,juce::AudioChannelSet::disabled());
+        for(int bus=1;bus<layout.outputBuses.size();++bus)
+            layout.outputBuses.set(bus,juce::AudioChannelSet::disabled());
+        if(!instance.setBusesLayout(layout))
+            return juce::Result::fail(
+                "Hosted VST3 rejected stereo main buses with auxiliary buses disabled");
+        if(instance.getTotalNumInputChannels()!=2 || instance.getTotalNumOutputChannels()!=2)
+            return juce::Result::fail("Hosted VST3 main stereo routing is unavailable");
+        return juce::Result::ok();
+    }
+    juce::Result load(int slot,const juce::File& path,double sr,int block,
+                      const juce::String& identifier={}) {
         if(!valid(slot))return juce::Result::fail("Invalid rack slot");
         std::lock_guard<std::mutex> lock(lifecycle);
         reclaimRetiredLocked();
@@ -103,14 +170,14 @@ public:
         juce::VST3PluginFormat fallback;
         fallback.findAllTypesForFile(descriptions,path.getFullPathName());
         if(descriptions.isEmpty())return juce::Result::fail("No compatible audio VST3 effect found in bundle");
-        juce::PluginDescription* chosen=nullptr;
-        for(auto* description:descriptions)
-            if(!description->isInstrument) {chosen=description;break;}
+        const auto* chosen=chooseEffect(descriptions,identifier);
         // JUCE VST3 scans may report zero channels until the plug-in has been
         // instantiated; VST3 buses can also be dynamic. Do not reject a
         // valid audio effect using its uninitialized scanner channel counts.
         // Instead validate the real instance's stereo bus layout below.
-        if(!chosen)return juce::Result::fail("An audio VST3 effect is required (not an instrument)");
+        if(!chosen)return juce::Result::fail(identifier.isNotEmpty()?
+            "Saved effect class unavailable or ambiguous; no substitute was loaded.":
+            "An audio VST3 effect is required (not an instrument)");
         if(isSkellPresetProductName(chosen->name)
            || isSkellPresetProductName(chosen->descriptiveName)
            || isSkellPresetProductName(path.getFileNameWithoutExtension()))
@@ -121,11 +188,8 @@ public:
         if(!instance)return juce::Result::fail(error.isNotEmpty()?error:"Could not instantiate VST3");
         if(isSkellPresetProductName(instance->getName()))
             return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
-        juce::AudioProcessor::BusesLayout stereo;
-        stereo.inputBuses.add(juce::AudioChannelSet::stereo());
-        stereo.outputBuses.add(juce::AudioChannelSet::stereo());
-        if(!instance->setBusesLayout(stereo))
-            return juce::Result::fail("Hosted VST3 must support stereo in/out");
+        const auto buses=configureMainStereoBuses(*instance);
+        if(buses.failed())return buses;
         instance->setPlayHead(&transport); // stable, owned copy of DAW timing
         instance->prepareToPlay(std::max(sr,8000.),std::max(block,64));
         const int latency=instance->getLatencySamples();
@@ -154,12 +218,13 @@ public:
                             (chosen->name.isNotEmpty()?chosen->name:
                              path.getFileNameWithoutExtension());
         locations[(size_t)slot]=path;
+        identifiers[(size_t)slot]=classKey(*chosen);
         latencies[(size_t)slot].store(latency,std::memory_order_release);
         active[(size_t)slot].store(pointer,std::memory_order_seq_cst);
         reclaimRetiredLocked();
         return juce::Result::ok();
        #else
-        (void)path;(void)sr;(void)block;
+        (void)path;(void)sr;(void)block;(void)identifier;
         return juce::Result::fail("External VST3 hosting is available only in Windows builds");
        #endif
     }
@@ -196,6 +261,18 @@ public:
     }
     juce::String getName(int slot) const {
         return valid(slot)?names[(size_t)slot]:juce::String{};
+    }
+    juce::String getIdentifier(int slot) const {
+        return valid(slot)?identifiers[(size_t)slot]:juce::String{};
+    }
+    // Message thread only; reader/editor lifetime protection still applies.
+    void detach(int slot) {
+        if(!valid(slot))return;
+        std::lock_guard<std::mutex> lock(lifecycle);
+        active[(size_t)slot].store(nullptr,std::memory_order_seq_cst);
+        latencies[(size_t)slot].store(0,std::memory_order_release);
+        names[(size_t)slot].clear();identifiers[(size_t)slot].clear();locations[(size_t)slot]={};
+        reclaimRetiredLocked();
     }
     juce::File getFile(int slot) const {
         return valid(slot)?locations[(size_t)slot]:juce::File{};
@@ -251,7 +328,7 @@ private:
     std::array<std::atomic<int>,slotCount> latencies{};
     HostedTransport transport; // outlives all owned plug-ins at destruction
     std::array<std::vector<std::unique_ptr<Entry>>,slotCount> owned;
-    std::array<juce::String,slotCount> names;
+    std::array<juce::String,slotCount> names,identifiers;
     std::array<juce::File,slotCount> locations;
 };
 } // namespace skellpreset::host

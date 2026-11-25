@@ -76,6 +76,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         initialOrder|=(std::uint64_t)i << (4*i);
         slotPeaks[(size_t)i].store(0);
         slotGainReductionDb[(size_t)i].store(0);
+        slotDuckReductionDb[(size_t)i].store(0);
         slotDeessReductionDb[(size_t)i].store(0);
         for(auto& value:suiteReturnRms[(size_t)i])value.store(0);
         auto& r=rawSlots[(size_t)i];const auto prefix=slotPrefix(i);
@@ -463,6 +464,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
         e.voiceDuck.prepare(rate);
     }
     for(auto& meter:slotGainReductionDb)meter.store(0.f,std::memory_order_relaxed);
+    for(auto& meter:slotDuckReductionDb)meter.store(0.f,std::memory_order_relaxed);
     for(auto& meter:slotDeessReductionDb)meter.store(0.f,std::memory_order_relaxed);
     for(auto& channel:suiteReturnRms)
         for(auto& meter:channel)meter.store(0.f,std::memory_order_relaxed);
@@ -728,11 +730,15 @@ juce::StringArray SkellPresetAudioProcessor::macroTargets(int macroIndex) const 
     }
     return targets;
 }
-juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path) {
+juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path,const juce::String& identifier) {
     if(slot<0 || slot>=slotCount)return juce::Result::fail("Invalid host slot");
-    const auto result=hosted.load(slot,path,rate,hostChunkCapacity);
+    const auto result=hosted.load(slot,path,rate,hostChunkCapacity,identifier);
     if(result.failed())return result;
     hostedEditorWindows[(size_t)slot].reset(); // close only after successful replacement
+    const auto key=juce::String(slot+1);
+    state.state.setProperty("hostPath"+key,path.getFullPathName(),nullptr);
+    state.state.setProperty("hostClass"+key,hosted.getIdentifier(slot),nullptr);
+    state.state.removeProperty("hostState"+key,nullptr);
     setSlotType(slot,ExternalVST3);
     setSlotOn(slot,true);
     updateHostLatency();
@@ -784,12 +790,19 @@ void SkellPresetAudioProcessor::handleAsyncUpdate() {
         const auto key=juce::String(s+1);
         const auto path=state.state.getProperty("hostPath"+key).toString();
         const auto* type=rawSlots[(size_t)s].type;
-        if(path.isEmpty() || !type || (int)type->load()!=ExternalVST3)continue;
-        if(hosted.getFile(s).getFullPathName()!=path) {
-            const auto result=loadHostedVST3(s,juce::File(path));
-            if(result.failed())continue; // Missing third-party plugin stays dry/safe.
-        }
+        const auto identifier=state.state.getProperty("hostClass"+key).toString();
         const auto payload=state.state.getProperty("hostState"+key).toString();
+        if(path.isEmpty() || !type || (int)type->load()!=ExternalVST3){
+            hostedEditorWindows[(size_t)s].reset();hosted.detach(s);continue;
+        }
+        if(!hosted.get(s) || hosted.getFile(s).getFullPathName()!=path ||
+           (identifier.isNotEmpty() && hosted.getIdentifier(s)!=identifier)) {
+            // Restore directly: unlike interactive replacement, do not change
+            // the saved on/off control or clear its serialized state.
+            const auto result=hosted.load(s,juce::File(path),rate,hostChunkCapacity,identifier);
+            hostedEditorWindows[(size_t)s].reset();
+            if(result.failed()){hosted.detach(s);continue;}
+        }
         if(payload.isNotEmpty() && payload.length()<3*1024*1024) {
             juce::MemoryBlock bytes;
             if(bytes.fromBase64Encoding(payload))hosted.setState(s,bytes);
@@ -1042,7 +1055,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     }
     blockLatency=juce::jlimit(0,slotCount*(lookahead+skellpreset::dsp::SpectralPitchFormant::latencySamples)+
         skellpreset::host::HostedVST3::maxTotalLatency,blockLatency);
-    std::array<float,slotCount> meter{},grMeter{},minimumGain;minimumGain.fill(1.f);
+    std::array<float,slotCount> meter{},grMeter{},minimumGain,duckMinimum;
+    minimumGain.fill(1.f);duckMinimum.fill(1.f);
     float inPeak=0.f,outPeak=0.f;
     const int limit=juce::jmax(64,hostChunkCapacity);
     for(int offset=0;offset<total;offset+=limit) {
@@ -1151,6 +1165,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 const float duckGain=supportsWetSidechain(c.type)
                     ?e.voiceDuck.processGain(sidechainWork.getSample(0,n),
                                              sidechainWork.getSample(1,n)):1.f;
+                if(c.on && c.duckOn && c.wet>0.f)
+                    duckMinimum[(size_t)s]=std::min(duckMinimum[(size_t)s],duckGain);
                 switch(c.type) {
                     case EQ: {
                         const auto high=e.highpass.process(l,r);
@@ -1428,6 +1444,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     outputPeak.store(outPeak,std::memory_order_relaxed);
     for(int s=0;s<slotCount;++s) {
         slotPeaks[(size_t)s].store(meter[(size_t)s],std::memory_order_relaxed);
+        slotDuckReductionDb[(size_t)s].store(std::max(0.f,-gainToDb(duckMinimum[(size_t)s])),std::memory_order_relaxed);
         const bool suite=controlCache[(size_t)s].type==VocalFeelSuiteFX;
         const auto& dsp=engines[(size_t)s].vocalSuite;
         const float measured=std::max(grMeter[(size_t)s],-gainToDb(minimumGain[(size_t)s]));
@@ -1934,12 +1951,18 @@ void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     snapshot.setProperty("program",savedProgram,nullptr);
     for(int s=0;s<slotCount;++s) {
         const auto index=juce::String(s+1);
-        snapshot.removeProperty("hostPath"+index,nullptr);
-        snapshot.removeProperty("hostState"+index,nullptr);
-        if(slotType(s)!=ExternalVST3)continue;
+        if(slotType(s)!=ExternalVST3){
+            snapshot.removeProperty("hostPath"+index,nullptr);
+            snapshot.removeProperty("hostClass"+index,nullptr);
+            snapshot.removeProperty("hostState"+index,nullptr);
+            continue;
+        }
         const auto file=hosted.getFile(s);
+        // Keep saved metadata when the exact plugin is missing.
         if(file.getFullPathName().isEmpty())continue;
         snapshot.setProperty("hostPath"+index,file.getFullPathName(),nullptr);
+        snapshot.setProperty("hostClass"+index,hosted.getIdentifier(s),nullptr);
+        snapshot.removeProperty("hostState"+index,nullptr);
         auto data=hosted.getState(s);
         if(data.getSize()>0 && data.getSize()<2*1024*1024)
             snapshot.setProperty("hostState"+index,data.toBase64Encoding(),nullptr);

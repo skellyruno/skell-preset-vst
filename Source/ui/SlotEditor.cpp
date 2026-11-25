@@ -920,32 +920,37 @@ void SlotEditor::releaseEmbeddedEditor(){
     // Destroy before the hosted processor, on the JUCE GUI/message thread.
     embeddedEditor.reset();
     embeddedHost=nullptr;
+    embeddedFitRequested=false;embeddedFitRejected=false;
 }
 void SlotEditor::layoutEmbeddedEditor(){
     if(!embeddedEditor)return;
-    // Fill the effect deck instead of shrinking third-party editors into a
-    // 251px-high letterbox. Keep the top bar for detach/window fallback.
-    constexpr float x=18.f,y=85.f,w=870.f,h=437.f;
-    const float editorWidth=(float)juce::jmax(1,embeddedEditor->getWidth());
-    const float editorHeight=(float)juce::jmax(1,embeddedEditor->getHeight());
-    // Fit small third-party editors UP as well as large ones down, while
-    // retaining their native aspect and hit-test coordinates. Bound the
-    // optional enlargement to 135% to keep text/raster UIs legible; any
-    // incompatible editor can still be detached at native size.
-    const float scale=juce::jlimit(.1f,1.35f,
-        juce::jmin(w/editorWidth,h/editorHeight));
-    embeddedEditor->setTransform(juce::AffineTransform::scale(scale));
-    const float actualW=editorWidth*scale,actualH=editorHeight*scale;
-    embeddedEditor->setTopLeftPosition(
-        juce::roundToInt(x+(w-actualW)*.5f),
-        juce::roundToInt(y+(h-actualH)*.5f));
+    auto& view=*embeddedEditor;
+    const auto area=getLocalBounds().withTrimmedTop(85).reduced(18,6);
+    if(area.isEmpty())return;
+    // Native HWND editors do not reliably follow a JUCE affine transform.
+    // Negotiate size with their wrapper instead of scaling the child window.
+    if(!embeddedFitRequested && (view.getWidth()>area.getWidth() ||
+                                  view.getHeight()>area.getHeight())) {
+        embeddedFitRequested=true;
+        const float ratio=juce::jmin(float(area.getWidth())/float(juce::jmax(1,view.getWidth())),
+                                    float(area.getHeight())/float(juce::jmax(1,view.getHeight())));
+        if(view.isResizable())
+            view.setBoundsConstrained({area.getX(),area.getY(),
+                juce::jmax(1,juce::roundToInt(view.getWidth()*ratio)),
+                juce::jmax(1,juce::roundToInt(view.getHeight()*ratio))});
+        else view.setScaleFactor(juce::jlimit(.1f,1.f,ratio));
+    }
+    embeddedFitRejected=view.getWidth()>area.getWidth() || view.getHeight()>area.getHeight();
+    if(embeddedFitRejected){view.setVisible(false);return;}
+    view.setCentrePosition(area.getCentre());
+    if(!view.isVisible()){view.setVisible(true);view.setCentrePosition(area.getCentre());}
 }
 void SlotEditor::syncEmbeddedEditor(){
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::ExternalVST3){
         releaseEmbeddedEditor();return;
     }
     auto* instance=processor.hostedVST3InstanceForUI(slot);
-    if(embeddedHost==instance && embeddedEditor)return;
+    if(embeddedHost==instance && embeddedEditor){layoutEmbeddedEditor();return;}
     releaseEmbeddedEditor();
     if(!instance || !instance->hasEditor())return;
     // Do not take an editor already displayed by a floating host window.
@@ -960,15 +965,35 @@ void SlotEditor::syncEmbeddedEditor(){
 }
 void SlotEditor::loadVST3FromFile(const juce::File& path) {
     if(path.getFullPathName().isEmpty())return;
-    const auto result=processor.loadHostedVST3(slot,path);
-    if(result.failed())
-        juce::AlertWindow::showMessageBoxAsync(
-            juce::AlertWindow::WarningIcon,"VST3 could not load",
-            result.getErrorMessage());
-    else syncEmbeddedEditor();
-    graphSnapshotValid=false;
-    refreshIfChanged();
-    repaint();
+    using Host=skellpreset::host::HostedVST3;
+    std::vector<Host::EffectChoice> choices;
+    const auto inspected=Host::inspectEffects(path,choices);
+    if(inspected.failed()){
+        juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+            "VST3 could not load",inspected.getErrorMessage());return;
+    }
+    const int target=slot;
+    const int originalType=processor.slotType(target);
+    juce::Component::SafePointer<SlotEditor> safe(this);
+    auto finish=[safe,target,originalType,path,choices](int id){
+        if(!safe || safe->selectedSlot()!=target ||
+           safe->processor.slotType(target)!=originalType ||
+           id<=0 || id>(int)choices.size())return;
+        const auto result=safe->processor.loadHostedVST3(target,path,choices[(size_t)id-1].identifier);
+        if(result.failed())
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                "VST3 could not load",result.getErrorMessage());
+        else safe->syncEmbeddedEditor();
+        safe->graphSnapshotValid=false;safe->refreshIfChanged();safe->repaint();
+    };
+    if(choices.size()==1){finish(1);return;}
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Choose the exact VST3 effect");
+    for(int i=0;i<(int)choices.size();++i){
+        const auto& choice=choices[(size_t)i];
+        menu.addItem(i+1,choice.name+(choice.vendor.isNotEmpty()?"  /  "+choice.vendor:juce::String{}));
+    }
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),std::move(finish));
 }
 void SlotEditor::chooseVST3File() {
     // Keep the asynchronous chooser alive until it returns.
@@ -1615,6 +1640,10 @@ void SlotEditor::refreshIfChanged() {
             lastEqControls[(size_t)k]=v;
         }
     }
+    if(type==SkellPresetAudioProcessor::ExternalVST3)syncEmbeddedEditor();
+    if(duckPanel.isVisible()){
+        duckPanel.setReduction(processor.getSlotDuckReductionDb(slot));
+    }
     if(!changed){
         if(peakChanged){
             repaint(juce::Rectangle<int>(178,75,195,22));
@@ -1891,6 +1920,9 @@ void SlotEditor::paint(juce::Graphics&g) {
         ?processor.hostedVST3Name(slot):juce::String{};
     Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleName(type),
                       {21,29,500,38},25,Theme::white,true);
+    if(type==SkellPresetAudioProcessor::ExternalVST3 && embeddedFitRejected)
+        Theme::fittedText(g,"NATIVE EDITOR DOES NOT FIT — USE DETACH UI",{25,240,856,40},
+            15.f,Theme::muted,true,juce::Justification::centred);
     // The hosted editor has its own top action buttons. Do not paint the
     // native selector prompt, category chip or signal dots underneath those
     // controls; it clips the third-party view at small UI scales.

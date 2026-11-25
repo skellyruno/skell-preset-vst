@@ -82,14 +82,29 @@ int main(int argc,char** argv) {
 
     skellpreset::host::HostedVST3 host;
     const juce::File fixture(juce::String::fromUTF8(argv[1]));
-    const auto loaded=host.load(0,fixture,48000.,512);
+    using Host=skellpreset::host::HostedVST3;
+    juce::OwnedArray<juce::PluginDescription> catalog;
+    for(int i=0;i<3;++i){
+        auto* d=catalog.add(new juce::PluginDescription());
+        d->name="Owned fixture "+juce::String(i);d->fileOrIdentifier=fixture.getFullPathName();
+        d->pluginFormatName="VST3";d->uniqueId=100+i;d->isInstrument=i==0;
+    }
+    if(Host::chooseEffect(catalog,{})!=catalog[1] ||
+       Host::chooseEffect(catalog,Host::classKey(*catalog[2]))!=catalog[2] ||
+       Host::chooseEffect(catalog,Host::classKey(*catalog[0]))!=nullptr ||
+       Host::chooseEffect(catalog,"unavailable")!=nullptr)return 18;
+    std::vector<Host::EffectChoice> choices;
+    if(Host::inspectEffects(fixture,choices).failed() || choices.size()!=1)return 19;
+    const auto loaded=host.load(0,fixture,48000.,512,choices[0].identifier);
     if(loaded.failed()) {
         std::fprintf(stderr,"Host instantiate failed: %s\n",
             loaded.getErrorMessage().toRawUTF8());
         return 3;
     }
     auto* plugin=host.get(0);
-    if(!plugin || host.getLatency(0)!=0) {
+    if(!plugin || host.getLatency(0)!=0 || plugin->getTotalNumInputChannels()!=2 ||
+       plugin->getTotalNumOutputChannels()!=2 || plugin->getBusCount(true)!=2 ||
+       plugin->getBus(true,1)->isEnabled() || host.getIdentifier(0)!=choices[0].identifier) {
         std::fprintf(stderr,"Fixture not loaded or wrong latency\n");return 4;
     }
     juce::AudioBuffer<float> audio(2,512);
