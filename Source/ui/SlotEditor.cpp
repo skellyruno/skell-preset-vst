@@ -1921,19 +1921,36 @@ void SlotEditor::paint(juce::Graphics&g) {
     g.fillRoundedRectangle(plot.getX()+2.f,plot.getY()+12.f,
                            2.3f,plot.getHeight()-24.f,1.f);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
+    if(type==SkellPresetAudioProcessor::Empty) {
+        // An empty slot has no DSP and no editable graph. Do not draw a grid
+        // or a drag affordance that cannot change anything; show a truthful
+        // call to action instead.
+        const auto card=plot.reduced(plot.getWidth()*.26f,plot.getHeight()*.20f);
+        g.setColour(Theme::panelAlt.withAlpha(.88f));
+        g.fillRoundedRectangle(card,10.f);
+        g.setColour(Theme::stroke.withAlpha(.9f));
+        g.drawRoundedRectangle(card.reduced(.7f),10.f,1.2f);
+        Theme::fittedText(g,"EMPTY SLOT",
+            card.withHeight(34.f).translated(0.f,card.getHeight()*.26f).toNearestInt(),
+            19.f,Theme::white,true,juce::Justification::centred);
+        Theme::fittedText(g,"PRESS + IN THE RACK TO ADD A PROCESSOR",
+            card.withHeight(24.f).translated(0.f,card.getHeight()*.26f+36.f).toNearestInt(),
+            12.f,Theme::muted,true,juce::Justification::centred);
+    }
     constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
+    const bool emptyFace=type==SkellPresetAudioProcessor::Empty;
     if(eqFace) {
         for(float freq:frequencies){
             const auto x=plot.getX()+plot.getWidth()*std::log(freq/20.f)/std::log(1000.f);
             g.setColour(Theme::stroke.withAlpha(.48f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
         }
-    } else if(!echoFace) {
+    } else if(!echoFace && !emptyFace) {
         for(int i=0;i<=8;i++) {
             const auto x=plot.getX()+plot.getWidth()*i/8.f;
             g.setColour(Theme::stroke.withAlpha(.75f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
         }
     }
-    if(!echoFace && type!=SkellPresetAudioProcessor::DeEsser)for(int i=0;i<=6;i++){
+    if(!echoFace && !emptyFace && type!=SkellPresetAudioProcessor::DeEsser)for(int i=0;i<=6;i++){
         const auto y=plot.getY()+plot.getHeight()*i/6.f;
         g.setColour(i==3 && eqFace ?Theme::muted.withAlpha(.65f):
             Theme::stroke.withAlpha(eqFace?.48f:.72f));
@@ -3680,7 +3697,9 @@ void SlotEditor::paint(juce::Graphics&g) {
     }
     const juce::String gestureHint="DRAG GRAPH  /  X: "+
         labels[0].toUpperCase()+"  /  Y: "+labels[1].toUpperCase();
-    Theme::text(g,type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
+    Theme::text(g,type==SkellPresetAudioProcessor::Empty
+                    ? juce::String("EMPTY SLOT  /  PRESS + IN THE RACK TO ADD A PROCESSOR")
+                    : type==SkellPresetAudioProcessor::AdlibThrow ? "PHRASE-END THROW / REPEATS CONTINUE THROUGH SILENCE" :
                   type==SkellPresetAudioProcessor::AdlibDoubler ? "STEREO MICRO-DOUBLING / MONO INPUT REMAINS COMPATIBLE" :
                   isModulationOrbEffect(type) && modOrbView ? "MODULATION ORB IS VISUAL ONLY / EDIT IN-PANEL CONTROLS" :
                   type==SkellPresetAudioProcessor::EQ ? "DRAG THE EQ NODE TO CHANGE FREQUENCY + GAIN" :

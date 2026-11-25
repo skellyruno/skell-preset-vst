@@ -1,7 +1,8 @@
-#pragma once
+﻿#pragma once
 #include <JuceHeader.h>
 #include "Theme.h"
 #include "GraveyardScene.h"
+#include "SkellPerformer.h"
 #include "../PluginProcessor.h"
 #include <array>
 #include <cmath>
@@ -126,12 +127,24 @@ public:
         const float scopeHeight=juce::jmax(30.f,juce::jmin(70.f,h*.18f));
         out.scope={margin,h-bottom-scopeHeight,
                    juce::jmax(1.f,w-2.f*margin),scopeHeight};
+        // The stage above the trace is split into the performer's boards and a
+        // deep crowd pit. Reserving the pit keeps the audience cinematic
+        // instead of a thin strip pressed under the figure's feet.
+        const float stageBottom=out.scope.getY()-18.f;
+        const float headroom=h>=350.f?juce::jmin(44.f,h*.085f):0.f;
+        const float stageTop=12.f+headroom;
+        const float available=juce::jmax(0.f,stageBottom-stageTop);
+        // Keep enough room for the smallest supported figure before the pit
+        // takes its share, so tiny frames still produce a valid layout.
+        const float pitMax=juce::jmax(0.f,available-372.f*.30f);
+        const float pitHeight=juce::jmin(pitMax,juce::jlimit(24.f,168.f,stageBottom*.26f));
+        const float feet=stageBottom-pitHeight;
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
-            (w-2.f*margin)/345.f,(out.scope.getY()-22.f-(h>=350.f?juce::jmin(52.f,h*.10f):0.f))/390.f));
+            (w-2.f*margin)/345.f,(feet-stageTop)/372.f));
         out.originX=w*.5f-151.f*out.scale;
-        const float spare=juce::jmax(0.f,out.scope.getY()-22.f-(h>=350.f?juce::jmin(52.f,h*.10f):0.f)-390.f*out.scale);
-        out.originY=juce::jmax(10.f,22.f+(1.f-out.scale)*3.f+spare*.44f);
+        out.originY=feet-372.f*out.scale;
         out.valid=out.originX>0.f && out.originX+290.f*out.scale<=w &&
+            out.originY>=10.f &&
             out.scope.getY()>out.originY+377.f*out.scale &&
             out.scope.getRight()<=w && out.scope.getBottom()<=h;
         return out;
@@ -171,360 +184,272 @@ public:
         const auto stageBounds=juce::Rectangle<float>(10.f,10.f,width-20.f,
             stage.scope.getY()-18.f);
         const float centreX=width*.5f;
-        // The feet are drawn around y=368 in model space. Ground the
-        // floor at the character's feet at every supported aspect ratio.
-        const float horizon=stage.originY+372.f*stage.scale;
+        // Two separate ground lines. `feetY` is where the performer stands;
+        // `horizon` is the cemetery skyline, lifted well above the feet so the
+        // graves, fence and chapel get a real band of depth instead of being
+        // crushed into a strip behind the crowd pit.
+        const float feetY=stage.originY+372.f*stage.scale;
+        const float horizon=juce::jmax(stageBounds.getY()+96.f,
+            feetY-juce::jlimit(70.f,190.f,feetY*.34f));
         const auto* mode=processor.state.getRawParameterValue("mode");
         const bool bypassed=mode && (int)mode->load()==3;
         backdrop.draw(g,stageBounds,horizon);
+        backdrop.atmosphere(g,stageBounds,horizon,crowdPhase,activity);
         // Restrained moving key light leaves the static environment cached.
         g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.055f+.05f*activity),
-            centreX-65.f,horizon-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,horizon-70.f,true));
-        g.fillEllipse(centreX-175.f*stage.scale,horizon-365.f*stage.scale,350.f*stage.scale,365.f*stage.scale);
+            centreX-65.f,feetY-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,feetY-70.f,true));
+        g.fillEllipse(centreX-175.f*stage.scale,feetY-365.f*stage.scale,350.f*stage.scale,365.f*stage.scale);
+        // Volumetric stage beams from the rig above the performer. These are
+        // soft screen-blended wedges, not textured sprites, and breathe with
+        // measured output so the rig feels alive without ever lying about audio.
+        {
+            juce::Graphics::ScopedSaveState beams(g);
+            g.reduceClipRegion(stageBounds.toNearestInt());
+            const float rigY=stageBounds.getY()+7.f;
+            const float spread=.55f+.10f*activity;
+            for(int beam=0;beam<3;++beam) {
+                const float rigX=centreX+(beam-1)*92.f*stage.scale;
+                const float targetX=centreX+(beam-1)*205.f*spread;
+                const float targetY=feetY+6.f;
+                juce::Path wedge;
+                wedge.startNewSubPath(rigX-3.f,rigY);
+                wedge.lineTo(rigX+3.f,rigY);
+                wedge.lineTo(targetX+44.f*stage.scale,targetY);
+                wedge.lineTo(targetX-44.f*stage.scale,targetY);
+                wedge.closeSubPath();
+                const auto tint=(beam==1?accent:Theme::blue);
+                g.setGradientFill(juce::ColourGradient(
+                    tint.withAlpha(.028f+.055f*activity),rigX,rigY,
+                    tint.withAlpha(0.f),targetX,targetY,false));
+                g.fillPath(wedge);
+            }
+            // Rig housing and three lens lamps.
+            g.setColour(juce::Colour(0xff121719));
+            g.fillRoundedRectangle(centreX-104.f*stage.scale,stageBounds.getY()+2.f,
+                                   208.f*stage.scale,7.f*stage.scale,3.f*stage.scale);
+            for(int lamp=0;lamp<3;++lamp) {
+                const float lx=centreX+(lamp-1)*92.f*stage.scale;
+                const int lit=lamp==1?juce::roundToInt(160+95*activity):juce::roundToInt(70+120*activity);
+                g.setColour(Theme::green.withAlpha(.10f));
+                g.fillEllipse(lx-9.f*stage.scale,rigY-3.f*stage.scale,
+                              18.f*stage.scale,12.f*stage.scale);
+                g.setColour((lamp==1?accent:Theme::blue).withAlpha(
+                    juce::jlimit(.18f,.98f,(float)lit/255.f)));
+                g.fillEllipse(lx-3.2f*stage.scale,rigY-1.f*stage.scale,
+                              6.4f*stage.scale,4.2f*stage.scale);
+            }
+        }
         // Low mist is a soft gradient, not a large animated texture.
         g.setGradientFill(juce::ColourGradient(
-            Theme::muted.withAlpha(.045f+.035f*activity),centreX,horizon-18.f*stage.scale,
-            Theme::bg.withAlpha(0.f),centreX,horizon-58.f*stage.scale,false));
-        g.fillRect(stageBounds.getX(),horizon-58.f*stage.scale,stageBounds.getWidth(),58.f*stage.scale);
+            Theme::muted.withAlpha(.045f+.035f*activity),centreX,feetY-18.f*stage.scale,
+            Theme::bg.withAlpha(0.f),centreX,feetY-58.f*stage.scale,false));
+        g.fillRect(stageBounds.getX(),feetY-58.f*stage.scale,stageBounds.getWidth(),58.f*stage.scale);
         // Restrained floor reflections and soft contact shadow.
         // Static set dressing, with brightness driven by real audio.
         for(int i=0;i<5;++i){
             const float spread=(45.f+i*24.f)*stage.scale;
-            const float y=horizon+(3.f+2.6f*i)*stage.scale;
+            const float y=feetY+(3.f+2.6f*i)*stage.scale;
             g.setColour(accent.withAlpha((.020f+.025f*activity)/(1.f+.30f*i)));
             g.drawLine(centreX-spread,y,centreX+spread,y,1.1f*stage.scale);
         }
         g.setColour(Theme::bg.withAlpha(.90f));
-        g.fillEllipse(centreX-105.f*stage.scale,horizon-4.f*stage.scale,
+        g.fillEllipse(centreX-105.f*stage.scale,feetY-4.f*stage.scale,
                       210.f*stage.scale,10.f*stage.scale);
-
-        // Main character. Outline is defined as a full-bodied, standing
-        // performer: anatomical pelvis/femurs/tibia/ribs, one arm gripping
-        // a real microphone. Slight asymmetry avoids a flat stick-figure.
+        // Soft spotlight pool on the boards beneath the performer. It is the
+        // brightest floor element and gives the figure real stage presence.
         {
-            juce::Graphics::ScopedSaveState saved(g);
-            const float breath=std::sin(crowdPhase*1.3f)*activity;
-            g.addTransform(juce::AffineTransform::rotation(breath*.008f,151.f,368.f)
-                .scaled(stage.scale,stage.scale*(1.f+.003f*breath))
-                .translated(stage.originX,stage.originY));
-            auto bone=[&](float x0,float y0,float x1,float y1,
-                          float thickness,float highlight){
-                g.setColour(shadow.withAlpha(.94f));
-                g.drawLine(x0,y0,x1,y1,thickness+3.9f);
-                g.setColour(Theme::muted.withAlpha(.78f));
-                g.drawLine(x0,y0,x1,y1,thickness+1.f);
-                g.setColour(porcelain.withAlpha(highlight));
-                g.drawLine(x0-.6f,y0-.8f,x1-.6f,y1-.8f,thickness*.72f);
-                if(thickness>=5.f){
-                    // Rounded epiphyses and a narrow specular ridge add depth without changing the pose.
-                    const float r=thickness*.48f;
-                    g.setColour(Theme::muted.withAlpha(.78f));
-                    g.fillEllipse(x0-r,y0-r,2.f*r,2.f*r);
-                    g.fillEllipse(x1-r,y1-r,2.f*r,2.f*r);
-                    g.setColour(porcelain.withAlpha(highlight*.8f));
-                    g.fillEllipse(x0-r*.82f,y0-r*.9f,r*1.25f,r*1.4f);
-                    g.fillEllipse(x1-r*.82f,y1-r*.9f,r*1.25f,r*1.4f);
-                    g.setColour(porcelain.withAlpha(.30f));
-                    g.drawLine(x0-thickness*.16f,y0-.7f,x1-thickness*.16f,y1-.7f,1.f);
-                }
-                g.setColour(accent.withAlpha(.06f+.16f*activity));
-                g.drawLine(x0+thickness*.28f,y0,
-                           x1+thickness*.28f,y1,1.f);
-            };
-            // Bare anatomical silhouette, no cape, coat or draped cloth.
-            // A slightly stronger directional bone highlight reads clearly
-            // against the dark graveyard without concealing the limbs.
-            // Lower body first, to keep the ribcage and arms layered above.
-            bone(126.f,263.f,113.f,318.f,9.f,.74f);
-            bone(178.f,263.f,191.f,316.f,9.f,.72f);
-            bone(113.f,318.f,105.f,364.f,6.5f,.76f);
-            bone(191.f,316.f,205.f,360.f,6.5f,.75f);
-            // Paired fibulae and articulated ankle joints.
-            bone(119.f,323.f,111.f,361.f,2.7f,.56f);
-            bone(185.f,322.f,199.f,357.f,2.7f,.56f);
-            bone(105.f,360.f,106.f,366.f,8.f,.82f);
-            bone(205.f,357.f,205.f,364.f,8.f,.82f);
-            bone(113.f,318.f,118.f,326.f,11.f,.58f);
-            bone(191.f,316.f,185.f,325.f,11.f,.56f);
-            bone(105.f,364.f,86.f,368.f,5.f,.72f);
-            bone(205.f,360.f,226.f,367.f,5.f,.72f);
-            for(int toe=0;toe<4;++toe){
-                bone(102.f,366.f,84.f+toe*3.4f,369.f+toe*.6f,2.2f,.66f);
-                bone(207.f,364.f,227.f-toe*3.4f,368.f+toe*.6f,2.2f,.66f);
-            }
-            // The pelvis is an angular anatomical saddle, not a circle.
-            juce::Path hips;
-            hips.startNewSubPath(113.f,239.f);
-            hips.cubicTo(100.f,240.f,96.f,254.f,106.f,270.f);
-            hips.quadraticTo(121.f,283.f,144.f,268.f);
-            hips.lineTo(151.f,277.f);
-            hips.lineTo(164.f,267.f);
-            hips.cubicTo(187.f,285.f,206.f,263.f,197.f,245.f);
-            hips.quadraticTo(185.f,234.f,174.f,243.f);
-            hips.quadraticTo(152.f,251.f,133.f,240.f);
-            hips.closeSubPath();
-            g.setGradientFill(juce::ColourGradient(
-                porcelain.withAlpha(.87f),114.f,241.f,
-                Theme::muted.withAlpha(.69f),199.f,277.f,false));
-            g.fillPath(hips);
-            g.setColour(shadow.withAlpha(.9f));
-            g.fillRoundedRectangle(141.f,253.f,18.f,11.f,4.f);
-            // Spine = segmented, tapered vertebrae with real depth.
-            bone(151.f,123.f,151.f,252.f,7.5f,.57f);
-            for(int i=0;i<11;++i){
-                const float y=137.f+i*10.2f;
-                const float size=juce::jmax(7.f,10.f-i*.19f);
-                g.setColour(shadow.withAlpha(.9f));
-                g.fillRoundedRectangle(151.f-size*.52f,y-2.f,size+1.2f,
-                                       8.f,2.f);
+            const float poolW=168.f*stage.scale,poolH=(.34f+.10f*activity)*poolW;
+            for(int ring=3;ring>=1;--ring) {
+                const float f=(float)ring/3.f;
                 g.setGradientFill(juce::ColourGradient(
-                    porcelain.withAlpha(.77f),145.f,y,
-                    Theme::muted.withAlpha(.57f),160.f,y+7.f,false));
-                g.fillRoundedRectangle(151.f-size*.44f,y-1.f,size,6.2f,1.4f);
+                    Theme::green.withAlpha(.050f*activity+.012f),centreX,feetY,
+                    Theme::bg.withAlpha(0.f),centreX+poolW*f*.55f,feetY,true));
+                g.fillEllipse(centreX-poolW*f,feetY-poolH*f*.42f,
+                              poolW*2.f*f,poolH*2.f*f);
             }
-            // Broad scapulae/real collarbones.
-            bone(151.f,140.f,100.f,153.f,6.f,.83f);
-            bone(151.f,140.f,206.f,150.f,6.f,.83f);
-            juce::Path scapula;
-            scapula.startNewSubPath(97.f,147.f);
-            scapula.lineTo(76.f,161.f);
-            scapula.lineTo(106.f,194.f);
-            scapula.closeSubPath();
-            scapula.startNewSubPath(206.f,146.f);
-            scapula.lineTo(228.f,159.f);
-            scapula.lineTo(202.f,192.f);
-            scapula.closeSubPath();
-            g.setColour(Theme::muted.withAlpha(.55f));
-            g.fillPath(scapula);
-            // Six swept, separated rib pairs, gradually narrowing. Bone
-            // thickness, direction and inner highlights suggest volume.
-            for(int i=0;i<6;++i){
-                const float y=163.f+i*14.3f;
-                const float reach=49.f-2.25f*i;
-                juce::Path left,right;
-                left.startNewSubPath(151.f,y);
-                left.cubicTo(133.f,y-9.f,101.f,y-9.f,
-                             151.f-reach,y+10.f);
-                left.cubicTo(105.f,y+14.f,113.f,y+22.f,
-                             133.f,y+22.f);
-                right.startNewSubPath(151.f,y);
-                right.cubicTo(169.f,y-9.f,199.f,y-8.f,
-                              151.f+reach,y+11.f);
-                right.cubicTo(200.f,y+15.f,193.f,y+22.f,
-                              169.f,y+22.f);
-                g.setColour(shadow.withAlpha(.90f));
-                g.strokePath(left,juce::PathStrokeType(6.f-i*.32f));
-                g.strokePath(right,juce::PathStrokeType(6.f-i*.32f));
-                g.setColour(porcelain.withAlpha(.73f-i*.048f+.12f*activity));
-                g.strokePath(left,juce::PathStrokeType(3.5f-i*.23f));
-                g.strokePath(right,juce::PathStrokeType(3.5f-i*.23f));
-                g.setColour(accent.withAlpha(.12f+.19f*activity));
-                g.drawLine(151.f,y+3.f,151.f,y+6.f,1.f);
-            }
-            // Left arm hangs in a natural stage pose; right is raised to
-            // the microphone. Hand bones remain visible.
-            bone(99.f,154.f,78.f,208.f,8.f,.78f);
-            bone(78.f,208.f,59.f,256.f,6.4f,.72f);
-            bone(206.f,151.f,245.f,187.f,8.3f,.85f);
-            bone(245.f,187.f,269.f,117.f,6.5f,.82f);
-            bone(83.f,211.f,65.f,255.f,2.8f,.57f);
-            bone(239.f,183.f,263.f,118.f,2.8f,.59f);
-            bone(78.f,205.f,77.f,211.f,9.f,.69f);
-            bone(245.f,183.f,245.f,190.f,9.f,.74f);
-            for(int finger=0;finger<4;++finger) {
-                bone(58.f+finger*2.f,256.f,51.f+finger*3.f,
-                     275.f+finger*1.5f,2.0f,.56f);
-            }
-            // A real stage microphone with mesh/capsule/handle, drawn over
-            // the right hand so the character is visibly performing.
-            g.setColour(shadow);
-            g.fillRoundedRectangle(260.f,67.f,28.f,50.f,10.f);
+            // Mirrored figure glint, kept subtle and tied to measured peak.
             g.setGradientFill(juce::ColourGradient(
-                porcelain.withAlpha(.91f),260.f,70.f,
-                Theme::muted.withAlpha(.71f),287.f,113.f,false));
-            g.fillRoundedRectangle(263.f,69.f,22.f,43.f,9.f);
-            g.setColour(Theme::stroke.withAlpha(.82f));
-            for(int grille=0;grille<8;++grille){
-                const float y=77.f+3.8f*grille;
-                const float margin=grille<2 || grille>6?3.5f:1.5f;
-                g.drawLine(263.f+margin,y,285.f-margin,y,1.f);
-            }
-            g.setColour(Theme::green.withAlpha(.82f));
-            g.fillRoundedRectangle(268.f,111.f,12.f,4.2f,1.f);
-            bone(274.f,115.f,274.f,154.f,4.8f,.66f);
-            // Bony knuckles close around the microphone stem.
-            bone(265.f,121.f,274.f,124.f,3.8f,.93f);
-            bone(264.f,128.f,277.f,131.f,3.5f,.86f);
-            for(int i=0;i<3;++i) {
-                const float y=133.f+i*5.f;
-                g.setColour(porcelain.withAlpha(.77f));
-                g.drawLine(271.f,y,279.f,y+2.f,2.f);
-            }
-
-            juce::Graphics::ScopedSaveState headPose(g);
-            g.addTransform(juce::AffineTransform::rotation(std::sin(crowdPhase*1.7f)*activity*.035f,151.f,131.f));
-            // The head is sculpted from multiple unequal planes, not a
-            // smiley face: brow ridge, deep polygonal sockets, cheekbones,
-            // mandible, teeth, cracks and asymmetric stage highlights.
-            bone(146.f,131.f,146.f,140.f,5.5f,.69f);
-            bone(158.f,129.f,160.f,140.f,5.f,.62f);
-            juce::Path skull;
-            skull.startNewSubPath(151.f,13.f);
-            skull.cubicTo(111.f,10.f,101.f,37.f,106.f,69.f);
-            skull.cubicTo(106.f,87.f,113.f,102.f,124.f,107.f);
-            skull.lineTo(125.f,119.f);
-            skull.cubicTo(133.f,138.f,170.f,139.f,181.f,119.f);
-            skull.lineTo(181.f,107.f);
-            skull.cubicTo(193.f,100.f,198.f,84.f,197.f,64.f);
-            skull.cubicTo(200.f,32.f,180.f,12.f,151.f,13.f);
-            skull.closeSubPath();
-            g.setColour(shadow);
-            g.strokePath(skull,juce::PathStrokeType(5.0f));
-            g.setGradientFill(juce::ColourGradient(
-                porcelain.withAlpha(.88f),110.f,23.f,
-                Theme::muted.withAlpha(.54f),195.f,136.f,false));
-            g.fillPath(skull);
-            {
-                juce::Graphics::ScopedSaveState texture(g);g.reduceClipRegion(skull);
-                for(int fleck=0;fleck<100;++fleck) {
-                    const float x=104.f+(float)((fleck*37)%91),y=17.f+(float)((fleck*53)%113);
-                    g.setColour((fleck%3==0?shadow:porcelain).withAlpha(.045f));
-                    g.fillEllipse(x,y,1.f+(fleck%3)*.4f,.6f+(fleck%2)*.5f);
-                }
-            }
-            // Soft directional key and reflected rim confined to the bone silhouette.
-            g.setGradientFill(juce::ColourGradient(porcelain.withAlpha(.30f),132.f,37.f,
-                porcelain.withAlpha(0.f),189.f,103.f,true));
-            g.fillPath(skull);
-            g.setColour(shadow.withAlpha(.40f));
-            g.strokePath(skull,juce::PathStrokeType(1.5f));
-            // Angular skull facets catch directional stage light, giving
-            // depth and cheekbone planes instead of a single flat mask.
-            juce::Path foreheadPlane,cheekPlane;
-            foreheadPlane.startNewSubPath(120.f,40.f);
-            foreheadPlane.quadraticTo(146.f,19.f,167.f,32.f);
-            foreheadPlane.lineTo(156.f,57.f);
-            foreheadPlane.lineTo(132.f,60.f);
-            foreheadPlane.closeSubPath();
-            cheekPlane.startNewSubPath(175.f,98.f);
-            cheekPlane.lineTo(189.f,94.f);
-            cheekPlane.lineTo(177.f,118.f);
-            cheekPlane.lineTo(168.f,122.f);
-            cheekPlane.closeSubPath();
-            g.setGradientFill(juce::ColourGradient(
-                porcelain.withAlpha(.15f),125.f,33.f,
-                Theme::muted.withAlpha(.055f),171.f,65.f,false));
-            g.fillPath(foreheadPlane);
-            g.setColour(Theme::bg.withAlpha(.23f));
-            g.fillPath(cheekPlane);
-            g.setColour(porcelain.withAlpha(.20f));
-            g.drawLine(121.f,42.f,129.f,36.f,.9f);
-            g.drawLine(178.f,103.f,170.f,119.f,.9f);
-            // Temporal shadows and irregular planar cheekbone ridges.
-            juce::Path temple;
-            temple.startNewSubPath(107.f,67.f);
-            temple.lineTo(116.f,89.f);temple.lineTo(125.f,97.f);
-            temple.lineTo(117.f,103.f);temple.closeSubPath();
-            temple.startNewSubPath(196.f,69.f);
-            temple.lineTo(188.f,90.f);temple.lineTo(179.f,100.f);
-            temple.lineTo(185.f,104.f);temple.closeSubPath();
-            g.setColour(Theme::muted.withAlpha(.49f));
-            g.fillPath(temple);
-            juce::Path sockets;
-            sockets.startNewSubPath(116.f,76.f);
-            sockets.lineTo(142.f,73.f);
-            sockets.lineTo(143.f,86.f);
-            sockets.quadraticTo(131.f,95.f,119.f,89.f);
-            sockets.closeSubPath();
-            sockets.startNewSubPath(159.f,74.f);
-            sockets.lineTo(186.f,77.f);
-            sockets.lineTo(184.f,91.f);
-            sockets.quadraticTo(168.f,96.f,158.f,85.f);
-            sockets.closeSubPath();
-            sockets.startNewSubPath(151.f,88.f);
-            sockets.lineTo(142.f,106.f);
-            sockets.lineTo(159.f,105.f);
-            sockets.closeSubPath();
-            g.setColour(shadow);
-            g.fillPath(sockets);
-            g.setColour(accent.withAlpha(.07f+.25f*activity));
-            g.drawLine(121.f,88.f,140.f,85.f,1.7f);
-            g.drawLine(163.f,85.f,180.f,89.f,1.7f);
-            g.setColour(porcelain.withAlpha(.56f));
-            g.drawLine(114.f,72.f,142.f,69.f,2.f);
-            g.drawLine(160.f,69.f,189.f,72.f,2.f);
-            g.drawLine(119.f,100.f,137.f,105.f,2.f);
-            g.drawLine(165.f,105.f,184.f,100.f,2.f);
-            // Split maxillary teeth and mandible.
-            g.setColour(shadow);
-            g.fillRoundedRectangle(130.f,115.f,44.f,4.f,1.f);
-            for(int tooth=0;tooth<8;++tooth)
-                g.drawLine(132.f+5.f*tooth,115.f,132.f+5.f*tooth,
-                           tooth==3||tooth==4?128.f:125.f,1.2f);
-            const float jawDrop=live?4.5f*activity:0.f;
-            juce::Path jaw;
-            jaw.startNewSubPath(123.f,109.f);
-            jaw.cubicTo(122.f,135.f+jawDrop,136.f,143.f+jawDrop,150.f,144.f+jawDrop);
-            jaw.cubicTo(171.f,145.f+jawDrop,185.f,131.f+jawDrop,183.f,107.f);
-            g.setColour(porcelain.withAlpha(.53f));
-            g.strokePath(jaw,juce::PathStrokeType(3.f));
-            // Fine forehead fissure and spectral one-sided edge light.
-            g.setColour(Theme::muted.withAlpha(.47f));
-            g.drawLine(160.f,30.f,153.f,49.f,1.f);
-            g.drawLine(153.f,49.f,158.f,62.f,1.f);
-            g.setColour(accent.withAlpha(.12f+.31f*activity));
-            g.drawLine(104.f,64.f,107.f,88.f,2.0f);
-            g.drawLine(187.f,45.f,193.f,69.f,1.f);
+                Theme::white.withAlpha(.035f+.055f*activity),centreX,feetY,
+                Theme::bg.withAlpha(0.f),centreX,feetY+26.f*stage.scale,false));
+            g.fillEllipse(centreX-26.f*stage.scale,feetY-2.f*stage.scale,
+                          52.f*stage.scale,30.f*stage.scale);
         }
 
-        // Two tiers of cheering skeletons viewed from behind; existing UI telemetry drives sway.
+        // Main character: a full-body skeletal vocalist built in its own
+        // procedural module. Model space is 345x372 with the floor at y=368,
+        // exactly the box layoutFor() reserves, so the figure stays grounded
+        // from 320x240 up to 2000x1000 without per-size tuning.
         {
-            juce::Graphics::ScopedSaveState saved(g);g.reduceClipRegion(stageBounds.toNearestInt());
-            const float pitTop=horizon+4.f*stage.scale,pitBottom=stageBounds.getBottom();
+            juce::Graphics::ScopedSaveState performerLayer(g);
+            g.reduceClipRegion(stageBounds.toNearestInt());
+            performer.draw(g,stage.originX,stage.originY,stage.scale,
+                           activity,crowdPhase);
+        }
+
+        // A deep, cheering skeleton pit between the camera and the boards: we
+        // look over their shoulders at the performer. Every figure is a very
+        // dark silhouette rimmed by stage spill, so the pit reads as a mass of
+        // bone and raised arms instead of a tiled pattern. Motion follows the
+        // measured output; a slow ambient sway keeps the crowd alive between
+        // phrases and never claims audio that is not there.
+        {
+            juce::Graphics::ScopedSaveState saved(g);
+            g.reduceClipRegion(stageBounds.toNearestInt());
+            // Lit boards under the feet before the pit begins.
+            const float pitTop=feetY+juce::jmax(5.f,16.f*stage.scale);
+            const float pitBottom=stageBounds.getBottom();
             const float depth=juce::jmax(0.f,pitBottom-pitTop);
-            if(depth>8.f){
-                g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(.65f),centreX,pitTop,
-                    Theme::bg,centreX,pitBottom,false));
+            if(depth>10.f){
+                // The stage floor is what the crowd is silhouetted against:
+                // a lit, slightly green-grey ramp that keeps the near rows
+                // readable without any figure being bright itself.
+                g.setGradientFill(juce::ColourGradient(
+                    juce::Colour(0xff1a2320),centreX,pitTop,
+                    juce::Colour(0xff05080a),centreX,pitBottom,false));
                 g.fillRect(stageBounds.getX(),pitTop,stageBounds.getWidth(),depth);
-                for(int layer=0;layer<4;++layer) {
-                    const int people=28-layer*4;
-                    const float base=pitTop+depth*(.48f+.25f*layer);
-                    const float unit=juce::jmin(stage.scale*(.36f+.14f*layer),depth/(72.f-10.f*layer));
-                    for(int i=0;i<people;++i) {
-                        const float phase=(float)i*1.731f+layer*2.3f;
-                        const float pulse=live?std::sin(crowdPhase*(.82f+.07f*(i%5))+phase)*activity:0.f;
-                        const float wave=live?std::sin(crowdPhase*1.5f-i*.23f)*activity:0.f;
-                        const float x=stageBounds.getX()+stageBounds.getWidth()*(i+.4f+(layer%2)*.27f)/people+pulse*2.f*unit;
-                        const float height=26.f+(float)((i*7+layer*3)%17);
-                        const float headY=base-height*unit-std::abs(pulse)*3.f*unit;
-                        const auto boneColour=porcelain.withAlpha(.16f+layer*.075f);
-                        const auto edge=Theme::bg.withAlpha(.96f);
-                        const float rx=(6.2f+(i%4)*.7f)*unit,ry=(7.f+(i%3)*1.2f)*unit;
-                        g.setColour(edge);g.fillEllipse(x-rx-1.f,headY-ry-1.f,2.f*rx+2.f,2.f*ry+2.f);
-                        g.setGradientFill(juce::ColourGradient(boneColour,x-rx,headY-ry,boneColour.darker(.7f),x+rx,headY+ry,false));
-                        g.fillEllipse(x-rx,headY-ry,2.f*rx,2.f*ry);
-                        g.setColour(boneColour);g.fillRoundedRectangle(x-rx*.6f,headY+ry*.6f,rx*1.2f,ry*.7f,2.f*unit);
-                        g.drawLine(x,headY+ry,x+pulse*unit,base,2.7f*unit);
-                        for(int rib=0;rib<4;++rib)g.drawEllipse(x-8.f*unit,headY+(13.f+rib*3.8f)*unit,16.f*unit,5.f*unit,1.1f*unit);
-                        g.setColour(edge.withAlpha(.50f));g.drawLine(x,headY-ry*.7f,x+unit,headY+ry*.3f,.8f*unit);
+                // Warm key spill from the performer's pool plus a cold balcony
+                // glow at the edges, both audio-tinted.
+                g.setGradientFill(juce::ColourGradient(
+                    Theme::green.withAlpha(.07f+.06f*activity),centreX,pitTop,
+                    Theme::bg.withAlpha(0.f),centreX,pitTop+depth*.55f,true));
+                g.fillRect(stageBounds.getX(),pitTop,stageBounds.getWidth(),depth*.6f);
+                ensureCrowd();
+                const float idleSway=.22f+.78f*activity;
+                for(int row=0;row<crowdLayers;++row) {
+                    const float t=crowdLayers>1?(float)row/(float)(crowdLayers-1):0.f;
+                    // Far rows are small and high, near rows large and cropped
+                    // by the bottom of the stage. The pit starts narrow so the
+                    // cemetery keeps its own band of picture above the crowd.
+                    const float heightPix=depth*(.22f+.42f*t);
+                    if(heightPix<6.f)continue;
+                    // Near figures are only slightly lighter than far ones, so
+                    // depth comes from size and overlap rather than brightness.
+                    const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.72f+.20f*t);
+                    const auto rimColour=porcelain.withAlpha(.06f+.16f*t);
+                    const auto edgeGlow=accent.withAlpha(.05f+.10f*activity);
+                    for(int i=0;i<crowdCount;++i) {
+                        const auto& figure=crowd[(size_t)i];
+                        if(figure.layer!=row)continue;
+                        const float wave=(.35f*std::sin(crowdPhase*.62f+figure.phase)
+                            +.65f*std::sin(crowdPhase*(.78f+.05f*figure.rate)+figure.phase))
+                            *idleSway;
+                        const float bob=std::sin(crowdPhase*1.28f+figure.phase*1.7f)*idleSway;
+                        const float hgt=heightPix*figure.sizeJitter;
+                        const float unit=hgt/figure.height;
+                        const float x=stageBounds.getX()+stageBounds.getWidth()*figure.x
+                            +wave*2.6f*unit;
+                        // Vertical jitter inside the row prevents ruled lines.
+                        const float headY=pitTop+depth*(.03f+.62f*t)+figure.yJitter*depth*.10f
+                            -std::abs(bob)*2.0f*unit;
+                        const float base=headY+hgt;
+                        const float ry=hgt*figure.headRatio;
+                        const float rx=ry*.86f;
+                        const float armW=juce::jmax(1.1f,hgt*.045f);
+                        const float shoulderY=headY+ry*1.35f;
+                        const float shoulderW=rx*1.9f;
+                        const juce::Graphics::ScopedSaveState tilt(g);
+                        g.addTransform(juce::AffineTransform::rotation(
+                            figure.tilt*.06f*idleSway,x,headY+ry));
+                        // Raised arms behind the skull.
                         for(int side:{-1,1}) {
                             const float sign=(float)side;
-                            const bool raised=(i+side+layer)%4!=0;
-                            const float sx=x+sign*8.f*unit,sy=headY+14.f*unit;
-                            const float ex=x+sign*(14.f+(float)((i+side+3)%3)*3.f)*unit;
-                            const float ey=headY+(raised?4.f:27.f)*unit;
-                            const float hx=ex+sign*(4.f+(float)(i%3)*2.f+wave*3.f)*unit;
-                            const float hy=ey+(raised?-18.f:6.f)*unit+wave*4.f*unit;
-                            g.setColour(edge);g.drawLine(sx,sy,ex,ey,4.f*unit);g.drawLine(ex,ey,hx,hy,4.f*unit);
-                            g.setColour(boneColour);g.drawLine(sx,sy,ex,ey,2.f*unit);g.drawLine(ex,ey,hx,hy,2.f*unit);
-                            g.fillEllipse(hx-2.f*unit,hy-2.f*unit,4.f*unit,4.f*unit);
-                            if(layer>0)for(int finger=0;finger<4;++finger)
-                                g.drawLine(hx+(finger-1.5f)*1.1f*unit,hy,
-                                    hx+(finger-1.5f)*1.8f*unit,hy-(4.f+(finger%2)*2.f)*unit,.8f*unit);
+                            const float sx=x+sign*rx*.80f;
+                            float ex,ey,hx,hy;
+                            if(figure.pose==0) {
+                                ex=x+sign*rx*1.8f;ey=headY+ry*.35f;
+                                hx=x+sign*(rx*2.1f+wave*rx*.5f);hy=headY-hgt*.24f;
+                            } else if(figure.pose==1) {
+                                const bool up=sign>0.f;
+                                ex=x+sign*rx*(up?1.5f:2.0f);ey=headY+ry*(up?.20f:1.20f);
+                                hx=ex+sign*rx*.35f;hy=ey+(up?-hgt*.26f:hgt*.09f);
+                            } else if(figure.pose==2) {
+                                ex=x+sign*rx*1.5f;ey=shoulderY+ry*.55f;
+                                hx=x+sign*rx*(.55f+std::abs(wave)*.55f);hy=ey-ry*.32f;
+                            } else {
+                                ex=x+sign*rx*1.6f;ey=headY+ry*.45f;
+                                hx=ex+sign*rx*.20f;hy=ey-hgt*.18f;
+                            }
+                            g.setColour(bodyColour);
+                            g.drawLine(sx,shoulderY,ex,ey,armW+2.2f);
+                            g.drawLine(ex,ey,hx,hy,armW+2.2f);
+                            g.setColour(rimColour.withMultipliedAlpha(.75f));
+                            g.drawLine(sx,shoulderY,ex,ey,armW*.7f);
+                            g.drawLine(ex,ey,hx,hy,armW*.7f);
+                            g.fillEllipse(hx-armW*1.1f,hy-armW*1.1f,armW*2.2f,armW*2.2f);
+                        }
+                        // Back, shoulders and neck as one silhouette; only the
+                        // shoulder line catches light, which is what sells a
+                        // crowd seen from behind.
+                        juce::Path body;
+                        body.startNewSubPath(x-shoulderW,base+hgt*.45f);
+                        body.lineTo(x-shoulderW*.96f,shoulderY+ry*.30f);
+                        body.quadraticTo(x-shoulderW*.58f,shoulderY-ry*.42f,x-rx*.62f,shoulderY);
+                        body.lineTo(x-rx*.66f,headY+ry*.60f);
+                        body.lineTo(x+rx*.66f,headY+ry*.60f);
+                        body.lineTo(x+rx*.62f,shoulderY);
+                        body.quadraticTo(x+shoulderW*.58f,shoulderY-ry*.42f,x+shoulderW*.96f,shoulderY+ry*.30f);
+                        body.lineTo(x+shoulderW,base+hgt*.45f);
+                        body.closeSubPath();
+                        g.setColour(bodyColour);
+                        g.fillPath(body);
+                        // Rim: shoulder crest then the skull dome.
+                        g.setColour(rimColour);
+                        juce::Path shoulders;
+                        shoulders.startNewSubPath(x-shoulderW*.94f,shoulderY+ry*.34f);
+                        shoulders.quadraticTo(x-shoulderW*.56f,shoulderY-ry*.44f,x-rx*.60f,shoulderY);
+                        g.strokePath(shoulders,juce::PathStrokeType(juce::jmax(.7f,hgt*.014f)));
+                        juce::Path shouldersR;
+                        shouldersR.startNewSubPath(x+rx*.60f,shoulderY);
+                        shouldersR.quadraticTo(x+shoulderW*.56f,shoulderY-ry*.44f,x+shoulderW*.94f,shoulderY+ry*.34f);
+                        g.strokePath(shouldersR,juce::PathStrokeType(juce::jmax(.7f,hgt*.014f)));
+                        // Skull dome: dark fill, then a thin lit crescent.
+                        g.setColour(bodyColour);
+                        g.fillEllipse(x-rx,headY-ry,2.f*rx,2.f*ry);
+                        juce::Path crescent;
+                        crescent.addCentredArc(x,headY,rx,ry,0.f,
+                            juce::MathConstants<float>::pi*1.06f,
+                            juce::MathConstants<float>::pi*1.94f,true);
+                        g.setColour(rimColour);
+                        g.strokePath(crescent,juce::PathStrokeType(juce::jmax(.7f,hgt*.016f)));
+                        // Jaw hinge and open maw read as a notch, not a face.
+                        if(ry>2.6f) {
+                            g.setColour(juce::Colour(0xff0b1012));
+                            g.fillEllipse(x-rx*.34f,headY+ry*.30f,rx*.68f,
+                                          ry*(.42f+.26f*std::abs(wave)));
+                            if(ry>4.5f) {
+                                g.setColour(rimColour.withMultipliedAlpha(.55f));
+                                g.drawLine(x-rx*.92f,headY-ry*.10f,x-rx*.92f,headY+ry*.55f,
+                                           juce::jmax(.6f,hgt*.016f));
+                            }
+                        }
+                        // Concert phone lights: the brightest thing in the pit.
+                        if(figure.phone>0) {
+                            const float px=x+(figure.phoneSide?1.f:-1.f)*shoulderW*1.02f
+                                +wave*rx*.3f;
+                            const float py=headY-hgt*.20f-std::abs(bob)*hgt*.10f;
+                            const float glow=juce::jlimit(.18f,1.f,.30f+.70f*activity);
+                            g.setColour(accent.withAlpha(.05f*glow));
+                            g.fillEllipse(px-5.2f*unit,py-5.2f*unit,10.4f*unit,10.4f*unit);
+                            g.setColour(juce::Colours::white.withAlpha(.16f*glow));
+                            g.fillEllipse(px-3.f*unit,py-3.f*unit,6.f*unit,6.f*unit);
+                            g.setColour(juce::Colours::white.withAlpha(.48f+.50f*glow));
+                            g.fillEllipse(px-unit,py-unit,2.f*unit,2.f*unit);
+                        }
+                        if(row>=crowdLayers-2) {
+                            g.setColour(edgeGlow);
+                            g.drawLine(x-shoulderW*.9f,shoulderY+ry*.4f,
+                                       x-shoulderW*.72f,base+hgt*.3f,
+                                       juce::jmax(.6f,hgt*.014f));
                         }
                     }
                 }
-                g.setColour(accent.withAlpha(.12f+.08f*activity));
+                // Cold haze rolling off the pit and a warm lip line.
+                g.setGradientFill(juce::ColourGradient(
+                    Theme::blue.withAlpha(.05f+.04f*activity),centreX,pitBottom,
+                    Theme::bg.withAlpha(0.f),centreX,pitTop+depth*.30f,false));
+                g.fillRect(stageBounds.getX(),pitTop+depth*.30f,
+                           stageBounds.getWidth(),pitBottom-pitTop-depth*.30f);
+                g.setColour(accent.withAlpha(.14f+.10f*activity));
                 g.drawHorizontalLine(juce::roundToInt(pitTop),stageBounds.getX(),stageBounds.getRight());
             }
         }
@@ -581,9 +506,64 @@ public:
     }
 private:
     skellpreset::stage::Backdrop backdrop;
+    skellpreset::stage::Performer performer;
     SkellPresetAudioProcessor& processor;
     bool audioFresh=false;
     MeterEnvelope inputMeter,outputMeter;
     float activityLevel=0.f,crowdPhase=0.f;
     std::array<float,128> cachedSignal{};
+
+    // Crowd figures are generated once and reused every frame. Keeping the
+    // geometry data here means paint() does no hashing or allocation, and the
+    // same figure keeps the same pose, depth and phone light across repaints.
+    struct CrowdFigure {
+        float x=0.f,height=26.f,headRatio=.115f,phase=0.f,rate=1.f,sizeJitter=1.f;
+        float yJitter=0.f,tilt=0.f;
+        int layer=0,pose=0;
+        float phone=0.f;
+        bool phoneSide=false;
+    };
+    static constexpr int crowdLayers=4;
+    static constexpr int crowdCount=150;
+    std::array<CrowdFigure,crowdCount> crowd{};
+    bool crowdBuilt=false;
+    void ensureCrowd() {
+        if(crowdBuilt)return;
+        crowdBuilt=true;
+        int index=0;
+        // Slots per row, farthest (top) to nearest (bottom). Distant rows hold
+        // more people at a tighter spacing; near rows are wider and sparser,
+        // which is what sells the perspective.
+        constexpr int perRow[crowdLayers]{46,38,33,31};
+        constexpr float spread[crowdLayers]{1.02f,1.08f,1.16f,1.28f};
+        for(int layer=0;layer<crowdLayers && index<crowdCount;++layer) {
+            const int people=perRow[layer];
+            for(int i=0;i<people && index<crowdCount;++i,++index) {
+                auto& f=crowd[(size_t)index];
+                const int seed=layer*997+i*131;
+                auto rnd=[seed](int offset){ return skellpreset::stage::hash01(seed+offset); };
+                f.layer=layer;
+                // Staggered spacing with deterministic jitter avoids a grid,
+                // and the wider near rows bleed past the stage edges.
+                const float even=(i+.5f+(rnd(0)-.5f)*.66f)/people;
+                f.x=.5f+(even-.5f)*spread[layer];
+                // Height is a modest jitter around the row size; the skull is
+                // always a small fraction of the figure so nobody reads as a
+                // giant balloon head.
+                f.height=24.f+rnd(7)*12.f;
+                f.headRatio=.098f+rnd(17)*.026f;
+                f.sizeJitter=.94f+rnd(27)*.12f;
+                f.phase=rnd(37)*6.2831f;
+                f.rate=.86f+rnd(47)*.34f;
+                f.pose=(int)(rnd(57)*4.f)%4;
+                f.yJitter=rnd(91)-.5f;
+                f.tilt=rnd(63)-.5f;
+                // Phone lights thin out with distance so the pit glitters
+                // toward the front rather than uniformly.
+                const float chance=layer==3?.30f:layer==2?.21f:layer==1?.13f:.08f;
+                if(rnd(67)<chance)f.phone=.5f+rnd(77)*.5f;
+                f.phoneSide=rnd(87)>.5f;
+            }
+        }
+    }
 };
