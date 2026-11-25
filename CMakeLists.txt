@@ -290,6 +290,7 @@ if(WIN32 AND SKELL_PRESET_HOST_TESTS)
         tests/probe_external_plugin.cpp Source/host/HostedVST3.h
         Source/host/FLNativeDiscovery.h)
     target_compile_definitions(SkellPluginDiagnostic PRIVATE
+        SKELL_STANDALONE_PLUGIN_DIAGNOSTIC=1
         JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_link_libraries(SkellPluginDiagnostic PRIVATE
         juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)

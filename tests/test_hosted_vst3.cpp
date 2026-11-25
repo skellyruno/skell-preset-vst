@@ -85,9 +85,12 @@ int main(int argc,char** argv) {
     const auto unsafe=fixture.getParentDirectory().getChildFile("FloopHole.vst3");
     std::vector<skellpreset::host::HostedVST3::EffectChoice> rejected;
     if(!skellpreset::host::HostedVST3::needsIsolatedHost(unsafe) ||
+       !skellpreset::host::HostedVST3::blocksNestedBridge(unsafe) ||
        !skellpreset::host::HostedVST3::needsIsolatedHost(unsafe.getSiblingFile("FloopHole_x64.vst3")) ||
-       host.load(0,unsafe,48000.,512).wasOk() ||
-       skellpreset::host::HostedVST3::inspectEffects(unsafe,rejected).wasOk() ||
+       host.load(0,unsafe,48000.,512).getErrorMessage()!=
+            skellpreset::host::HostedVST3::isolatedHostRequired().getErrorMessage() ||
+       skellpreset::host::HostedVST3::inspectEffects(unsafe,rejected).getErrorMessage()!=
+            skellpreset::host::HostedVST3::isolatedHostRequired().getErrorMessage() ||
        !rejected.empty() || host.get(0)!=nullptr)return 19;
     // Synthetic multi-class catalog exercises exact selection independently
     // of the installed Image-Line software. Never accept an instrument or

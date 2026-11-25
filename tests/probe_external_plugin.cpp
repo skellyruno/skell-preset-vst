@@ -27,14 +27,25 @@ int selfTest() {
         result[0].identifier!="mocksat_x64" ||
         !skellpreset::host::flnative::discover(root/"missing").empty())return 31;
     stage("pass read-only FL native discovery fixture (no DLL loaded)");
+    using Host=skellpreset::host::HostedVST3;
+    const auto bridge=juce::File(juce::String((root/"FloopHole_x64.vst3").u8string()));
+    if(!Host::needsIsolatedHost(bridge) || Host::blocksNestedBridge(bridge))return 32;
+    // The path is intentionally missing. The standalone diagnostic must
+    // reach file validation, not the nested-rack rejection.
+    std::vector<Host::EffectChoice> choices;
+    const auto scan=Host::inspectEffects(bridge,choices);
+    if(scan.wasOk() || scan.getErrorMessage()!="Choose an installed .vst3 bundle")return 33;
+    stage("pass diagnostic-only FloopHole policy (no DLL loaded)");
     return 0;
 }
 int probeVST3(const juce::File& path,juce::String requestedId) {
     using Host=skellpreset::host::HostedVST3;
-    if(Host::needsIsolatedHost(path)){
+    if(Host::blocksNestedBridge(path)){
         std::fprintf(stderr,"BLOCKED FloopHole needs an out-of-process host inside Skell Preset.\n");
         return 40;
     }
+    if(Host::needsIsolatedHost(path))
+        stage("standalone FloopHole probe; nested rack hosting remains blocked");
     stage("scan VST3 bundle");
     std::vector<Host::EffectChoice> choices;
     const auto inspected=Host::inspectEffects(path,choices);
@@ -44,7 +55,28 @@ int probeVST3(const juce::File& path,juce::String requestedId) {
     for(const auto& choice:choices)
         std::printf("EFFECT %s | %s\n",choice.name.toRawUTF8(),choice.identifier.toRawUTF8());
     if(choices.empty())return 42;
-    if(requestedId.isEmpty())requestedId=choices.front().identifier;
+    std::fflush(stdout);
+    // Never silently choose one native FL effect from a multi-class bridge.
+    if(requestedId.isEmpty()){
+        if(choices.size()!=1){
+            std::printf("SELECT: multiple audio effects found. Run again with the exact EFFECT name or class ID.\n");
+            return 47;
+        }
+        requestedId=choices.front().identifier;
+    }else{
+        juce::String resolved;
+        int matches=0;
+        for(const auto& choice:choices){
+            if(choice.identifier==requestedId || choice.name.equalsIgnoreCase(requestedId)){
+                resolved=choice.identifier;++matches;
+            }
+        }
+        if(matches!=1){
+            std::fprintf(stderr,"FAIL effect selection: name/class ID missing or ambiguous. Use an exact class ID from the list.\n");
+            return 48;
+        }
+        requestedId=resolved;
+    }
     stage("instantiate selected VST3 class");
     Host host;
     const auto loaded=host.load(0,path,48000.,256,requestedId);
@@ -95,6 +127,11 @@ int main(int argc,char** argv) {
             const auto exe=juce::File::getSpecialLocation(juce::File::currentExecutableFile);
             juce::ChildProcess child;
             juce::StringArray args{exe.getFullPathName(),"--report",log.getFullPathName(),"--vst3",path};
+            std::cout<<"Effect name (e.g. Fruity Reeverb 2), or Enter to list choices: "<<std::flush;
+            std::string effect;
+            std::getline(std::cin,effect);
+            const auto selected=juce::String::fromUTF8(effect.c_str()).trim();
+            if(selected.isNotEmpty())args.add(selected);
             std::cout<<"Testing in a separate process (25-second timeout)...\n"<<std::flush;
             if(!child.start(args,0)){
                 log.appendText("FAIL: could not launch diagnostic worker.\n");
@@ -114,7 +151,7 @@ int main(int argc,char** argv) {
         std::getline(std::cin,input);
         return 0;
     }
-    if(argc==5 && juce::String(argv[1])=="--report" && juce::String(argv[3])=="--vst3"){
+    if((argc==5 || argc==6) && juce::String(argv[1])=="--report" && juce::String(argv[3])=="--vst3"){
         // Redirect inside worker; no shell quoting, no full pipe deadlock.
         #if JUCE_WINDOWS
         FILE* stream=nullptr;
@@ -125,7 +162,8 @@ int main(int argc,char** argv) {
         std::setvbuf(stderr,nullptr,_IONBF,0);
         juce::ScopedJuceInitialiser_GUI gui;
         stage("interactive worker started");
-        const auto code=probeVST3(juce::File(juce::String::fromUTF8(argv[4])),{});
+        const auto code=probeVST3(juce::File(juce::String::fromUTF8(argv[4])),
+            argc==6?juce::String::fromUTF8(argv[5]):juce::String{});
         std::printf("EXIT %d\n",code);
         return code;
         #else
