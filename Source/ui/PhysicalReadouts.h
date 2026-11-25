@@ -32,6 +32,11 @@ inline Mapping exponential(double start,double ratio,const char* unit,int decima
 }
 inline Mapping forParameter(int type,int index,double sampleRate) {
     switch(type) {
+        case 46:
+            if(index==0)return exponential(2000.,8.,"Hz",0);
+            if(index==1)return linear(-80.,80.,"dB",1);
+            if(index==2)return linear(0.,24.,"dB",1);
+            break;
         case 6:
             if(index==0)return linear(.15,6.,"s",2);
             if(index==1)return linear(12.,80.,"%",0);

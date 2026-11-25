@@ -35,7 +35,7 @@ inline juce::Rectangle<int> control(int type,int index) noexcept {
     if(type==30)return index<2?juce::Rectangle<int>{81+index*365,166,270,246}:
         juce::Rectangle<int>{81+(index-2)*365,439,270,58};
     if(type==17)return {37+index*216,225,190,237};
-    if(type==44 || type==45)return {38+index*216,178,188,227};
+    if(type==44 || type==45 || type==46)return {38+index*216,178,188,227};
     if(type==31)return {38+index*216,208,188,256};
     if(type==40 || type==42) {
         const int position=type==40?(index==3?2:index):(index==2?1:index==3?2:index);

@@ -18,7 +18,7 @@
 using skellpreset::registry::effects;
 using skellpreset::visual::LiveAudioScope;
 int main(){
-    static_assert(skellpreset::registry::count()==46);
+    static_assert(skellpreset::registry::count()==47);
     for(int id=0;id<skellpreset::registry::count();++id){
         const auto& effect=skellpreset::registry::at(id);
         SKELL_REQUIRE(effect.id==id);
@@ -48,6 +48,7 @@ int main(){
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(43).name)=="Vocal Feel Opto");
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(44).name)=="Vocal Feel Suite");
     SKELL_REQUIRE(std::string_view(skellpreset::registry::at(45).name)=="Skell Air");
+    SKELL_REQUIRE(std::string_view(skellpreset::registry::at(46).name)=="Skell De-Esser");
 
     LiveAudioScope scope;
     std::array<float,128> display{};

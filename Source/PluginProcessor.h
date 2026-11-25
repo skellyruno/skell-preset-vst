@@ -22,7 +22,8 @@
 #include "chain/MicModelDSP.h"
 #include "chain/SkelldizerDSP.h"
 #include "chain/SpectralPitchFormant.h"
-#include "chain/SkellAir.h"
+#include <SkellCore/backends/vocal/SkellAir.h>
+#include <SkellCore/backends/vocal/ClassicDeEsser.h>
 #include "chain/VoxRackFX.h"
 #include "chain/FactoryPresets.h"
 #include "chain/PresetPackage.h"
@@ -33,7 +34,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, VocalFeelOptoFX, VocalFeelSuiteFX, SkellAirFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, VocalFeelOptoFX, VocalFeelSuiteFX, SkellAirFX, SkellDeEsserFX, NumberOfModules };
     static constexpr int slotCount=16;
     static bool supportsWetSidechain(int type) noexcept {
         return type==Reverb || type==VoxRackRoom || type==Delay ||
@@ -189,6 +190,7 @@ private:
         skellpreset::dsp::AdaptiveNoiseControl noiseControl;
         skellpreset::dsp::SpectralPitchFormant studioPitch;
         skell::research::SkellAir skellAir;
+        skell::research::ClassicDeEsser skellDeEsser;
         skellpreset::dsp::StereoSampleDelay pitchDry;
         skellpreset::dsp::Delay delay;
         skellpreset::studio::StereoDelay studioDelay;
@@ -238,6 +240,7 @@ private:
         std::atomic<float>* extension10=nullptr;
         std::atomic<float>* extension11=nullptr;
         std::atomic<float>* extension12=nullptr;
+        std::atomic<float>* extension13=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
