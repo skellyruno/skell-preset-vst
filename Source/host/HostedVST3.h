@@ -168,10 +168,12 @@ public:
         juce::OwnedArray<juce::PluginDescription> descriptions;
         // Some VST3 bundles publish more than one processor, so always scan.
         juce::VST3PluginFormat fallback;
-        if(!scanned)fallback.findAllTypesForFile(descriptions,path.getFullPathName());
-        const auto* chosen=scanned && !scanned->isInstrument &&
-            scanned->fileOrIdentifier==path.getFullPathName() && classKey(*scanned)==identifier
-            ?scanned:chooseEffect(descriptions,identifier);
+        const bool cached=scanned && !scanned->isInstrument &&
+            scanned->fileOrIdentifier.isNotEmpty() &&
+            juce::File::isAbsolutePath(scanned->fileOrIdentifier) &&
+            juce::File(scanned->fileOrIdentifier)==path && classKey(*scanned)==identifier;
+        if(!cached)fallback.findAllTypesForFile(descriptions,path.getFullPathName());
+        const auto* chosen=cached?scanned:chooseEffect(descriptions,identifier);
         // JUCE VST3 scans may report zero channels until the plug-in has been
         // instantiated; VST3 buses can also be dynamic. Do not reject a
         // valid audio effect using its uninitialized scanner channel counts.
@@ -186,11 +188,12 @@ public:
         juce::String error;
         auto instance=formats.createPluginInstance(*chosen,std::max(sr,8000.),
                                                    std::max(block,64),error);
-        if(!instance)return juce::Result::fail(error.isNotEmpty()?error:"Could not instantiate VST3");
+        if(!instance)return juce::Result::fail("Instantiate "+chosen->name+" / "+chosen->manufacturerName+": "+
+            (error.isNotEmpty()?error:juce::String("Could not instantiate VST3")));
         if(isSkellPresetProductName(instance->getName()))
             return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
         const auto buses=configureMainStereoBuses(*instance);
-        if(buses.failed())return buses;
+        if(buses.failed())return juce::Result::fail("Bus negotiation for "+chosen->name+": "+buses.getErrorMessage());
         instance->setPlayHead(&transport); // stable, owned copy of DAW timing
         instance->prepareToPlay(std::max(sr,8000.),std::max(block,64));
         const int latency=instance->getLatencySamples();

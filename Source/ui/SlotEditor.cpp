@@ -1676,7 +1676,12 @@ void SlotEditor::refreshIfChanged() {
             lastEqControls[(size_t)k]=v;
         }
     }
-    if(type==SkellPresetAudioProcessor::ExternalVST3)syncEmbeddedEditor();
+    if(type==SkellPresetAudioProcessor::ExternalVST3){
+        syncEmbeddedEditor();
+        const bool inlineShown=embeddedEditor && embeddedEditor->isVisible();
+        const auto caption=inlineShown?"DETACH UI":"OPEN UI";
+        if(editExternal.getButtonText()!=caption)editExternal.setButtonText(caption);
+    }
     if(livePanel.isVisible())livePanel.update(processor,slot);
     liveView.setButtonText(livePanel.isVisible()?"CLEAN":"VISUAL");
     if(duckPanel.isVisible()){
@@ -1968,8 +1973,8 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
         // Do not paint a fake effect face behind a real native child window.
         if(!embeddedEditor || !embeddedEditor->isVisible()) {
-            const auto hint=embeddedFitRejected?"EDITOR TOO LARGE / DETACH UI":
-                processor.hasHostedVST3(slot)?"OPEN PLUGIN UI / DETACH UI":"LOAD A VST3 EFFECT";
+            const auto hint=embeddedFitRejected?"FIXED-SIZE NATIVE EDITOR / OPEN UI":
+                processor.hasHostedVST3(slot)?"OPEN PLUGIN UI":"LOAD A VST3 EFFECT";
             Theme::fittedText(g,hint,{25,240,856,40},15.f,Theme::muted,true,juce::Justification::centred);
         }
         return;

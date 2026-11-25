@@ -1223,6 +1223,86 @@ int studioSmoke() {
         std::printf("PASS: compiled Studio Delay wet return ducked %.1f dB while dry vocal stays unity; zero new latency\n",
                     10.*std::log10(std::max(1.e-8,with[0]/without[0])));
     }
+    // Real compiled processor: independent sends must preserve the dry
+    // signal, not feed into each other, and respect serial rack PDC.
+    {
+        using P=SkellPresetAudioProcessor;
+        constexpr int frames=8192,blockSize=256;
+        auto renderSends=[=](bool delayOn,bool dubOn,bool latency) {
+            auto p=std::make_unique<P>();p->clearRackToEmpty();
+            auto set=[&](const juce::String& id,float value) {
+                if(auto* param=p->state.getParameter(id))param->setValueNotifyingHost(param->convertTo0to1(value));
+            };
+            if(delayOn){
+                p->setSlotType(0,P::Delay);p->setSlotOn(0,true);
+                p->setSlotParam(0,0,0.f);p->setSlotParam(0,1,0.f);
+                set("s1_parallelReturn",1.f);set("s1_wet",.5f);
+            }
+            if(dubOn){
+                p->setSlotType(1,P::AdlibDoubler);p->setSlotOn(1,true);
+                set("s2_parallelReturn",1.f);set("s2_wet",.5f);
+            }
+            if(latency){p->setSlotType(2,P::StudioPitchFormantFX);p->setSlotOn(2,false);}
+            p->prepareToPlay(48000.,blockSize);
+            const int expected=latency?skellpreset::dsp::SpectralPitchFormant::latencySamples:0;
+            if(p->getLatencySamples()!=expected)return std::vector<float>{};
+            juce::AudioBuffer<float> audio(2,blockSize);juce::MidiBuffer midi;
+            for(int i=0;i<24;++i){audio.clear();p->processBlock(audio,midi);}
+            std::vector<float> result;result.reserve(frames);
+            for(int i=0;i<frames;i+=blockSize){
+                audio.clear();
+                if(i==0){audio.setSample(0,0,.25f);audio.setSample(1,0,.25f);}
+                p->processBlock(audio,midi);
+                for(int n=0;n<blockSize;++n)result.push_back(audio.getSample(0,n));
+            }
+            p->releaseResources();return result;
+        };
+        const auto dry=renderSends(false,false,false),delay=renderSends(true,false,false),
+            dub=renderSends(false,true,false),both=renderSends(true,true,false),
+            aligned=renderSends(true,true,true);
+        if(dry.size()!=frames || delay.size()!=frames || dub.size()!=frames ||
+           both.size()!=frames || aligned.size()!=frames)return 161;
+        const int lag=skellpreset::dsp::SpectralPitchFormant::latencySamples;
+        if(std::abs(dry[0]-.25f)>1.e-5f || std::abs(both[0]-dry[0])>1.e-5f)return 162;
+        double delayEnergy=0.,dubEnergy=0.;
+        for(int n=0;n<frames;++n){
+            if(!std::isfinite(both[(size_t)n]) || !std::isfinite(aligned[(size_t)n]))return 163;
+            const float d=delay[(size_t)n]-dry[(size_t)n],u=dub[(size_t)n]-dry[(size_t)n];
+            delayEnergy+=d*d;dubEnergy+=u*u;
+            if(std::abs(both[(size_t)n]-(dry[(size_t)n]+d+u))>2.e-5f)return 164;
+            const float expected=n>=lag?both[(size_t)(n-lag)]:0.f;
+            if(std::abs(aligned[(size_t)n]-expected)>2.e-5f)return 165;
+        }
+        if(delayEnergy<1.e-6 || dubEnergy<1.e-6)return 166;
+        std::printf("PASS: parallel delay/dub independence, dry impulse and %d-sample rack PDC\n",lag);
+    }
+    {
+        auto p=std::make_unique<SkellPresetAudioProcessor>();p->clearRackToEmpty();
+        p->setSlotType(0,SkellPresetAudioProcessor::Delay);p->setSlotOn(0,true);
+        auto set=[&](const juce::String& id,float v){
+            if(auto* param=p->state.getParameter(id))param->setValueNotifyingHost(param->convertTo0to1(v));
+        };
+        set("micGateOn",1.f);set("micGateThreshold",-10.f);set("micGateDepth",1.f);
+        set("s1_duckOn",1.f);set("s1_duckDepth",.9f);set("s1_duckThreshold",-60.f);
+        set("s1_duckRelease",50.f);
+        p->prepareToPlay(48000.,256);
+        auto measure=[&](int source){
+            set("s1_duckSource",(float)source);
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+            for(int i=0;i<220;++i){
+                for(int n=0;n<256;++n){audio.setSample(0,n,.03f);audio.setSample(1,n,.03f);}
+                p->processBlock(audio,midi);
+            }
+            return p->getSlotDuckReductionDb(0);
+        };
+        const float post=measure(0),pre=measure(1),postAgain=measure(0);
+        p->releaseResources();
+        if(!std::isfinite(pre) || pre<8.f || post>1.f || postAgain>1.f){
+            std::fprintf(stderr,"DETECTOR SOURCE: post %.2f pre %.2f post %.2f dB\n",post,pre,postAgain);
+            return 167;
+        }
+        std::printf("PASS: measured pre/post MIC detector difference %.2f dB\n",pre-post);
+    }
     // Exercise the FRONT-END mic gate through the actual JUCE audio callback.
     // It must be opt-in, zero-PDC, stereo linked, recallable, and bypass clean.
     processor->setSlotOn(0,false);

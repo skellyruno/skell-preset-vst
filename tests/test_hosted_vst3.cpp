@@ -95,7 +95,9 @@ int main(int argc,char** argv) {
        Host::chooseEffect(catalog,"unavailable")!=nullptr)return 18;
     std::vector<Host::EffectChoice> choices;
     if(Host::inspectEffects(fixture,choices).failed() || choices.size()!=1)return 19;
-    const auto loaded=host.load(0,fixture,48000.,512,choices[0].identifier);
+    // An unusable cached description must not suppress exact-class discovery.
+    auto stale=choices[0].description;stale.fileOrIdentifier="invalid-cache-path";
+    const auto loaded=host.load(0,fixture,48000.,512,choices[0].identifier,&stale);
     if(loaded.failed()) {
         std::fprintf(stderr,"Host instantiate failed: %s\n",
             loaded.getErrorMessage().toRawUTF8());
