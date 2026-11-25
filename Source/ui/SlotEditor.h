@@ -109,6 +109,11 @@ public:
     void testGraphGesture(juce::Point<float> point) {updateGraphNode(point);}
     // Rack double-click opens this search overlay; no duplicate selector.
     void openModulePicker();
+    void openSidechainControls() {
+        if(!SkellPresetAudioProcessor::supportsWetSidechain(processor.slotType(slot)))return;
+        dismissTransientOverlays();
+        duckPanel.setVisible(true);duckPanel.toFront(true);
+    }
     void openModulePickerForScreenshot() {openModulePicker();}
     // UI-only: prevent overlapping modal effect selectors when opening the MIC panel.
     void dismissTransientOverlays() {

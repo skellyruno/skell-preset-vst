@@ -70,6 +70,8 @@ public:
     static constexpr int wetControlLeft=149,wetControlRight=181;
     static constexpr int powerControlLeft=182,powerControlRight=206;
     bool testRackControlsAndWet();
+    bool testSidechainDock();
+    std::function<void(int)> onSidechainEdit;
     bool wetReadoutVisibleForTest(int physicalSlot) const noexcept {
         return hoveredWetSlot==physicalSlot || wetDragSlot==physicalSlot;
     }
@@ -120,4 +122,8 @@ private:
     void applyWetWheel(int physicalSlot,float deltaY); // host-gestured fine trim
     void toggleSlotPower(int physicalSlot);
     bool selectAndReplace(int row);
+    bool sidechainLinkMode=false;
+    juce::RangedAudioParameter* sidechainParameter(int physicalSlot) const;
+    bool sidechainLinked(int physicalSlot) const;
+    bool toggleSidechainLink(int physicalSlot);
 };

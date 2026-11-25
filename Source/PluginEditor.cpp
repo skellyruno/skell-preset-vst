@@ -53,6 +53,10 @@ public:
             idle.setVisible(false);
             slot.select(s);chain.setSelectedSlot(s);
         };
+        chain.onSidechainEdit=[this](int s){
+            if(chain.onSelection)chain.onSelection(s);
+            slot.openSidechainControls();
+        };
         chain.onClearSelection=[this]{
             editingIdle=true;
             micPanel.setVisible(false); // show complete Home deck, not stale MIC
@@ -901,6 +905,8 @@ public:
             issues.add("Removing an extra rack row changes stable physical IDs");
         if(!chain.testRackControlsAndWet())
             issues.add("Rack wet trim and green bypass dot did not update or restore host parameters");
+        if(!chain.testSidechainDock())
+            issues.add("Sidechain dock failed to link/unlink supported physical effects without changing rack wet/order");
         if(!chain.triggerReplaceForTest(0) || !slot.modulePickerVisibleForTest())
             issues.add("Rack double-click replacement did not open effect library");
         slot.openModulePicker();

@@ -133,6 +133,7 @@ void ChainPanel::cancelPointerGestures(){
 void ChainPanel::visibilityChanged(){
     if(!isVisible()){
         cancelPointerGestures();
+        sidechainLinkMode=false;
         contextOpen=false;contextHover=-1;
         wheelTargetSlot=-1;railWheelCarry=effectWheelCarry=0.f;
     }
@@ -200,9 +201,52 @@ bool ChainPanel::testRackControlsAndWet() {
         (enabled->load()>.5f)==wasOn;
     return hiddenAtIdle && correctWet && correctToggle && correctRestore;
 }
+juce::RangedAudioParameter* ChainPanel::sidechainParameter(int physicalSlot) const {
+    if(physicalSlot<0 || physicalSlot>=SkellPresetAudioProcessor::slotCount)return nullptr;
+    const int type=processor.slotType(physicalSlot);
+    if(!SkellPresetAudioProcessor::supportsWetSidechain(type))return nullptr;
+    return processor.state.getParameter("s"+juce::String(physicalSlot+1)+"_"+
+        (type==SkellPresetAudioProcessor::AdlibDoubler?"dubDuckOn":"duckOn"));
+}
+bool ChainPanel::sidechainLinked(int physicalSlot) const {
+    const auto* p=sidechainParameter(physicalSlot);
+    return p && p->getValue()>.5f;
+}
+bool ChainPanel::toggleSidechainLink(int physicalSlot) {
+    auto* p=sidechainParameter(physicalSlot);
+    if(!p)return false;
+    p->beginChangeGesture();
+    p->setValueNotifyingHost(p->getValue()>.5f?0.f:1.f);
+    p->endChangeGesture();
+    visualSnapshotValid=false;
+    repaint();
+    return true;
+}
+bool ChainPanel::testSidechainDock() {
+    bool found=false;
+    for(int row=0;row<processor.activeSlotCount();++row) {
+        const int id=processor.slotIdAt(row);
+        auto* p=sidechainParameter(id);
+        if(!p) {
+            if(toggleSidechainLink(id))return false;
+            continue;
+        }
+        found=true;
+        const bool old=sidechainLinked(id);
+        const float oldWet=slotWet(id);
+        const int oldType=processor.slotType(id);
+        const auto orderBefore=processor.slotIdAt(row);
+        const bool changed=toggleSidechainLink(id) && sidechainLinked(id)!=old;
+        const bool restored=toggleSidechainLink(id) && sidechainLinked(id)==old;
+        if(!changed || !restored || slotWet(id)!=oldWet ||
+           processor.slotType(id)!=oldType || processor.slotIdAt(row)!=orderBefore)return false;
+    }
+    return found;
+}
 namespace {
 constexpr int rowStart=47, rowStep=51, rowHeight=45;
 constexpr int addTop=472, addHeight=33;
+constexpr int dockTop=510;
 }
 void ChainPanel::clampScroll() {
     scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset);
@@ -227,6 +271,9 @@ void ChainPanel::paint(juce::Graphics& g) {
     }
     clampScroll();
     const int active=processor.activeSlotCount();
+    int links=0;
+    for(int row=0;row<active;++row)
+        if(sidechainLinked(processor.slotIdAt(row)))++links;
     Theme::text(g,"EFFECT RACK",{15,8,142,22},15,Theme::white,true);
     Theme::text(g,dockingDrag?"RELEASE TO DOCK":
         (dockedRight?"DRAG LEFT TO DOCK":"DRAG RIGHT TO DOCK"),
@@ -287,6 +334,16 @@ void ChainPanel::paint(juce::Graphics& g) {
             g.drawLine(px-5.f,py,px+5.f,py,1.5f);
             g.drawLine(px,py-5.f,px,py+5.f,1.5f);
             continue;
+        }
+        // Link state is the real host parameter, not a separate UI-only map.
+        const bool canLink=sidechainParameter(slot)!=nullptr;
+        const bool linked=canLink && sidechainLinked(slot);
+        if(linked || (sidechainLinkMode && canLink)) {
+            const auto ink=linked?Theme::green:Theme::muted;
+            g.setColour(ink.withAlpha(linked?.93f:.53f));
+            g.drawLine(5.f,(float)top+37.f,13.f,(float)top+37.f,1.2f);
+            g.fillEllipse(15.f,(float)top+34.f,5.f,5.f);
+            Theme::text(g,linked?"SC":"LINK",{31,top+30,45,12},9.f,ink,true);
         }
         // Thin bone engraving on each module face; no generic FL clone art.
         drawIcon(g,type,54,top+10);
@@ -389,6 +446,36 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
+    // The dock fits the unused footer without shrinking the eight-row viewport.
+    // Cable spine terminates in the real vocal-source link box; rack-side
+    // scrolling and left/right docking retain the same local geometry.
+    if(links>0) {
+        g.setColour(Theme::green.withAlpha(.57f));
+        int firstLinked=-1;
+        for(int v=0;v<visibleRows && scrollOffset+v<active;++v)
+            if(sidechainLinked(processor.slotIdAt(scrollOffset+v))){
+                firstLinked=rowStart+rowStep*v+37;break;
+            }
+        if(firstLinked>=0) {
+            g.drawLine(5.f,(float)firstLinked,5.f,(float)dockTop+13.f,1.25f);
+            g.drawLine(5.f,(float)dockTop+13.f,10.f,(float)dockTop+13.f,1.25f);
+        }
+    }
+    const auto dock=juce::Rectangle<float>(10.f,(float)dockTop,196.f,45.f);
+    g.setColour(Theme::panelAlt);g.fillRoundedRectangle(dock,5.f);
+    g.setColour((sidechainLinkMode?Theme::green:Theme::stroke).withAlpha(.7f));
+    g.drawRoundedRectangle(dock,5.f,.85f);
+    Theme::text(g,"SIDECHAIN",{18,dockTop+3,108,17},11.f,Theme::white,true);
+    const auto linkButton=juce::Rectangle<float>(137.f,(float)dockTop+3.f,62.f,19.f);
+    g.setColour(Theme::green.withAlpha(sidechainLinkMode?.28f:.08f));
+    g.fillRoundedRectangle(linkButton,4.f);
+    Theme::text(g,sidechainLinkMode?"DONE":"LINK",{137,dockTop+3,62,19},
+        10.f,Theme::green,true,juce::Justification::centred);
+    Theme::fittedText(g,"VOCAL  /  "+juce::String(links)+" SC",{18,dockTop+23,119,18},
+        10.f,links?Theme::green:Theme::muted,true);
+    const bool canEdit=sidechainParameter(selected)!=nullptr;
+    Theme::text(g,"EDIT",{143,dockTop+23,53,18},10.f,
+        canEdit?Theme::white:Theme::muted.withAlpha(.42f),true,juce::Justification::centred);
     // Reordering remains available through gestures and the context menu.
     // The visible FX movement/status strip is intentionally removed.
     if(contextOpen) {
@@ -438,7 +525,7 @@ void ChainPanel::refreshIfChanged() {
         // The previous 65536 stride collided when module IDs exceeded 15.
         // Use disjoint fields for physical ID, 45 types, on/off and wet.
         const int value=(slot<<20)|(processor.slotType(slot)<<12)|
-            (enabled && enabled->load()>.5f?2048:0)|(wetPercent<<4); // no 30-Hz per-row peak-driven repaints
+            (enabled && enabled->load()>.5f?2048:0)|(wetPercent<<4)|(sidechainLinked(slot)?1:0); // no 30-Hz per-row peak-driven repaints
         if(value!=lastVisual[(size_t)row])changed=true;
         lastVisual[(size_t)row]=value;
     }
@@ -537,6 +624,22 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
         return;
     }
     if(!e.mods.isLeftButtonDown() && !e.mods.isPopupMenu())return;
+    if(e.x>=10 && e.x<=206 && e.y>=dockTop && e.y<dockTop+45) {
+        if(e.mods.isPopupMenu() || e.getNumberOfClicks()!=1)return;
+        if(e.x>=137 && e.y>=dockTop+23) {
+            if(sidechainParameter(selected) && onSidechainEdit) {
+                sidechainLinkMode=false;
+                onSidechainEdit(selected);
+                repaint();
+            }
+        } else {
+            cancelPointerGestures();
+            sidechainLinkMode=!sidechainLinkMode;
+            grabKeyboardFocus();
+            repaint();
+        }
+        return;
+    }
     // Rail clicks/drag move only the viewport; no audio order changes.
     if(!e.mods.isPopupMenu() && processor.activeSlotCount()>visibleRows &&
        e.x>=205 && e.x<getWidth() &&
@@ -580,6 +683,13 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     }
     const auto slot=processor.slotIdAt(index);
     if(e.mods.isPopupMenu()){popupFor(slot,e.getScreenPosition());return;}
+    if(sidechainLinkMode && e.x<wetControlLeft) {
+        if(e.getNumberOfClicks()==1 && toggleSidechainLink(slot)) {
+            selected=slot;
+            if(onSelection)onSelection(slot);
+        }
+        return;
+    }
     if(e.x>=powerControlLeft && e.x<powerControlRight) {
         if(e.getNumberOfClicks()==1) {
             if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty) {
@@ -662,6 +772,7 @@ void ChainPanel::mouseDoubleClick(const juce::MouseEvent& e) {
     const int row=rowAt(e.y);
     if(row<0 || e.x<10 || e.x>powerControlRight)return;
     const int slot=processor.slotIdAt(row);
+    if(sidechainLinkMode && e.x<wetControlLeft)return;
     if(e.x>=powerControlLeft)return; // power is a single-click switch
     if(e.x>=wetControlLeft) {
         if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty)return;
@@ -691,6 +802,13 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         if(hovered!=contextHover){contextHover=hovered;repaint();}
         setMouseCursor(hovered>=0?juce::MouseCursor::PointingHandCursor:
                                 juce::MouseCursor::NormalCursor);
+        return;
+    }
+    if(e.x>=10 && e.x<=206 && e.y>=dockTop && e.y<dockTop+45) {
+        setTooltip(e.x>=137 && e.y>=dockTop+23?
+            "Open selected effect's sidechain controls":
+            "Link mode: click supported effect names to connect or disconnect the pre-rack vocal detector; Esc to finish.");
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
         return;
     }
     const int next=(e.x>=10 && e.x<=206)?rowAt(e.y):-1;
@@ -727,6 +845,14 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     } else if(next>=0) {
         const int physical=processor.slotIdAt(next);
+        if(sidechainLinkMode) {
+            setTooltip(sidechainParameter(physical)?
+                (sidechainLinked(physical)?"Disconnect vocal sidechain":"Connect vocal sidechain"):
+                "This effect does not yet support vocal sidechain");
+            setMouseCursor(sidechainParameter(physical)?juce::MouseCursor::PointingHandCursor:
+                juce::MouseCursor::NormalCursor);
+            return;
+        }
         const auto hosted=processor.slotType(physical)==SkellPresetAudioProcessor::ExternalVST3
             ?processor.hostedVST3Name(physical):juce::String{};
         setTooltip((hosted.isNotEmpty()?hosted+" / ":"")+
@@ -797,6 +923,7 @@ int ChainPanel::wheelRegionAt(int x,int y,bool shift) const{
     const int row=rowAt(y);
     if(row<0)return 0;
     if(x>=wetControlLeft && x<=wetControlRight)return 2;
+    if(sidechainLinkMode)return 0;
     if(x>=10 && x<wetControlLeft)return 1;
     return 0;
 }
@@ -828,6 +955,7 @@ bool ChainPanel::keyPressed(const juce::KeyPress& key){
         if(contextOpen){
             contextOpen=false;contextHover=-1;repaint();return true;
         }
+        if(sidechainLinkMode){sidechainLinkMode=false;repaint();return true;}
         return false;
     }
     if(contextOpen){
