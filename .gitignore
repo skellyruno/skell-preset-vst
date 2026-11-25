@@ -14,3 +14,8 @@
 /*.log
 
 /assets/
+
+# Private stereo checkpoint intake (never committed)
+_r6checkpoint/
+_r7checkpoint/
+SKELLY_*_PRIVATE_*.zip

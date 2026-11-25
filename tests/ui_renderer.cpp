@@ -743,6 +743,27 @@ int main(int argc, char** argv) {
         if(quick4 && extras) {
             // Two EXTRA real-editor scene PNGs. Quick4 remains four primary
             // screenshots and the contact sheet is unchanged.
+            // Output-stage separation: capture the actual STEREO dial at both
+            // audible extremes so widen/merge are verified in the real editor.
+            struct SeparationShot {const char* file;int raw;};
+            constexpr SeparationShot separationShots[]{
+                {"obsidian-stereo-wide-100.png",-96},
+                {"obsidian-stereo-mono-100.png",96}
+            };
+            for(const auto& shot:separationShots) {
+                processor.loadFactoryPreset(0);
+                // Drive the real host parameter exactly as automation would.
+                if(auto* p=processor.state.getParameter("stereoSeparation"))
+                    p->setValueNotifyingHost(p->convertTo0to1((float)shot.raw));
+                editor.configureForScreenshot(0,0,false);
+                const auto separation=skellcore::ui::headless::capture(editor,1168,688);
+                if(!separation.image.isValid() || separation.distinctColours<12 ||
+                   !skellcore::ui::headless::writePng(separation.image,
+                       folder.getChildFile(shot.file))) {
+                    std::fprintf(stderr,"Actual STEREO separation screenshot failed\n");
+                    ++failures;
+                }
+            }
             processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
             editor.configureForScreenshot(0,1,false);
             editor.showHomeForScreenshot();

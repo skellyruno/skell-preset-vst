@@ -12,6 +12,7 @@
 #include "chain/StudioChorusDSP.h"
 #include "chain/StudioNativeDSP.h"
 #include "chain/StudioDelayDSP.h"
+#include "chain/MixerStereoSeparation.h"
 #include "chain/VocalFeelOptoDSP.h"
 #include "chain/VocalFeelSuiteDSP.h"
 #include "chain/WetDuckerDSP.h"
@@ -97,6 +98,12 @@ public:
     void setSlotType(int slot,int type);
     // Decodes the backward-compatible legacy type + optional extended effect.
     int slotType(int slot) const noexcept;
+    // Message-thread query: which loaded effects a Simple macro actually
+    // modulates. Tone drives EQ gain, Punch compressor threshold, Space
+    // reverb/delay wet, Grit saturator/limiter drive. A macro with no target
+    // must be presented as inactive rather than as a working control.
+    juce::StringArray macroTargets(int macroIndex) const;
+    bool macroHasTarget(int macroIndex) const {return !macroTargets(macroIndex).isEmpty();}
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
@@ -260,6 +267,8 @@ private:
         std::atomic<float>* mix=nullptr;std::atomic<float>* output=nullptr;
         std::atomic<float>* gate=nullptr;std::atomic<float>* threshold=nullptr;
         std::atomic<float>* delta=nullptr;
+        // Native Stereo Enhancer separation of the final output stage.
+        std::atomic<float>* stereoSeparation=nullptr;
         std::array<std::atomic<float>*,4> macros{};
     } rawGlobal;
     std::array<RawSlot,slotCount> rawSlots;
@@ -279,6 +288,10 @@ private:
     juce::StringArray programIdentityListenerIds;
     juce::String name="Empty Rack";
     skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc;
+    // Native Stereo Enhancer separation matrix on the final output stage.
+    // Owned here (not per slot) so it applies after the whole vocal chain,
+    // including stereo modulation, delay and reverb, exactly once.
+    skellpreset::dsp::MixerStereoSeparation stereoSeparation;
     std::atomic<int> limiterLookahead{0};
     int currentReportedLatency=0;
     void updateHostLatency();

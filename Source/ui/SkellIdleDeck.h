@@ -124,7 +124,9 @@ public:
         if(w<160.f || h<160.f)return out;
         const float margin=juce::jmax(17.f,juce::jmin(46.f,w*.075f));
         const float bottom=juce::jmax(14.f,juce::jmin(40.f,h*.078f));
-        const float scopeHeight=juce::jmax(30.f,juce::jmin(70.f,h*.18f));
+        // Keep the trace compact so the performance stage owns the composition.
+        // Advanced mode gets a slim audio rail rather than a second empty panel.
+        const float scopeHeight=juce::jmax(26.f,juce::jmin(32.f,h*.095f));
         out.scope={margin,h-bottom-scopeHeight,
                    juce::jmax(1.f,w-2.f*margin),scopeHeight};
         // The stage above the trace is split into the performer's boards and a
@@ -137,9 +139,11 @@ public:
         // Keep enough room for the smallest supported figure before the pit
         // takes its share, so tiny frames still produce a valid layout.
         const float pitMax=juce::jmax(0.f,available-372.f*.30f);
-        const float pitHeight=juce::jmin(pitMax,juce::jlimit(24.f,168.f,stageBottom*.26f));
+        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,176.f,stageBottom*.30f));
         const float feet=stageBottom-pitHeight;
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
+            // Let the performer read as the headliner, using the space recovered
+            // from the compact trace and preserving a safe edge at every size.
             (w-2.f*margin)/345.f,(feet-stageTop)/372.f));
         out.originX=w*.5f-151.f*out.scale;
         out.originY=feet-372.f*out.scale;
