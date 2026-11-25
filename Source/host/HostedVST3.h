@@ -89,7 +89,7 @@ public:
        #endif
     }
 
-    struct EffectChoice {juce::String identifier,name,vendor;};
+    struct EffectChoice {juce::String identifier,name,vendor;juce::PluginDescription description;};
     static juce::String classKey(const juce::PluginDescription& description) {
         return description.createIdentifierString();
     }
@@ -124,7 +124,7 @@ public:
                isSkellPresetProductName(d->descriptiveName))continue;
             const auto key=classKey(*d);
             if(key.isEmpty() || chooseEffect(descriptions,key)!=d)continue;
-            choices.push_back({key,d->name.isNotEmpty()?d->name:d->descriptiveName,d->manufacturerName});
+            choices.push_back({key,d->name.isNotEmpty()?d->name:d->descriptiveName,d->manufacturerName,*d});
         }
         if(choices.empty())return juce::Result::fail("No supported audio effect classes found; check the bridge and licensed FL Studio installation.");
         return juce::Result::ok();
@@ -156,7 +156,7 @@ public:
         return juce::Result::ok();
     }
     juce::Result load(int slot,const juce::File& path,double sr,int block,
-                      const juce::String& identifier={}) {
+                      const juce::String& identifier={},const juce::PluginDescription* scanned=nullptr) {
         if(!valid(slot))return juce::Result::fail("Invalid rack slot");
         std::lock_guard<std::mutex> lock(lifecycle);
         reclaimRetiredLocked();
@@ -168,9 +168,10 @@ public:
         juce::OwnedArray<juce::PluginDescription> descriptions;
         // Some VST3 bundles publish more than one processor, so always scan.
         juce::VST3PluginFormat fallback;
-        fallback.findAllTypesForFile(descriptions,path.getFullPathName());
-        if(descriptions.isEmpty())return juce::Result::fail("No compatible audio VST3 effect found in bundle");
-        const auto* chosen=chooseEffect(descriptions,identifier);
+        if(!scanned)fallback.findAllTypesForFile(descriptions,path.getFullPathName());
+        const auto* chosen=scanned && !scanned->isInstrument &&
+            scanned->fileOrIdentifier==path.getFullPathName() && classKey(*scanned)==identifier
+            ?scanned:chooseEffect(descriptions,identifier);
         // JUCE VST3 scans may report zero channels until the plug-in has been
         // instantiated; VST3 buses can also be dynamic. Do not reject a
         // valid audio effect using its uninitialized scanner channel counts.
@@ -224,7 +225,7 @@ public:
         reclaimRetiredLocked();
         return juce::Result::ok();
        #else
-        (void)path;(void)sr;(void)block;(void)identifier;
+        (void)path;(void)sr;(void)block;(void)identifier;(void)scanned;
         return juce::Result::fail("External VST3 hosting is available only in Windows builds");
        #endif
     }

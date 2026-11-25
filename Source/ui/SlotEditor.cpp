@@ -160,6 +160,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         // Keep the current audio effect intact until a third-party bundle
         // successfully instantiates; cancel/failure must not mute the chain.
         externalBrowsePending=true;
+        hideEmbeddedEditor();
         installedBrowser.open();
         installedBrowser.toFront(true);
     };
@@ -187,6 +188,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         if(installedBrowser.isVisible())installedBrowser.hide();
         else {
             if(modulePicker.isVisible())modulePicker.hide();
+            hideEmbeddedEditor();
             installedBrowser.open();
         }
     };
@@ -924,6 +926,10 @@ void SlotEditor::releaseEmbeddedEditor(){
 }
 void SlotEditor::layoutEmbeddedEditor(){
     if(!embeddedEditor)return;
+    if(!hostedPresentation || !isShowing() || modulePicker.isVisible() ||
+       installedBrowser.isVisible() || hostedClassMenuOpen || duckPanel.isVisible()) {
+        hideEmbeddedEditor();return;
+    }
     auto& view=*embeddedEditor;
     const auto area=getLocalBounds().withTrimmedTop(85).reduced(18,6);
     if(area.isEmpty())return;
@@ -943,7 +949,14 @@ void SlotEditor::layoutEmbeddedEditor(){
     embeddedFitRejected=view.getWidth()>area.getWidth() || view.getHeight()>area.getHeight();
     if(embeddedFitRejected){view.setVisible(false);return;}
     view.setCentrePosition(area.getCentre());
-    if(!view.isVisible()){view.setVisible(true);view.setCentrePosition(area.getCentre());}
+    if(!view.isVisible()){
+        view.setVisible(true);
+        // Native attachment may renegotiate the dimensions; do not let the
+        // child cover the footer or the surrounding host controls.
+        embeddedFitRejected=view.getWidth()>area.getWidth() || view.getHeight()>area.getHeight();
+        if(embeddedFitRejected){view.setVisible(false);return;}
+        view.setCentrePosition(area.getCentre());
+    }
 }
 void SlotEditor::syncEmbeddedEditor(){
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::ExternalVST3){
@@ -952,6 +965,8 @@ void SlotEditor::syncEmbeddedEditor(){
     auto* instance=processor.hostedVST3InstanceForUI(slot);
     if(embeddedHost==instance && embeddedEditor){layoutEmbeddedEditor();return;}
     releaseEmbeddedEditor();
+    if(!hostedPresentation || !isShowing() || modulePicker.isVisible() ||
+       installedBrowser.isVisible() || hostedClassMenuOpen)return;
     if(!instance || !instance->hasEditor())return;
     // Do not take an editor already displayed by a floating host window.
     if(instance->getActiveEditor()!=nullptr)return;
@@ -959,9 +974,9 @@ void SlotEditor::syncEmbeddedEditor(){
     if(!view)return; // unsupported editor remains usable via window fallback
     embeddedHost=instance;
     embeddedEditor.reset(view);
-    addAndMakeVisible(*view);
+    view->setVisible(false);
+    addChildComponent(*view);
     layoutEmbeddedEditor();
-    view->toFront(false);
 }
 void SlotEditor::loadVST3FromFile(const juce::File& path) {
     if(path.getFullPathName().isEmpty())return;
@@ -976,10 +991,12 @@ void SlotEditor::loadVST3FromFile(const juce::File& path) {
     const int originalType=processor.slotType(target);
     juce::Component::SafePointer<SlotEditor> safe(this);
     auto finish=[safe,target,originalType,path,choices](int id){
-        if(!safe || safe->selectedSlot()!=target ||
+        if(!safe)return;
+        safe->hostedClassMenuOpen=false;
+        if(safe->selectedSlot()!=target ||
            safe->processor.slotType(target)!=originalType ||
            id<=0 || id>(int)choices.size())return;
-        const auto result=safe->processor.loadHostedVST3(target,path,choices[(size_t)id-1].identifier);
+        const auto result=safe->processor.loadHostedVST3(target,path,choices[(size_t)id-1].identifier,&choices[(size_t)id-1].description);
         if(result.failed())
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
                 "VST3 could not load",result.getErrorMessage());
@@ -993,6 +1010,7 @@ void SlotEditor::loadVST3FromFile(const juce::File& path) {
         const auto& choice=choices[(size_t)i];
         menu.addItem(i+1,choice.name+(choice.vendor.isNotEmpty()?"  /  "+choice.vendor:juce::String{}));
     }
+    hostedClassMenuOpen=true;hideEmbeddedEditor();
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),std::move(finish));
 }
 void SlotEditor::chooseVST3File() {
@@ -1458,7 +1476,7 @@ bool SlotEditor::testMatchFinishPages() {
 void SlotEditor::openModulePicker() {
     installedBrowser.hide();
     if(modulePicker.isVisible())modulePicker.hide();
-    else modulePicker.open(processor.slotType(slot));
+    else {hideEmbeddedEditor();modulePicker.open(processor.slotType(slot));}
 }
 SlotEditor::~SlotEditor(){endGraphGesture();releaseEmbeddedEditor();}
 void SlotEditor::select(int newSlot) {
@@ -1920,9 +1938,15 @@ void SlotEditor::paint(juce::Graphics&g) {
         ?processor.hostedVST3Name(slot):juce::String{};
     Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleName(type),
                       {21,29,500,38},25,Theme::white,true);
-    if(type==SkellPresetAudioProcessor::ExternalVST3 && embeddedFitRejected)
-        Theme::fittedText(g,"NATIVE EDITOR DOES NOT FIT — USE DETACH UI",{25,240,856,40},
-            15.f,Theme::muted,true,juce::Justification::centred);
+    if(type==SkellPresetAudioProcessor::ExternalVST3) {
+        // Do not paint a fake effect face behind a real native child window.
+        if(!embeddedEditor || !embeddedEditor->isVisible()) {
+            const auto hint=embeddedFitRejected?"EDITOR TOO LARGE / DETACH UI":
+                processor.hasHostedVST3(slot)?"OPEN PLUGIN UI / DETACH UI":"LOAD A VST3 EFFECT";
+            Theme::fittedText(g,hint,{25,240,856,40},15.f,Theme::muted,true,juce::Justification::centred);
+        }
+        return;
+    }
     // The hosted editor has its own top action buttons. Do not paint the
     // native selector prompt, category chip or signal dots underneath those
     // controls; it clips the third-party view at small UI scales.

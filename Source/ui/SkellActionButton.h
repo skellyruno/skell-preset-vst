@@ -49,18 +49,16 @@ public:
                 .scaled(reverse?-iconScale:iconScale,iconScale)
                 .translated(cx,cy));
             juce::Path arc;
-            arc.startNewSubPath(cx+10.2f,cy+7.f);
-            arc.cubicTo(cx+14.8f,cy-7.f,cx+2.f,cy-10.6f,cx-6.8f,cy-5.f);
-            arc.cubicTo(cx-10.f,cy-3.f,cx-10.8f,cy-1.f,cx-11.2f,cy+1.f);
-            g.setColour(enabled?(over?accent:Theme::white):Theme::muted.withAlpha(.34f));
-            g.strokePath(arc,juce::PathStrokeType(1.9f,
-                juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            arc.startNewSubPath(cx-9.f,cy-2.f);
+            arc.cubicTo(cx-3.f,cy-9.f,cx+12.f,cy-6.f,cx+11.f,cy+3.f);
+            arc.quadraticTo(cx+10.f,cy+8.f,cx+2.f,cy+8.f);
+            g.setColour(enabled?(over?accent:Theme::white):Theme::muted.withAlpha(.5f));
+            g.strokePath(arc,juce::PathStrokeType(2.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             juce::Path arrow;
-            arrow.startNewSubPath(cx-14.f,cy-5.5f);
-            arrow.lineTo(cx-4.6f,cy-2.1f);
-            arrow.lineTo(cx-13.0f,cy+4.9f);
-            arrow.closeSubPath();
-            g.fillPath(arrow);
+            arrow.startNewSubPath(cx-3.f,cy-10.f);
+            arrow.lineTo(cx-11.f,cy-2.f);
+            arrow.lineTo(cx-2.f,cy+1.f);
+            g.strokePath(arrow,juce::PathStrokeType(2.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             if(hasKeyboardFocus(true)){
                 g.setColour(accent.withAlpha(.85f));
                 g.drawRoundedRectangle(bounds.reduced(2.5f),4.f,1.25f);

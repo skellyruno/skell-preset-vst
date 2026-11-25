@@ -71,8 +71,11 @@ void PresetBrowser::paintPresetGrid(juce::Graphics& g,const std::vector<int>& en
         }
         const auto star=bounds.withLeft(bounds.getRight()-35.f).withHeight(35.f);
         g.setColour(Theme::bg.withAlpha(.8f));g.fillRoundedRectangle(star.reduced(3.f),5.f);
-        Theme::text(g,isFavorite(entry)?"★":"☆",star.toNearestInt(),20.f,
-                    isFavorite(entry)?Theme::green:Theme::white,true,juce::Justification::centred);
+        juce::Path glyph;
+        glyph.addStar(star.getCentre(),5,5.f,10.f);
+        g.setColour(isFavorite(entry)?Theme::green:Theme::white);
+        if(isFavorite(entry))g.fillPath(glyph);
+        else g.strokePath(glyph,juce::PathStrokeType(1.5f));
         const auto name=entry>=0?processor.getProgramName(entry):userPresets[(size_t)(-entry-1)].getFileNameWithoutExtension();
         const auto card=directoryCardBounds(i);
         Theme::fittedText(g,name,{card.getX()+10,card.getBottom()-43,card.getWidth()-20,22},

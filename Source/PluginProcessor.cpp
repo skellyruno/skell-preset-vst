@@ -730,9 +730,10 @@ juce::StringArray SkellPresetAudioProcessor::macroTargets(int macroIndex) const 
     }
     return targets;
 }
-juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path,const juce::String& identifier) {
+juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File& path,const juce::String& identifier,
+                                                     const juce::PluginDescription* scanned) {
     if(slot<0 || slot>=slotCount)return juce::Result::fail("Invalid host slot");
-    const auto result=hosted.load(slot,path,rate,hostChunkCapacity,identifier);
+    const auto result=hosted.load(slot,path,rate,hostChunkCapacity,identifier,scanned);
     if(result.failed())return result;
     hostedEditorWindows[(size_t)slot].reset(); // close only after successful replacement
     const auto key=juce::String(slot+1);
@@ -891,7 +892,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             c.studioEqEnabled[(size_t)k]=raw.studioEqOn[(size_t)k]->load()>.5f;
         }
         auto& e=engines[(size_t)s];
-        if(previousType!=c.type && (previousType==AdlibDoubler || c.type==AdlibDoubler))
+        if(previousType!=c.type && (supportsWetSidechain(previousType) || supportsWetSidechain(c.type)))
             e.voiceDuck.prepare(rate);
         if(c.type==Limiter || c.type==StudioLimiterFX)e.limiter.setTiming(c.limitAttack,c.limitRelease);
         if(supportsWetSidechain(c.type))
@@ -1362,7 +1363,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     default:break;
                 }
-                if(c.type==AdlibDoubler) {
+                if(c.type==AdlibDoubler || c.type==Delay) {
                     wetL=skellpreset::dsp::duckDubReturn(wetL,duckGain);
                     wetR=skellpreset::dsp::duckDubReturn(wetR,duckGain);
                 } else if(duckGain<1.f && c.type!=StudioDelayFX) {

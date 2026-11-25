@@ -111,7 +111,8 @@ public:
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
-    juce::Result loadHostedVST3(int slot,const juce::File& path,const juce::String& identifier={});
+    juce::Result loadHostedVST3(int slot,const juce::File& path,const juce::String& identifier={},
+                                const juce::PluginDescription* scanned=nullptr);
     void openHostedVST3Editor(int slot);
     void closeHostedVST3Editors();
     juce::String hostedVST3Name(int slot) const {return hosted.getName(slot);}

@@ -59,6 +59,7 @@ public:
         };
         chain.onClearSelection=[this]{
             editingIdle=true;
+            slot.setHostedEditorPresentation(false);
             micPanel.setVisible(false); // show complete Home deck, not stale MIC
             slot.dismissTransientOverlays();
             chain.setSelectedSlot(-1);
@@ -86,7 +87,7 @@ public:
         preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
         preset.onClick=[this]{
             micPanel.setVisible(false);
-            if(browser.isVisible())browser.setVisible(false);else browser.open();
+            if(browser.isVisible())browser.setVisible(false);else {slot.setHostedEditorPresentation(false);browser.open();}
         };
         style(preset);addAndMakeVisible(preset);
         micButton.setButtonText("MIC");
@@ -94,7 +95,7 @@ public:
         style(micButton);addAndMakeVisible(micButton);
         micButton.onClick=[this] {
             if(browser.isVisible())browser.setVisible(false);
-            if(!micPanel.isVisible())slot.dismissTransientOverlays();
+            if(!micPanel.isVisible()){slot.setHostedEditorPresentation(false);slot.dismissTransientOverlays();}
             micPanel.refresh();
             micPanel.setVisible(!micPanel.isVisible());
             if(micPanel.isVisible())micPanel.toFront(true);
@@ -248,6 +249,7 @@ public:
             micPanel.setVisible(false);
             if(settingsPanel.isVisible())settingsPanel.close();
             else {
+                slot.setHostedEditorPresentation(false);
                 refreshWorldLinkStatus();
                 settingsPanel.open(sizeSelect.getSelectedId()-1);
             }
@@ -1227,7 +1229,7 @@ public:
         brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,340.f);
-        const float titleX=75.f,titleY=15.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
+        const float titleX=75.f,titleY=21.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
         wordmark.draw(g,{titleX,titleY,titleW,titleH});
         const int subY=juce::roundToInt(titleY+titleH-1.f);
         juce::AttributedString edition;edition.append("v.01",Theme::font(9.5f,true),Theme::green);
@@ -1393,8 +1395,8 @@ public:
         viewSwitch.setBounds(758,27,214,37);
         // Bounded message-thread preset history in the top bar.
         // The two small actions never obscure the Power / Settings group.
-        undo.setBounds(990,34,27,24);
-        redo.setBounds(1024,34,27,24);
+        undo.setBounds(987,29,32,32);
+        redo.setBounds(1025,29,32,32);
         micButton.setBounds(0,0,44,36);
         micButton.setVisible(false);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
@@ -1482,13 +1484,15 @@ public:
         // the lit half always mirrors the real "mode" parameter.
         viewSwitch.setAdvanced(display!=0,false);
         viewSwitch.setTooltip(display==0?
-            "Simple workspace active; click ADVANCED for the full effect chain":
-            "Advanced workspace active; click SIMPLE for the four macros");
+            "Simple workspace active; click to go Advanced":
+            "Advanced workspace active; click to go Simple");
         powerButton.setBypassed(bypass);
         // UI state must reflect the current host/program state *now*, not at
         // the next 30Hz timer tick. This also prevents stale module names
         // during screenshot capture and fast A/B preset auditioning.
         chain.refreshIfChanged();
+        slot.setHostedEditorPresentation(display==1 && !bypass && !editingIdle &&
+            !browser.isVisible() && !settingsPanel.isVisible() && !micPanel.isVisible());
         slot.refreshIfChanged();
         resized();repaint();
     }
@@ -1513,6 +1517,8 @@ public:
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         const int display=m==3?previousMode:(m==0?0:1);
         if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
+        slot.setHostedEditorPresentation(display==1 && m!=3 && !editingIdle &&
+            !browser.isVisible() && !settingsPanel.isVisible() && !micPanel.isVisible());
         if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
         if(display==0)syncMasterReadouts(); // host automation fallback, changes only
         const auto now=juce::Time::getMillisecondCounter();
@@ -1646,7 +1652,7 @@ public:
         }
         if(key==juce::KeyPress::escapeKey&&browser.isVisible()){browser.setVisible(false);return true;}
         if(key==juce::KeyPress::escapeKey && slot.isVisible()){
-            editingIdle=true;idle.setVisible(true);chain.setSelectedSlot(-1);
+            editingIdle=true;slot.setHostedEditorPresentation(false);idle.setVisible(true);chain.setSelectedSlot(-1);
             idle.toFront(false);return true;
         }
         return false;

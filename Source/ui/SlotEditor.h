@@ -132,6 +132,10 @@ public:
     }
     bool modulePickerVisibleForTest() const noexcept {return modulePicker.isVisible();}
     bool hasEmbeddedEditorForTest() const noexcept {return embeddedEditor!=nullptr;}
+    void setHostedEditorPresentation(bool allowed) {
+        hostedPresentation=allowed;
+        if(!allowed)hideEmbeddedEditor();
+    }
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
     bool testExternalBrowseCancel();
@@ -227,6 +231,8 @@ private:
     // the original separate-window path without affecting DSP processing.
     std::unique_ptr<juce::AudioProcessorEditor> embeddedEditor;
     juce::AudioPluginInstance* embeddedHost=nullptr;
+    bool hostedPresentation=false,hostedClassMenuOpen=false;
+    void hideEmbeddedEditor(){if(embeddedEditor)embeddedEditor->setVisible(false);}
     bool embeddedFitRequested=false;
     bool embeddedFitRejected=false;
     void releaseEmbeddedEditor();

@@ -16,5 +16,7 @@ int main() {
     const float baseline=dry+(wet-dry)*mix;
     const float ducked=dry+(duckDubReturn(wet,.25f)-dry)*mix;
     if(baseline!=.375f||ducked!=.1875f)return 4;
-    std::puts("PASS send matrix: all modes, opt-in isolation, mono fold, dry-preserving dub return");
+    // Wet-only delay: ducking cannot reintroduce a direct impulse at 100% wet.
+    if(duckDubReturn(0.f,.1f)!=0.f || duckDubReturn(.75f,.2f)>.151f)return 5;
+    std::puts("PASS send matrix: all modes, opt-in isolation, mono fold, dry-preserving delay and dub returns");
 }
