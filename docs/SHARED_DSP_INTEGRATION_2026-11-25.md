@@ -1,0 +1,17 @@
+# Shared DSP integration — owner direction 2026-11-25
+
+Skell Preset is the modular rack for the standalone Skell plugins. One native DSP implementation per effect; standalone and rack wrappers own their own UI and host parameters. No nested VST3 is necessary for owned native effects. Keep released algorithms reproducible by immutable revision. Never update an installed binary in place or silently change a saved project's algorithm; new DSP must pass reference/CPU/latency/recall gates before promotion. Future dependency update automation should open draft PRs for each consumer, rebuild and test both wrappers, then require verified promotion. That automation is not implemented here.
+
+## First dependency: Skellay
+The real native code is in skellyruno/skellay, draft PR 1, revision 8a0904b99dba671195f139907e09ac86a09ad5f4. Optional CMake integration builds its exact Delay.cpp, FruityDelayBank.cpp and SkellayEngine.cpp, without the Skellay plugin/UI. Both portable and Windows PR CI now enable the shared-engine contract test. Local offline builds can opt out, or provide SKELLAY_SOURCE_DIR. A local override is developer-only and may differ from the pinned revision; CI should not override it. This is a build/test connection only: the existing StudioDelayFX, Delay and AdlibThrow processing routes are unchanged.
+
+Next: prepared block-level rack adapter, explicit Classic/Modern/Bank mode, wet return/dry routing, delay memory budget, tempo changes, tail handling and structural engine exchange, then real FST/FLP and aligned audio tests. Preserve legacy slot IDs, parameter ranges and recipe identity. Never allocate all full-range Bank engines for every empty slot; prepare only selected engines off the audio thread.
+
+## Skelldizer and gate
+Owner supplied maximus.rs, soundgoodizer.rs and limiter.rs. Use actual Maximus pre/post gain, curve table, low/mid/high band dynamics, saturation, master stage, lookahead and Soundgoodizer Amount before master. Preserve the four recovered A/B/C/D profiles; D processes only the mid band plus master. Exact dependency closure for Rust includes limiter detector, curve, menvelope, biquad, halfband, matrix, linear_phase and shared crate traits. Do not copy partial code and call it exact. Obtain complete owned crate or implement a verified native bridge from that source; licensing/provenance and dependencies must be checked before publishing it. Retain existing Skelldizer character and serialized controls as legacy sound path until parity and PDC tests pass. Existing standalone gate candidate is still unwired.
+
+## Visuals
+Added StageClock driven by elapsed milliseconds, independent of audio sample-counter cadence; pauses hidden and limits stall catchup. Portable 30/60 Hz mathematical clock test passed locally; exact header/test blobs checked. Actual timer remains 30 Hz, not a 60 FPS claim. Distant crowd path draws simplified silhouettes; full near rows remain. Actual rendering cost and new Quick4 screenshot remain unverified. JUCE 8.0.12 retrieval failed with github.com DNS; no current plugin render or Windows build in this turn.
+
+## Rollout
+Reuse owned engines in Skell Preset, Skell Studio and Sound Match only when each plugin's DSP is suitable for rack operation. Shared interfaces and update manifest should be maintained via SkellCore; start with Skellay, then Maximus/Soundgoodizer, then limiter gate. Inventory other effects before adding modules. Preserve unique UI per standalone, parameter IDs, old state and production versions. No merge before exact combined checks pass.

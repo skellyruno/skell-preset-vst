@@ -3,6 +3,7 @@
 #include "Theme.h"
 #include "GraveyardScene.h"
 #include "SkellPerformer.h"
+#include "StageClock.h"
 #include "../PluginProcessor.h"
 #include <array>
 #include <cmath>
@@ -23,7 +24,7 @@ public:
         if(audioFresh==fresh)return;
         audioFresh=fresh;
         if(!fresh){inputMeter={};outputMeter={};activityLevel=0.f;cachedSignal.fill(0.f);}
-        if(isVisible())repaint();
+        if(isShowing())repaint();
     }
     struct MeterEnvelope {
         float level=0.f;
@@ -61,8 +62,14 @@ public:
         // Smooth the measured animation on the UI timer, not during paint.
         // Fast attack and gentler release avoid flickering between frames.
         activityLevel=followActivity(activityLevel,target);
-        crowdPhase=std::fmod(crowdPhase+.055f+.13f*activityLevel,juce::MathConstants<float>::twoPi);
+
     }
+    void tickAnimation(double nowMs) {
+        if(!isShowing()){stageClock.pause();return;}
+        crowdPhase=static_cast<float>(stageClock.tick(nowMs,hasAudibleOutput()?activityLevel:0.f));
+        repaint();
+    }
+    void visibilityChanged() override {stageClock.pause();}
     static float followActivity(float previous,float next) noexcept {
         previous=std::isfinite(previous)?juce::jlimit(0.f,1.f,previous):0.f;
         next=std::isfinite(next)?juce::jlimit(0.f,1.f,next):0.f;
@@ -351,6 +358,19 @@ public:
                         const float armW=juce::jmax(1.1f,hgt*.045f);
                         const float shoulderY=headY+ry*1.35f;
                         const float shoulderW=rx*1.9f;
+                        // Distant silhouettes do not need sub-pixel anatomy,
+                        // multiple stroked paths or a rotated graphics context.
+                        // Near rows retain the full articulated skeleton art.
+                        if(ry<2.6f) {
+                            g.setColour(bodyColour);
+                            g.fillEllipse(x-rx,headY-ry,2.f*rx,2.f*ry);
+                            g.fillRoundedRectangle(x-shoulderW,shoulderY,
+                                2.f*shoulderW,juce::jmax(1.f,base-shoulderY),rx);
+                            g.setColour(rimColour);
+                            g.drawLine(x-shoulderW*.8f,shoulderY,x-rx,headY+ry,1.f);
+                            g.drawLine(x+rx,headY+ry,x+shoulderW*.8f,shoulderY,1.f);
+                            continue;
+                        }
                         const juce::Graphics::ScopedSaveState tilt(g);
                         g.addTransform(juce::AffineTransform::rotation(
                             figure.tilt*.06f*idleSway,x,headY+ry));
@@ -515,6 +535,7 @@ private:
     bool audioFresh=false;
     MeterEnvelope inputMeter,outputMeter;
     float activityLevel=0.f,crowdPhase=0.f;
+    skellpreset::stage::StageClock stageClock;
     std::array<float,128> cachedSignal{};
 
     // Crowd figures are generated once and reused every frame. Keeping the

@@ -1532,7 +1532,6 @@ public:
             lastScopeFrameTimeMs=now;
             idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());
             idle.setAudioFresh(count>0);
-            if(idle.isShowing())idle.repaint();
             // The former top LIVE status was removed; do not repaint the
             // static SKELL title/version every incoming scope update.
             const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
@@ -1545,12 +1544,15 @@ public:
                              lastScopeFrameTimeMs)>=400u) {
             // The host can stop sending blocks without resetting its scope
             // buffer. Clear the Stage LIVE indicator and drawn trace once;
-            // never repaint the idle animation continuously on silence.
+            // the visible stage has a separate elapsed-time animation clock.
             if(idle.hasFreshAudio()){
                 idle.setAudioFresh(false);
                 if(display==0)repaint(juce::Rectangle<int>(738,126,400,55));
             }
         }
+        // Motion does not depend on audio block cadence. Hidden views do not
+        // paint and resume without a time jump. Existing UI timer stays 30 Hz.
+        idle.tickAnimation(juce::Time::getMillisecondCounterHiRes());
     }
     // The rack and effect face never contain an implicit click-away area:
     // only the empty lane separating those boxes or the slim top/bottom

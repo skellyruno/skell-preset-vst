@@ -200,3 +200,13 @@ add_test(NAME SkellPresetStereoSeparationTest COMMAND SkellPresetStereoSeparatio
 add_executable(SkellPresetLimiterGateCandidateTest test_limiter_gate_candidate.cpp)
 target_compile_features(SkellPresetLimiterGateCandidateTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetLimiterGateCandidateTest COMMAND SkellPresetLimiterGateCandidateTest)
+
+add_executable(SkellPresetStageClockTest test_stage_clock.cpp)
+target_compile_features(SkellPresetStageClockTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetStageClockTest COMMAND SkellPresetStageClockTest)
+
+if(TARGET skellay_shared_native)
+    add_executable(SkellPresetSharedSkellayTest test_shared_skellay.cpp)
+    target_link_libraries(SkellPresetSharedSkellayTest PRIVATE skellay_shared_native)
+    add_test(NAME SkellPresetSharedSkellayTest COMMAND SkellPresetSharedSkellayTest)
+endif()

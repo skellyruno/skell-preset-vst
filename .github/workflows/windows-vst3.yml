@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Configure portable DSP/MATCH tests
-        run: cmake -S . -B build-test -DSKELL_PRESET_PORTABLE_ONLY=ON
+        run: cmake -S . -B build-test -DSKELL_PRESET_PORTABLE_ONLY=ON -DSKELL_PRESET_TEST_SHARED_SKELLAY=ON
       - name: Compile portable tests
         run: cmake --build build-test --parallel 2
       - name: Run portable regression suite
@@ -54,7 +54,7 @@ jobs:
           restore-keys: |
             skellpreset-windows-fetchcontent-
       - name: Configure JUCE 8 and SkellCore
-        run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON -DSKELL_PRESET_BUILD_UI_RENDERER=ON
+        run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON -DSKELL_PRESET_BUILD_UI_RENDERER=ON -DSKELL_PRESET_TEST_SHARED_SKELLAY=ON
       # Build the user-testable VST3 before unrelated heavy JUCE renderer,
       # nested-host and package-test executables. Production checks still run.
       - name: Compile shipping Windows VST3 first
