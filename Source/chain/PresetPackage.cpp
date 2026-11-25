@@ -70,6 +70,7 @@ juce::Result validate(const Document& d) {
         for(int k=0;k<8;++k)
             if(slot.studioEqKind[(size_t)k]<0 || slot.studioEqKind[(size_t)k]>4)
                 return juce::Result::fail("Invalid Studio EQ filter type");
+        if(slot.duckSource<0 || slot.duckSource>2)return juce::Result::fail("Invalid duck source");
         if(!finiteRange(slot.duckDepth,0.f,1.f) ||
            !finiteRange(slot.duckThreshold,-60.f,-12.f) ||
            !finiteRange(slot.duckRelease,50.f,1500.f) ||
@@ -136,6 +137,8 @@ juce::var toJson(const Document& d) {
         item->setProperty("duckOn",slot.duckOn);
         item->setProperty("rightFirst",slot.rightFirst);
         item->setProperty("dubDuckOn",slot.dubDuckOn);
+        item->setProperty("duckSource",slot.duckSource);
+        item->setProperty("parallelReturn",slot.parallelReturn);
         item->setProperty("duckDepth",slot.duckDepth);
         item->setProperty("duckThreshold",slot.duckThreshold);
         item->setProperty("duckRelease",slot.duckRelease);
@@ -315,6 +318,13 @@ juce::Result fromJson(const juce::var& root, Document& out) {
             const auto v=item.getProperty("dubDuckOn",{});
             if(!v.isBool())return juce::Result::fail("Invalid dub sidechain flag");
             slot.dubDuckOn=(bool)v;
+        }
+        if(hasJsonProperty(item,"duckSource") && !decodeInteger(item.getProperty("duckSource",{}),0,2,slot.duckSource))
+            return juce::Result::fail("Invalid duck source");
+        if(hasJsonProperty(item,"parallelReturn")) {
+            const auto flag=item.getProperty("parallelReturn",{});
+            if(!flag.isBool())return juce::Result::fail("Invalid parallel return flag");
+            slot.parallelReturn=(bool)flag;
         }
         if((hasJsonProperty(item,"duckDepth") &&
             !decodeFloat(item.getProperty("duckDepth",{}),0.f,1.f,slot.duckDepth)) ||

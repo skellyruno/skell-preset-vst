@@ -39,6 +39,9 @@ public:
                type==StudioDelayFX || type==AdlibThrow ||
                type==DuckingPingPongFX || type==AdlibDoubler;
     }
+    static bool supportsParallelReturn(int type) noexcept {
+        return type==Delay || type==VoxRackRoom || type==AdlibDoubler;
+    }
     static constexpr int defaultSlotCount=10;
     static constexpr int emptyRackProgramIndex=static_cast<int>(skellpreset::factoryPresets.size());
     static constexpr int customRackProgramIndex=emptyRackProgramIndex+1;
@@ -151,6 +154,10 @@ public:
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
+    template<size_t N> void getSlotScope(int slot,std::array<float,N>& input,std::array<float,N>& output) const noexcept {
+        const auto i=(size_t)juce::jlimit(0,slotCount-1,slot);
+        slotInputScope[i].snapshot(input);slotOutputScope[i].snapshot(output);
+    }
     float getSlotDuckReductionDb(int slot) const noexcept {
         return slotDuckReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
     }
@@ -221,11 +228,12 @@ private:
     skellpreset::host::HostedVST3 hosted;
     // Destroy floating native editors before their hosted processors.
     std::array<std::unique_ptr<juce::DialogWindow>,slotCount> hostedEditorWindows;
-    juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork,sidechainWork;
+    juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork,sidechainWork,rawDetectorWork,parallelWork;
     int hostChunkCapacity=512;
     struct Controls {
         int type=0;bool on=false;float wet=1;float eqLowCut=0,eqHighCut=0;
-        bool duckOn=false,rightFirst=false;
+        bool duckOn=false,rightFirst=false,parallelReturn=false;
+        int duckSource=0;
         float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
               duckAttack=12.f;
         float limitAttack=0.f,limitRelease=70.f;
@@ -252,7 +260,7 @@ private:
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
         std::atomic<float>* duckOn=nullptr,*duckDepth=nullptr;
-        std::atomic<float>* rightFirst=nullptr,*dubDuckOn=nullptr;
+        std::atomic<float>* rightFirst=nullptr,*dubDuckOn=nullptr,*duckSource=nullptr,*parallelReturn=nullptr;
         std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr,
                           *duckAttack=nullptr;
         std::atomic<float>* limitAttack=nullptr,*limitRelease=nullptr;
@@ -286,6 +294,7 @@ private:
         std::array<std::atomic<float>*,4> macros{};
     } rawGlobal;
     std::array<RawSlot,slotCount> rawSlots;
+    std::array<skellpreset::visual::LiveAudioScope,slotCount> slotInputScope,slotOutputScope;
     std::array<std::atomic<float>,slotCount> slotPeaks;
     std::array<std::atomic<float>,slotCount> slotGainReductionDb,slotDuckReductionDb;
     std::array<std::atomic<float>,slotCount> slotDeessReductionDb;
@@ -301,7 +310,7 @@ private:
     std::atomic<bool> suppressProgramIdentityUpdates{false};
     juce::StringArray programIdentityListenerIds;
     juce::String name="Empty Rack";
-    skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc;
+    skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc,parallelPdc;
     // Native Stereo Enhancer separation matrix on the final output stage.
     // Owned here (not per slot) so it applies after the whole vocal chain,
     // including stereo modulation, delay and reverb, exactly once.

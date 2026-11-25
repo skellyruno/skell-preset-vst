@@ -378,7 +378,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     duckOpen.onClick=[this] {
         if(!SkellPresetAudioProcessor::supportsWetSidechain(processor.slotType(slot)))return;
         const bool opening=!duckPanel.isVisible();
-        if(opening){modulePicker.setVisible(false);installedBrowser.setVisible(false);}
+        if(opening){modulePicker.setVisible(false);installedBrowser.setVisible(false);livePanel.setVisible(false);liveView.setButtonText("VISUAL");}
         duckPanel.setVisible(opening);
         if(opening)duckPanel.toFront(true);
     };
@@ -388,6 +388,20 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     duckPanel.addAndMakeVisible(duckClose);
     duckOn.setTooltip("Stereo-linked ducking from dry vocal, not from delay/reverb feedback");
     duckPanel.addAndMakeVisible(duckOn);
+    duckSource.addItem("POST MIC",1);duckSource.addItem("PRE MIC",2);duckSource.addItem("SLOT INPUT",3);
+    duckSource.setTooltip("Detector source: after MIC, before MIC, or this effect input");
+    duckPanel.addAndMakeVisible(duckSource);
+    parallelReturn.setTooltip("Independent post-MIC send, summed after the serial rack. Change while stopped.");
+    duckPanel.addAndMakeVisible(parallelReturn);
+    addAndMakeVisible(liveView);liveView.setVisible(false);
+    addChildComponent(livePanel);
+    liveView.setTooltip("Switch between the existing clean effect face and actual input/output traces");
+    liveView.onClick=[this]{
+        const bool open=!livePanel.isVisible();
+        dismissTransientOverlays();
+        livePanel.setVisible(open);liveView.setButtonText(open?"CLEAN":"VISUAL");
+        if(open){livePanel.update(processor,slot);livePanel.toFront(false);}
+    };
     for(auto* slider:{&duckDepth,&duckThreshold,&duckAttack,&duckRelease}) {
         slider->setSliderStyle(juce::Slider::LinearHorizontal);
         slider->setTextBoxStyle(juce::Slider::TextBoxRight,false,78,22);
@@ -1475,6 +1489,7 @@ bool SlotEditor::testMatchFinishPages() {
 }
 void SlotEditor::openModulePicker() {
     installedBrowser.hide();
+    livePanel.setVisible(false);liveView.setButtonText("VISUAL");
     if(modulePicker.isVisible())modulePicker.hide();
     else {hideEmbeddedEditor();modulePicker.open(processor.slotType(slot));}
 }
@@ -1492,9 +1507,10 @@ void SlotEditor::select(int newSlot) {
     graphSnapshotValid=false; // never leave the previous slot's power state
     if(modulePicker.isVisible())modulePicker.hide();
     installedBrowser.hide();
-    duckPanel.setVisible(false);
+    duckPanel.setVisible(false);livePanel.setVisible(false);liveView.setButtonText("VISUAL");
     graphSnapshotValid=false;
     eqQAttachment.reset();
+    duckSourceAttachment.reset();parallelReturnAttachment.reset();
     gateFloorAttachment.reset();
     duckOnAttachment.reset();
     rightFirstAttachment.reset();
@@ -1507,6 +1523,8 @@ void SlotEditor::select(int newSlot) {
         processor.state,prefix+(processor.slotType(slot)==SkellPresetAudioProcessor::AdlibDoubler?"dubDuckOn":"duckOn"),duckOn);
     rightFirstAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processor.state,prefix+"rightFirst",rightFirst);
+    duckSourceAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.state,prefix+"duckSource",duckSource);
+    parallelReturnAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"parallelReturn",parallelReturn);
     duckAttachments[0]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.state,prefix+"duckDepth",duckDepth);
     duckAttachments[1]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -1659,6 +1677,8 @@ void SlotEditor::refreshIfChanged() {
         }
     }
     if(type==SkellPresetAudioProcessor::ExternalVST3)syncEmbeddedEditor();
+    if(livePanel.isVisible())livePanel.update(processor,slot);
+    liveView.setButtonText(livePanel.isVisible()?"CLEAN":"VISUAL");
     if(duckPanel.isVisible()){
         duckPanel.setReduction(processor.getSlotDuckReductionDb(slot));
     }
@@ -1747,6 +1767,9 @@ void SlotEditor::refreshIfChanged() {
     upgradeEq.setVisible(false);
     modOrbButton.setVisible(false);modOrbButton.setBounds({});
     const bool hasSidechain=SkellPresetAudioProcessor::supportsWetSidechain(type);
+    liveView.setVisible(!external && type!=SkellPresetAudioProcessor::Empty);
+    if(!liveView.isVisible())livePanel.setVisible(false);
+    parallelReturn.setEnabled(SkellPresetAudioProcessor::supportsParallelReturn(type));
     duckOpen.setVisible(hasSidechain);
     if(!hasSidechain)duckPanel.setVisible(false);
     eqQSlider.setVisible(isPagedEQ(type));
@@ -1798,13 +1821,17 @@ void SlotEditor::resized() {
     suiteSpectrumButton.setBounds(721,161,132,27);
     rightFirst.setBounds(47,196,242,25);
     duckOpen.setBounds(708,106,157,28);
-    duckPanel.setBounds(505,136,353,262);
+    liveView.setBounds(708,27,122,31);
+    livePanel.setBounds(33,151,835,206);
+    duckPanel.setBounds(505,136,353,326);
     duckClose.setBounds(318,11,25,23);
     duckOn.setBounds(16,41,326,31);
     duckDepth.setBounds(108,80,232,30);
     duckThreshold.setBounds(108,121,232,30);
     duckAttack.setBounds(108,162,232,30);
     duckRelease.setBounds(108,203,232,30);
+    duckSource.setBounds(17,237,323,28);
+    parallelReturn.setBounds(17,271,323,28);
     studioGateFloor.setBounds(548,104,298,27);
     studioCompKnee.setBounds(548,104,298,27);
     loadExternal.setBounds(542,33,164,32);

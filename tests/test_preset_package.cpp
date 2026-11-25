@@ -57,6 +57,7 @@ int main(){
               && loaded.stereoSeparation==0
               && !loaded.slots[0].duckOn
               && !loaded.slots[0].rightFirst && !loaded.slots[0].dubDuckOn
+              && loaded.slots[0].duckSource==0 && !loaded.slots[0].parallelReturn
               && loaded.slots[0].duckDepth==.65f
               && loaded.slots[0].duckAttack==12.f
               && loaded.slots[0].limitAttack==0.f && loaded.slots[0].limitRelease==70.f,
@@ -78,6 +79,7 @@ int main(){
         slot.enabled=s%2==0;slot.wet=.15f+(float)s*.04f;
         slot.duckOn=s==2;slot.duckDepth=.73f;
         slot.rightFirst=s==2;slot.dubDuckOn=s==3;
+        slot.duckSource=s%3;slot.parallelReturn=s==3;
         slot.duckThreshold=-28.f;slot.duckRelease=480.f;
         slot.duckAttack=34.f;
         slot.limitAttack=1.25f;slot.limitRelease=227.f;
@@ -113,6 +115,7 @@ int main(){
           &&second.slots[2].duckOn &&!second.slots[3].duckOn
           &&second.slots[2].rightFirst && !second.slots[3].rightFirst
           &&!second.slots[2].dubDuckOn && second.slots[3].dubDuckOn
+          &&second.slots[2].duckSource==2 && second.slots[3].parallelReturn
           &&second.slots[2].duckDepth==.73f
           &&second.slots[2].duckThreshold==-28.f
           &&second.slots[2].duckRelease==480.f
@@ -332,6 +335,8 @@ int main(){
                 {false,"duckOn","duck-on","Reject explicit null wet sidechain on"},
                 {false,"rightFirst","right-first","Reject null right-first flag"},
                 {false,"dubDuckOn","dub-duck-on","Reject null dub sidechain flag"},
+                {false,"duckSource","duck-source","Reject null duck source"},
+                {false,"parallelReturn","parallel-return","Reject null parallel return flag"},
                 {false,"duckDepth","duck-depth","Reject null duck depth"},
                 {false,"duckThreshold","duck-threshold","Reject null duck threshold"},
                 {false,"duckRelease","duck-release","Reject null duck release"},

@@ -33,6 +33,8 @@ struct Slot {
     // Native v2 optional extension, default OFF on original archives.
     bool duckOn=false;
     bool rightFirst=false,dubDuckOn=false; // optional v2, legacy off
+    int duckSource=0;
+    bool parallelReturn=false;
     float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
           duckAttack=12.f;
     float limitAttack=0.f,limitRelease=70.f;

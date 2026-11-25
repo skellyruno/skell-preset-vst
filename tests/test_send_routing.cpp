@@ -1,6 +1,7 @@
 #include "../Source/chain/SendRouting.h"
 #include <array>
 #include <cstdio>
+#include <cmath>
 using namespace skellpreset::dsp;
 int main() {
     for(int mode=0;mode<4;++mode)for(bool first:{false,true}) {
@@ -18,5 +19,8 @@ int main() {
     if(baseline!=.375f||ducked!=.1875f)return 4;
     // Wet-only delay: ducking cannot reintroduce a direct impulse at 100% wet.
     if(duckDubReturn(0.f,.1f)!=0.f || duckDubReturn(.75f,.2f)>.151f)return 5;
-    std::puts("PASS send matrix: all modes, opt-in isolation, mono fold, dry-preserving delay and dub returns");
+    // Independent additive returns leave the serial dry path untouched.
+    const float parallelDry=.3f,delay=duckDubReturn(.4f,.5f)*.5f,room=duckDubReturn(.2f,.5f)*.5f;
+    if(std::abs((parallelDry+delay+room)-.45f)>1.e-6f)return 6;
+    std::puts("PASS send matrix: all modes, opt-in isolation, mono fold, dry-preserving returns");
 }

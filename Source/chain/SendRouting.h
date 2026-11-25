@@ -9,7 +9,7 @@ inline std::array<float,2> delaySendInput(float l,float r,int mode,bool rightFir
     if(mode==0)return {.5f*(l+r),.5f*(l+r)};
     return {l,r};
 }
-// AdlibDoubler and legacy Delay emit a delayed-only signal; the rack owns their dry blend.
+// AdlibDoubler, VoxRackRoom and legacy Delay emit wet-only signals; the rack owns their dry blend.
 // Duck just that return, not the dry signal or the delay history.
 inline float duckDubReturn(float delayed,float gain) noexcept {
     return gain<1.f?delayed*gain:delayed;
