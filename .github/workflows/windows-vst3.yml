@@ -139,6 +139,12 @@ jobs:
           if (-not $renderer) { throw 'Real-editor VST3 host smoke executable missing' }
           & $renderer.FullName --ui-external-host-smoke $fixture.FullName
           if ($LASTEXITCODE -ne 0) { throw "External VST3 UI loader regression failed: $LASTEXITCODE" }
+          $diagnostic = Get-ChildItem build -Recurse -File -Filter 'SkellPluginDiagnostic.exe' | Select-Object -First 1
+          if (-not $diagnostic) { throw 'Isolated external plugin diagnostic executable missing' }
+          & $diagnostic.FullName --self-test
+          if ($LASTEXITCODE -ne 0) { throw "File-only native FL discovery failed: $LASTEXITCODE" }
+          & $diagnostic.FullName --vst3 $fixture.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Separate-process VST3 probe failed: $LASTEXITCODE" }
       - name: Exercise Studio rack effects and native factory recall/audio/PDC/state
         shell: pwsh
         run: |
@@ -152,6 +158,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native factory recall/audio/PDC/state regression failed: $LASTEXITCODE" }
           & $renderer.FullName --lowend-override-smoke
           if ($LASTEXITCODE -ne 0) { throw "Factory 54 low-end override regression failed: $LASTEXITCODE" }
+      - name: Package isolated external-plugin diagnostic
+        shell: pwsh
+        run: |
+          $diagnostic = Get-ChildItem build -Recurse -File -Filter 'SkellPluginDiagnostic.exe' | Select-Object -First 1
+          if (-not $diagnostic) { throw 'Plugin diagnostic executable missing' }
+          $dest = Join-Path $PWD 'Skell-Plugin-Diagnostic-Windows'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -LiteralPath $diagnostic.FullName -Destination $dest -Force
+          Copy-Item -LiteralPath tools/diagnose-external-plugin.ps1 -Destination $dest -Force
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Skell-Plugin-Diagnostic-Windows
+          path: Skell-Plugin-Diagnostic-Windows/**
+          if-no-files-found: error
+          retention-days: 14
       - name: Package compiled Alchemist diagnostic renderer
         shell: pwsh
         run: |

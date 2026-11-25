@@ -263,4 +263,18 @@ if(WIN32 AND SKELL_PRESET_HOST_TESTS)
     target_link_libraries(SkellPresetHostProbe PRIVATE
         juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
     target_include_directories(SkellPresetHostProbe PRIVATE Source)
+
+    # Separate diagnostic executable: scan or instantiate external bundles in
+    # its own process, never inside FL Studio's VST3 callback. Not a product
+    # plugin, not part of shipping Skell-Preset bundle.
+    juce_add_console_app(SkellPluginDiagnostic PRODUCT_NAME "Skell Plugin Diagnostic")
+    juce_generate_juce_header(SkellPluginDiagnostic)
+    target_sources(SkellPluginDiagnostic PRIVATE
+        tests/probe_external_plugin.cpp Source/host/HostedVST3.h
+        Source/host/FLNativeDiscovery.h)
+    target_compile_definitions(SkellPluginDiagnostic PRIVATE
+        JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(SkellPluginDiagnostic PRIVATE
+        juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra)
+    target_include_directories(SkellPluginDiagnostic PRIVATE Source)
 endif()
