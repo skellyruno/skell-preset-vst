@@ -58,7 +58,7 @@ public:
     static bool needsIsolatedHost(const juce::File& path) {
         const auto name=path.getFileNameWithoutExtension()
             .toLowerCase().removeCharacters(" -_.");
-        return name=="floophole" || name.startsWith("floophole_");
+        return name.startsWith("floophole");
     }
     static juce::Result isolatedHostRequired() {
         return juce::Result::fail(

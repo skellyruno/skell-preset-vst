@@ -85,6 +85,7 @@ int main(int argc,char** argv) {
     const auto unsafe=fixture.getParentDirectory().getChildFile("FloopHole.vst3");
     std::vector<skellpreset::host::HostedVST3::EffectChoice> rejected;
     if(!skellpreset::host::HostedVST3::needsIsolatedHost(unsafe) ||
+       !skellpreset::host::HostedVST3::needsIsolatedHost(unsafe.getSiblingFile("FloopHole_x64.vst3")) ||
        host.load(0,unsafe,48000.,512).wasOk() ||
        skellpreset::host::HostedVST3::inspectEffects(unsafe,rejected).wasOk() ||
        !rejected.empty() || host.get(0)!=nullptr)return 19;
