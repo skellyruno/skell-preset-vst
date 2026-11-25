@@ -114,6 +114,13 @@ jobs:
           New-Item -ItemType Directory -Path $packageRoot | Out-Null
           Copy-Item -LiteralPath $vst.FullName -Destination $packageRoot -Recurse -Force
           Copy-Item -LiteralPath 'Skell-Preset-BUILD-INFO.txt' -Destination $packageRoot -Force
+      - name: Verify packaged Windows VST3 identity without executing it
+        shell: pwsh
+        run: |
+          & ./tools/verify-installed-skell-preset.ps1 -Root ./Skell-Preset-Windows-VST3 -BuildInfo ./Skell-Preset-BUILD-INFO.txt
+          if ($LASTEXITCODE -ne 0) { throw "Exact-binary packaged VST3 verification failed: $LASTEXITCODE" }
+          & ./tools/verify-installed-skell-preset.ps1 -Root ./Skell-Preset-Windows-VST3 -ExpectedSha256 ('0' * 64)
+          if ($LASTEXITCODE -ne 3) { throw "Hash mismatch detection regression failed: $LASTEXITCODE" }
       - name: Upload early Windows VST3 test preview
         uses: actions/upload-artifact@v5
         with:
@@ -167,6 +174,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Copy-Item -LiteralPath $diagnostic.FullName -Destination $dest -Force
           Copy-Item -LiteralPath tools/diagnose-external-plugin.ps1 -Destination $dest -Force
+          Copy-Item -LiteralPath tools/verify-installed-skell-preset.ps1 -Destination $dest -Force
       - uses: actions/upload-artifact@v5
         with:
           name: Skell-Plugin-Diagnostic-Windows
