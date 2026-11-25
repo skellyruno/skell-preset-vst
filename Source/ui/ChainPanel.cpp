@@ -279,6 +279,15 @@ void ChainPanel::paint(juce::Graphics& g) {
         g.setColour(Theme::muted.withAlpha(focused?.72f:.44f));
         for(int dot=0;dot<6;dot++)g.fillEllipse(18.f+(dot%2)*4.f,(float)top+12.f+(dot/2)*4.f,1.6f,1.6f);
         Theme::text(g,juce::String(row+1).paddedLeft('0',2),{32,top+9,21,18},11.5f,Theme::muted,true);
+        if(type==SkellPresetAudioProcessor::Empty) {
+            Theme::fittedText(g,"Add effect",{61,top+8,110,19},
+                11.6f,Theme::muted,true);
+            const float px=193.f,py=(float)top+19.f;
+            g.setColour(Theme::green.withAlpha(focused?.95f:.62f));
+            g.drawLine(px-5.f,py,px+5.f,py,1.5f);
+            g.drawLine(px,py-5.f,px,py+5.f,1.5f);
+            continue;
+        }
         // Thin bone engraving on each module face; no generic FL clone art.
         drawIcon(g,type,54,top+10);
         // Narrow, hardware-like row: effect / FL-style wet trim / power dot.
@@ -368,17 +377,17 @@ void ChainPanel::paint(juce::Graphics& g) {
         const float thumbH=railH*(float)visibleRows/(float)active;
         const float y=railY+(railH-thumbH)*(float)scrollOffset/(float)(active-visibleRows);
         g.setColour(Theme::panelAlt.brighter(.08f));
-        g.fillRoundedRectangle(205.f,railY,8.f,railH,3.f);
+        g.fillRoundedRectangle(208.f,railY,4.f,railH,2.f);
         g.setColour((railHovered || railDragging ? Theme::green : Theme::stroke)
             .withAlpha(.62f));
-        g.drawRoundedRectangle(205.f,railY,8.f,railH,3.f,.85f);
-        g.setColour(Theme::green.withAlpha(railDragging?1.f:railHovered?.92f:.67f));
-        g.fillRoundedRectangle(205.f,y,8.f,thumbH,3.f);
+        g.drawRoundedRectangle(208.f,railY,4.f,railH,2.f,.65f);
+        g.setColour(Theme::green.withAlpha(railDragging?.95f:railHovered?.75f:.40f));
+        g.fillRoundedRectangle(208.f,y,4.f,thumbH,2.f);
     }
     const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
     g.setColour(active==16?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
-    Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active+1)+"/16",
+    Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active)+"/16",
         {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
     // Reordering remains available through gestures and the context menu.
     // The visible FX movement/status strip is intentionally removed.
@@ -572,7 +581,14 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
     const auto slot=processor.slotIdAt(index);
     if(e.mods.isPopupMenu()){popupFor(slot,e.getScreenPosition());return;}
     if(e.x>=powerControlLeft && e.x<powerControlRight) {
-        if(e.getNumberOfClicks()==1)toggleSlotPower(slot);
+        if(e.getNumberOfClicks()==1) {
+            if(processor.slotType(slot)==SkellPresetAudioProcessor::Empty) {
+                selected=slot;
+                if(onSelection)onSelection(slot);
+                if(onReplaceRequest)onReplaceRequest(slot);
+                repaint();
+            } else toggleSlotPower(slot);
+        }
         return;
     }
     if(e.x>=wetControlLeft && e.x<=wetControlRight) {

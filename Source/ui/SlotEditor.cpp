@@ -1513,6 +1513,7 @@ void SlotEditor::refreshIfChanged() {
     const auto* power=processor.state.getRawParameterValue(prefix+"on");
     const bool powerOn=power && power->load()>.5f && type!=SkellPresetAudioProcessor::Empty;
     slotPower.setStatus(powerOn,type!=SkellPresetAudioProcessor::Empty);
+    slotPower.setVisible(type!=SkellPresetAudioProcessor::Empty);
     bool changed=!graphSnapshotValid || type!=lastType || powerOn!=lastPowerOn;
     // 0.5 dB steps bound GUI repaints. The meter is measured on the audio
     // callback and published atomically; no synthetic GR animation.
@@ -1853,6 +1854,20 @@ void SlotEditor::paint(juce::Graphics&g) {
     g.setColour(Theme::stroke.withAlpha(.60f));
     g.drawHorizontalLine(65,20.f,886.f);
     const int type=processor.slotType(slot);
+    if(type==SkellPresetAudioProcessor::Empty) {
+        Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),
+            {21,10,200,18},10,Theme::muted,true);
+        const auto add=juce::Rectangle<int>(333,204,240,90);
+        g.setColour(Theme::green.withAlpha(.10f));
+        g.fillRoundedRectangle(add.toFloat(),9.f);
+        g.setColour(Theme::green.withAlpha(.54f));
+        g.drawRoundedRectangle(add.toFloat(),9.f,1.f);
+        g.drawLine(445.f,231.f,461.f,231.f,1.8f);
+        g.drawLine(453.f,223.f,453.f,239.f,1.8f);
+        Theme::fittedText(g,"ADD EFFECT",{333,248,240,30},
+            17.f,Theme::white,true,juce::Justification::centred);
+        return;
+    }
     const auto family=juce::String(skellpreset::registry::at(type).category);
     const auto familyAccent=family.equalsIgnoreCase("Dynamics")?Theme::amber:
         family.equalsIgnoreCase("Motion")?Theme::pink:
@@ -1926,46 +1941,6 @@ void SlotEditor::paint(juce::Graphics&g) {
     g.fillRoundedRectangle(plot.getX()+2.f,plot.getY()+12.f,
                            2.3f,plot.getHeight()-24.f,1.f);
     g.saveState();g.reduceClipRegion(plot.toNearestInt());
-    if(type==SkellPresetAudioProcessor::Empty) {
-        // An empty slot has no DSP and no editable graph. Do not draw a grid
-        // or a drag affordance that cannot change anything; show a truthful
-        // call to action that names the real action (the + button in the rack
-        // opens the module picker) and the families available in it.
-        const auto card=plot.reduced(plot.getWidth()*.16f,plot.getHeight()*.16f);
-        g.setColour(Theme::panelAlt.withAlpha(.90f));
-        g.fillRoundedRectangle(card,10.f);
-        g.setColour(Theme::stroke.withAlpha(.9f));
-        g.drawRoundedRectangle(card.reduced(.7f),10.f,1.2f);
-        const float top=card.getY()+card.getHeight()*.22f;
-        const auto titleArea=juce::Rectangle<float>(
-            card.getX(),top,card.getWidth(),30.f).toNearestInt();
-        const auto hintArea=juce::Rectangle<float>(
-            card.getX(),top+32.f,card.getWidth(),22.f).toNearestInt();
-        Theme::fittedText(g,"EMPTY SLOT",titleArea,
-            19.f,Theme::white,true,juce::Justification::centred);
-        Theme::fittedText(g,"PRESS + IN THE RACK TO ADD A PROCESSOR",hintArea,
-            11.5f,Theme::muted,true,juce::Justification::centred);
-        // Effect families the picker actually offers, one per catalog category.
-        static constexpr const char* familyNames[]{
-            "DYNAMICS","EQ + TONE","SPACE","MODULATION","PITCH","VOCAL","ADLIB","EXTERNAL"};
-        const float chipY=top+60.f;
-        const float chipH=19.f;
-        const float gap=6.f;
-        float chipW=(card.getWidth()-gap*7.f)/8.f;
-        chipW=juce::jmax(38.f,chipW);
-        const float total=chipW*8.f+gap*7.f;
-        float chipX=card.getCentreX()-total*.5f;
-        for(const char* entry:familyNames) {
-            const auto chip=juce::Rectangle<float>(chipX,chipY,chipW,chipH);
-            g.setColour(Theme::bg.withAlpha(.55f));
-            g.fillRoundedRectangle(chip,3.6f);
-            g.setColour(Theme::stroke.withAlpha(.72f));
-            g.drawRoundedRectangle(chip,3.6f,.85f);
-            Theme::fittedText(g,entry,chip.toNearestInt().reduced(3,0),
-                              8.4f,Theme::muted,true,juce::Justification::centred);
-            chipX+=chipW+gap;
-        }
-    }
     constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
     const bool emptyFace=type==SkellPresetAudioProcessor::Empty;
     if(eqFace) {
@@ -4034,6 +4009,12 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
     if(e.mods.isPopupMenu() && type!=SkellPresetAudioProcessor::StudioEQFX)return;
     if(eqNodeMenu.isVisible()){eqNodeMenu.close();return;}
     if(vocalFeelStyles.isVisible()){vocalFeelStyles.close();return;}
+    if(type==SkellPresetAudioProcessor::Empty) {
+        if(e.mods.isLeftButtonDown() && e.getNumberOfClicks()==1 &&
+           juce::Rectangle<int>(333,204,240,90).contains(e.getPosition()))
+            openModulePicker();
+        return;
+    }
     // A read-only analyzer must not silently edit the return parameters.
     if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX &&
        suiteSpectrumView && juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))
@@ -4239,6 +4220,7 @@ bool SlotEditor::testIntegratedEffectLayout() const {
        slotPower.getBounds().intersects(editExternal.getBounds()) ||
        !getLocalBounds().contains(slotPower.getBounds()))return false;
     const int faceType=processor.slotType(slot);
+    if(slotPower.isVisible()!=(faceType!=SkellPresetAudioProcessor::Empty))return false;
     if(skellpreset::face::hardware(faceType)) {
         for(int i=0;i<4;++i) {
             const auto& knob=knobs[(size_t)i];

@@ -1257,7 +1257,7 @@ public:
             // One identity band: preset name, state lamp and live trace share
             // a single horizontal strip instead of stacking four headings over
             // dead space. This is the whole Simple-mode introduction.
-            Theme::text(g,"SIMPLE  /  MACRO MIXER",{40,104,300,18},12.4f,Theme::green,true);
+            Theme::text(g,"SIMPLE",{40,104,300,18},12.4f,Theme::muted,true);
             const auto name=processor.presetName().toUpperCase();
             Theme::fittedText(g,name,{38,124,700,52},38,Theme::white,true);
             const bool live=idle.hasAudibleOutput();
@@ -1293,65 +1293,21 @@ public:
                 Theme::green.withAlpha(live?.88f:.24f));
             g.strokePath(simpleScope,juce::PathStrokeType(1.6f));
             static constexpr const char* labels[]{"TONE","PUNCH","SPACE","GRIT"};
-            static constexpr const char* hints[]{"COLOR & AIR","TRANSIENT","DEPTH & TAILS","EDGE & TEXTURE"};
+            // One shared macro deck. The actual APVTS rotaries retain their
+            // original geometry and automation; no per-macro card or duplicate meter.
             for(int k=0;k<4;k++){
                 const float x=40.f+268.f*k;
                 const auto raw=processor.state.getRawParameterValue(
                     "macro"+juce::String(k+1));
                 const float amount=juce::jlimit(0.f,1.f,raw?raw->load():.5f);
-                const auto targets=processor.macroTargets(k);
-                const bool active=!targets.isEmpty();
-                const auto face=juce::Rectangle<float>(x,196.f,252.f,352.f);
-                g.setGradientFill(juce::ColourGradient(
-                    Theme::panelAlt.brighter(active?.075f:.035f),face.getTopLeft(),
-                    Theme::panelAlt.darker(.16f),face.getBottomRight(),false));
-                g.fillRoundedRectangle(face,10.f);
-                g.setColour(active?Theme::stroke.withAlpha(.95f):
-                            Theme::stroke.withAlpha(.42f));
-                g.drawRoundedRectangle(face.reduced(.5f),10.f,1.f);
-                // Header: name on the left, live target count on the right.
-                Theme::text(g,labels[k],{(int)x+20,210,150,24},
-                            15.5f,active?Theme::white:Theme::muted.withAlpha(.72f),true);
-                Theme::fittedText(g,active?juce::String(targets.size())+" FX":"NO FX",
-                    {(int)x+150,214,84,18},9.6f,
-                    active?Theme::green.withAlpha(.80f):Theme::muted.withAlpha(.55f),
-                    true,juce::Justification::centredRight);
-                Theme::text(g,hints[k],{(int)x+20,234,212,16},
-                            9.6f,Theme::muted.withAlpha(active?.92f:.55f),true);
-                // Scale arc behind the hosted rotary.
-                constexpr float pi=juce::MathConstants<float>::pi;
-                const float centreX=x+126.f,centreY=330.f,rad=74.f;
-                for(int tick=0;tick<=10;++tick){
-                    const float a=(1.25f+1.5f*(float)tick/10.f)*pi;
-                    const float dx=std::sin(a),dy=-std::cos(a);
-                    const bool lit=tick<=juce::roundToInt(amount*10.f);
-                    g.setColour(active?(lit?Theme::green.withAlpha(.22f+.42f*amount)
-                                          :Theme::muted.withAlpha(.22f))
-                                      :Theme::muted.withAlpha(.10f));
-                    g.drawLine(centreX+dx*(rad-2.f),centreY+dy*(rad-2.f),
-                               centreX+dx*(rad+3.5f),centreY+dy*(rad+3.5f),1.5f);
-                }
-                // Inactive macros say why, instead of pretending to work.
-                if(!active) {
-                    g.setColour(Theme::bg.withAlpha(.42f));
-                    g.fillRoundedRectangle(face.reduced(1.f),9.f);
-                }
+                const bool active=!processor.macroTargets(k).isEmpty();
+                Theme::fittedText(g,labels[k],{(int)x,216,252,30},
+                    17.f,active?Theme::white:Theme::muted.withAlpha(.80f),
+                    true,juce::Justification::centred);
                 const auto pct=juce::Rectangle<int>((int)x+56,432,140,34);
                 Theme::text(g,juce::String(juce::roundToInt(amount*100.f))+"%",pct,
-                            22.f,active?Theme::green:Theme::muted.withAlpha(.62f),
-                            true,juce::Justification::centred);
-                Theme::fittedText(g,active?targets.joinIntoString(" + "):
-                                        "LOAD A MATCHING EFFECT",
-                    {(int)x+30,470,192,18},9.2f,
-                    active?Theme::muted.withAlpha(.90f):Theme::muted.withAlpha(.58f),
+                    22.f,active?Theme::green:Theme::muted.withAlpha(.62f),
                     true,juce::Justification::centred);
-                const auto meter2=juce::Rectangle<float>(x+30.f,500.f,192.f,3.f);
-                g.setColour(Theme::stroke.withAlpha(active?.85f:.40f));
-                g.fillRoundedRectangle(meter2,1.5f);
-                if(active && amount>.0001f){
-                    g.setColour(Theme::green.withAlpha(.58f));
-                    g.fillRoundedRectangle(meter2.withWidth(192.f*amount),1.5f);
-                }
             }
         }
         if(viewMode==0) {
@@ -1479,7 +1435,7 @@ public:
         // Keep the actual performer and its BYPASS lamp readable. The
         // disabled rack/controls and master shade already show bypass.
         idle.setEnabled(!bypass);idle.setAlpha(bypass?.72f:1.f);
-        if(idle.isVisible())idle.repaint();
+        if(idle.isShowing())idle.repaint();
         for(auto& s:macro){
             s.setVisible(display==0);
             s.setEnabled(!bypass);
@@ -1576,14 +1532,14 @@ public:
             lastScopeFrameTimeMs=now;
             idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());
             idle.setAudioFresh(count>0);
-            if(idle.isVisible())idle.repaint();
+            if(idle.isShowing())idle.repaint();
             // The former top LIVE status was removed; do not repaint the
             // static SKELL title/version every incoming scope update.
             const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
             if(activeView==0 || (activeView==3 && previousMode==0))
-                // Original Simple waveform lives around y=317; repaint the
-                // small live strip, not the entire row of rotary cards.
-                repaint(juce::Rectangle<int>(79,300,1000,34));
+                // The current Simple waveform is painted in the identity band.
+                // Invalidate the real trace and activity badge, not the knob row.
+                repaint(juce::Rectangle<int>(738,126,400,55));
         } else if(lastScopeFrameTimeMs!=0u &&
                   (unsigned)(juce::Time::getMillisecondCounter()-
                              lastScopeFrameTimeMs)>=400u) {
@@ -1592,7 +1548,7 @@ public:
             // never repaint the idle animation continuously on silence.
             if(idle.hasFreshAudio()){
                 idle.setAudioFresh(false);
-                if(display==0)repaint(juce::Rectangle<int>(79,300,1000,34));
+                if(display==0)repaint(juce::Rectangle<int>(738,126,400,55));
             }
         }
     }

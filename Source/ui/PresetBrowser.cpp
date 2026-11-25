@@ -618,7 +618,7 @@ void PresetBrowser::setChooserActive(bool active) {
     refreshOrganizationEditor();
 }
 void PresetBrowser::chooseImport() {
-    if(chooserActive)return;
+    if(chooserActive || saveInFlight)return;
     setChooserActive(true);
     fileChooser=std::make_unique<juce::FileChooser>("Import native Skell-Preset", juce::File{}, "*.skellpreset");
     juce::Component::SafePointer<PresetBrowser> safe(this);
@@ -708,8 +708,8 @@ void PresetBrowser::startPresetWrite(const juce::File& destination) {
 }
 void PresetBrowser::completePresetWrite(const juce::File& destination,bool ok,
                                         const juce::String& error) {
-    saveInFlight=false;
     if(!ok) {
+        saveInFlight=false;
         setSaveStatus("SAVE FAILED");
         refreshSaveControls();
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
@@ -717,6 +717,14 @@ void PresetBrowser::completePresetWrite(const juce::File& destination,bool ok,
         return;
     }
     const bool copied=copyToLibrary(destination);
+    // A newly copied preset is not in userPresets until the scan. Copy artwork
+    // before that one scan, preserving its true file extension and old cover.
+    if(copied && pendingSave.oldCover.existsAsFile() && activeUserPreset.existsAsFile()) {
+        const auto newCover=activeUserPreset.withFileExtension(pendingSave.oldCover.getFileExtension());
+        if(pendingSave.oldCover!=newCover)
+            pendingSave.oldCover.copyFileTo(newCover);
+    }
+    scanLibrary();
     // Saving under a new name keeps the artist/category labels on the new
     // library copy without altering the original archive or its metadata.
     if(copied && activeUserPreset!=pendingSave.previousUser) {
@@ -741,13 +749,9 @@ void PresetBrowser::completePresetWrite(const juce::File& destination,bool ok,
                 break;
             }
     }
-    // Preserve the current cover when the destination name differs.
-    if(pendingSave.oldCover.existsAsFile() && activeUserPreset.existsAsFile()) {
-        const auto newCover=activeUserPreset.withFileExtension(".png");
-        if(pendingSave.oldCover!=newCover)
-            pendingSave.oldCover.copyFileTo(newCover);
-    }
-    refreshLibraryAfterChange();
+    refreshArtistChoices();
+    refreshArtwork();
+    saveInFlight=false;
     if(onCoverChanged)onCoverChanged();
     setSaveStatus(copied?"SAVED":"EXPORTED - NO LIBRARY COPY");
     refreshSaveControls();
