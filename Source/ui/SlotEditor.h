@@ -224,6 +224,8 @@ private:
     std::array<juce::TextButton,8> eqBandButtons;
     std::array<juce::TextButton,3> matchPageButtons;
     std::array<juce::TextButton,4> delayPageButtons;
+    juce::ToggleButton rightFirst{"RIGHT FIRST (PING PONG)"};
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> rightFirstAttachment;
     std::array<juce::TextButton,4> suitePageButtons;
     juce::TextButton vocalFeelStyleButton{"VOICE STYLES  ▼"};
     SkellVocalFeelStyles vocalFeelStyles;

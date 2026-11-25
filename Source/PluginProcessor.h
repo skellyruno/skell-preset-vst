@@ -37,7 +37,7 @@ public:
     static bool supportsWetSidechain(int type) noexcept {
         return type==Reverb || type==VoxRackRoom || type==Delay ||
                type==StudioDelayFX || type==AdlibThrow ||
-               type==DuckingPingPongFX;
+               type==DuckingPingPongFX || type==AdlibDoubler;
     }
     static constexpr int defaultSlotCount=10;
     static constexpr int emptyRackProgramIndex=static_cast<int>(skellpreset::factoryPresets.size());
@@ -216,7 +216,7 @@ private:
     int hostChunkCapacity=512;
     struct Controls {
         int type=0;bool on=false;float wet=1;float eqLowCut=0,eqHighCut=0;
-        bool duckOn=false;
+        bool duckOn=false,rightFirst=false;
         float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
               duckAttack=12.f;
         float limitAttack=0.f,limitRelease=70.f;
@@ -243,6 +243,7 @@ private:
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
         std::atomic<float>* duckOn=nullptr,*duckDepth=nullptr;
+        std::atomic<float>* rightFirst=nullptr,*dubDuckOn=nullptr;
         std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr,
                           *duckAttack=nullptr;
         std::atomic<float>* limitAttack=nullptr,*limitRelease=nullptr;

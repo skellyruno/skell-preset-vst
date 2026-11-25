@@ -1,0 +1,8 @@
+# Right-first send and dub sidechain — 2026-11-25
+Basis: Sound Match R24 native rack pilot, ceab4af49bd579d78f5e976de792f6d516eaff6f, docs/NOV25_R24_NATIVE_RACK_PILOT.md. Observed first right repeat ~978 ms, second left ~1957 ms. No independent vocal validation or factory promotion. No private audio or fitted recipes committed.
+
+StudioDelayFX: appended rightFirst boolean, OFF by default, old normalized stereo modes unchanged. In ping-pong only, sum input to mono and inject into right delay line; cross feedback alternates right then left. Dry gain and echo-return ducking unchanged. Anti-phase mono cancellation intentional. Existing engine unchanged otherwise; Skellay audio integration remains pending.
+
+AdlibDoubler: pre-rack post-MIC vocal detector, no external DAW bus. Duck delayed-only return before existing rack wet blend. Separate dubDuckOn defaults OFF so previously inert legacy duckOn cannot activate it. Existing duck controls retain their IDs; panel uses the explicit new flag on the dub. Reset detector at dub type boundaries. Package optional boolean fields roundtrip, reject non-booleans, and missing XML flags restore OFF. No added lookahead.
+
+Exact portable send matrix test passed locally with strict C++17 UBSan, verified blob identities. Full impulse/detector tests added, not run locally yet. Package tests extended, no JUCE/Quick4/Windows/FL Studio verification. JUCE DNS blocked. Serial rack still lacks independent parallel sends and external sidechain bus; no full R24 chain equivalence claimed. Keep draft and promote routing into shared SkellCore only after exact verification.

@@ -134,6 +134,8 @@ juce::var toJson(const Document& d) {
         item->setProperty("eqLowCut",slot.eqLowCut);
         item->setProperty("eqHighCut",slot.eqHighCut);
         item->setProperty("duckOn",slot.duckOn);
+        item->setProperty("rightFirst",slot.rightFirst);
+        item->setProperty("dubDuckOn",slot.dubDuckOn);
         item->setProperty("duckDepth",slot.duckDepth);
         item->setProperty("duckThreshold",slot.duckThreshold);
         item->setProperty("duckRelease",slot.duckRelease);
@@ -303,6 +305,16 @@ juce::Result fromJson(const juce::var& root, Document& out) {
             if(!duckEnabled.isBool())
                 return juce::Result::fail("Invalid wet sidechain enable");
             slot.duckOn=(bool)duckEnabled;
+        }
+        if(hasJsonProperty(item,"rightFirst")) {
+            const auto v=item.getProperty("rightFirst",{});
+            if(!v.isBool())return juce::Result::fail("Invalid right-first send flag");
+            slot.rightFirst=(bool)v;
+        }
+        if(hasJsonProperty(item,"dubDuckOn")) {
+            const auto v=item.getProperty("dubDuckOn",{});
+            if(!v.isBool())return juce::Result::fail("Invalid dub sidechain flag");
+            slot.dubDuckOn=(bool)v;
         }
         if((hasJsonProperty(item,"duckDepth") &&
             !decodeFloat(item.getProperty("duckDepth",{}),0.f,1.f,slot.duckDepth)) ||

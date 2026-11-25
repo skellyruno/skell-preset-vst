@@ -370,7 +370,9 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     };
     addAndMakeVisible(studioCompKnee);
     studioCompKnee.setVisible(false);
-    duckOpen.setTooltip("Lower selected reverb/delay return while vocal is active, without external routing");
+    rightFirst.setTooltip("Ping Pong only: mono send, first echo right, then left. Other modes unchanged.");
+    addAndMakeVisible(rightFirst);rightFirst.setVisible(false);
+    duckOpen.setTooltip("Lower selected reverb, delay or dub return while vocal is active, without external routing");
     duckOpen.onClick=[this] {
         if(!SkellPresetAudioProcessor::supportsWetSidechain(processor.slotType(slot)))return;
         const bool opening=!duckPanel.isVisible();
@@ -1016,6 +1018,7 @@ void SlotEditor::applyTheme() {
     duckClose.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
     duckClose.setColour(juce::TextButton::textColourOffId,Theme::white);
     duckOn.setColour(juce::ToggleButton::textColourId,Theme::white);
+    rightFirst.setColour(juce::ToggleButton::textColourId,Theme::white);
     duckPanel.repaint();
     for(int page=0;page<4;++page) {
         auto& button=suitePageButtons[(size_t)page];
@@ -1451,13 +1454,16 @@ void SlotEditor::select(int newSlot) {
     eqQAttachment.reset();
     gateFloorAttachment.reset();
     duckOnAttachment.reset();
+    rightFirstAttachment.reset();
     for(auto& a:duckAttachments)a.reset();
     for(auto& a:eqCutAttachments)a.reset();
     externalChooser.reset();
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
     duckOnAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        processor.state,prefix+"duckOn",duckOn);
+        processor.state,prefix+(processor.slotType(slot)==SkellPresetAudioProcessor::AdlibDoubler?"dubDuckOn":"duckOn"),duckOn);
+    rightFirstAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processor.state,prefix+"rightFirst",rightFirst);
     duckAttachments[0]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.state,prefix+"duckDepth",duckDepth);
     duckAttachments[1]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -1620,6 +1626,9 @@ void SlotEditor::refreshIfChanged() {
         return;
     }
     if(type!=lastType){
+        duckOnAttachment.reset();
+        duckOnAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+            processor.state,prefix+(type==SkellPresetAudioProcessor::AdlibDoubler?"dubDuckOn":"duckOn"),duckOn);
         endGraphGesture();
         layoutParameterControls(type);
         // A new effect resets the EQ bank, preserving all saved parameter
@@ -1702,6 +1711,7 @@ void SlotEditor::refreshIfChanged() {
     syncStudioEqNodeButtons();
     for(auto& button:matchPageButtons)button.setVisible(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX);
     for(auto& button:delayPageButtons)button.setVisible(type==SkellPresetAudioProcessor::StudioDelayFX);
+    rightFirst.setVisible(type==SkellPresetAudioProcessor::StudioDelayFX);
     for(auto& button:suitePageButtons)button.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
     vocalFeelStyleButton.setVisible(type==SkellPresetAudioProcessor::VocalFeelSuiteFX);
     suiteSpectrumButton.setVisible(false);suiteSpectrumButton.setBounds({});
@@ -1739,6 +1749,7 @@ void SlotEditor::resized() {
     vocalFeelStyleButton.setBounds(626,105,238,29);
     vocalFeelStyles.setBounds(628,139,235,340);
     suiteSpectrumButton.setBounds(721,161,132,27);
+    rightFirst.setBounds(47,196,242,25);
     duckOpen.setBounds(708,106,157,28);
     duckPanel.setBounds(505,136,353,262);
     duckClose.setBounds(318,11,25,23);

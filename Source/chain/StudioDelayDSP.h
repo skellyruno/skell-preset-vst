@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <vector>
+#include "SendRouting.h"
 
 namespace skellpreset::studio {
 class StereoDelay final {
@@ -37,7 +38,7 @@ public:
         cachedParameters.fill(-1.f);
     }
     // p[0..15] are normalized host controls, read once per callback.
-    void set(const std::array<float,16>& p,double bpm) noexcept {
+    void set(const std::array<float,16>& p,double bpm,bool startRight=false) noexcept {
         // Skips repeated pow/exp/tanh per block for unchanged host values.
         // Transport BPM is part of the key: tempo automation never freezes.
         // Cache the *sanitized* normalized values, not NaN-bit patterns.
@@ -45,9 +46,10 @@ public:
         for(std::size_t i=0;i<next.size();++i)
             next[i]=std::isfinite(p[i])?std::clamp(p[i],0.f,1.f):0.f;
         const double safeBpm=std::clamp(std::isfinite(bpm)?bpm:120.,40.,260.);
-        if(configured && cachedBpm==safeBpm && cachedParameters==next)
+        if(configured && cachedBpm==safeBpm && cachedParameters==next && rightFirst==startRight)
             return;
         cachedParameters=next;
+        rightFirst=startRight;
         cachedBpm=safeBpm;
         auto get=[&](int i){return next[static_cast<std::size_t>(i)];};
         double time=0.025*std::pow(80.,get(0));
@@ -97,7 +99,7 @@ public:
             const float mono=.5f*(echo[0]+echo[1]);
             echo[0]=echo[1]=mono;
         }
-        const float input[2]{mode==0?.5f*(l+r):l,mode==0?.5f*(l+r):r};
+        const auto input=skellpreset::dsp::delaySendInput(l,r,mode,rightFirst);
         for(int ch=0;ch<2;++ch) {
             const float source=echo[mode==2?1-ch:ch];
             auto& low=filterLow[static_cast<std::size_t>(ch)];
@@ -149,6 +151,7 @@ private:
     float feedback=.25f,lowPole=.5f,highPole=.99f,drive=1.f,shapeDenom=.76f;
     float saturation=0.f,wet=.4f,dry=1.f,tone=.5f,diffusion=.1f;
     int mode=1;
+    bool rightFirst=false;
     bool configured=false; // set() initializes delay time only once per prepare/reset
 };
 } // namespace skellpreset::studio

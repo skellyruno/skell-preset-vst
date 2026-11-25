@@ -94,6 +94,8 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         r.duckOn=state.getRawParameterValue(prefix+"duckOn");
+        r.rightFirst=state.getRawParameterValue(prefix+"rightFirst");
+        r.dubDuckOn=state.getRawParameterValue(prefix+"dubDuckOn");
         r.duckDepth=state.getRawParameterValue(prefix+"duckDepth");
         r.duckThreshold=state.getRawParameterValue(prefix+"duckThreshold");
         r.duckRelease=state.getRawParameterValue(prefix+"duckRelease");
@@ -352,6 +354,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         fl(pre+"limitAttack","Slot "+juce::String(slot)+" limiter attack ms",0.f,3.f,0.f);
         fl(pre+"limitRelease","Slot "+juce::String(slot)+" limiter release ms",5.f,500.f,70.f);
     }
+    // Append only: preserve existing automation indices and mode normalization.
+    for(int slot=1;slot<=slotCount;++slot) {
+        const auto prefix="s"+juce::String(slot)+"_";
+        bl(prefix+"rightFirst","Slot "+juce::String(slot)+" right-first ping pong",false);
+        bl(prefix+"dubDuckOn","Slot "+juce::String(slot)+" dub sidechain",false);
+    }
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -545,6 +553,10 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(slot<0 || slot>=slotCount)return;
     const auto id=slotPrefix(slot);
     const int chosen=juce::jlimit(0,NumberOfModules-1,type);
+    if(chosen!=slotType(slot)) {
+        setReal(id+"rightFirst",0.f);
+        setReal(id+"dubDuckOn",0.f);
+    }
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
     const bool newStudio=chosen>SkelldizerFX && slotType(slot)!=chosen;
@@ -825,10 +837,13 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         }
         auto& c=controlCache[(size_t)s];
         const auto& raw=rawSlots[(size_t)s];
+        const int previousType=c.type;
         c.type=slotType(s);
         c.on=raw.on->load()>.5f;
         c.wet=juce::jlimit(0.f,1.f,raw.wet->load());
-        c.duckOn=raw.duckOn->load()>.5f;
+        // Old inert duckOn values must not activate legacy dub states.
+        c.duckOn=(c.type==AdlibDoubler?raw.dubDuckOn:raw.duckOn)->load()>.5f;
+        c.rightFirst=raw.rightFirst->load()>.5f;
         c.duckDepth=raw.duckDepth->load();
         c.duckThreshold=raw.duckThreshold->load();
         c.duckRelease=raw.duckRelease->load();
@@ -845,6 +860,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             c.studioEqEnabled[(size_t)k]=raw.studioEqOn[(size_t)k]->load()>.5f;
         }
         auto& e=engines[(size_t)s];
+        if(previousType!=c.type && (previousType==AdlibDoubler || c.type==AdlibDoubler))
+            e.voiceDuck.prepare(rate);
         if(c.type==Limiter || c.type==StudioLimiterFX)e.limiter.setTiming(c.limitAttack,c.limitRelease);
         if(supportsWetSidechain(c.type))
             e.voiceDuck.set(c.duckOn,c.duckDepth,c.duckThreshold,
@@ -959,7 +976,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 e.studioPitch.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case StudioDelayFX:
-                e.studioDelay.set(c.p,hostBpm);
+                e.studioDelay.set(c.p,hostBpm,c.rightFirst);
                 break;
             case VocalFeelOptoFX:
                 e.vocalFeel.set(c.p[0],c.p[1],c.p[2],c.p[3]);
@@ -1311,7 +1328,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     default:break;
                 }
-                if(duckGain<1.f && c.type!=StudioDelayFX) {
+                if(c.type==AdlibDoubler) {
+                    wetL=skellpreset::dsp::duckDubReturn(wetL,duckGain);
+                    wetR=skellpreset::dsp::duckDubReturn(wetR,duckGain);
+                } else if(duckGain<1.f && c.type!=StudioDelayFX) {
                     // Treat other native effect paths as delta-from-dry.
                     // The live vocal remains unaffected by the wet return duck.
                     wetL=l+(wetL-l)*duckGain;
@@ -1452,6 +1472,8 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal(slotPrefix(s)+"eqLowCut",0.f);
         setReal(slotPrefix(s)+"eqHighCut",0.f);
         setReal(slotPrefix(s)+"duckOn",0.f);
+        setReal(slotPrefix(s)+"rightFirst",0.f);
+        setReal(slotPrefix(s)+"dubDuckOn",0.f);
         setReal(slotPrefix(s)+"duckDepth",.65f);
         setReal(slotPrefix(s)+"duckThreshold",-32.f);
         setReal(slotPrefix(s)+"duckRelease",320.f);
@@ -1743,6 +1765,8 @@ juce::Result SkellPresetAudioProcessor::makePresetDocument(
         dst.enabled=value(prefix+"on")>.5f;
         dst.wet=value(prefix+"wet");
         dst.duckOn=value(prefix+"duckOn")>.5f;
+        dst.rightFirst=value(prefix+"rightFirst")>.5f;
+        dst.dubDuckOn=value(prefix+"dubDuckOn")>.5f;
         dst.duckDepth=value(prefix+"duckDepth");
         dst.duckThreshold=value(prefix+"duckThreshold");
         dst.duckRelease=value(prefix+"duckRelease");
@@ -1777,6 +1801,8 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
         setSlotType(slot.slotId,slot.type);
         setReal(prefix+"wet",slot.wet);
         setReal(prefix+"duckOn",slot.duckOn?1.f:0.f);
+        setReal(prefix+"rightFirst",slot.rightFirst?1.f:0.f);
+        setReal(prefix+"dubDuckOn",slot.dubDuckOn?1.f:0.f);
         setReal(prefix+"duckDepth",slot.duckDepth);
         setReal(prefix+"duckThreshold",slot.duckThreshold);
         setReal(prefix+"duckRelease",slot.duckRelease);
@@ -2054,6 +2080,20 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
                 loaded.appendChild(node,nullptr);
             }
         }
+        // Old states must not inherit a current opt-in send.
+        for(int slot=1;slot<=slotCount;++slot)
+            for(const auto* suffix:{"rightFirst","dubDuckOn"}) {
+                const auto id="s"+juce::String(slot)+"_"+suffix;
+                bool present=false;
+                for(int i=0;i<loaded.getNumChildren();++i)
+                    present=present || loaded.getChild(i).getProperty("id").toString()==id;
+                if(!present) {
+                    juce::ValueTree node(juce::Identifier("PARAM"));
+                    node.setProperty("id",id,nullptr);
+                    node.setProperty("value",0.f,nullptr);
+                    loaded.appendChild(node,nullptr);
+                }
+            }
         // Repair untrusted host XML before JUCE copies it into APVTS atomics.
         sanitizeParameterStateValues(loaded, state);
         state.replaceState(loaded);
@@ -2101,7 +2141,8 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
         const auto prefix=slotPrefix(slot);
         for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
                                 "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
-                                "fxExt8","fxExt9","fxExt10","fxExt11","eqLowCut","eqHighCut"})add(prefix+suffix);
+                                "fxExt8","fxExt9","fxExt10","fxExt11","eqLowCut","eqHighCut",
+                                "rightFirst","dubDuckOn"})add(prefix+suffix);
         for(int parameter=1;parameter<=16;++parameter)
             add(prefix+"p"+juce::String(parameter));
         for(int band=1;band<=8;++band) {
