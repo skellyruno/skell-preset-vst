@@ -1,16 +1,18 @@
 #pragma once
 #include <JuceHeader.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 // In-process VST3 hosting proof of integration, Windows only.
 // All scanning, creation, state IO, UI and destruction run off the audio thread.
-// Published instances are never destroyed until the outer processor stops,
-// avoiding use-after-free during host parameter/slot changes. Replacements per
-// slot are capped to prevent unbounded memory retention.
+// Published instances are retired only on the message thread, after every
+// audio reader has left and the native editor has been destroyed. A bounded
+// backlog protects against plugins whose editor or callback never releases.
 namespace skellpreset::host {
 // Normalize common product-name spellings before loading any third-party code.
 // Blocking recursive hosting avoids accidentally nesting this same VST3.
@@ -42,9 +44,43 @@ private:
 };
 
 class HostedVST3 final {
+    struct Entry {
+        std::unique_ptr<juce::AudioPluginInstance> plugin;
+        std::atomic<int> latency{0};
+        bool prepared=false; // non-realtime lifecycle only
+        void release() {
+            if(prepared){plugin->releaseResources();prepared=false;}
+        }
+        ~Entry(){release();}
+    };
 public:
     static constexpr int slotCount=16;
     static constexpr int maxTotalLatency=65536;
+    // One lock-free reader lease per outer audio callback. Sequentially
+    // consistent publication, reader entry and retirement checks prevent a
+    // reader from observing an old entry after it has been reclaimed.
+    class AudioReadScope final {
+    public:
+        explicit AudioReadScope(HostedVST3& owner) noexcept:host(owner) {
+            host.readers.fetch_add(1,std::memory_order_seq_cst);
+            for(int i=0;i<slotCount;++i) {
+                entries[(size_t)i]=host.active[(size_t)i].load(std::memory_order_seq_cst);
+                if(auto* entry=entries[(size_t)i])latency[(size_t)i]=entry->latency.load(std::memory_order_acquire);
+            }
+        }
+        ~AudioReadScope(){host.readers.fetch_sub(1,std::memory_order_seq_cst);}
+        AudioReadScope(const AudioReadScope&)=delete;
+        AudioReadScope& operator=(const AudioReadScope&)=delete;
+        juce::AudioPluginInstance* get(int slot) const noexcept {
+            auto* entry=valid(slot)?entries[(size_t)slot]:nullptr;
+            return entry?entry->plugin.get():nullptr;
+        }
+        int getLatency(int slot) const noexcept {return valid(slot)?latency[(size_t)slot]:0;}
+    private:
+        HostedVST3& host;
+        std::array<Entry*,slotCount> entries{};
+        std::array<int,slotCount> latency{};
+    };
     HostedVST3() {
        #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
         // JUCE 8 removed AudioPluginFormatManager::addDefaultFormats().
@@ -55,11 +91,13 @@ public:
 
     juce::Result load(int slot,const juce::File& path,double sr,int block) {
         if(!valid(slot))return juce::Result::fail("Invalid rack slot");
+        std::lock_guard<std::mutex> lock(lifecycle);
+        reclaimRetiredLocked();
        #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
         if(!path.exists() || !path.hasFileExtension(".vst3"))
             return juce::Result::fail("Choose an installed .vst3 bundle");
         if(owned[(size_t)slot].size()>=8)
-            return juce::Result::fail("Restart the DAW session before replacing this insert again");
+            return juce::Result::fail("Hosted insert is still in use. Close its old editor or retry after playback stops.");
         juce::OwnedArray<juce::PluginDescription> descriptions;
         // Some VST3 bundles publish more than one processor, so always scan.
         juce::VST3PluginFormat fallback;
@@ -91,15 +129,23 @@ public:
         instance->setPlayHead(&transport); // stable, owned copy of DAW timing
         instance->prepareToPlay(std::max(sr,8000.),std::max(block,64));
         const int latency=instance->getLatencySamples();
-        if(latency<0 || latency>maxTotalLatency)
+        if(latency<0 || latency>maxTotalLatency) {
+            instance->releaseResources();
             return juce::Result::fail("Hosted plugin latency exceeds the 65,536-sample safety budget");
+        }
         int total=latency;
         for(int i=0;i<slotCount;++i)
             if(i!=slot)total+=getLatency(i);
-        if(total>maxTotalLatency)
+        if(total>maxTotalLatency) {
+            instance->releaseResources();
             return juce::Result::fail("Combined hosted latency exceeds the safe PDC budget");
-        auto* pointer=instance.get();
-        owned[(size_t)slot].push_back(std::move(instance));
+        }
+        auto entry=std::make_unique<Entry>();
+        entry->plugin=std::move(instance);
+        entry->prepared=true;
+        entry->latency.store(latency,std::memory_order_relaxed);
+        auto* pointer=entry.get();
+        owned[(size_t)slot].push_back(std::move(entry));
         // Prefer the actual plugin product name. Some VST3s (including
         // third-party air/exciter effects) report an empty descriptiveName;
         // never show the generic VST3 INSERT label when loaded successfully.
@@ -109,7 +155,8 @@ public:
                              path.getFileNameWithoutExtension());
         locations[(size_t)slot]=path;
         latencies[(size_t)slot].store(latency,std::memory_order_release);
-        active[(size_t)slot].store(pointer,std::memory_order_release);
+        active[(size_t)slot].store(pointer,std::memory_order_seq_cst);
+        reclaimRetiredLocked();
         return juce::Result::ok();
        #else
         (void)path;(void)sr;(void)block;
@@ -117,7 +164,8 @@ public:
        #endif
     }
     juce::AudioPluginInstance* get(int slot) const noexcept {
-        return valid(slot)?active[(size_t)slot].load(std::memory_order_acquire):nullptr;
+        auto* entry=valid(slot)?active[(size_t)slot].load(std::memory_order_seq_cst):nullptr;
+        return entry?entry->plugin.get():nullptr;
     }
     int getLatency(int slot) const noexcept {
         return valid(slot)?latencies[(size_t)slot].load(std::memory_order_acquire):0;
@@ -127,15 +175,24 @@ public:
                          int chunkOffset,double sampleRate) {
         transport.update(std::move(position),chunkOffset,sampleRate);
     }
-    void pollLatencies() noexcept {
-        // Message-thread-only check for hosted processors that change PDC
-        // after a preset or oversampling switch.
+    void pollLatencies() {
+        std::lock_guard<std::mutex> lock(lifecycle);
+        reclaimRetiredLocked();
+        // Report actual latency within the existing PDC safety budget.
+        // Dynamic over-budget changes remain unsupported, never allocate
+        // additional compensation buffers from the audio callback.
         for(int slot=0;slot<slotCount;++slot)
-            if(auto* plugin=get(slot)) {
-                const int value=plugin->getLatencySamples();
-                if(value>=0 && value<=maxTotalLatency)
+            if(auto* entry=active[(size_t)slot].load(std::memory_order_seq_cst)) {
+                const int value=entry->plugin->getLatencySamples();
+                if(value>=0 && value<=maxTotalLatency) {
+                    entry->latency.store(value,std::memory_order_release);
                     latencies[(size_t)slot].store(value,std::memory_order_release);
+                }
             }
+    }
+    size_t retainedCountForTest(int slot) {
+        std::lock_guard<std::mutex> lock(lifecycle);
+        return valid(slot)?owned[(size_t)slot].size():0;
     }
     juce::String getName(int slot) const {
         return valid(slot)?names[(size_t)slot]:juce::String{};
@@ -144,34 +201,56 @@ public:
         return valid(slot)?locations[(size_t)slot]:juce::File{};
     }
     void prepare(double sr,int block) {
+        std::lock_guard<std::mutex> lock(lifecycle);
         for(int i=0;i<slotCount;++i) {
-            if(auto* instance=get(i)) {
-                instance->releaseResources();
-                instance->prepareToPlay(std::max(sr,8000.),std::max(block,64));
-                latencies[(size_t)i].store(juce::jlimit(0,maxTotalLatency,
-                    instance->getLatencySamples()),std::memory_order_release);
+            if(auto* entry=active[(size_t)i].load(std::memory_order_seq_cst)) {
+                entry->release();
+                entry->plugin->prepareToPlay(std::max(sr,8000.),std::max(block,64));
+                entry->prepared=true;
+                const int latency=juce::jlimit(0,maxTotalLatency,entry->plugin->getLatencySamples());
+                entry->latency.store(latency,std::memory_order_release);
+                latencies[(size_t)i].store(latency,std::memory_order_release);
             }
         }
     }
+    // Called only after the outer host has stopped processing. Also release
+    // retired instances; their editors may still be open, so keep ownership.
     void release() {
-        for(int i=0;i<slotCount;++i)
-            if(auto* instance=get(i)) instance->releaseResources();
+        std::lock_guard<std::mutex> lock(lifecycle);
+        for(auto& entries:owned)
+            for(auto& entry:entries)entry->release();
     }
     juce::MemoryBlock getState(int slot) const {
+        std::lock_guard<std::mutex> lock(lifecycle);
         juce::MemoryBlock state;
         if(auto* plugin=get(slot))plugin->getStateInformation(state);
         return state;
     }
     void setState(int slot,const juce::MemoryBlock& state) {
+        std::lock_guard<std::mutex> lock(lifecycle);
         if(auto* plugin=get(slot))plugin->setStateInformation(state.getData(),(int)state.getSize());
     }
 private:
     static bool valid(int slot) noexcept {return slot>=0 && slot<slotCount;}
     juce::AudioPluginFormatManager formats;
-    std::array<std::atomic<juce::AudioPluginInstance*>,slotCount> active{};
+    std::array<std::atomic<Entry*>,slotCount> active{};
+    std::atomic<unsigned> readers{0};
+    mutable std::mutex lifecycle;
+    void reclaimRetiredLocked() {
+        // Only load/poll on the message thread call this function. Never
+        // destroy a third-party editor or plugin on the audio thread.
+        if(readers.load(std::memory_order_seq_cst)!=0)return;
+        for(int slot=0;slot<slotCount;++slot) {
+            auto* current=active[(size_t)slot].load(std::memory_order_seq_cst);
+            auto& entries=owned[(size_t)slot];
+            entries.erase(std::remove_if(entries.begin(),entries.end(),[current](const auto& entry) {
+                return entry.get()!=current && entry->plugin->getActiveEditor()==nullptr;
+            }),entries.end());
+        }
+    }
     std::array<std::atomic<int>,slotCount> latencies{};
     HostedTransport transport; // outlives all owned plug-ins at destruction
-    std::array<std::vector<std::unique_ptr<juce::AudioPluginInstance>>,slotCount> owned;
+    std::array<std::vector<std::unique_ptr<Entry>>,slotCount> owned;
     std::array<juce::String,slotCount> names;
     std::array<juce::File,slotCount> locations;
 };

@@ -113,10 +113,11 @@ public:
     void setSlotOn(int slot,bool on);
     juce::Result loadHostedVST3(int slot,const juce::File& path);
     void openHostedVST3Editor(int slot);
+    void closeHostedVST3Editors();
     juce::String hostedVST3Name(int slot) const {return hosted.getName(slot);}
     bool hasHostedVST3(int slot) const noexcept {return hosted.get(slot)!=nullptr;}
     // Message-thread-only borrowed pointer for optional inline JUCE editor.
-    // The host retains plugin instances until processor destruction.
+    // The message-thread host retires old instances only after editors close.
     juce::AudioPluginInstance* hostedVST3InstanceForUI(int slot) const noexcept {
         return hosted.get(slot);
     }
@@ -214,6 +215,8 @@ private:
     };
     std::array<EngineSlot,slotCount> engines;
     skellpreset::host::HostedVST3 hosted;
+    // Destroy floating native editors before their hosted processors.
+    std::array<std::unique_ptr<juce::DialogWindow>,slotCount> hostedEditorWindows;
     juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork,sidechainWork;
     int hostChunkCapacity=512;
     struct Controls {

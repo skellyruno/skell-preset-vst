@@ -373,7 +373,7 @@ public:
         return {Theme::green,Theme::panel,Theme::white,Theme::muted,
                 juce::Colour(0xd9000000)};
     }
-    ~Canvas()override {worldLink.leave();stopTimer();setLookAndFeel(nullptr);}
+    ~Canvas()override {worldLink.leave();stopTimer();processor.closeHostedVST3Editors();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
             g.setColour(Theme::bg.withAlpha(.57f));g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);

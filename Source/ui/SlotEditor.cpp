@@ -1435,7 +1435,7 @@ void SlotEditor::openModulePicker() {
     if(modulePicker.isVisible())modulePicker.hide();
     else modulePicker.open(processor.slotType(slot));
 }
-SlotEditor::~SlotEditor(){endGraphGesture();}
+SlotEditor::~SlotEditor(){endGraphGesture();releaseEmbeddedEditor();}
 void SlotEditor::select(int newSlot) {
     endGraphGesture();
     eqNodeMenu.close();

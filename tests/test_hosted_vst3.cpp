@@ -113,7 +113,22 @@ int main(int argc,char** argv) {
     if(host.getState(0).isEmpty()) {
         std::fprintf(stderr,"Hosted plug-in state was not captured\n");return 7;
     }
-    host.release();
-    std::printf("PASS nested JUCE VST3 load, forwarded transport, stereo processing, PDC and state\n");
+    // A replacement must not invalidate an already-running audio callback.
+    {
+        skellpreset::host::HostedVST3::AudioReadScope held(host);
+        if(held.get(0)!=plugin || host.load(0,fixture,48000.,512).failed() ||
+           host.get(0)==plugin || held.get(0)!=plugin || host.retainedCountForTest(0)!=2)return 14;
+        audio.clear();held.get(0)->processBlock(audio,midi);
+    }
+    host.pollLatencies();
+    if(host.retainedCountForTest(0)!=1)return 15;
+    // Exceed the former eight-replacements-per-session limit without leaks.
+    for(int i=0;i<12;++i) {
+        if(host.load(0,fixture,48000.,512).failed())return 16;
+        host.pollLatencies();
+        if(host.retainedCountForTest(0)!=1)return 17;
+    }
+    host.release();host.prepare(44100.,256);host.release();
+    std::printf("PASS nested JUCE VST3 load, transport, stereo processing, PDC, state and deferred replacement\n");
     return 0;
 }

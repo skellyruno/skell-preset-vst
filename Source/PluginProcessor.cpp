@@ -732,28 +732,45 @@ juce::Result SkellPresetAudioProcessor::loadHostedVST3(int slot,const juce::File
     if(slot<0 || slot>=slotCount)return juce::Result::fail("Invalid host slot");
     const auto result=hosted.load(slot,path,rate,hostChunkCapacity);
     if(result.failed())return result;
+    hostedEditorWindows[(size_t)slot].reset(); // close only after successful replacement
     setSlotType(slot,ExternalVST3);
     setSlotOn(slot,true);
     updateHostLatency();
     return juce::Result::ok();
 }
+namespace {
+class HostedEditorWindow final : public juce::DialogWindow {
+public:
+    HostedEditorWindow(const juce::String& title,juce::AudioProcessorEditor* editor)
+        :juce::DialogWindow(title,juce::Colours::black,true) {
+        setUsingNativeTitleBar(true);
+        setResizable(true,false);
+        setContentOwned(editor,true);
+        centreWithSize(getWidth(),getHeight());
+        setVisible(true);
+    }
+    void closeButtonPressed() override {
+        setVisible(false);
+        clearContentComponent();
+    }
+};
+}
 void SkellPresetAudioProcessor::openHostedVST3Editor(int slot) {
+    if(slot<0 || slot>=slotCount)return;
     auto* plugin=hosted.get(slot);
     if(!plugin)return;
     if(auto* existing=plugin->getActiveEditor()) {
-        existing->toFront(true);
+        if(auto* window=hostedEditorWindows[(size_t)slot].get())window->toFront(true);
+        else existing->toFront(true);
         return;
     }
     if(!plugin->hasEditor())return;
-    if(auto* editor=plugin->createEditorIfNeeded()) {
-        juce::DialogWindow::LaunchOptions options;
-        options.dialogTitle="SKELL  /  "+hosted.getName(slot);
-        options.dialogBackgroundColour=juce::Colours::black;
-        options.content.setOwned(editor);
-        options.resizable=true;
-        options.useNativeTitleBar=true;
-        options.launchAsync();
-    }
+    if(auto* editor=plugin->createEditorIfNeeded())
+        hostedEditorWindows[(size_t)slot]=std::make_unique<HostedEditorWindow>(
+            "SKELL  /  "+hosted.getName(slot),editor);
+}
+void SkellPresetAudioProcessor::closeHostedVST3Editors() {
+    for(auto& window:hostedEditorWindows)window.reset();
 }
 void SkellPresetAudioProcessor::refreshHostedLatency() {
     // Called by the editor timer, never from the audio callback.
@@ -787,6 +804,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     const int channels=juce::jmin(2,buffer.getNumChannels());
     const int total=buffer.getNumSamples();
     if(channels<1 || total<=0)return;
+    skellpreset::host::HostedVST3::AudioReadScope hostedBlock(hosted);
     const bool monoSource=getTotalNumInputChannels()==1;
     // Query the host once per block, never inside the sample loop. The new
     // ducking delay uses a deterministic 120-BPM fallback when stopped/unknown.
@@ -1019,7 +1037,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         const auto type=controlCache[(size_t)id].type;
         blockLatency+=skellpreset::realtime::stageLatency(
             (type==StudioLimiterFX?Limiter:type),Limiter,ExternalVST3,StudioPitchFormantFX,lookahead,
-            type==ExternalVST3?hosted.getLatency(id):0,
+            type==ExternalVST3?hostedBlock.getLatency(id):0,
             skellpreset::dsp::SpectralPitchFormant::latencySamples);
     }
     blockLatency=juce::jlimit(0,slotCount*(lookahead+skellpreset::dsp::SpectralPitchFormant::latencySamples)+
@@ -1083,8 +1101,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             if(c.type==Empty)continue;
             auto& e=engines[(size_t)s];
             if(c.type==ExternalVST3) {
-                auto* plugin=hosted.get(s);
-                const int latency=hosted.getLatency(s);
+                auto* plugin=hostedBlock.get(s);
+                const int latency=hostedBlock.getLatency(s);
                 if(plugin) {
                     hostWork.setSize(2,frames,false,false,true);
                     hostWork.copyFrom(0,0,rackWork,0,0,frames);
