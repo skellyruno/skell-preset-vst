@@ -85,7 +85,9 @@ public:
     }
 
     bool finished() const noexcept {
-        return stoppedByLimit || next>=queue.size();
+        // A capped folder queue still contains admitted folders. Finish
+        // enumerating them; a limit flag alone must not discard that work.
+        return bundles.size()>=maxBundles || next>=queue.size();
     }
     bool truncated() const noexcept {return stoppedByLimit;}
     const std::vector<InstalledVST3Bundle>& entries() const noexcept {return bundles;}
@@ -93,11 +95,20 @@ public:
     std::vector<int> filter(juce::String query) const {
         query=query.trim();
         std::vector<int> result;
+        result.reserve(bundles.size());
         for(int i=0;i<(int)bundles.size();++i) {
             const auto& item=bundles[(std::size_t)i];
             if(query.isEmpty() || item.name.containsIgnoreCase(query)
                || item.file.getFullPathName().containsIgnoreCase(query))
                 result.push_back(i);
+        }
+        if(query.isNotEmpty()){
+            const auto rank=[&](int i){
+                const auto& name=bundles[static_cast<std::size_t>(i)].name;
+                return name.equalsIgnoreCase(query)?0:name.startsWithIgnoreCase(query)?1:
+                    name.containsIgnoreCase(query)?2:3;
+            };
+            std::stable_sort(result.begin(),result.end(),[&](int a,int b){return rank(a)<rank(b);});
         }
         return result;
     }
@@ -106,8 +117,8 @@ private:
     struct Folder {juce::File file;int depth=0;};
     void queueFolder(const juce::File& folder,int depth) {
         if(!folder.isDirectory() || folder.hasFileExtension(".vst3"))return;
-        if(queue.size()>=maxFolders){stoppedByLimit=true;return;}
         if(std::find(visited.begin(),visited.end(),folder)!=visited.end())return;
+        if(queue.size()>=maxFolders){stoppedByLimit=true;return;}
         visited.push_back(folder);
         queue.push_back({folder,depth});
     }

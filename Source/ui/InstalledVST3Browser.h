@@ -20,7 +20,10 @@ public:
         search.setMultiLine(false);
         search.setReturnKeyStartsNewLine(false);
         search.setTextToShowWhenEmpty("Search installed VST3 bundles...",Theme::muted);
-        search.onTextChange=[this]{refreshResults(selectedFile());};
+        search.onTextChange=[this]{
+            scanPreferredFile=juce::File{};
+            refreshResults(selectedFile());
+        };
         search.onReturnKey=[this]{loadSelected();};
         search.onEscapeKey=[this]{hide();};
         list.setRowHeight(42);
@@ -29,6 +32,9 @@ public:
         chooseFile.setButtonText("BROWSE FILE...");
         cancel.setButtonText("CLOSE");
         load.setButtonText("LOAD");
+        load.setTooltip("Load the selected installed VST3 bundle");
+        rescan.setTooltip("Refresh the directory index without instantiating plugins");
+        chooseFile.setTooltip("Choose a VST3 bundle outside standard installation folders");
         rescan.onClick=[this]{beginScan(skellpreset::host::InstalledVST3Index::defaultRoots());};
         chooseFile.onClick=[this]{
             hide();
@@ -56,6 +62,9 @@ public:
         setVisible(true);
         toFront(true);
         search.grabKeyboardFocus();
+    }
+    void visibilityChanged() override {
+        if(!isVisible()){stopTimer();scanPreferredFile=juce::File{};}
     }
     void hide() {
         stopTimer();
@@ -159,7 +168,11 @@ public:
             status=juce::String(count)+" FOUND  /  INDEX LIMIT REACHED";
         else
             status=juce::String(count)+" BUNDLES FOUND  /  NAMES ONLY, NOT SCANNED";
-        Theme::text(g,status,{17,92,getWidth()-35,18},10,Theme::muted);
+        if(scanPreferredFile!=juce::File{} && !index.finished())
+            status="RESTORING SELECTION  /  "+juce::String(count)+" FOUND";
+        else if(search.getText().trim().isNotEmpty())
+            status=juce::String(visible.size())+" MATCHES  /  "+status;
+        Theme::fittedText(g,status,{17,92,getWidth()-35,18},10,Theme::muted);
         if(index.finished() && index.entries().empty())
             Theme::text(g,"No installed VST3 found in standard folders. Use BROWSE FILE...",
                         {36,180,getWidth()-75,40},12,Theme::muted);
@@ -213,20 +226,28 @@ private:
             refreshResults(preferred);
             if(selectedFile()==scanPreferredFile)scanPreferredFile=juce::File{};
         }
-        if(index.finished()){stopTimer();scanPreferredFile=juce::File{};}
+        if(index.finished()){
+            stopTimer();
+            if(scanPreferredFile!=juce::File{}){
+                scanPreferredFile=juce::File{};
+                refreshResults();
+            }
+        }
         // Avoid 28 full browser repaints/second while crawling slow disks.
         // Only found items and the terminal scan status require invalidation.
         if(!changed && !wasFinished && index.finished())repaint();
     }
     void refreshResults(const juce::File& preserve={}) {
+        const juce::ScopedValueSetter<bool> guard(updatingSelection,true);
         visible=index.filter(search.getText());
         list.setVisible(!visible.empty());
         list.updateContent();
         const int selected=rowForFile(preserve,visible,index.entries());
         if(selected>=0)list.selectRow(selected);
-        else if(visible.empty())list.deselectAllRows();
+        else if(visible.empty() || (scanPreferredFile!=juce::File{}&&!index.finished()))
+            list.deselectAllRows();
         else list.selectRow(0);
-        load.setEnabled(!visible.empty());
+        load.setEnabled(list.getSelectedRow()>=0);
         list.repaint();
         repaint();
     }
@@ -246,18 +267,27 @@ private:
         Theme::fittedText(g,item.file.getFullPathName(),{13,24,width-27,16},
                           9.f,Theme::muted);
     }
+    void selectedRowsChanged(int row) override {
+        // Keyboard navigation is also an explicit selection; list updates
+        // triggered by indexing are excluded by the scoped guard.
+        if(!updatingSelection && row>=0)scanPreferredFile=juce::File{};
+        load.setEnabled(row>=0 && row<(int)visible.size());
+    }
+    void returnKeyPressed(int row) override {loadSelected(row);}
     void listBoxItemClicked(int,const juce::MouseEvent&) override {
-        // An explicit manual choice wins over the pending rescan preference.
         scanPreferredFile=juce::File{};
     }
     void listBoxItemDoubleClicked(int row,const juce::MouseEvent& e) override {
         if(e.mods.isLeftButtonDown() && row>=0 && row<(int)visible.size())loadSelected(row);
     }
     juce::File scanPreferredFile;
+    bool updatingSelection=false;
     void loadSelected(int requestedRow=-1) {
         const int row=requestedRow>=0?requestedRow:list.getSelectedRow();
         if(row<0 || row>=(int)visible.size())return;
-        const auto file=index.entries()[(std::size_t)visible[(std::size_t)row]].file;
+        const int entry=visible[static_cast<std::size_t>(row)];
+        if(entry<0 || entry>=(int)index.entries().size())return;
+        const auto file=index.entries()[static_cast<std::size_t>(entry)].file;
         if(!file.exists()){
             beginScan(skellpreset::host::InstalledVST3Index::defaultRoots());
             return; // Removed while the browser was open: refresh stale rows.

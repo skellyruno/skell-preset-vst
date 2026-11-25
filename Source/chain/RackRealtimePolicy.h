@@ -9,11 +9,12 @@ namespace skellpreset::realtime {
 inline std::uint32_t activeSlotMask(std::uint64_t packedOrder,int activeCount,
                                     int capacity) noexcept {
     // Packed order stores sixteen 4-bit physical slot IDs at most.
-    const int count=std::clamp(activeCount,0,std::min(capacity,16));
+    const int safeCapacity=std::clamp(capacity,0,16);
+    const int count=std::clamp(activeCount,0,safeCapacity);
     std::uint32_t mask=0;
     for(int pos=0;pos<count;++pos) {
         const auto id=(unsigned)((packedOrder>>(4*pos))&0x0fU);
-        if(id<(unsigned)capacity)mask|=(std::uint32_t{1}<<id);
+        if(id<(unsigned)safeCapacity)mask|=(std::uint32_t{1}<<id);
     }
     return mask;
 }
