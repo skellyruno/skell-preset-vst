@@ -105,3 +105,6 @@ JUCE `AudioProcessor::checkBusesLayoutSupported` requires a layout entry for eve
 
 ### Exact installed-copy diagnosis
 `tools/verify-installed-skell-preset.ps1` is a read-only PowerShell inventory that reports the SHA256 of every discovered Skell-Preset VST3 Windows binary in common installation locations (or an explicitly selected root). Given the exact build's `Skell-Preset-BUILD-INFO.txt`, it compares the expected binary SHA256 and prints a match/mismatch. This does not prove FL Studio actually loads that path; confirm DAW plugin-selection path separately. Windows CI tests both a matching staged bundle and deliberately incorrect SHA. The script accompanies the standalone diagnostic artifact and never overwrites a user plugin.
+
+### CI identity-verifier exit-code repair
+Run 45572576443 successfully compiled the Windows shipping VST3 and confirmed its packaged SHA256. The deliberate wrong-hash case also correctly printed MISMATCH, but its nonzero exit status caused the enclosing Actions step to fail before artifact publication and native host regression execution. Invoke the verifier in a child PowerShell process, assert exact expected exit codes 0 and 3, and explicitly exit the enclosing step with 0 only after both assertions. Keep the negative test and verifier's failure semantics intact. Windows retest pending.

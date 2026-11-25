@@ -117,10 +117,19 @@ jobs:
       - name: Verify packaged Windows VST3 identity without executing it
         shell: pwsh
         run: |
-          & ./tools/verify-installed-skell-preset.ps1 -Root ./Skell-Preset-Windows-VST3 -BuildInfo ./Skell-Preset-BUILD-INFO.txt
-          if ($LASTEXITCODE -ne 0) { throw "Exact-binary packaged VST3 verification failed: $LASTEXITCODE" }
-          & ./tools/verify-installed-skell-preset.ps1 -Root ./Skell-Preset-Windows-VST3 -ExpectedSha256 ('0' * 64)
-          if ($LASTEXITCODE -ne 3) { throw "Hash mismatch detection regression failed: $LASTEXITCODE" }
+          # Run the verifier as a child process so its exit code cannot
+          # terminate this Actions step. Exit 3 is intentionally expected for
+          # the negative test; explicitly return success ONLY after both checks.
+          $verifier = (Resolve-Path ./tools/verify-installed-skell-preset.ps1).Path
+          $shell = (Get-Process -Id $PID).Path
+          & $shell -NoProfile -File $verifier -Root ./Skell-Preset-Windows-VST3 -BuildInfo ./Skell-Preset-BUILD-INFO.txt
+          $matchExit = $LASTEXITCODE
+          if ($matchExit -ne 0) { throw "Exact-binary packaged VST3 verification failed: $matchExit" }
+          & $shell -NoProfile -File $verifier -Root ./Skell-Preset-Windows-VST3 -ExpectedSha256 ('0' * 64)
+          $mismatchExit = $LASTEXITCODE
+          if ($mismatchExit -ne 3) { throw "Hash mismatch detection regression failed: $mismatchExit" }
+          Write-Host 'PASS: exact build matched (0), deliberately wrong hash rejected (3)'
+          exit 0
       - name: Upload early Windows VST3 test preview
         uses: actions/upload-artifact@v5
         with:
