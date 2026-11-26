@@ -13,6 +13,7 @@ namespace {
 // Serialize library copy/name selection across instances in this process.
 // Workers may wait; the message thread never takes this mutex.
 std::mutex libraryWriteMutex;
+constexpr int maxUserLibraryPresets=1000;
 // Direct Main Vocals > Adlibs submenu: no fifth top-level library bank.
  // Historical factory IDs and personal genre tags remain unchanged.
 const juce::StringArray banks{"Main Presets","My Presets","Artists","Favorites","Genres"};
@@ -349,7 +350,7 @@ PresetBrowser::LibrarySnapshot PresetBrowser::collectLibrary(
         [](const juce::File& a,const juce::File& b) {
             return a.getFileName().compareIgnoreCase(b.getFileName())<0;
         });
-    if(result.files.size()>200)result.files.resize(200);
+    if(result.files.size()>maxUserLibraryPresets)result.files.resize(maxUserLibraryPresets);
     result.thumbnails.resize(result.files.size());
     const auto factoryCover=folder.getChildFile("Covers").getChildFile("Alchemist.png");
     if(factoryCover.existsAsFile() && factoryCover.getSize()>0 &&
@@ -990,7 +991,7 @@ juce::String PresetBrowser::genreForUser(int index) const {return genresForUser(
 void PresetBrowser::loadGenres() {
     genreKeys.clear();genreNames.clear();
     const auto file=genresFile();
-    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>65536)return;
+    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>1024*1024)return;
     for(const auto& line:juce::StringArray::fromLines(file.loadFileAsString())) {
         const int tab=line.indexOfChar('\t');
         if(tab<6)continue;
@@ -1000,7 +1001,7 @@ void PresetBrowser::loadGenres() {
            key.containsAnyOf("\r\n\t") || genreKeys.contains(key,true) ||
            !isKnownCategory(label))continue;
         genreKeys.add(key);genreNames.add(label);
-        if(genreKeys.size()>=200)break;
+        if(genreKeys.size()>=maxUserLibraryPresets)break;
     }
 }
 bool PresetBrowser::saveGenres() const {
@@ -1076,7 +1077,7 @@ void PresetBrowser::loadOrganization(){
                 for(const auto& item:*labels)genres=genres && item.isString() && isKnownCategory(item.toString());
             }
         }
-        if(type || tier || genres || key.startsWith("pair:user:")){
+        if(type || tier || genres || key.startsWith("pair:user:") || key.startsWith("title:user:")){
             organizationKeys.add(key);organizationValues.add(value);
         }
         if(organizationKeys.size()>=4096)break;
@@ -1091,6 +1092,11 @@ bool PresetBrowser::saveOrganization() const {
     juce::TemporaryFile pending(file);
     if(!pending.getFile().replaceWithText(rows.joinIntoString("\n")+"\n"))return false;
     return pending.overwriteTargetFileWithTemporary();
+}
+juce::String PresetBrowser::userDisplayName(int index) const {
+    if(index<0 || index>=(int)userPresets.size())return {};
+    const auto title=organizationValue("title:"+favoriteKey(-index-1));
+    return title.isNotEmpty()?title:userPresets[(size_t)index].getFileNameWithoutExtension();
 }
 juce::String PresetBrowser::vocalType(int index) const {
     if(index<0 || index>=(int)userPresets.size())return {};
@@ -1297,7 +1303,7 @@ void PresetBrowser::paintDirectory(juce::Graphics& g,const std::vector<Directory
 void PresetBrowser::loadArtists() {
     artistKeys.clear();artistNames.clear();
     const auto file=artistsFile();
-    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>65536)return;
+    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>1024*1024)return;
     for(const auto& line:juce::StringArray::fromLines(file.loadFileAsString())) {
         const int tab=line.indexOfChar('\t');
         if(tab<6)continue;
@@ -1308,7 +1314,7 @@ void PresetBrowser::loadArtists() {
            artist.length()>60 || artist.containsAnyOf("\r\n\t") ||
            artistKeys.contains(key,true))continue;
         artistKeys.add(key);artistNames.add(artist);
-        if(artistKeys.size()>=200)break;
+        if(artistKeys.size()>=maxUserLibraryPresets)break;
     }
 }
 bool PresetBrowser::saveArtists() const {
@@ -1339,7 +1345,8 @@ bool PresetBrowser::setArtistForUser(int index,const juce::String& input) {
         if(artist.isEmpty()) {
             artistKeys.remove(existing);artistNames.remove(existing);
         } else artistNames.set(existing,artist);
-    } else if(artist.isNotEmpty() && artistKeys.size()<200) {
+    } else if(artist.isNotEmpty()) {
+        if(artistKeys.size()>=maxUserLibraryPresets)return false;
         artistKeys.add(key);artistNames.add(artist);
     }
     if(!saveArtists()) {
@@ -1364,7 +1371,7 @@ bool PresetBrowser::isFavorite(int entry) const {
 void PresetBrowser::loadFavorites() {
     favoriteKeys.clear();
     const auto file=favoritesFile();
-    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>65536)return;
+    if(!file.existsAsFile() || file.getSize()<=0 || file.getSize()>1024*1024)return;
     for(auto key:juce::StringArray::fromLines(file.loadFileAsString())) {
         key=key.trim().toLowerCase();
         const bool safeFactory=key=="factory:43" || key=="factory:46" || key=="factory:27";
@@ -1372,7 +1379,7 @@ void PresetBrowser::loadFavorites() {
            (key.startsWith("user:") || safeFactory) &&
            !key.containsChar('\r') && !favoriteKeys.contains(key,true))
             favoriteKeys.add(key);
-        if(favoriteKeys.size()>=512)break;
+        if(favoriteKeys.size()>=maxUserLibraryPresets+64)break;
     }
 }
 bool PresetBrowser::saveFavorites() const {
@@ -1523,13 +1530,13 @@ bool PresetBrowser::testLibrarySnapshotForTest() {
     const auto removed=collectLibrary(folder,cached.covers);
     if(!removed.ok || removed.files.size()!=2 || !removed.covers.empty() ||
        removed.thumbnails[1].isValid())return false;
-    // Large library with more entries than the existing 200-item display cap.
-    for(int i=0;i<220;++i)
-        if(!folder.getChildFile("Z"+juce::String(i).paddedLeft('0',3)+".skellpreset")
+    // Large library verifies the expanded cap and bounded cache.
+    for(int i=0;i<1020;++i)
+        if(!folder.getChildFile("Z"+juce::String(i).paddedLeft('0',4)+".skellpreset")
                 .replaceWithText("fixture"))return false;
     const auto large=collectLibrary(folder,{});
-    return large.ok && large.files.size()==200 && large.thumbnails.size()==200 &&
-           large.files.front()==first && large.files.back().getFileName()=="Z197.skellpreset";
+    return large.ok && large.files.size()==maxUserLibraryPresets && large.thumbnails.size()==maxUserLibraryPresets &&
+           large.files.front()==first && large.files.back().getFileName()=="Z0997.skellpreset";
 }
 bool PresetBrowser::testBrowserLayoutForTest() {
     juce::ScopedValueSetter<bool> readOnly(preferencesReadOnly,true);
@@ -1871,7 +1878,7 @@ std::vector<int> PresetBrowser::filtered() const {
     // Personal sounds remain available via the personal library and its tags.
     {
         for(int i=0;i<(int)userPresets.size();++i) {
-            const auto label=userPresets[(size_t)i].getFileNameWithoutExtension();
+            const auto label=userDisplayName(i);
             const auto artist=artistForUser(i);
             const auto genre=genreForUser(i);
             bool found=q.isEmpty() || label.containsIgnoreCase(q) ||
@@ -1928,7 +1935,7 @@ std::vector<int> PresetBrowser::filtered() const {
         const auto label=[this](int entry){
             return entry>=0
                 ?juce::String(skellpreset::factoryPresets[(size_t)entry].name)
-                :userPresets[(size_t)(-entry-1)].getFileNameWithoutExtension();
+                :userDisplayName(-entry-1);
         };
         std::stable_sort(list.begin(),list.end(),
             [this,mode,&label](int a,int b){
@@ -2221,7 +2228,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int entry=entries[(size_t)itemIndex];
         const bool custom=entry<0;
         const juce::String itemName=custom
-            ?userPresets[(size_t)(-entry-1)].getFileNameWithoutExtension()
+            ?userDisplayName(-entry-1)
             :(entry==alchemistIndex?juce::String("Alchemist")
               :(entry==deuceIndex?juce::String("Deuce")
                 :juce::String(skellpreset::factoryPresets[(size_t)entry].name)));

@@ -188,6 +188,7 @@ private:
     void loadOrganization();
     bool saveOrganization() const;
     juce::String vocalType(int index) const;
+    juce::String userDisplayName(int index) const;
     juce::String artistTier(const juce::String& artist) const;
     juce::String pairForUser(int index) const;
     int activeUserIndex() const;
