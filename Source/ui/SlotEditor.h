@@ -85,7 +85,7 @@ public:
     }
     void paint(juce::Graphics& g) override {
         Theme::panelBox(g,getLocalBounds().toFloat().reduced(1.f),8.f,true);
-        Theme::text(g,"VOCAL SIDECHAIN / DUCK FX RETURNS",
+        Theme::text(g,"SIDECHAIN / EFFECT CONTRIBUTION",
                     {16,11,getWidth()-57,24},13.f,Theme::green,true);
         Theme::text(g,"DUCKING",{17,84,86,20},11,Theme::white,true);
         Theme::text(g,"THRESHOLD",{17,125,86,20},11,Theme::white,true);
@@ -117,7 +117,7 @@ public:
     // Rack double-click opens this search overlay; no duplicate selector.
     void openModulePicker();
     void openSidechainControls() {
-        if(!SkellPresetAudioProcessor::supportsWetSidechain(processor.slotType(slot)))return;
+        if(!SkellPresetAudioProcessor::supportsEffectSidechain(processor.slotType(slot)))return;
         dismissTransientOverlays();
         duckPanel.setVisible(true);duckPanel.toFront(true);
     }

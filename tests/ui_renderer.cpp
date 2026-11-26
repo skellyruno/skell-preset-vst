@@ -407,6 +407,8 @@ int main(int argc, char** argv) {
         }
         for(size_t i=0;i<covered.size();++i)if(!covered[i]){std::fprintf(stderr,"Missing effect capture type %zu\n",i);++failures;}
         options.scenes.push_back({"obsidian-stage-audience-100",1168,688,0,1,false});
+        options.scenes.push_back({"obsidian-sidechain-routing-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-sidechain-routing-100",1168,688,0,1,false});
         const char* directoryNames[]{"default","genres","genre-leaf","tiers","underground","mainstream","artist","artist-main","artist-adlib"};
         for(int page=0;page<9;++page)for(int view=0;view<2;++view)
             options.scenes.push_back({juce::String("audit-browser-")+juce::String(page)+"-"+directoryNames[page]+(view==0?"-thumbnails":"-list"),1168,688,0,1,true});
@@ -583,6 +585,7 @@ int main(int argc, char** argv) {
             editor.setSettingsPanelForScreenshot(scene.id=="obsidian-settings-70" ||
                 scene.id=="obsidian-settings-125" || scene.id=="crimson-settings-70");
             if(scene.id=="obsidian-stage-audience-100")editor.showHomeForScreenshot();
+            if(scene.id.startsWith("obsidian-sidechain-routing-"))editor.showRoutingForScreenshot();
             if(scene.id.startsWith("audit-browser-")){
                 const int page=scene.id.fromFirstOccurrenceOf("audit-browser-",false,false).getIntValue();
                 const bool small=scene.id.endsWith("minimum"),large=scene.id.endsWith("maximum");
@@ -668,7 +671,7 @@ int main(int argc, char** argv) {
         const auto wordmark=skellcore::ui::headless::capture(editor,818,482);
         int firstX=818,lastX=-1,firstY=482,lastY=-1;
         if(wordmark.image.isValid())
-            for(int y=7;y<45;++y)for(int x=53;x<242;++x) {
+            for(int y=14;y<50;++y)for(int x=53;x<242;++x) {
                 const auto colour=wordmark.image.getPixelAt(x,y);
                 if(colour.getGreen()>130
                    && colour.getGreen()>colour.getRed()*1.4f

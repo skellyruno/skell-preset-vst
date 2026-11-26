@@ -374,9 +374,9 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     studioCompKnee.setVisible(false);
     rightFirst.setTooltip("Ping Pong only: mono send, first echo right, then left. Other modes unchanged.");
     addAndMakeVisible(rightFirst);rightFirst.setVisible(false);
-    duckOpen.setTooltip("Lower selected reverb, delay or dub return while vocal is active, without external routing");
+    duckOpen.setTooltip("Adjust the selected effect sidechain detector and wet contribution");
     duckOpen.onClick=[this] {
-        if(!SkellPresetAudioProcessor::supportsWetSidechain(processor.slotType(slot)))return;
+        if(!SkellPresetAudioProcessor::supportsEffectSidechain(processor.slotType(slot)))return;
         const bool opening=!duckPanel.isVisible();
         if(opening){modulePicker.setVisible(false);installedBrowser.setVisible(false);livePanel.setVisible(false);liveView.setButtonText("VISUAL");}
         duckPanel.setVisible(opening);
@@ -386,7 +386,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     addAndMakeVisible(duckPanel);duckPanel.setVisible(false);
     duckClose.onClick=[this]{duckPanel.setVisible(false);};
     duckPanel.addAndMakeVisible(duckClose);
-    duckOn.setTooltip("Stereo-linked ducking from dry vocal, not from delay/reverb feedback");
+    duckOn.setTooltip("Reduce the selected effect contribution using the chosen detector; dry audio stays on its aligned path.");
     duckPanel.addAndMakeVisible(duckOn);
     duckSource.addItem("POST MIC",1);duckSource.addItem("PRE MIC",2);duckSource.addItem("SLOT INPUT",3);
     duckSource.setTooltip("Detector source: after MIC, before MIC, or this effect input");
@@ -1519,7 +1519,7 @@ void SlotEditor::select(int newSlot) {
     for(auto& a:knobAttachment)a.reset();
     const auto prefix="s"+juce::String(slot+1)+"_";
     duckOnAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        processor.state,prefix+(processor.slotType(slot)==SkellPresetAudioProcessor::AdlibDoubler?"dubDuckOn":"duckOn"),duckOn);
+        processor.state,prefix+SkellPresetAudioProcessor::sidechainEnableSuffix(processor.slotType(slot)),duckOn);
     rightFirstAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         processor.state,prefix+"rightFirst",rightFirst);
     duckSourceAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.state,prefix+"duckSource",duckSource);
@@ -1710,7 +1710,7 @@ void SlotEditor::refreshIfChanged() {
     if(type!=lastType){
         duckOnAttachment.reset();
         duckOnAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-            processor.state,prefix+(type==SkellPresetAudioProcessor::AdlibDoubler?"dubDuckOn":"duckOn"),duckOn);
+            processor.state,prefix+SkellPresetAudioProcessor::sidechainEnableSuffix(type),duckOn);
         endGraphGesture();
         layoutParameterControls(type);
         // A new effect resets the EQ bank, preserving all saved parameter
@@ -1785,7 +1785,7 @@ void SlotEditor::refreshIfChanged() {
     liveView.setVisible(false);livePanel.setVisible(false);
     parallelReturn.setEnabled(SkellPresetAudioProcessor::supportsParallelReturn(type));
     duckOpen.setVisible(hasSidechain);
-    if(!hasSidechain)duckPanel.setVisible(false);
+    if(!SkellPresetAudioProcessor::supportsEffectSidechain(type))duckPanel.setVisible(false);
     eqQSlider.setVisible(isPagedEQ(type));
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(int index=0;index<8;++index)
@@ -1978,7 +1978,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),{21,10,200,18},10,Theme::muted,true);
     const auto hostedName=type==SkellPresetAudioProcessor::ExternalVST3
         ?processor.hostedVST3Name(slot):juce::String{};
-    Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleName(type),
+    Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleDisplayName(type),
                       {21,29,500,38},25,Theme::white,true);
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
         // Do not paint a fake effect face behind a real native child window.

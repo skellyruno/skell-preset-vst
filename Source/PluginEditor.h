@@ -20,6 +20,7 @@ public:
     void setSettingsPanelForScreenshot(bool visible);
     void setModOrbForScreenshot(bool enabled);
     void dockRackForScreenshot(bool right);
+    void showRoutingForScreenshot();
     void showHomeForScreenshot();
     bool openRackContextMenuForScreenshot(int visualRow);
     void openModulePickerForScreenshot();

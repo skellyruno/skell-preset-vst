@@ -16,7 +16,8 @@
 #include "chain/AlchemistNativePreset.h"
 #include "chain/NativeSoundMatchTrials.h"
 #include <SkellCore/UI.h>
-#include <SkellCore/WorldLink.h>
+#include "ui/SkellMoonButton.h"
+#include "ui/SkellRoutingPage.h"
 #include <array>
 #include <cmath>
 #include <memory>
@@ -32,13 +33,26 @@ void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical
 class SkellPresetAudioProcessorEditor::Canvas final:public juce::Component,private juce::Timer {
 public:
     Canvas(SkellPresetAudioProcessorEditor& owner,SkellPresetAudioProcessor& p)
-    : outer(owner),processor(p),chain(p),slot(p),idle(p),browser(p),micPanel(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
+    : outer(owner),processor(p),chain(p),slot(p),idle(p),routing(p),browser(p),micPanel(p),skin(std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme::neon())) {
         Theme::selectFor(processor.state);
         setLookAndFeel(skin.get());
         setSize(Theme::width,Theme::height);
         setWantsKeyboardFocus(true);
         addAndMakeVisible(chain);addAndMakeVisible(slot);
         addAndMakeVisible(idle);
+        addChildComponent(routing);
+        routing.onClose=[this]{if(chain.onClearSelection)chain.onClearSelection();};
+        routing.onBeforeChange=[this]{prepareHistory();};
+        routing.onAfterChange=[this]{commitHistory();};
+        routing.onEdit=[this](int id){routing.setVisible(false);if(chain.onSidechainEdit)chain.onSidechainEdit(id);};
+        chain.onRoutingRequest=[this](int id){openRouting(id);};
+        addAndMakeVisible(moonButton);
+        moonButton.setTooltip("Show / hide master controls");
+        moonButton.onClick=[this]{toggleView();};
+        stageButton.setButtonText("LIVE STAGE");
+        stageButton.setTooltip("Return to the live performer");
+        style(stageButton);addAndMakeVisible(stageButton);
+        stageButton.onClick=[this]{if(chain.onClearSelection)chain.onClearSelection();};
         chain.setSelectedSlot(-1);
         themeButton.onClick=[this] {setTheme(Theme::nextVariant(selectedTheme));};
         addAndMakeVisible(themeButton);
@@ -48,37 +62,38 @@ public:
         chain.onDockRequest=[this](bool right){dockRack(right);};
 
         chain.onSelection=[this](int s){
+            if(routing.isVisible()){routing.selectTarget(s);chain.setSelectedSlot(s);return;}
             editingIdle=false;
             micPanel.setVisible(false); // effect editor must never sit behind MIC
             idle.setVisible(false);
-            slot.select(s);chain.setSelectedSlot(s);
+            slot.select(s);chain.setSelectedSlot(s);refresh();
         };
         chain.onSidechainEdit=[this](int s){
             if(chain.onSelection)chain.onSelection(s);
             slot.openSidechainControls();
         };
         chain.onClearSelection=[this]{
-            editingIdle=true;
+            routing.setVisible(false);editingIdle=true;
             slot.setHostedEditorPresentation(false);
             micPanel.setVisible(false); // show complete Home deck, not stale MIC
             slot.dismissTransientOverlays();
             chain.setSelectedSlot(-1);
-            idle.setVisible(slot.isVisible());
-            idle.toFront(false);
+            idle.setVisible(true);
+            idle.toFront(false);refresh();
         };
         slot.onBackgroundClick=[this] { if(chain.onClearSelection)chain.onClearSelection(); };
         chain.onReplaceRequest=[this](int s){
-            editingIdle=false;idle.setVisible(false);
+            routing.setVisible(false);editingIdle=false;idle.setVisible(false);
             micPanel.setVisible(false);
             slot.select(s);
             chain.setSelectedSlot(s);
-            slot.openModulePicker();
+            refresh();slot.openModulePicker();
         };
 
         undo.setButtonText(juce::String::charToString(0x21B6));
         redo.setButtonText(juce::String::charToString(0x21B7));
-        undo.setTooltip("Undo a preset load (Ctrl+Z). New edits and external hosted VST3s are not in history yet.");
-        redo.setTooltip("Redo a preset load (Ctrl+Y or Ctrl+Shift+Z)");
+        undo.setTooltip("Undo preset load, native rack removal or routing (Ctrl+Z). Hosted VST3 state excluded.");
+        redo.setTooltip("Redo preset load, native rack removal or routing (Ctrl+Y or Ctrl+Shift+Z)");
         style(undo);style(redo);
         addAndMakeVisible(undo);addAndMakeVisible(redo);
         undo.onClick=[this]{restoreHistory(undoStates,redoStates);};
@@ -98,22 +113,15 @@ public:
             if(!micPanel.isVisible()){slot.setHostedEditorPresentation(false);slot.dismissTransientOverlays();}
             micPanel.refresh();
             micPanel.setVisible(!micPanel.isVisible());
+            micButton.setToggleState(micPanel.anyActive() || micPanel.isVisible(),juce::dontSendNotification);
             if(micPanel.isVisible())micPanel.toFront(true);
         };
         // Keep the original test-only button adapter, but put the actual
         // microphone trigger at the top right of the effect rack.
         micButton.setVisible(false);
         chain.onMicRequest=[this] {if(micButton.onClick)micButton.onClick();};
-        // One segmented workspace switch plus one independent bypass toggle.
-        style(powerButton);
-        addAndMakeVisible(viewSwitch);addAndMakeVisible(powerButton);
-        viewSwitch.onModeChange=[this](int mode) {
-            browser.setVisible(false);micPanel.setVisible(false);
-            previousMode=mode==0?1:0;
-            processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
-            setParam(processor,"mode",(float)mode);
-            refresh();
-        };
+        // One workspace; the former mode automation remains for saved sessions.
+        style(powerButton);addAndMakeVisible(powerButton);
         powerButton.onClick=[this] {
             browser.setVisible(false);micPanel.setVisible(false);
             const int current=juce::jlimit(0,3,
@@ -132,7 +140,7 @@ public:
             s.onReadoutVisibilityChange=[this] {
                 // Values live on the Canvas behind the hosted slider.
                 // Repaint only the dial window, never the whole Simple page.
-                repaint(juce::Rectangle<int>(40,196,1090,352));
+                if(drawerVisible())repaint(slot.getBounds().withTrimmedTop(slot.getHeight()-206));
             };
             s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
             constexpr float pi=juce::MathConstants<float>::pi;
@@ -156,6 +164,7 @@ public:
                 return juce::jlimit(0.,1.,value.getDoubleValue()/100.);
             };
             s.updateText();
+            s.onValueChange=[this]{if(drawerVisible())repaint(slot.getBounds().withTrimmedTop(slot.getHeight()-206));};
         }
         for(auto* s:{&input,&mix,&output}) {
             // Three true rotary controls, with larger percent readouts painted
@@ -241,7 +250,7 @@ public:
         addAndMakeVisible(sizeSelect);
         sizeSelect.setVisible(false); // Internal compatibility adapter only.
         // Use the recessed, engraved settings switch from Skell Silence.
-        settings.setTooltip("Settings / Interface Size / Optional SkellWorld Presence");
+        settings.setTooltip("Resize interface");
         style(settings);
         addAndMakeVisible(settings);
         settings.onClick=[this] {
@@ -250,14 +259,8 @@ public:
             if(settingsPanel.isVisible())settingsPanel.close();
             else {
                 slot.setHostedEditorPresentation(false);
-                refreshWorldLinkStatus();
                 settingsPanel.open(sizeSelect.getSelectedId()-1);
             }
-        };
-        settingsPanel.onWorldLinkToggle=[this] {
-            if(worldLink.requested())worldLink.leave();
-            else worldLink.join();
-            refreshWorldLinkStatus();
         };
         settingsPanel.onSizeChange=[this](int choice){
             if(choice>=1 && choice<=4)
@@ -305,10 +308,12 @@ public:
                     }
                 });
         };
+        chain.onBeforeRemove=[this]{prepareHistory();};
+        chain.onAfterRemove=[this]{commitHistory();};
         browser.onBeforeLoad=[this]{prepareHistory();};
         browser.onLoadFailed=[this]{pendingHistory.reset();updateHistoryButtons();};
         browser.onLoaded=[this]{
-            commitHistory();
+            routing.setVisible(false);commitHistory();
             editingIdle=false;idle.setVisible(false);
             slot.select(0);chain.setSelectedSlot(0);refresh();
         };
@@ -351,31 +356,31 @@ public:
         std::vector<skellcore::ui::GuidedTourStep> steps;
         steps.emplace_back(&preset,"PRESET BROWSER",
             "Choose a starting sound from the preset browser. You can always make your own changes.");
-        steps.emplace_back(&viewSwitch,"SIMPLE / ADVANCED",
-            "Switch between the uncluttered sound overview and the full effect rack.");
-        if(chain.isVisible() && slot.isVisible()) {
+        steps.emplace_back(&stageButton,"LIVE STAGE",
+            "Return to the performer. Click the moon to reveal or hide the macro and master controls; the rack stays available.");
+        if(chain.isVisible()) {
             steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
                 "Scroll the rack, drag to reorder, double-click to replace or use + to add a processor. Studio Compressor, Studio Limiter and Studio Delay have dedicated effect controls.");
-            steps.emplace_back(&slot,"EDIT A SLOT",
+            if(slot.isVisible())steps.emplace_back(&slot,"EDIT A SLOT",
                 "Adjust the selected effect here. Rack slots keep their own independent controls, order and automation.");
         }
         steps.emplace_back(&chain,"MIC MODEL + NOISE GATE",
             "Click the rack's MIC icon. MIC MODEL shapes the recorded microphone; NOISE GATE has its own ON switch, threshold, hold and release. Both start independent, and the gate starts OFF.");
-        steps.emplace_back(&idle,"START HERE",
-            "The home deck shows your real output signal. Choose a preset or select any rack slot to begin; the microphone controls are available separately.");
+        if(idle.isVisible())steps.emplace_back(&moonButton,"SOUND CONTROLS",
+            "Click the moon to expose Tone, Punch, Space, Grit, Input, Mix and Output.");
         steps.emplace_back(&powerButton,"POWER / BYPASS",
             "Green means your effect rack is active. Click the power icon to bypass without losing any settings.");
         if(mix.isVisible())steps.emplace_back(&mix,"BLEND YOUR SOUND",
-            "The three Simple-mode knobs control Input, dry/wet Mix, and Output.");
-        steps.emplace_back(&settings,"SETTINGS / SKELLWORLD",
-            "Resize the interface or optionally join SkellWorld presence. This sends no audio, preset, chain or automation data.");
+            "The stage drawer includes Input, dry/wet Mix, and Output.");
+        steps.emplace_back(&settings,"RESIZE",
+            "Choose the interface size from the dropdown.");
         return steps;
     }
     skellcore::ui::GuidedTourPalette tourPalette() const {
         return {Theme::green,Theme::panel,Theme::white,Theme::muted,
                 juce::Colour(0xd9000000)};
     }
-    ~Canvas()override {worldLink.leave();stopTimer();processor.closeHostedVST3Editors();setLookAndFeel(nullptr);}
+    ~Canvas()override {stopTimer();processor.closeHostedVST3Editors();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
             g.setColour(Theme::bg.withAlpha(.57f));g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
@@ -412,13 +417,10 @@ public:
         sizeSelect.setColour(juce::ComboBox::backgroundColourId,Theme::panelAlt);
         sizeSelect.setColour(juce::ComboBox::textColourId,Theme::white);
         sizeSelect.setColour(juce::ComboBox::outlineColourId,Theme::stroke);
+        style(stageButton);settingsPanel.applyTheme();routing.applyTheme();
         chain.repaint();slot.applyTheme();browser.applyTheme();
         idle.repaint();settingsPanel.repaint();
         refresh();
-    }
-    void refreshWorldLinkStatus() {
-        settingsPanel.setWorldLinkState(
-            worldLink.requested(),worldLink.online(),worldLink.hubOnline());
     }
     void dockRack(bool right) {
         if(rackOnRight==right)return;
@@ -429,7 +431,7 @@ public:
     }
     void dockRackForScreenshot(bool right) {dockRack(right);refresh();}
     void configureForScreenshot(int variant,int workspaceMode,bool showBrowser) {
-        dockRack(false);
+        routing.setVisible(false);dockRack(false);
         variant=Theme::clampVariant(variant);
         processor.state.state.setProperty("uiTheme",variant,nullptr);
         setTheme(variant,false);
@@ -437,7 +439,10 @@ public:
             previousMode=1;
             processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
         }
-        setParam(processor,"mode",(float)(workspaceMode==3?3:juce::jlimit(0,1,workspaceMode)));
+        macroOpen=workspaceMode==0;
+        editingIdle=macroOpen;
+        if(macroOpen)chain.setSelectedSlot(-1);
+        setParam(processor,"mode",(float)(workspaceMode==3?3:1));
         refresh();
         if(showBrowser)browser.open();
         else browser.setVisible(false);
@@ -448,15 +453,15 @@ public:
         browser.setListViewForScreenshot(list);return result;
     }
     void setMatchPageForScreenshot(int page) {
-        editingIdle=false;idle.setVisible(false);
+        editingIdle=false;idle.setVisible(false);refresh();
         slot.setMatchPageForScreenshot(page);
     }
     void setSuiteForScreenshot(int page,bool stylesOpen) {
-        editingIdle=false;idle.setVisible(false);
+        editingIdle=false;idle.setVisible(false);refresh();
         slot.setSuiteForScreenshot(page,stylesOpen);
     }
     void setSuiteSpectrumForScreenshot(bool enabled) {
-        editingIdle=false;idle.setVisible(false);
+        editingIdle=false;idle.setVisible(false);refresh();
         slot.setSuiteSpectrumForScreenshot(enabled);
     }
     void setMicPanelForScreenshot(bool visible) {
@@ -476,7 +481,6 @@ public:
             browser.setVisible(false);
             micPanel.setVisible(false);
             slot.dismissTransientOverlays();
-            refreshWorldLinkStatus();
             settingsPanel.open(sizeSelect.getSelectedId()-1);
         } else {
             // Scene setup must not leave a stale settings overlay on the
@@ -485,9 +489,10 @@ public:
         }
     }
     void setModOrbForScreenshot(bool enabled) {
-        editingIdle=false;idle.setVisible(false);
+        if(enabled){editingIdle=false;idle.setVisible(false);refresh();}
         slot.setModOrbForScreenshot(enabled);
     }
+    void showRoutingForScreenshot(){openRouting(processor.slotIdAt(0));}
     void showHomeForScreenshot() {
         if(chain.onClearSelection)chain.onClearSelection();
         refresh();
@@ -496,11 +501,11 @@ public:
         return chain.openContextMenuForScreenshot(visualRow);
     }
     void openModulePickerForScreenshot() {
-        editingIdle=false;idle.setVisible(false);
+        editingIdle=false;idle.setVisible(false);refresh();
         slot.openModulePickerForScreenshot();
     }
     void openInstalledVST3BrowserForScreenshot() {
-        editingIdle=false;idle.setVisible(false);
+        editingIdle=false;idle.setVisible(false);refresh();
         slot.openInstalledVST3BrowserForScreenshot();
     }
     void selectRackSlotForScreenshot(int physicalSlot,int scrollOffset) {
@@ -513,23 +518,24 @@ public:
         slot.select(physicalSlot);
         refresh();
     }
-    // Flips between the Simple and Advanced workspaces. Used by the segmented
-    // header switch, the keyboard shortcut and the native UI self-tests so all
-    // three paths exercise exactly the same state transition.
+    // Stage drawer is presentation state only, never a host automation gesture.
+    void openRouting(int target){
+        browser.setVisible(false);micPanel.setVisible(false);settingsPanel.setVisible(false);
+        editingIdle=false;slot.dismissTransientOverlays();slot.setHostedEditorPresentation(false);
+        routing.open(target);refresh();
+    }
     void toggleView() {
-        browser.setVisible(false);micPanel.setVisible(false);
-        const int current=(int)processor.state.getRawParameterValue("mode")->load();
-        const int view=current==3?previousMode:(current==0?0:1);
-        previousMode=view==0?1:0;
-        processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
-        setParam(processor,"mode",(float)previousMode);
+        routing.setVisible(false);browser.setVisible(false);micPanel.setVisible(false);
+        editingIdle=true;chain.setSelectedSlot(-1);
+        slot.dismissTransientOverlays();macroOpen=!macroOpen;
         refresh();
     }
+    bool drawerVisible() const noexcept {return editingIdle && macroOpen;}
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
-        const std::array<const juce::Component*,11> all{{&themeButton,&preset,
-            &viewSwitch,&powerButton,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings}};
+        const std::array<const juce::Component*,13> all{{&themeButton,&preset,
+            &stageButton,&powerButton,&chain,&slot,&input,&mix,&output,&sizeSelect,&settings,&micButton,&stereoSeparation}};
         for(const auto* child:all){
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
@@ -548,7 +554,7 @@ public:
            || std::abs(input.valueFromTextFunction("+6 dB")-6.)>1.e-5)
             issues.add("Master rotary readout or legacy percent input incorrectly maps physical dB");
         const std::array<const juce::Component*,6> top{{
-            &preset,&viewSwitch,&undo,&redo,&settings,&powerButton}};
+            &preset,&stageButton,&undo,&redo,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -564,7 +570,7 @@ public:
         if(!canvasBounds.contains(browser.getBounds()))issues.add("Preset browser is clipped");
         if(!settings.isVisible()||sizeSelect.isVisible())issues.add("UI size control not relocated to settings");
         if(!settingsPanel.testLayoutForTest())
-            issues.add("Settings scale cards or close/presence targets are clipped");
+            issues.add("Resize dropdown is clipped");
         if(!slot.testPopupLayoutsForTest())
             issues.add("Effect / VST3 / EQ / wet duck popups have clipping or overlay conflicts");
         if(!juce::Rectangle<int>(0,0,Theme::width,Theme::height)
@@ -577,70 +583,40 @@ public:
         if(rackOnRight!=(chain.getX()>slot.getX()))
             issues.add("Rack dock state disagrees with displayed position");
         const int current=(int)processor.state.getRawParameterValue("mode")->load();
-        const bool advanced=current==1 || (current==3 && previousMode==1);
+        const bool drawer=drawerVisible();
         for(const auto& control:macro)
-            if(control.isVisible()==advanced)
-                issues.add(advanced?"Advanced mode still shows a legacy macro":
-                                  "Simple mode lost a macro control");
-        if(chain.isVisible()!=advanced || slot.isVisible()!=advanced)
-            issues.add("Mode visibility did not match the requested workspace");
+            if(control.isVisible()!=drawer)issues.add("Stage macro visibility differs from drawer");
+        if(!chain.isVisible() || slot.isVisible()!=(!editingIdle && !routing.isVisible()) || idle.isVisible()!=editingIdle)
+            issues.add("Unified rack/stage visibility regressed");
         for(const auto* master:{&input,&mix,&output})
-            if(master->isVisible()==advanced)
-                issues.add("Input/Mix/Output must remain Simple-only");
-        // All four output-stage controls own a live readout, so the check walks
-        // the real control list instead of assuming the original three.
-        const std::array<const juce::Slider*,4> masterSliders{
-            {&input,&mix,&output,&stereoSeparation}};
-        for(size_t i=0;i<masterValues.size();++i){
+            if(master->isVisible()!=drawer)issues.add("Master knob visibility differs from drawer");
+        const std::array<const juce::Slider*,3> masterSliders{{&input,&mix,&output}};
+        for(size_t i=0;i<3;++i) {
             const auto& value=masterValues[i];
-            if(value.isVisible()==advanced || !canvasBounds.contains(value.getBounds()) ||
+            if(value.isVisible()!=drawer || !canvasBounds.contains(value.getBounds()) ||
                value.getBounds().intersects(masterSliders[i]->getBounds()) ||
-               !masterSliders[i]->textFromValueFunction ||
-               value.getText()!=masterSliders[i]->textFromValueFunction(masterSliders[i]->getValue()))
-                issues.add("Master live numeric readout is clipped, stale, or in the wrong workspace");
+               value.getText()!=masterSliders[i]->getTextFromValue(masterSliders[i]->getValue()))
+                issues.add("Stage master readout overlaps or is stale");
         }
+        if(masterValues[3].isVisible())issues.add("Stereo direction text must remain hidden");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
-        if(powerButton.isBypassed()!=(current==3))
-            issues.add("Power indicator disagrees with host bypass state");
-        if(!stereoSeparation.isVisible() || !canvasBounds.contains(stereoSeparation.getBounds()) ||
-           micButton.isVisible()==advanced)
-            issues.add("Stereo or MIC control missing from its workspace");
-        if(advanced && (!chain.getBounds().contains(stereoSeparation.getBounds()) ||
-            stereoSeparation.getRight()>chain.getX()+158))
-            issues.add("Stereo dial must sit beside the rack MIC icon");
-        if(!advanced) {
-            if(micButton.getBounds().intersects(stereoSeparation.getBounds()) ||
-               stereoSeparation.getX()-micButton.getRight()>12)
-                issues.add("Simple MIC and stereo controls are not grouped");
-            for(int i=0;i<4;++i) {
-                const auto card=juce::Rectangle<int>(40+i*268,196,252,352);
-                if(!card.contains(macro[(size_t)i].getBounds()))
-                    issues.add("Simple macro dial escapes its card");
-                for(int j=i+1;j<4;++j)
-                    if(macro[(size_t)i].getBounds().intersects(macro[(size_t)j].getBounds()))
-                        issues.add("Simple macro dials overlap");
-            }
-            if(input.getWidth()<44 || mix.getWidth()<44 || output.getWidth()<44 ||
-               input.getHeight()<39 || mix.getHeight()<39 || output.getHeight()<39 ||
-               input.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag ||
-               mix.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag ||
-               output.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag)
-                issues.add("Master hardware rotary controls too small or incorrect");
-            // The STEREO dial joins the same hardware group, so it must match
-            // that geometry and stay clear of its neighbour and its readout.
-            if(!stereoSeparation.isVisible() ||
-               stereoSeparation.getWidth()<44 || stereoSeparation.getHeight()<39 ||
-               stereoSeparation.getSliderStyle()!=juce::Slider::RotaryHorizontalVerticalDrag)
-                issues.add("STEREO separation dial missing from the Simple master group");
-            if(stereoSeparation.getBounds().intersects(output.getBounds()))
-                issues.add("STEREO separation dial overlaps the OUTPUT dial");
-            if(masterValues[3].getBounds().intersects(stereoSeparation.getBounds()))
-                issues.add("STEREO readout overlaps its own dial");
-            if(!stereoSeparation.textFromValueFunction ||
-               masterValues[3].getText()!=stereoSeparation.textFromValueFunction(
-                   stereoSeparation.getValue()))
-                issues.add("STEREO readout is stale or missing its direction label");
+        if(powerButton.isBypassed()!=(current==3))issues.add("Power indicator mismatch");
+        if(!stereoSeparation.isVisible() || !micButton.isVisible() ||
+           !chain.getBounds().contains(stereoSeparation.getBounds()) ||
+           !chain.getBounds().contains(micButton.getBounds()) ||
+           stereoSeparation.getRight()>micButton.getX() ||
+           micButton.getX()-stereoSeparation.getRight()>6 ||
+           stereoSeparation.getWidth()!=micButton.getWidth() ||
+           stereoSeparation.getHeight()!=micButton.getHeight())
+            issues.add("Rack MIC/stereo hardware grouping regressed");
+        if(moonButton.isVisible()!=editingIdle || (editingIdle && !idle.getBounds().contains(moonButton.getBounds())))
+            issues.add("Moon trigger is outside live stage");
+        if(drawer) {
+            for(const auto& control:macro)
+                if(control.getY()<idle.getBottom() || !slot.getBounds().contains(control.getBounds()))
+                    issues.add("Macro escapes stage drawer");
         }
+        if(routing.isVisible() && routing.getBounds()!=slot.getBounds())issues.add("Routing page escaped the effect deck");
         if(!preset.getButtonText().contains(processor.presetName().toUpperCase()))
             issues.add("Preset selector no longer displays the loaded preset name");
         if(!slot.moduleSelectorMatchesAudio())
@@ -777,9 +753,9 @@ public:
         preset.onClick();
         if(browser.isVisible())issues.add("Preset selector did not close browser");
         toggleView();
-        if(chain.isVisible())issues.add("Simple mode failed to hide the rack");
+        if(!chain.isVisible() || !drawerVisible())issues.add("Moon drawer must keep rack available");
         toggleView();
-        if(!chain.isVisible())issues.add("Advanced mode toggle failed");
+        if(!chain.isVisible() || drawerVisible())issues.add("Moon drawer did not close");
         powerButton.onClick();
         if(!bypassShade.isVisible() || !powerButton.isBypassed())
             issues.add("Power button did not bypass and illuminate OFF state");
@@ -826,7 +802,7 @@ public:
             masterValues[3].getText()=="50%  WIDE" &&
             std::abs(processor.state.getRawParameterValue("stereoSeparation")->load()+48.f)<.01f;
         toggleView();
-        const bool stereoAdvanced=stereoSeparation.isVisible() && !micButton.isVisible() &&
+        const bool stereoAdvanced=stereoSeparation.isVisible() && micButton.isVisible() &&
             chain.getBounds().contains(stereoSeparation.getBounds()) &&
             std::abs(stereoSeparation.getValue()+48.)<.01;
         stereoSeparation.setValue(96.,juce::sendNotificationSync);
@@ -848,7 +824,7 @@ public:
                 issues.add("Legacy macro automation ID was removed");
         }
         powerButton.onClick();
-        if(!powerButton.isBypassed() || chain.isVisible())
+        if(!powerButton.isBypassed() || !chain.isVisible())
             issues.add("Simple mode power button changed the view or failed");
         if(powerButton.getButtonText().isNotEmpty() ||
            settings.getX()<=powerButton.getX() ||
@@ -859,10 +835,8 @@ public:
         settings.onClick();
         if(!settingsPanel.isVisible())
             issues.add("Settings button did not open its themed overlay");
-        if(!settingsPanel.hasWorldLinkControlForTest())
-            issues.add("Optional SkellWorld presence control is missing from themed Settings");
         if(!settingsPanel.testKeyboardNavigationForTest())
-            issues.add("Settings keyboard navigation between scale cards and presence regressed");
+            issues.add("Resize dropdown selection regressed");
         // Exercise Escape directly; focus-grabbing is verified by native
         // screenshots because a CI smoke editor may not have a window peer.
         if(!settingsPanel.keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)) ||
@@ -874,6 +848,11 @@ public:
         settings.onClick();
         if(settingsPanel.isVisible())
             issues.add("Settings button did not close its themed overlay");
+        configureForScreenshot(0,1,false);
+        openRouting(processor.slotIdAt(0));
+        if(!routing.isVisible() || slot.isVisible() || !chain.isVisible() || !routing.testConnectionForTest(processor.slotIdAt(0)))
+            issues.add("Sidechain routing preview/connect/disconnect regressed");
+        if(chain.onClearSelection)chain.onClearSelection();
         configureForScreenshot(0,1,false);
         for(const auto& control:macro)
             if(control.isVisible())
@@ -1218,10 +1197,11 @@ public:
             issues.add("Vocal Feel Suite native processBlock, return meters, dynamics, PDC or saved state failed");
         // Critical compatibility: do not replace the original simple macro
         // processor when adding a catalog, recorder or waveform visualization.
-        setParam(processor,"mode",0.f);
-        refresh();
-        if(chain.isVisible() || !macro[0].isVisible())
-            issues.add("Simple mode must show macro cards and hide the rack");
+        setParam(processor,"mode",0.f); // legacy host value, not a UI navigation command
+        editingIdle=true;macroOpen=true;refresh();
+        if(!chain.isVisible() || !macro[0].isVisible())
+            issues.add("Legacy mode value must not hide the rack or stage macros");
+        macroOpen=false;editingIdle=false;
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         slot.select(0);
         chain.setSelectedSlot(0);
@@ -1257,9 +1237,9 @@ public:
         brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,340.f);
-        const float titleX=75.f,titleY=21.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
+        const float titleX=75.f,titleY=26.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
         wordmark.draw(g,{titleX,titleY,titleW,titleH});
-        const int subY=juce::roundToInt(titleY+titleH-1.f);
+        const int subY=58;
         juce::AttributedString edition;edition.append("v.01",Theme::font(9.5f,true),Theme::green);
         juce::TextLayout editionLayout;editionLayout.createLayout(edition,60.f);
         const int editionX=juce::roundToInt(titleX+titleW-editionLayout.getWidth());
@@ -1270,7 +1250,7 @@ public:
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
         Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
-                    {758,12,214,14},9,Theme::muted,true);
+                    {758,12,135,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(661,0.f,(float)Theme::width);
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withMultipliedBrightness(.88f),0.f,662.f,
@@ -1298,123 +1278,27 @@ public:
                 Theme::stroke.withAlpha(.39f));
             g.fillRoundedRectangle((float)(263+ix*10),670.f,7.f,9.f,1.4f);
         }
-        // Simple-only master panel. The numeric labels are live children,
-        // not cached canvas paint, and cannot be obscured by the dials.
-        const int current=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
-        const int viewMode=current==3?previousMode:(current==0?0:1);
-        if(viewMode==0){
-            Theme::panelBox(g,{14.f,90.f,1140.f,568.f},11.f);
-            // One identity band: preset name, state lamp and live trace share
-            // a single horizontal strip instead of stacking four headings over
-            // dead space. This is the whole Simple-mode introduction.
-            Theme::text(g,"SIMPLE",{40,104,300,18},12.4f,Theme::muted,true);
-            const auto name=processor.presetName().toUpperCase();
-            Theme::fittedText(g,name,{38,124,700,52},38,Theme::white,true);
-            const bool live=idle.hasAudibleOutput();
-            const auto stateColour=processor.isCapturing()?Theme::red:
-                live?Theme::green:Theme::muted;
-            const auto stateText=processor.isCapturing()?"REC":
-                live?"LIVE":"IDLE";
-            // Activity badge, top-right of the identity band.
-            const auto badge=juce::Rectangle<float>(1026.f,130.f,110.f,30.f);
-            g.setColour(stateColour.withAlpha(.13f));
-            g.fillRoundedRectangle(badge,5.f);
-            g.setColour(stateColour.withAlpha(.62f));
-            g.drawRoundedRectangle(badge,5.f,.9f);
-            g.setColour(stateColour);
-            g.fillEllipse(badge.getX()+11.f,badge.getCentreY()-3.f,6.f,6.f);
-            Theme::fittedText(g,stateText,
-                badge.withTrimmedLeft(24.f).toNearestInt(),11.f,stateColour,true);
-            // Live scope shares the row with the name instead of owning a band.
-            g.setColour(Theme::stroke.withAlpha(.42f));
-            g.drawHorizontalLine(180,38.f,1130.f);
-            std::array<float,128> waveform{};
-            if(idle.hasFreshAudio())processor.getLiveWaveform(waveform);
-            juce::Path simpleScope;
-            for(std::size_t n=0;n<waveform.size();++n) {
-                const float x=742.f+(float)n*262.f/(waveform.size()-1);
-                const float sample2=std::isfinite(waveform[n])?
-                    juce::jlimit(-1.f,1.f,waveform[n]):0.f;
-                const float y=158.f-sample2*22.f;
-                if(n==0)simpleScope.startNewSubPath(x,y);
-                else simpleScope.lineTo(x,y);
-            }
-            g.setColour(processor.isCapturing()?Theme::red:
-                Theme::green.withAlpha(live?.88f:.24f));
-            g.strokePath(simpleScope,juce::PathStrokeType(1.6f));
-            static constexpr const char* labels[]{"TONE","PUNCH","SPACE","GRIT"};
-            // One shared macro deck. The actual APVTS rotaries retain their
-            // original geometry and automation; no per-macro card or duplicate meter.
-            for(int k=0;k<4;k++){
-                const float x=40.f+268.f*k;
-                const auto raw=processor.state.getRawParameterValue(
-                    "macro"+juce::String(k+1));
-                const float amount=juce::jlimit(0.f,1.f,raw?raw->load():.5f);
-                const bool active=!processor.macroTargets(k).isEmpty();
-                Theme::fittedText(g,labels[k],{(int)x,216,252,30},
-                    17.f,active?Theme::white:Theme::muted.withAlpha(.80f),
-                    true,juce::Justification::centred);
-                const auto pct=juce::Rectangle<int>((int)x+56,432,140,34);
-                Theme::text(g,juce::String(juce::roundToInt(amount*100.f))+"%",pct,
-                    22.f,active?Theme::green:Theme::muted.withAlpha(.62f),
-                    true,juce::Justification::centred);
-            }
-        }
-        if(viewMode==0) {
-            // A compact measured spectrum occupies the unused space below
-            // the four macros without moving their controls or labels.
-            const juce::Rectangle<float> bandRail(40.f,485.f,1088.f,58.f);
-            g.setColour(Theme::bg.withAlpha(.58f));g.fillRoundedRectangle(bandRail,7.f);
-            g.setColour(Theme::stroke.withAlpha(.65f));g.drawRoundedRectangle(bandRail,7.f,.8f);
-            Theme::text(g,"OUTPUT SPECTRUM",{53,492,160,18},10.5f,Theme::muted,true);
-            Theme::text(g,"80 Hz - 9 kHz",{53,510,160,20},11.f,Theme::white);
-            const auto graph=bandRail.withTrimmedLeft(185.f).reduced(10.f,8.f);
-            const auto& values=idle.spectrumBands();
-            const float step=graph.getWidth()/(float)(values.size()-1);
-            for(int line=0;line<4;++line){
-                const float y=graph.getY()+graph.getHeight()*line/3.f;
-                g.setColour(Theme::stroke.withAlpha(.28f));g.drawLine(graph.getX(),y,graph.getRight(),y,.65f);
-            }
-            juce::Path trace;
-            for(size_t n=0;n<values.size();++n){
-                const float x=graph.getX()+step*(float)n;
-                const float y=graph.getBottom()-juce::jlimit(0.f,1.f,values[n])*graph.getHeight();
-                if(n==0)trace.startNewSubPath(x,y);else trace.lineTo(x,y);
-            }
-            auto fill=trace;fill.lineTo(graph.getRight(),graph.getBottom());fill.lineTo(graph.getX(),graph.getBottom());fill.closeSubPath();
-            g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.38f),graph.getTopLeft(),
-                Theme::green.withAlpha(.025f),graph.getBottomLeft(),false));g.fillPath(fill);
-            g.setColour(Theme::green.withAlpha(.13f));g.strokePath(trace,juce::PathStrokeType(4.f));
-            g.setColour(Theme::green.withAlpha(.90f));g.strokePath(trace,juce::PathStrokeType(1.5f));
-            for(size_t n=0;n<values.size();n+=6){
-                const float x=graph.getX()+step*(float)n;
-                g.setColour(Theme::stroke.withAlpha(.25f));g.drawLine(x,graph.getY(),x,graph.getBottom(),.65f);
-            }
-            // Master row: one continuous hardware strip rather than three
-            // floating boxes, so Input / Mix / Output read as one output stage.
-            const auto strip=juce::Rectangle<float>(40.f,562.f,1088.f,88.f);
-            g.setGradientFill(juce::ColourGradient(
-                Theme::panelAlt.brighter(.05f),strip.getTopLeft(),
-                Theme::panelAlt.darker(.14f),strip.getBottomRight(),false));
-            g.fillRoundedRectangle(strip,9.f);
-            g.setColour(Theme::stroke.withAlpha(.88f));
-            g.drawRoundedRectangle(strip.reduced(.5f),9.f,1.f);
-            const char* masterNames[]{"INPUT","MIX","OUTPUT","STEREO"};
-            // STEREO already names its unit in the readout ("72% WIDE"), so it
-            // deliberately has no second stacked unit label to collide with.
-            const char* masterUnits[]{"dB","%","dB",""};
-            for(int i=0;i<4;++i) {
-                const float x=strip.getX()+18.f+(float)i*272.f;
-                if(i>0) {
-                    g.setColour(Theme::stroke.withAlpha(.55f));
-                    g.drawVerticalLine((int)(x-6.f),strip.getY()+12.f,strip.getBottom()-12.f);
+        // One shallow control drawer below the resized live performer.
+        if(drawerVisible()) {
+            const auto deck=slot.getBounds();
+            const int x=deck.getX(),y=deck.getBottom()-206,w=deck.getWidth();
+            Theme::panelBox(g,juce::Rectangle<float>((float)x,(float)y,(float)w,206.f),8.f,true);
+            Theme::fittedText(g,"SOUND CONTROLS",{x+16,y+8,w-32,20},12.f,Theme::white,true);
+            g.setColour(Theme::stroke.withAlpha(.60f));
+            g.drawHorizontalLine(y+34,(float)x+16.f,(float)(x+w-16));
+            const char* labels[]{"TONE","PUNCH","SPACE","GRIT","INPUT","MIX","OUTPUT"};
+            for(int k=0;k<7;++k){
+                const int left=x+10+k*(w-20)/7,right=x+10+(k+1)*(w-20)/7;
+                const bool active=k>=4 || !processor.macroTargets(k).isEmpty();
+                Theme::fittedText(g,labels[k],{left,y+38,right-left,22},13.f,active?Theme::white:Theme::muted,true,juce::Justification::centred);
+                if(k<4){
+                    const auto raw=processor.state.getRawParameterValue("macro"+juce::String(k+1));
+                    Theme::fittedText(g,juce::String(juce::roundToInt(100.f*raw->load()))+"%",
+                        {left,y+160,right-left,24},17.f,active?Theme::green:Theme::muted,true,juce::Justification::centred);
                 }
-                Theme::text(g,masterNames[i],{(int)x+(i==3?133:94),574,i==3?105:120,16},10.6f,
-                            Theme::muted,true);
-                if(*masterUnits[i])
-                    Theme::fittedText(g,masterUnits[i],{(int)x+94,592,120,14},8.6f,
-                                      Theme::muted.withAlpha(.62f),true);
             }
+            g.setColour(Theme::stroke.withAlpha(.6f));
+            g.drawVerticalLine(x+10+4*(w-20)/7,(float)y+38.f,(float)y+188.f);
         }
     }
     void paintOverChildren(juce::Graphics& g) override {
@@ -1435,7 +1319,13 @@ public:
         // The Advanced footer macro strip is gone: let the module editor
         // fill the space down to the shared master-control footer.
         slot.setBounds(rackOnRight?14:247,90,906,561);
-        idle.setBounds(slot.getBounds());
+        routing.setBounds(slot.getBounds());
+        idle.setBounds(drawerVisible()?slot.getBounds().withTrimmedBottom(212):slot.getBounds());
+        moonButton.setBounds(idle.moonBounds().translated(idle.getX(),idle.getY()));
+        moonButton.setVisible(editingIdle);moonButton.expanded=drawerVisible();
+        if(editingIdle){idle.toFront(false);moonButton.toFront(false);}
+        if(routing.isVisible())routing.toFront(false);
+        moonButton.repaint();
         // Smaller movable mic panel opens on the LEFT; manual drag/resize
         // remains under the user's control and survives editor refresh.
         constexpr int micWidth=324,micHeight=320;
@@ -1449,56 +1339,51 @@ public:
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
         preset.setBounds(431,27,318,37);
-        viewSwitch.setBounds(758,27,214,37);
+        stageButton.setBounds(758,28,142,36);
         // Bounded message-thread preset history in the top bar.
         // The two small actions never obscure the Power / Settings group.
-        undo.setBounds(987,29,32,32);
-        redo.setBounds(1025,29,32,32);
-        micButton.setBounds(859,589,38,36);
+        undo.setBounds(987,30,30,30);
+        redo.setBounds(1025,30,30,30);
+        micButton.setBounds(chain.getX()+174,chain.getY()+6,34,34);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
         // Compact 36px controls on one baseline, visually grouped.
         powerButton.setBounds(1069,28,36,36);
-        const int raw=(int)processor.state.getRawParameterValue("mode")->load();
-        const int display=raw==3?previousMode:(raw==0?0:1);
-        for(int i=0;i<4;++i) {
-            auto& knob=macro[(size_t)i];
-            // Original Simple-mode hardware cards and rotary controls;
-            // Advanced hides them without changing automatable macro IDs.
-            knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-            // Centred in each 252px card: card x = 40 + 268*i, dial diameter 150.
-            knob.setBounds(91+i*268,255,150,150);
-            knob.setVisible(display==0);
+        const bool drawer=drawerVisible();
+        const auto deck=slot.getBounds();
+        const int y=deck.getBottom()-206;
+        const auto dialBounds=[&](int k){const int l=deck.getX()+10+k*(deck.getWidth()-20)/7;
+            const int r=deck.getX()+10+(k+1)*(deck.getWidth()-20)/7;
+            return juce::Rectangle<int>((l+r)/2-43,y+66,86,86);};
+        for(int i=0;i<4;++i){
+            macro[(size_t)i].setBounds(dialBounds(i));
+            macro[(size_t)i].setVisible(drawer);
         }
-        // Keep all three original APVTS controls Simple-only and usable
-        // even when the plugin is displayed at its default 70% scale.
-        // Four equal output-stage cells: INPUT, MIX, OUTPUT, STEREO.
-        // The 1088px strip holds 272px per cell, keeping every dial at the
-        // original 74px diameter with room for its label and readout.
-        input.setBounds(58,570,74,74);
-        mix.setBounds(330,570,74,74);
-        output.setBounds(602,570,74,74);
-        micButton.setVisible(display==0);
-        stereoSeparation.setBounds(display==0?juce::Rectangle<int>(901,575,64,64):
-            juce::Rectangle<int>(chain.getX()+113,chain.getY()+1,44,44));
-        for(auto* control:{&input,&mix,&output})control->setVisible(display==0);
+        input.setBounds(dialBounds(4));mix.setBounds(dialBounds(5));output.setBounds(dialBounds(6));
+        micButton.setVisible(true);
+        stereoSeparation.setBounds(chain.getX()+136,chain.getY()+6,34,34);
         stereoSeparation.setVisible(true);
-        stereoSeparation.setEnabled(raw!=3);
-        micButton.setEnabled(raw!=3);
+        for(auto* control:{&input,&mix,&output})control->setVisible(drawer);
         for(size_t i=0;i<masterValues.size();++i){
-            masterValues[i].setBounds(i==3?1007:140+(int)i*272,584,i==3?114:150,30);
-            masterValues[i].setVisible(display==0);
+            const auto b=dialBounds(4+juce::jmin(2,(int)i));
+            masterValues[i].setBounds(b.getX()-15,y+160,b.getWidth()+30,24);
+            masterValues[i].setVisible(i<3 && drawer);
         }
+        // The rack's two matching hardware controls remain above its painted face.
+        micButton.toFront(false);stereoSeparation.toFront(false);
         syncMasterReadouts();
         sizeSelect.setBounds(1094,664,69,22);
         settings.setBounds(1110,28,36,36);
-        settingsPanel.setBounds(743,78,388,326);
+        settingsPanel.setBounds(916,78,230,98);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.placeWithin(juce::Rectangle<int>(8,76,Theme::width-16,Theme::height-84),
                             {rackOnRight?76:445,77,650,538});
-        bypassShade.setBounds(display==0?14:(rackOnRight?14:247),90,
-                              display==0?1140:906,display==0?507:535);
+        bypassShade.setBounds(slot.getBounds().withTrimmedBottom(26));
+        if(bypassShade.isVisible())bypassShade.toFront(false);
+        if(browser.isVisible())browser.toFront(false);
+        if(settingsPanel.isVisible())settingsPanel.toFront(false);
+        if(micPanel.isVisible())micPanel.toFront(false);
     }
     void refresh(){
         Theme::select(selectedTheme);
@@ -1509,9 +1394,10 @@ public:
                 processor.state.state.setProperty("uiPreviousMode",previousMode,nullptr);
         }
         const bool bypass=m==3;
-        const int display=bypass?previousMode:(m==0?0:1);
-        chain.setVisible(display==1);slot.setVisible(display==1);
-        idle.setVisible(display==1 && editingIdle);
+        const bool drawer=drawerVisible();
+        chain.setVisible(true);slot.setVisible(!editingIdle && !routing.isVisible());
+        routing.setEnabled(!bypass);
+        idle.setVisible(editingIdle);
         chain.setAlpha(bypass?.30f:1.f);slot.setAlpha(bypass?.30f:1.f);
         chain.setEnabled(!bypass);slot.setEnabled(!bypass);
         // Keep the actual performer and its BYPASS lamp readable. The
@@ -1519,51 +1405,47 @@ public:
         idle.setEnabled(!bypass);idle.setAlpha(bypass?.72f:1.f);
         if(idle.isShowing())idle.repaint();
         for(auto& s:macro){
-            s.setVisible(display==0);
+            s.setVisible(drawer);
             s.setEnabled(!bypass);
             s.setAlpha(bypass?.35f:1.f);
         }
         for(auto* s:{&input,&mix,&output}) {
-            s->setVisible(display==0);
+            s->setVisible(drawer);
             s->setEnabled(!bypass);
             s->setAlpha(bypass?.35f:1.f);
         }
         stereoSeparation.setEnabled(!bypass);
         stereoSeparation.setAlpha(bypass?.45f:1.f);
         micButton.setEnabled(!bypass);
-        for(auto& value:masterValues){value.setVisible(display==0);value.setAlpha(bypass?.50f:1.f);}
+        moonButton.setEnabled(!bypass);
+        for(size_t i=0;i<masterValues.size();++i){masterValues[i].setVisible(i<3 && drawer);masterValues[i].setAlpha(bypass?.50f:1.f);}
         syncMasterReadouts();
         bypassShade.setVisible(bypass);
         if(bypass)bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
         if(settingsPanel.isVisible())settingsPanel.toFront(true);
         if(micPanel.isVisible())micPanel.toFront(true);
+        micButton.setToggleState(micPanel.anyActive() || micPanel.isVisible(),juce::dontSendNotification);
         micButton.setColour(juce::TextButton::buttonColourId,
             micPanel.anyActive()?Theme::green.withAlpha(.21f):Theme::panelAlt);
         micButton.setColour(juce::TextButton::textColourOffId,
             micPanel.anyActive()?Theme::green:Theme::white);
         preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
-        // Segmented workspace switch: each half selects its mode directly and
-        // the lit half always mirrors the real "mode" parameter.
-        viewSwitch.setAdvanced(display!=0,false);
-        viewSwitch.setTooltip(display==0?
-            "Simple workspace active; click to go Advanced":
-            "Advanced workspace active; click to go Simple");
         powerButton.setBypassed(bypass);
         // UI state must reflect the current host/program state *now*, not at
         // the next 30Hz timer tick. This also prevents stale module names
         // during screenshot capture and fast A/B preset auditioning.
         chain.refreshIfChanged();
-        slot.setHostedEditorPresentation(display==1 && !bypass && !editingIdle &&
+        slot.setHostedEditorPresentation(!bypass && !editingIdle && !routing.isVisible() &&
             !browser.isVisible() && !settingsPanel.isVisible() && !micPanel.isVisible());
         slot.refreshIfChanged();
         resized();repaint();
     }
     void timerCallback() override{
         processor.refreshHostedLatency();
-        if(settingsPanel.isVisible())refreshWorldLinkStatus();
         if(micPanel.isVisible())micPanel.refreshIfChanged();
         const bool micActive=micPanel.anyActive();
+        micButton.setToggleState(micActive || micPanel.isVisible(),juce::dontSendNotification);
         if(micActive!=lastMicOn) {
             lastMicOn=micActive;
             micButton.setColour(juce::TextButton::buttonColourId,
@@ -1578,12 +1460,11 @@ public:
         const auto n=processor.presetName().toUpperCase()+"  ▼";
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
-        const int display=m==3?previousMode:(m==0?0:1);
-        if(slot.isVisible()!=(display==1) || bypassShade.isVisible()!=(m==3))refresh();
-        slot.setHostedEditorPresentation(display==1 && m!=3 && !editingIdle &&
+        if(bypassShade.isVisible()!=(m==3))refresh();
+        slot.setHostedEditorPresentation(m!=3 && !editingIdle && !routing.isVisible() &&
             !browser.isVisible() && !settingsPanel.isVisible() && !micPanel.isVisible());
-        if(display==1 && m!=3){chain.refreshIfChanged();slot.refreshIfChanged();}
-        if(display==0)syncMasterReadouts(); // host automation fallback, changes only
+        if(m!=3){chain.refreshIfChanged();slot.refreshIfChanged();if(routing.isVisible())routing.refresh();}
+        if(drawerVisible())syncMasterReadouts();
         const auto now=juce::Time::getMillisecondCounter();
         const unsigned count=processor.liveScopeSampleCount();
         const bool advancing=count!=lastScopeSampleCount;
@@ -1623,11 +1504,7 @@ public:
             idle.setAudioFresh(count>0);
             // The former top LIVE status was removed; do not repaint the
             // static SKELL title/version every incoming scope update.
-            const int activeView=(int)processor.state.getRawParameterValue("mode")->load();
-            if(activeView==0 || (activeView==3 && previousMode==0))
-                // The current Simple waveform is painted in the identity band.
-                // Invalidate the real trace and activity badge, not the knob row.
-                {idle.updateSpectrum();repaint(juce::Rectangle<int>(738,126,400,55));repaint(40,485,1088,58);}
+            if(drawerVisible())repaint(slot.getBounds().withTrimmedTop(slot.getHeight()-206));
         } else if(lastScopeFrameTimeMs!=0u &&
                   (unsigned)(juce::Time::getMillisecondCounter()-
                              lastScopeFrameTimeMs)>=400u) {
@@ -1636,7 +1513,7 @@ public:
             // the visible stage has a separate elapsed-time animation clock.
             if(idle.hasFreshAudio()){
                 idle.setAudioFresh(false);
-                if(display==0){repaint(juce::Rectangle<int>(738,126,400,55));repaint(40,485,1088,58);}
+                if(drawerVisible())repaint(slot.getBounds().withTrimmedTop(slot.getHeight()-206));
             }
         }
         // Motion does not depend on audio block cadence. Hidden views do not
@@ -1674,7 +1551,7 @@ public:
         const auto point=e.getEventRelativeTo(this).getPosition();
         const bool overlayWasVisible=micPanel.isVisible() ||
             browser.isVisible() || settingsPanel.isVisible();
-        const auto micTrigger=juce::Rectangle<int>(chain.getX()+158,chain.getY()+5,42,38);
+        const auto micTrigger=micButton.getBounds();
         if(micPanel.isVisible() && !micPanel.getBounds().contains(point)
            && !(chain.isVisible() && micTrigger.contains(point))
            && !(micButton.isVisible() && micButton.getBounds().contains(point)))
@@ -1687,7 +1564,7 @@ public:
             settingsPanel.close();
         const int current=(int)processor.state.getRawParameterValue("mode")->load();
         if(!overlayWasVisible && !e.mods.isPopupMenu() &&
-           current==1 && !editingIdle && isEmptyGapReturn(point) &&
+           current!=3 && !editingIdle && isEmptyGapReturn(point) &&
            chain.onClearSelection)
             chain.onClearSelection();
     }
@@ -1715,9 +1592,10 @@ public:
             settingsPanel.close();return true;
         }
         if(key==juce::KeyPress::escapeKey&&browser.isVisible()){browser.setVisible(false);return true;}
+        if(key==juce::KeyPress::escapeKey && routing.isVisible()){if(chain.onClearSelection)chain.onClearSelection();return true;}
         if(key==juce::KeyPress::escapeKey && slot.isVisible()){
             editingIdle=true;slot.setHostedEditorPresentation(false);idle.setVisible(true);chain.setSelectedSlot(-1);
-            idle.toFront(false);return true;
+            idle.toFront(false);refresh();return true;
         }
         return false;
     }
@@ -1786,15 +1664,16 @@ private:
     }
     SkellPresetAudioProcessorEditor& outer;
     SkellPresetAudioProcessor& processor;
-    ChainPanel chain;SlotEditor slot;SkellIdleDeck idle;
+    ChainPanel chain;SlotEditor slot;SkellIdleDeck idle;SkellRoutingPage routing;
     PresetBrowser browser;SkellMicModelPanel micPanel;
     SkellSettingsPanel settingsPanel;
-    skellcore::world::WorldLink worldLink{"skell.preset","Skell Preset"};
+    SkellMoonButton moonButton;
+    SkellActionButton stageButton;
     SkullThemeButton themeButton;
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
     int selectedTheme=Theme::Obsidian,previousMode=1;
-    bool rackOnRight=false,editingIdle=true;
+    bool rackOnRight=false,editingIdle=true,macroOpen=false;
     int lastInputMeter=-1,lastOutputMeter=-1;
     float displayedInputPeak=0.f,displayedOutputPeak=0.f;
     bool lastInputOverload=false,lastOutputOverload=false;
@@ -1806,7 +1685,6 @@ private:
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;
-    SkellModeSwitch viewSwitch;
     SkellPowerButton powerButton;
     std::array<SkellMacroKnob,4> macro;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> macroAttachment;
@@ -1901,6 +1779,7 @@ void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
     canvas->dockRackForScreenshot(right);
 }
 
+void SkellPresetAudioProcessorEditor::showRoutingForScreenshot(){canvas->showRoutingForScreenshot();}
 void SkellPresetAudioProcessorEditor::showHomeForScreenshot() {
     canvas->showHomeForScreenshot();
 }

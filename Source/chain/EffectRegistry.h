@@ -66,6 +66,14 @@ static_assert(effects.size()==45,"Keep registry in sync with ModuleType");
 constexpr const Effect& at(int id) noexcept {
     return effects[static_cast<std::size_t>(id<0||id>=(int)effects.size()?0:id)];
 }
+inline constexpr std::array<const char*,45> displayNames{{"Empty","Skelly EQ Classic","Skelly Comp Classic","Skelly Limiter Classic","Skelly Gate","Skelly Drive","Skelly Reverb Classic","Skelly Echo Classic","Skelly Exciter","Skelly Throw","Skelly Doubler","Skelly De-Esser","External VST3","Skelly Radio","Skelly Crush","Skelly Tremolo","Skelly Width","Skelly Multiband","Skelly Room","Skelly Smooth","Skelly Chorus","Skelly Flanger","Skelly Ring","Skelly Rider","Skelly Duck Echo","Skelly Vibrato","Skelly EQ 8","Skelly FET/Opto","Skelly Harshness","Skelly Noise","Skelly Pitch","Skelly Match","Skelly Mic","Skelldizer","Skelly EQ","Skelly Limiter","Skelly Comp","Skelly Dist","Skelly Delay","Skelly Chop","Skelly Motion","Skelly Filter","Skelly Adlib Drive","Skelly Opto","Skelly Vocal Suite"}};
+constexpr const char* displayName(int id) noexcept {
+    return displayNames[static_cast<std::size_t>(id<0 || id>=45?0:id)];
+}
+// Curated insertion list. Legacy DSP stays addressable by its original ID.
+constexpr bool recommended(int id) noexcept {
+    switch(id){case 1:case 2:case 3:case 6:case 7:case 19:case 26:case 31:case 32:return false;default:return id>=0&&id<45&&id!=12;}
+}
 constexpr int count() noexcept {return static_cast<int>(effects.size());}
 // Useful for automated tests and documentation. The 322 processors all have
 // existing native counterparts, so none is imported or duplicated in rack.

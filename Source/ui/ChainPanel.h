@@ -53,7 +53,7 @@ public:
            visualRow>=scrollOffset+visibleRows)return false;
         popupFor(processor.slotIdAt(visualRow),{});
         return contextOpen && contextTop>=0 &&
-               contextTop+218<=getHeight() && getWidth()>=209;
+               contextTop+244<=getHeight() && getWidth()>=209;
     }
     void dismissContextMenuForScreenshot() {contextOpen=false;contextHover=-1;repaint();}
     bool canScrollForTest() const noexcept {
@@ -64,6 +64,8 @@ public:
     std::function<void()> onClearSelection; // click empty rack to show idle visual
     // Double-clicking an effect opens the searchable replacement overlay.
     std::function<void(int)> onReplaceRequest;
+    std::function<void()> onBeforeRemove,onAfterRemove;
+    void removeEffectAt(int position);
     std::function<void()> onMicRequest;
     bool triggerMicForTest() {if(!onMicRequest)return false;onMicRequest();return true;}
     // Shared hit-test geometry for UI and regression tests.
@@ -72,6 +74,7 @@ public:
     bool testRackControlsAndWet();
     bool testSidechainDock();
     std::function<void(int)> onSidechainEdit;
+    std::function<void(int)> onRoutingRequest;
     bool wetReadoutVisibleForTest(int physicalSlot) const noexcept {
         return hoveredWetSlot==physicalSlot || wetDragSlot==physicalSlot;
     }
@@ -122,11 +125,7 @@ private:
     void applyWetWheel(int physicalSlot,float deltaY); // host-gestured fine trim
     void toggleSlotPower(int physicalSlot);
     bool selectAndReplace(int row);
-    bool sidechainLinkMode=false;
     void openSidechainTargets();
-    bool hasSidechainTargets() const;
-    bool canChooseRoutingEffect() const;
-    void chooseRoutingEffect();
     juce::RangedAudioParameter* sidechainParameter(int physicalSlot) const;
     bool sidechainLinked(int physicalSlot) const;
     bool toggleSidechainLink(int physicalSlot);

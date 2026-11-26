@@ -1424,6 +1424,45 @@ int studioSmoke() {
         if(silent[0]>1.f || active[0]<8.f || released[0]>1.f || active[1]>1.e-6f || p->getLatencySamples()!=0)return 182;
         std::puts("PASS: external stereo key, silence release, no key leakage, zero added PDC");
     }
+    {
+        auto p=std::make_unique<SkellPresetAudioProcessor>();
+        p->clearRackToEmpty();
+        auto layout=p->getBusesLayout();layout.inputBuses.set(1,juce::AudioChannelSet::stereo());
+        if(!p->setBusesLayout(layout))return 183;
+        p->setSlotType(0,SkellPresetAudioProcessor::Saturator);p->setSlotOn(0,true);
+        p->setSlotParam(0,0,.9f);p->setSlotParam(0,1,.5f);
+        auto set=[&](const juce::String& id,float v){if(auto* param=p->state.getParameter(id))
+            param->setValueNotifyingHost(param->convertTo0to1(v));};
+        set("s1_wet",1.f);set("s1_duckOn",1.f); // historical inert flag
+        set("s1_duckExternal",1.f);set("s1_duckDepth",1.f);
+        set("s1_duckThreshold",-40.f);set("s1_duckRelease",50.f);
+        p->prepareToPlay(48000.,256);
+        auto measure=[&](float key){
+            juce::AudioBuffer<float> a(4,256);juce::MidiBuffer midi;
+            double error=0.;
+            for(int b=0;b<220;++b){
+                for(int n=0;n<256;++n){
+                    const float v=.25f*std::sin((float)n*.21f);
+                    a.setSample(0,n,v);a.setSample(1,n,v);
+                    a.setSample(2,n,key);a.setSample(3,n,-key);
+                }
+                p->processBlock(a,midi);
+                if(b==219)for(int n=0;n<256;++n){
+                    const float v=.25f*std::sin((float)n*.21f);
+                    error+=std::abs(a.getSample(0,n)-v)+std::abs(a.getSample(1,n)-v);
+                }
+            }
+            return std::array<double,2>{error/512.,p->getSlotDuckReductionDb(0)};
+        };
+        const auto old=measure(.5f);
+        set("s1_duckEffect",1.f);
+        const auto linked=measure(.5f),released=measure(0.f);
+        const bool pass=old[0]>.001 && old[1]<.001 && linked[0]<old[0]*.05 &&
+            linked[1]>15. && std::abs(released[0]-old[0])<.0001 && p->getLatencySamples()==0;
+        p->releaseResources();
+        if(!pass){std::fprintf(stderr,"Generic sidechain old %.6f linked %.6f release %.6f dB %.2f\n",old[0],linked[0],released[0],linked[1]);return 184;}
+        std::puts("PASS: generic native contribution duck, legacy inert flag, release and zero latency");
+    }
     // Exercise the FRONT-END mic gate through the actual JUCE audio callback.
     // It must be opt-in, zero-PDC, stereo linked, recallable, and bypass clean.
     processor->setSlotOn(0,false);

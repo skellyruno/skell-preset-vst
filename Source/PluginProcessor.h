@@ -37,10 +37,17 @@ class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juc
 public:
     enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, VocalFeelOptoFX, VocalFeelSuiteFX, NumberOfModules };
     static constexpr int slotCount=16;
+    juce::String moduleDisplayName(int type) const;
     static bool supportsWetSidechain(int type) noexcept {
         return type==Reverb || type==VoxRackRoom || type==Delay ||
                type==StudioDelayFX || type==AdlibThrow ||
                type==DuckingPingPongFX || type==AdlibDoubler;
+    }
+    static bool supportsEffectSidechain(int type) noexcept {
+        return type>Empty && type<NumberOfModules && type!=ExternalVST3;
+    }
+    static const char* sidechainEnableSuffix(int type) noexcept {
+        return type==AdlibDoubler?"dubDuckOn":supportsWetSidechain(type)?"duckOn":"duckEffect";
     }
     static bool supportsParallelReturn(int type) noexcept {
         return type==Delay || type==VoxRackRoom || type==AdlibDoubler;
@@ -272,7 +279,7 @@ private:
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
         std::atomic<float>* duckOn=nullptr,*duckDepth=nullptr;
-        std::atomic<float>* rightFirst=nullptr,*dubDuckOn=nullptr,*duckSource=nullptr,*parallelReturn=nullptr,*duckExternal=nullptr;
+        std::atomic<float>* rightFirst=nullptr,*dubDuckOn=nullptr,*duckSource=nullptr,*parallelReturn=nullptr,*duckExternal=nullptr,*duckEffect=nullptr;
         std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr,
                           *duckAttack=nullptr;
         std::atomic<float>* limitAttack=nullptr,*limitRelease=nullptr;

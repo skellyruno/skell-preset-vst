@@ -11,8 +11,7 @@
   (Linux), feeding the persistent Quick4 workspace. See
   docs/LOCAL_UI_SCREENSHOTS.md and docs/UI_RENDERER.md.
 - The renderer's default invocation captures the four Quick4 scenes; use `--output <folder>` to choose the destination and `--full` only for the complete deep visual audit. Do not pass an unsupported `--quick4` switch.
-- Preserve Simple mode Tone/Punch/Space/Grit and remove them ONLY from
-  Advanced. No UI code may rename any automation parameter or VST3 ID.
+- Owner direction 2026-11-26: one rack workspace with a moon-triggered stage drawer for Tone/Punch/Space/Grit and Input/Mix/Output. Retain legacy mode values and all automation IDs/VST3 IDs; never change audio during UI navigation.
 - Owner-approved pre-release exception (2026-11-23): remove 16 unwanted factory
   Adlibs and compact host program indexes; retain Digital Bones, all other
   factory recipes, personal files, DSP module IDs and APVTS parameter IDs.

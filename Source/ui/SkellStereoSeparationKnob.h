@@ -71,12 +71,15 @@ public:
     void paint(juce::Graphics& g) override {
         if(themeSource)Theme::selectFor(*themeSource);
         const bool compact=getHeight()<48;
-        auto area=getLocalBounds().toFloat();
-        const auto readout=compact?area.removeFromBottom(12.f):juce::Rectangle<float>{};
+        const auto face=getLocalBounds().toFloat().reduced(.65f);
+        g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.10f),face.getTopLeft(),Theme::panelAlt.darker(.18f),face.getBottomLeft(),false));
+        g.fillRoundedRectangle(face,5.6f);
+        g.setColour((hovered||adjusting?Theme::green:Theme::stroke).withAlpha(.75f));g.drawRoundedRectangle(face.reduced(.5f),5.6f,1.05f);
+        auto area=face.reduced(2.f);
         if (area.getWidth()<15.f || area.getHeight()<15.f) return;
         constexpr float pi=juce::MathConstants<float>::pi;
         const float centreX=area.getCentreX(),centreY=area.getCentreY();
-        const float dial=std::min(area.getWidth(),area.getHeight())*.5f-(compact?3.f:7.f);
+        const float dial=std::min(area.getWidth(),area.getHeight())*.5f-(compact?2.f:7.f);
         const float rim=dial*.77f;
         const float body=dial*.67f;
         const double range=getMaximum()-getMinimum();
@@ -140,13 +143,6 @@ public:
         g.setColour(Theme::white.withAlpha(.16f));
         g.drawLine(centreX+dx*body*.30f,centreY+dy*body*.30f,
                    centreX+dx*body*.62f,centreY+dy*body*.62f,compact?2.4f:4.2f);
-        if(compact) {
-            const auto caption=neutral?juce::String("NEUTRAL"):
-                juce::String(percentFor(getValue()))+(widening(getValue())?"% W":"% M");
-            g.setColour(neutral?Theme::muted:Theme::green);
-            g.setFont(Theme::font(8.8f,true));
-            g.drawFittedText(caption,readout.toNearestInt(),juce::Justification::centred,1,.75f);
-        }
         if(hasKeyboardFocus(true)) {
             g.setColour(Theme::green.withAlpha(.8f));
             g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1.f),4.f,1.f);

@@ -193,6 +193,15 @@ public:
         }
         return !layoutFor(0,0).valid;
     }
+    juce::Rectangle<int> moonBounds() const noexcept {
+        const auto stage=layoutFor(getWidth(),getHeight());
+        const float w=(float)getWidth()-20.f;
+        const float feet=stage.originY+372.f*stage.scale;
+        const float horizon=juce::jmax(106.f,feet-juce::jlimit(70.f,190.f,feet*.34f));
+        const float radius=juce::jmax(18.f,juce::jmin(58.f,w*.046f));
+        const float x=10.f+w*.760f,y=10.f+horizon*.30f;
+        return juce::Rectangle<float>(x-radius,y-radius,2.f*radius,2.f*radius).toNearestInt();
+    }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
         const float width=(float)getWidth();

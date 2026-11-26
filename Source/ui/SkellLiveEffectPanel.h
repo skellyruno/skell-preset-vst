@@ -66,8 +66,8 @@ public:
                 if(grValid)gr=b.grDbMax;
                 if(gateMean>=0.f)gr=std::max(0.f,-skellcore::telemetry::toDb(gateMean));
             }
-            // Interpolate measured positions between captures, never generate synthetic particles.
-            for(size_t i=0;i<mid.size();++i){mid[i]+=.55f*(frame.mid[i]-mid[i]);side[i]+=.55f*(frame.side[i]-side[i]);}
+            // Retain a fading actual prior capture instead of averaging unrelated samples.
+            previousMid=mid;previousSide=side;mid=frame.mid;side=frame.side;
             shift(inputHistory,level(inputRms));shift(outputHistory,level(outputRms));
             if(type==P::Compressor && sharedValid && grValid){
                 grHistory.fill(0.f);
@@ -151,21 +151,28 @@ public:
         Theme::panelBox(g,area,6.f,true);
         auto plot=area.reduced(10.f,7.f);
         auto title=plot.removeFromTop(15.f);
-        Theme::fittedText(g,isolatedHistory?"ISOLATED WET DECAY  /  80 Hz – 9 kHz":"OUTPUT SPECTRUM HISTORY  /  80 Hz – 9 kHz",title.toNearestInt(),9.5f,Theme::muted,true);
+        Theme::fittedText(g,isolatedHistory?"WET RETURN WATERFALL  /  80 Hz - 9 kHz":"OUTPUT WATERFALL  /  80 Hz - 9 kHz",title.toNearestInt(),9.5f,Theme::muted,true);
         const auto legend=plot.removeFromBottom(12.f);
-        Theme::fittedText(g,"LOW                                  HIGH   /   NEWEST AT FRONT",legend.toNearestInt(),8.f,Theme::muted);
-        const float dx=plot.getWidth()/static_cast<float>(Analyzer::bands);
-        const float dy=plot.getHeight()/static_cast<float>(spectrumHistory.size());
+        Theme::fittedText(g,"LOW                                    HIGH  /  NEWEST IN FRONT",legend.toNearestInt(),8.f,Theme::muted);
+        juce::Graphics::ScopedSaveState clipped(g);g.reduceClipRegion(plot.toNearestInt());
+        const float h=plot.getHeight(),w=plot.getWidth();
         for(size_t row=0;row<historyCount;++row){
             const size_t index=(historyHead+spectrumHistory.size()-historyCount+row)%spectrumHistory.size();
-            const float y=plot.getY()+(spectrumHistory.size()-historyCount+row)*dy;
-            for(size_t band=0;band<spectrumHistory[index].size();++band){
-                const float v=spectrumHistory[index][band];
-                if(v<.015f)continue;
-                const auto tint=Theme::blue.interpolatedWith(Theme::green,v);
-                g.setColour(tint.withAlpha(.10f+.78f*v*v));
-                g.fillRect(plot.getX()+band*dx,y,dx+.2f,dy+.2f);
+            const float depth=(float)(spectrumHistory.size()-historyCount+row+1)/(float)spectrumHistory.size();
+            const float width=w*(.65f+.33f*depth),left=plot.getCentreX()-.5f*width;
+            const float base=plot.getY()+h*(.36f+.60f*depth);
+            juce::Path ridge;
+            const auto& values=spectrumHistory[index];
+            for(size_t band=0;band<values.size();++band){
+                const float x=left+width*(float)band/(float)(values.size()-1);
+                const float y=base-values[band]*h*(.16f+.19f*depth);
+                if(band==0)ridge.startNewSubPath(x,y);else ridge.lineTo(x,y);
             }
+            auto fill=ridge;fill.lineTo(left+width,base);fill.lineTo(left,base);fill.closeSubPath();
+            const auto ink=Theme::blue.interpolatedWith(Theme::green,depth);
+            g.setColour(Theme::bg.withAlpha(.38f));g.fillPath(fill);
+            g.setColour(ink.withAlpha(.055f+.10f*depth));g.fillPath(fill);
+            g.setColour(ink.withAlpha(.12f+.55f*depth));g.strokePath(ridge,juce::PathStrokeType(row+1==historyCount?1.7f:.75f));
         }
         if(!fresh)Theme::fittedText(g,"WAITING FOR AUDIO",plot.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);
     }
@@ -185,7 +192,13 @@ public:
         g.fillEllipse(centre.x-radius,centre.y-radius,2.f*radius,2.f*radius);
         g.setColour(tint.withAlpha(.23f));g.drawEllipse(centre.x-radius,centre.y-radius,2.f*radius,2.f*radius,1.f);
         if(!fresh)return;
-        // Only measured M/S points determine particle positions.
+        // Previous actual samples form a short persistence trail.
+        for(size_t i=0;i<previousMid.size();++i){
+            const float x=centre.x+std::clamp(previousSide[i],-1.f,1.f)*radius;
+            const float y=centre.y-std::clamp(previousMid[i],-1.f,1.f)*radius;
+            const float e=std::min(1.f,std::hypot(previousMid[i],previousSide[i]));
+            if(e>.00001f){g.setColour(tint.withAlpha(.08f+.12f*e));g.fillEllipse(x-2.f,y-2.f,4.f,4.f);}
+        }
         for(size_t i=0;i<mid.size();++i){
             const float x=centre.x+std::clamp(side[i],-1.f,1.f)*radius;
             const float y=centre.y-std::clamp(mid[i],-1.f,1.f)*radius;
@@ -461,7 +474,7 @@ private:
     void reset() noexcept {
         inBands.fill(0);outBands.fill(0);inputHistory.fill(0);outputHistory.fill(0);
         grHistory.fill(0);duckHistory.fill(0);wave.fill(0);inputWave.fill(0);
-        leftHistory.fill(0);rightHistory.fill(0);mid.fill(0);side.fill(0);
+        leftHistory.fill(0);rightHistory.fill(0);mid.fill(0);side.fill(0);previousMid.fill(0);previousSide.fill(0);
         correlation=leftRms=rightRms=0.f;
         pitchIn={};pitchOut={};pitchInHistory.fill(-1.f);pitchOutHistory.fill(-1.f);
         sharedValid=false;grValid=false;gateMean=-1.f;
@@ -483,7 +496,7 @@ private:
     size_t historyHead=0,historyCount=0;
     bool isolatedHistory=false;
     std::array<float,historySize> inputHistory{},outputHistory{},grHistory{},duckHistory{};
-    std::array<float,128> wave{},inputWave{},mid{},side{};
+    std::array<float,128> wave{},inputWave{},mid{},side{},previousMid{},previousSide{};
     std::array<float,historySize> leftHistory{},rightHistory{};
     float correlation=0.f,leftRms=0.f,rightRms=0.f,deessHz=7500.f,gateDb=-40.f,gateCloseDb=-44.f;
     int lastSlot=-1,lastType=-1;

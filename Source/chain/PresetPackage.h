@@ -34,7 +34,7 @@ struct Slot {
     bool duckOn=false;
     bool rightFirst=false,dubDuckOn=false; // optional v2, legacy off
     int duckSource=0;
-    bool parallelReturn=false,duckExternal=false;
+    bool parallelReturn=false,duckExternal=false,duckEffect=false;
     float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
           duckAttack=12.f;
     float limitAttack=0.f,limitRelease=70.f;

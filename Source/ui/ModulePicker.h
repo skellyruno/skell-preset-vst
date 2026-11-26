@@ -254,7 +254,7 @@ public:
                 g.setColour(Theme::white.withAlpha(.45f));
                 g.drawRoundedRectangle(rect.reduced(2.f),4.f,.8f);
             }
-            const auto name=processor.moduleName(type);
+            const auto name=processor.moduleDisplayName(type);
             // Reserve the category chip's right-side area at 340px minimum
             // width; the old fixed 203px name field overlapped it by 20px.
             Theme::fittedText(g,name,{27,y+4,juce::jmax(110,getWidth()-165),23},14.0f,
@@ -448,7 +448,7 @@ private:
     bool matches(const juce::String& query,int type) const {
         const auto text=query.trim();
         if(text.isEmpty())return true;
-        const auto searchable=processor.moduleName(type)+" "+
+        const auto searchable=processor.moduleDisplayName(type)+" "+processor.moduleName(type)+" "+
                               category(type)+" "+terms(type);
         auto words=juce::StringArray::fromTokens(text," \t","\"");
         const auto catalogWords=juce::StringArray::fromTokens(
@@ -465,22 +465,14 @@ private:
     void filter(){
         results.clear();
         for(int type=0;type<SkellPresetAudioProcessor::NumberOfModules;++type)
-            // New mic modeling is a dedicated pre-rack input panel.
-            // The old slot type 32 still loads and processes saved projects,
-            // but new racks cannot accidentally insert a second mic model.
-            if(type!=SkellPresetAudioProcessor::MicModelFX
-               && type!=SkellPresetAudioProcessor::ExternalVST3
-               // Keep legacy EQ IDs loadable for saved sessions, but offer
-               // just one modern Studio EQ to new users.
-               && type!=SkellPresetAudioProcessor::EQ
-               && type!=SkellPresetAudioProcessor::EightBandToneFX
+            if((skellpreset::registry::recommended(type) || (type==currentType && type!=32 && type!=12))
                && matches(search.getText(),type))results.push_back(type);
         // Stable sort within categories retains each existing module ID
         // and automation mapping, while giving users a predictable catalog.
         const auto query=search.getText().trim();
         std::stable_sort(results.begin(),results.end(),[this,&query](int a,int b){
-            const int rankA=searchRank(processor.moduleName(a),query);
-            const int rankB=searchRank(processor.moduleName(b),query);
+            const int rankA=std::min(searchRank(processor.moduleName(a),query),searchRank(processor.moduleDisplayName(a),query));
+            const int rankB=std::min(searchRank(processor.moduleName(b),query),searchRank(processor.moduleDisplayName(b),query));
             if(rankA!=rankB)return rankA<rankB;
             return category(a).compareIgnoreCase(category(b))<0;
         });

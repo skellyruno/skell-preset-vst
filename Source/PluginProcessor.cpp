@@ -102,6 +102,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.duckSource=state.getRawParameterValue(prefix+"duckSource");
         r.parallelReturn=state.getRawParameterValue(prefix+"parallelReturn");
         r.duckExternal=state.getRawParameterValue(prefix+"duckExternal");
+        r.duckEffect=state.getRawParameterValue(prefix+"duckEffect");
         r.duckDepth=state.getRawParameterValue(prefix+"duckDepth");
         r.duckThreshold=state.getRawParameterValue(prefix+"duckThreshold");
         r.duckRelease=state.getRawParameterValue(prefix+"duckRelease");
@@ -386,6 +387,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     // Append, do not extend the existing three-choice parameter: its normalized automation must remain stable.
     for(int slot=1;slot<=slotCount;++slot)
         bl("s"+juce::String(slot)+"_duckExternal","Slot "+juce::String(slot)+" external sidechain key",false);
+    for(int slot=1;slot<=slotCount;++slot)
+        bl("s"+juce::String(slot)+"_duckEffect","Slot "+juce::String(slot)+" effect contribution sidechain",false);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -598,7 +601,7 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(chosen!=slotType(slot)) {
         setReal(id+"rightFirst",0.f);
         setReal(id+"dubDuckOn",0.f);
-        setReal(id+"duckSource",0.f);setReal(id+"parallelReturn",0.f);setReal(id+"duckExternal",0.f);
+        setReal(id+"duckSource",0.f);setReal(id+"parallelReturn",0.f);setReal(id+"duckExternal",0.f);setReal(id+"duckEffect",0.f);
     }
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
@@ -744,6 +747,7 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     updateHostLatency();
 }
 juce::String SkellPresetAudioProcessor::moduleName(int type) const {return types[juce::jlimit(0,types.size()-1,type)];}
+juce::String SkellPresetAudioProcessor::moduleDisplayName(int type) const {return skellpreset::registry::displayName(type);}
 // Reports which loaded, enabled effects a Simple macro actually modulates.
 // Mirrors the exact switch in processBlock: Tone feeds the classic EQ band
 // gain, Punch the classic Compressor threshold, Space the Reverb/Delay return
@@ -922,7 +926,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         c.on=raw.on->load()>.5f;
         c.wet=juce::jlimit(0.f,1.f,raw.wet->load());
         // Old inert duckOn values must not activate legacy dub states.
-        c.duckOn=(c.type==AdlibDoubler?raw.dubDuckOn:raw.duckOn)->load()>.5f;
+        c.duckOn=supportsEffectSidechain(c.type) && (c.type==AdlibDoubler?raw.dubDuckOn:supportsWetSidechain(c.type)?raw.duckOn:raw.duckEffect)->load()>.5f;
         c.rightFirst=raw.rightFirst->load()>.5f;
         c.duckSource=juce::jlimit(0,2,(int)raw.duckSource->load());
         c.duckExternal=raw.duckExternal->load()>.5f;
@@ -944,12 +948,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         }
         auto& e=engines[(size_t)s];
         if(previousType!=c.type) {
-            if(supportsWetSidechain(previousType) || supportsWetSidechain(c.type))e.voiceDuck.prepare(rate);
+            if(supportsEffectSidechain(previousType) || supportsEffectSidechain(c.type))e.voiceDuck.prepare(rate);
             slotInputScope[(size_t)s].reset();slotOutputScope[(size_t)s].reset();
             if(s==visualSlot)slotVisual.invalidate();
         }
         if(c.type==Limiter || c.type==StudioLimiterFX)e.limiter.setTiming(c.limitAttack,c.limitRelease);
-        if(supportsWetSidechain(c.type))
+        if(supportsWetSidechain(c.type) || (supportsEffectSidechain(c.type) && (c.duckOn || e.voiceDuck.currentGain()<1.f)))
             e.voiceDuck.set(c.duckOn,c.duckDepth,c.duckThreshold,
                             c.duckRelease,c.duckAttack);
         switch(c.type) {
@@ -1235,6 +1239,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float saturatorBlend=.5f+c.p[1];
             const float saturatorDenom=std::max(.5f,saturatorDrive*.6f);
             const float exciterDrive=1.f+10.f*c.p[0];
+            const bool genericKey=supportsEffectSidechain(c.type) && !supportsWetSidechain(c.type) && (c.duckOn || e.voiceDuck.currentGain()<1.f);
+            const int ownLatency=c.type==Limiter || c.type==StudioLimiterFX?lookahead:
+                c.type==StudioPitchFormantFX?skellpreset::dsp::SpectralPitchFormant::latencySamples:0;
             const bool observeWet=captureVisual && (c.type==Delay || c.type==StudioDelayFX || c.type==VoxRackRoom);
             double wetEnergyL=0.,wetEnergyR=0.;
             std::array<float,2> observedEcho{};
@@ -1458,7 +1465,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 if(c.type==AdlibDoubler || c.type==Delay || c.type==VoxRackRoom) {
                     wetL=skellpreset::dsp::duckDubReturn(wetL,duckGain);
                     wetR=skellpreset::dsp::duckDubReturn(wetR,duckGain);
-                } else if(duckGain<1.f && c.type!=StudioDelayFX) {
+                } else if(supportsWetSidechain(c.type) && duckGain<1.f && c.type!=StudioDelayFX) {
                     // Treat other native effect paths as delta-from-dry.
                     // The live vocal remains unaffected by the wet return duck.
                     wetL=l+(wetL-l)*duckGain;
@@ -1475,7 +1482,18 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                         l,r,skellpreset::dsp::SpectralPitchFormant::latencySamples);
                     l=aligned[0];r=aligned[1];
                 }
-                const float wet=slotWetSmooth[(size_t)s].getNextValue();
+                // Generic effects duck the latency-aligned wet contribution.
+                if(genericKey) {
+                    const int delay=precedingLatency[(size_t)s]+ownLatency;
+                    const auto key=c.duckExternal?externalKeyHistory.at(frames,n,delay):
+                        c.duckSource==2?std::array<float,2>{l,r}:
+                        (c.duckSource==1?preMicHistory:postMicHistory).at(frames,n,delay);
+                    duckGain=e.voiceDuck.processGain(key[0],key[1]);
+                    if(c.on && c.duckOn && c.wet>0.f)
+                        duckMinimum[(size_t)s]=std::min(duckMinimum[(size_t)s],duckGain);
+                }
+                const float slotWet=slotWetSmooth[(size_t)s].getNextValue();
+                const float wet=genericKey?slotWet*duckGain:slotWet;
                 if(observeWet){
                     const double a=(c.type==StudioDelayFX?observedEcho[0]:wetL)*wet;
                     const double b=(c.type==StudioDelayFX?observedEcho[1]:wetR)*wet;
@@ -1633,7 +1651,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal(slotPrefix(s)+"duckOn",0.f);
         setReal(slotPrefix(s)+"rightFirst",0.f);
         setReal(slotPrefix(s)+"dubDuckOn",0.f);
-        setReal(slotPrefix(s)+"duckSource",0.f);setReal(slotPrefix(s)+"parallelReturn",0.f);setReal(slotPrefix(s)+"duckExternal",0.f);
+        setReal(slotPrefix(s)+"duckSource",0.f);setReal(slotPrefix(s)+"parallelReturn",0.f);setReal(slotPrefix(s)+"duckExternal",0.f);setReal(slotPrefix(s)+"duckEffect",0.f);
         setReal(slotPrefix(s)+"duckDepth",.65f);
         setReal(slotPrefix(s)+"duckThreshold",-32.f);
         setReal(slotPrefix(s)+"duckRelease",320.f);
@@ -1935,6 +1953,7 @@ juce::Result SkellPresetAudioProcessor::makePresetDocument(
         dst.duckSource=juce::jlimit(0,2,(int)value(prefix+"duckSource"));
         dst.parallelReturn=value(prefix+"parallelReturn")>.5f;
         dst.duckExternal=value(prefix+"duckExternal")>.5f;
+        dst.duckEffect=value(prefix+"duckEffect")>.5f;
         dst.duckDepth=value(prefix+"duckDepth");
         dst.duckThreshold=value(prefix+"duckThreshold");
         dst.duckRelease=value(prefix+"duckRelease");
@@ -1986,6 +2005,7 @@ juce::Result SkellPresetAudioProcessor::applyValidatedPresetDocument(
         setReal(prefix+"duckSource",(float)slot.duckSource);
         setReal(prefix+"parallelReturn",slot.parallelReturn?1.f:0.f);
         setReal(prefix+"duckExternal",slot.duckExternal?1.f:0.f);
+        setReal(prefix+"duckEffect",slot.duckEffect?1.f:0.f);
         setReal(prefix+"duckDepth",slot.duckDepth);
         setReal(prefix+"duckThreshold",slot.duckThreshold);
         setReal(prefix+"duckRelease",slot.duckRelease);
@@ -2275,7 +2295,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         }
         // Old states must not inherit a current opt-in send.
         for(int slot=1;slot<=slotCount;++slot)
-            for(const auto* suffix:{"rightFirst","dubDuckOn","duckSource","parallelReturn","duckExternal"}) {
+            for(const auto* suffix:{"rightFirst","dubDuckOn","duckSource","parallelReturn","duckExternal","duckEffect"}) {
                 const auto id="s"+juce::String(slot)+"_"+suffix;
                 bool present=false;
                 for(int i=0;i<loaded.getNumChildren();++i)
@@ -2337,7 +2357,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
         for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
                                 "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
                                 "fxExt8","fxExt9","fxExt10","fxExt11","eqLowCut","eqHighCut",
-                                "rightFirst","dubDuckOn","duckSource","parallelReturn","duckExternal"})add(prefix+suffix);
+                                "rightFirst","dubDuckOn","duckSource","parallelReturn","duckExternal","duckEffect"})add(prefix+suffix);
         for(int parameter=1;parameter<=16;++parameter)
             add(prefix+"p"+juce::String(parameter));
         for(int band=1;band<=8;++band) {
