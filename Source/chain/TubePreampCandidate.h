@@ -71,7 +71,8 @@ struct MicTubeStage {
         double current=0.,target=0.,step=0.;int remaining=0;
         void snap(double v) noexcept {current=target=v;step=0.;remaining=0;}
         void set(double v,int length) noexcept {
-            if(v==target)return;target=v;remaining=length;step=(target-current)/length;
+            if(v==target)return;
+            target=v;remaining=length;step=(target-current)/length;
         }
         double tick() noexcept {if(remaining>0){current+=step;if(--remaining==0)current=target;}return current;}
     };
