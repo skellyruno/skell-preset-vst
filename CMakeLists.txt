@@ -244,6 +244,8 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
         COMMAND SkellPresetAlchemistRender --stereo-separation)
     add_test(NAME SkellPresetAlchemistMonoWavRenderSmoke
         COMMAND SkellPresetAlchemistRender --smoke-mono)
+    add_test(NAME SkellPresetVocalPreviewSmoke
+        COMMAND SkellPresetAlchemistRender --preview-smoke)
     add_test(NAME SkellPresetNativeSoundMatchTrialSmoke
         COMMAND SkellPresetAlchemistRender --native-trials-smoke)
     # Serial 5/10/20-instance workload of the real native processor with

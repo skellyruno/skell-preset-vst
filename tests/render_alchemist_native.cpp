@@ -8,6 +8,7 @@
 #include "../Source/chain/AlchemistNativePreset.h"
 #include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/chain/ABMetrics.h"
+#include "NativeVocalPreview.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1822,6 +1823,45 @@ int compareWavs(const juce::File& candidateFile,const juce::File& referenceFile)
 
 // Exercise real mono WAV decoding, native Alchemist processing and stereo WAV
 // encoding. File cleanup is automatic even if a regression assertion fails.
+int vocalPreviewSmoke() {
+    const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("SkellVocalPreview","",false);
+    if(root.createDirectory().failed())return 1;
+    struct Cleanup{juce::File dir;~Cleanup(){dir.deleteRecursively();}} cleanup{root};
+    const auto dry=root.getChildFile("dry.wav"),wet=root.getChildFile("wet.wav");
+    const auto preset=root.getChildFile("latency.skellpreset");
+    constexpr int samples=4099;
+    juce::AudioBuffer<float> signal(1,samples);signal.clear();signal.setSample(0,0,.25f);
+    for(int n=1;n<samples;++n)signal.setSample(0,n,.125f*std::sin(n*.07f));
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::OutputStream> stream(dry.createOutputStream());
+    if(!stream)return 2;
+    auto writer=wav.createWriterFor(stream,juce::AudioFormatWriter::Options{}
+        .withSampleRate(48000.).withNumChannels(1).withBitsPerSample(32)
+        .withSampleFormat(juce::AudioFormatWriter::Options::SampleFormat::floatingPoint));
+    if(!writer || !writer->writeFromAudioSampleBuffer(signal,0,samples))return 3;
+    writer.reset();
+    auto p=std::make_unique<SkellPresetAudioProcessor>();p->clearRackToEmpty();
+    p->setSlotType(0,SkellPresetAudioProcessor::StudioPitchFormantFX);p->setSlotOn(0,false);
+    if(p->exportPreset(preset).failed())return 4;
+    p.reset();
+    if(skellpreset::preview::render(dry,wet,-1,preset).failed())return 5;
+    juce::AudioFormatManager formats;formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(wet));
+    if(!reader || reader->lengthInSamples!=samples || reader->numChannels!=2)return 6;
+    juce::AudioBuffer<float> restored(2,samples);
+    if(!reader->read(&restored,0,samples,0,true,true))return 7;
+    for(int ch=0;ch<2;++ch)for(int n=0;n<samples;++n)
+        if(std::abs(restored.getSample(ch,n)-signal.getSample(0,n))>1.e-5f)return 8;
+    reader.reset();
+    if(skellpreset::preview::render(dry,wet,-1,preset).wasOk())return 9;
+    const auto starter=root.getChildFile("starter.wav");
+    if(skellpreset::preview::render(dry,starter,1,{},.05).failed())return 10;
+    reader.reset(formats.createReaderFor(starter));
+    if(!reader || reader->lengthInSamples!=samples+2400)return 11;
+    std::puts("PASS: native preview, latency-aligned mono/stereo identity, partial block, no overwrite and explicit tail");
+    return 0;
+}
 int monoSmoke() {
     const auto temp=juce::File::getSpecialLocation(juce::File::tempDirectory);
     const auto input=temp.getNonexistentChildFile("SkellPresetMonoSmoke",".wav",false);
@@ -2767,6 +2807,19 @@ int stereoSeparationSmoke() {
 
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
+    if(argc==2 && juce::String(argv[1])=="--preview-smoke")return vocalPreviewSmoke();
+    if((argc==5 || argc==6) && (juce::String(argv[1])=="--preview-starter" || juce::String(argv[1])=="--preview-preset")){
+        const bool starter=juce::String(argv[1])=="--preview-starter";
+        const juce::String profile(argv[2]);
+        if(starter && (profile.length()!=1 || profile<"1" || profile>"5"))return 7;
+        double tail=0.;
+        if(argc==6){char* end=nullptr;tail=std::strtod(argv[5],&end);if(end==argv[5] || *end!='\0')return 7;}
+        const auto result=skellpreset::preview::render(juce::File(juce::String::fromUTF8(argv[3])),
+            juce::File(juce::String::fromUTF8(argv[4])),starter?profile.getIntValue()-1:-1,
+            starter?juce::File{}:juce::File(juce::String::fromUTF8(argv[2])),tail);
+        if(result.failed()){std::fprintf(stderr,"%s\n",result.getErrorMessage().toRawUTF8());return 8;}
+        return 0;
+    }
     if(argc==2 && juce::String(argv[1])=="--smoke")return smoke();
     if(argc==2 && juce::String(argv[1])=="--smoke-blank")return blankSmoke();
     if(argc==2 && juce::String(argv[1])=="--smoke-slot-order")return strictSlotOrderSmoke();
@@ -2803,6 +2856,8 @@ int main(int argc,char** argv) {
     if(argc!=3) {
         std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53|54 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --factory-override 54 HPF_NORMALIZED BAND70_GAIN_NORMALIZED INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-starter 1..5 INPUT NEW_OUTPUT.wav [TAIL_SECONDS]\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-preset PRESET.skellpreset INPUT NEW_OUTPUT.wav [TAIL_SECONDS]\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --lowend-override-smoke\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
