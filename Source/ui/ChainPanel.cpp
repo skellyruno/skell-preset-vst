@@ -2,7 +2,8 @@
 #include "Theme.h"
 #include <cmath>
 #include <memory>
-namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
+namespace {void drawIcon(juce::Graphics&g,int type,int pixelX,int pixelY) {
+    const float x=static_cast<float>(pixelX),y=static_cast<float>(pixelY);
     g.setColour(Theme::green.withAlpha(.77f));
     juce::Path p;
     if(type==SkellPresetAudioProcessor::EQ) {p.startNewSubPath((float)x,(float)y+10);p.cubicTo((float)x+6,(float)y+10,(float)x+7,(float)y-1,(float)x+13,(float)y+2);p.cubicTo((float)x+19,(float)y+3,(float)x+18,(float)y+10,(float)x+23,(float)y+10);}

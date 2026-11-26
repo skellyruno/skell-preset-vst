@@ -595,7 +595,7 @@ public:
             const auto& value=masterValues[i];
             if(value.isVisible()!=drawer || !canvasBounds.contains(value.getBounds()) ||
                value.getBounds().intersects(masterSliders[i]->getBounds()) ||
-               value.getText()!=masterSliders[i]->getTextFromValue(masterSliders[i]->getValue()))
+               value.getText()!= (i==1 ? juce::String(juce::roundToInt(juce::jlimit(0.,1.,masterSliders[i]->getValue())*100.))+"%" : (masterSliders[i]->getValue()>0. ? juce::String("+") : juce::String())+juce::String(masterSliders[i]->getValue(),1)+" dB"))
                 issues.add("Stage master readout overlaps or is stale");
         }
         if(masterValues[3].isVisible())issues.add("Stereo direction text must remain hidden");
