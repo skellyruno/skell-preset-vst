@@ -22,6 +22,7 @@
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
 #include "chain/MicModelDSP.h"
+#include "chain/TubePreampCandidate.h"
 #include "chain/SkelldizerDSP.h"
 #include "chain/SpectralPitchFormant.h"
 #include "chain/VoxRackFX.h"
@@ -291,7 +292,9 @@ private:
         std::atomic<float>* gateRelease=nullptr;
         std::atomic<float>* gateHold=nullptr;
         std::atomic<float>* gateAttack=nullptr,*gateHysteresis=nullptr,*gateDepth=nullptr;
+        std::atomic<float>* tubeOn=nullptr,*tubeGain=nullptr,*tubeDrive=nullptr,*tubeAir=nullptr,*tubeTrim=nullptr;
     } rawMic;
+    skellpreset::research::MicTubeStage micTube;
     skellpreset::dsp::MicModelTone micFrontEnd;
     skellpreset::dsp::Gate micInputGate;
     juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet,micGateWet;

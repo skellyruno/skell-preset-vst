@@ -47,7 +47,10 @@ struct TubePreampCandidate {
         inputDb=std::clamp(std::isfinite(inputDb)?inputDb:0.,-12.,12.);
         amount=std::clamp(std::isfinite(driveAmount)?driveAmount:0.,0.,1.);
         airDb=std::clamp(std::isfinite(airDb)?airDb:0.,0.,6.);
-        gain=std::pow(10.,inputDb/20.);airGain=std::pow(10.,airDb/20.)-1.;
+        setLinear(std::pow(10.,inputDb/20.),amount,std::pow(10.,airDb/20.)-1.);
+    }
+    void setLinear(double inputGain,double driveAmount,double air) noexcept {
+        gain=inputGain;amount=driveAmount;airGain=air;
         for(auto& c:core)c.set(1.+5.*amount,.12*amount);
     }
     float process(float input,int channel) noexcept {
@@ -59,6 +62,43 @@ struct TubePreampCandidate {
         else {core[ch].reset();dc[ch]=0.;}
         low[ch]=poleAir*low[ch]+(1.-poleAir)*y;
         return (float)(y+airGain*(y-low[ch]));
+    }
+};
+// Opt-in MIC stage. Cache targets per block; smooth linear gain, drive,
+// air, trim and enable over 20 ms. No allocations, locks or file access.
+struct MicTubeStage {
+    struct Ramp {
+        double current=0.,target=0.,step=0.;int remaining=0;
+        void snap(double v) noexcept {current=target=v;step=0.;remaining=0;}
+        void set(double v,int length) noexcept {
+            if(v==target)return;target=v;remaining=length;step=(target-current)/length;
+        }
+        double tick() noexcept {if(remaining>0){current+=step;if(--remaining==0)current=target;}return current;}
+    };
+    TubePreampCandidate tube;
+    Ramp wet,drive,gain,air,trim;
+    int length=960;bool running=false;
+    static double safe(double v,double lo,double hi,double fallback=0.) noexcept {
+        return std::clamp(std::isfinite(v)?v:fallback,lo,hi);
+    }
+    static double linear(double db) noexcept {return std::pow(10.,safe(db,-12.,12.)/20.);}
+    void prepare(double rate,bool on,double inputDb,double amount,double airDb,double outputDb) noexcept {
+        rate=safe(rate,8000.,192000.,48000.);length=std::max(1,(int)std::round(rate*.020));
+        tube.prepare(rate);running=false;wet.snap(on?1.:0.);
+        gain.snap(linear(inputDb));drive.snap(safe(amount,0.,1.));air.snap(linear(safe(airDb,0.,6.))-1.);trim.snap(linear(outputDb));
+    }
+    void set(bool on,double inputDb,double amount,double airDb,double outputDb) noexcept {
+        wet.set(on?1.:0.,length);gain.set(linear(inputDb),length);
+        drive.set(safe(amount,0.,1.),length);air.set(linear(safe(airDb,0.,6.))-1.,length);trim.set(linear(outputDb),length);
+    }
+    void process(float& l,float& r) noexcept {
+        const double w=wet.tick(),a=drive.tick(),g=gain.tick(),hi=air.tick(),out=trim.tick();
+        if(w<=0. || (a==0. && g==1. && hi==0. && out==1.)){
+            if(running){tube.reset();running=false;}return;
+        }
+        running=true;tube.setLinear(g,a,hi);
+        const float yl=(float)(tube.process(l,0)*out),yr=(float)(tube.process(r,1)*out);
+        l+=(yl-l)*(float)w;r+=(yr-r)*(float)w;
     }
 };
 }

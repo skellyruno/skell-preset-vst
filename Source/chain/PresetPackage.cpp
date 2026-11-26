@@ -52,7 +52,9 @@ juce::Result validate(const Document& d) {
         || ! finiteRange(d.micGateHold,0.f,250.f)
          || ! finiteRange(d.micGateAttackMs,.5f,25.f)
          || ! finiteRange(d.micGateHysteresisDb,0.f,12.f)
-         || ! finiteRange(d.micGateDepth,0.f,1.f))
+         || ! finiteRange(d.micGateDepth,0.f,1.f)
+         || ! finiteRange(d.micTubeGain,-12.f,12.f) || ! finiteRange(d.micTubeDrive,0.f,1.f)
+         || ! finiteRange(d.micTubeAir,0.f,6.f) || ! finiteRange(d.micTubeTrim,-12.f,12.f))
         return juce::Result::fail("Invalid global parameter range");
     for (const auto v : d.macros)
         if (! finiteRange(v, 0, 1)) return juce::Result::fail("Invalid macro value");
@@ -108,6 +110,9 @@ juce::var toJson(const Document& d) {
     global->setProperty("micGateHysteresisDb",d.micGateHysteresisDb);
     global->setProperty("micGateDepth",d.micGateDepth);
     global->setProperty("stereoSeparation",d.stereoSeparation);
+    global->setProperty("micTubeOn",d.micTubeOn);
+    global->setProperty("micTubeGain",d.micTubeGain);global->setProperty("micTubeDrive",d.micTubeDrive);
+    global->setProperty("micTubeAir",d.micTubeAir);global->setProperty("micTubeTrim",d.micTubeTrim);
     juce::Array<juce::var> macros;
     for (float value : d.macros) macros.add(value);
     global->setProperty("macros", juce::var(macros));
@@ -221,6 +226,17 @@ juce::Result fromJson(const juce::var& root, Document& out) {
     if(hasJsonProperty(globals,"micGateDepth") &&
        !decodeFloat(globals.getProperty("micGateDepth",{}),0.f,1.f,candidate.micGateDepth))
         return juce::Result::fail("Invalid mic gate reduction");
+    if(hasJsonProperty(globals,"micTubeOn")) {
+        const auto enabled=globals.getProperty("micTubeOn",{});
+        if(!enabled.isBool())return juce::Result::fail("Invalid mic preamp enable");
+        candidate.micTubeOn=(bool)enabled;
+    }
+    struct TubeField {const char* id;float lo,hi;float* destination;};
+    for(const auto& field:std::array<TubeField,4>{{{"micTubeGain",-12.f,12.f,&candidate.micTubeGain},
+        {"micTubeDrive",0.f,1.f,&candidate.micTubeDrive},{"micTubeAir",0.f,6.f,&candidate.micTubeAir},
+        {"micTubeTrim",-12.f,12.f,&candidate.micTubeTrim}}})
+        if(hasJsonProperty(globals,field.id) && !decodeFloat(globals.getProperty(field.id,{}),field.lo,field.hi,*field.destination))
+            return juce::Result::fail("Invalid mic preamp parameter");
     // Stereo separation is a strict integer in the supplied raw range. Absent
     // in pre-R6 archives, where candidate.stereoSeparation stays at neutral 0.
     if(hasJsonProperty(globals,"stereoSeparation") &&

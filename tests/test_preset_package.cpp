@@ -49,7 +49,8 @@ int main(){
               && loaded.slots[15].slotId == 15
               && !loaded.slots[0].enabled
               && !loaded.slots[15].enabled
-              && !loaded.micPreOn && !loaded.micGateOn
+              && !loaded.micPreOn && !loaded.micGateOn && !loaded.micTubeOn
+              && loaded.micTubeGain==0.f && loaded.micTubeDrive==0.f && loaded.micTubeAir==0.f && loaded.micTubeTrim==0.f
               && loaded.micGateThreshold==-45.f
               && loaded.micGateRelease==160.f
               && loaded.micGateHold==55.f
@@ -68,6 +69,13 @@ int main(){
                 importedNeutralParameters=importedNeutralParameters && value==.5f;
         check(importedNeutralParameters,
               "Default empty rack roundtrip preserves neutral parameters in all 16 slots");
+    }
+    {
+        skellpreset::package::Document tube;tube.micTubeOn=true;tube.micTubeGain=3.f;tube.micTubeDrive=.4f;tube.micTubeAir=2.f;tube.micTubeTrim=-3.f;
+        const auto file=testFile(dir,"mic-tube");skellpreset::package::Document restored;
+        check(skellpreset::package::write(file,tube).wasOk() && skellpreset::package::read(file,restored).wasOk() &&
+            restored.micTubeOn && restored.micTubeGain==3.f && restored.micTubeDrive==.4f && restored.micTubeAir==2.f && restored.micTubeTrim==-3.f,"Mic Preamp package recall");
+        tube.micTubeAir=7.f;check(skellpreset::package::write(file,tube).failed(),"Reject invalid Mic Preamp field");
     }
     skellpreset::package::Document first;
     first.name="Wide Ghost Vocal";first.bank="Adlibs";

@@ -920,6 +920,31 @@ int limiterStateSmoke() {
     return 0;
 }
 int studioSmoke() {
+    {
+        using P=SkellPresetAudioProcessor;auto a=std::make_unique<P>();auto b=std::make_unique<P>();
+        a->clearRackToEmpty();b->clearRackToEmpty();
+        auto set=[&](const char* id,float v){auto* p=a->state.getParameter(id);p->setValueNotifyingHost(p->convertTo0to1(v));};
+        set("micTubeGain",3.f);set("micTubeDrive",.5f);set("micTubeAir",2.f);set("micTubeTrim",-3.f);
+        a->prepareToPlay(48000.,256);b->prepareToPlay(48000.,256);
+        juce::AudioBuffer<float> x(2,256),y(2,256);juce::MidiBuffer midi;
+        double diff=0.;
+        for(int block=0;block<32;++block){
+            if(block==8)set("micTubeOn",1.f);
+            for(int ch=0;ch<2;++ch)for(int i=0;i<256;++i){const float sample=.35f*std::sin((block*256+i)*.07f);x.setSample(ch,i,sample);y.setSample(ch,i,sample);}
+            a->processBlock(x,midi);b->processBlock(y,midi);
+            for(int ch=0;ch<2;++ch)for(int i=0;i<256;++i){
+                const float l=x.getSample(ch,i),r=y.getSample(ch,i);if(!std::isfinite(l))return 181;
+                if(block<8 && l!=r)return 182;
+                if(block>=16)diff+=std::abs(l-r);
+            }
+        }
+        if(diff<.01 || a->getLatencySamples()!=b->getLatencySamples())return 183;
+        juce::MemoryBlock state;a->getStateInformation(state);b->setStateInformation(state.getData(),(int)state.getSize());
+        if(b->state.getRawParameterValue("micTubeOn")->load()<.5f || std::abs(b->state.getRawParameterValue("micTubeDrive")->load()-.5f)>.005f)return 184;
+        a->releaseResources();b->releaseResources();
+        a->loadFactoryPreset(0);if(a->state.getRawParameterValue("micTubeOn")->load()>.5f)return 185;
+        std::puts("PASS: MIC preamp independent opt-in, exact off parity, audible-path difference, host recall and factory reset");
+    }
     // All original starter chains must use native effects, retain zero
     // reported latency, round-trip through host state and render finite audio.
     {

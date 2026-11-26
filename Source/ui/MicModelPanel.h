@@ -177,13 +177,31 @@ public:
         close.setButtonText("X");
         close.onClick=[this]{sourceMenu.setVisible(false);setVisible(false);if(onClose)onClose();};
         addAndMakeVisible(close);
-        modelTab.setButtonText("MIC MODEL");
+        modelTab.setButtonText("MIC MOD");
+        tubeTab.setButtonText("MIC PREAMP");
         gateTab.setButtonText("NOISE GATE");
         modelTab.setTooltip("Original microphone modeling and tonal simulation");
         gateTab.setTooltip("Independent low-latency input noise gate");
         modelTab.onClick=[this]{showPage(false);};
         gateTab.onClick=[this]{showPage(true);};
-        addAndMakeVisible(modelTab);addAndMakeVisible(gateTab);
+        addAndMakeVisible(modelTab);addAndMakeVisible(gateTab);addAndMakeVisible(tubeTab);
+        tubeTab.setTooltip("Independent tube-inspired mic preamp");
+        tubeTab.onClick=[this]{showTubePage();};
+        tubeEnabled.setTooltip("Enable or bypass only Mic Preamp");
+        tubeEnabled.onClick=[this]{setPhysical("micTubeOn",tubeOn()?0.f:1.f);refresh();};
+        addAndMakeVisible(tubeEnabled);
+        const char* tubeIds[]{"micTubeGain","micTubeDrive","micTubeAir","micTubeTrim"};
+        const char* tubeHints[]{"Input gain before tube coloration","Tube coloration amount","High-frequency air boost","Output level after coloration"};
+        for(size_t i=0;i<tubeKnobs.size();++i){
+            auto& slider=tubeKnobs[i];slider.setSliderStyle(juce::Slider::LinearHorizontal);
+            slider.setTextBoxStyle(juce::Slider::TextBoxRight,false,72,20);slider.setDoubleClickReturnValue(true,0.);
+            slider.setTooltip(tubeHints[i]);addAndMakeVisible(slider);
+            tubeLinks[i]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,tubeIds[i],slider);
+            if(i==1){slider.textFromValueFunction=[](double v){return juce::String(juce::roundToInt(v*100.))+"%";};
+                slider.valueFromTextFunction=[](const juce::String& s){return juce::jlimit(0.,1.,s.getDoubleValue()/100.);};}
+            else slider.textFromValueFunction=[](double v){return juce::String(v,1)+" dB";};
+            slider.updateText();
+        }
         gateEnabled.setButtonText("OFF");
         gateEnabled.setTooltip("Enable the input noise gate independently of Mic Model");
         gateEnabled.onClick=[this] {
@@ -305,12 +323,15 @@ public:
         setVisible(false);
     }
     std::function<void()> onClose;
-    void showPage(bool gate) {
-        gatePage=gate;
-        if(gate)sourceMenu.setVisible(false);
-        for(auto* part:{&input,&enabled})part->setVisible(!gate);
-        for(auto& simulation:simulations)simulation.setVisible(!gate);
-        amount.setVisible(!gate);trim.setVisible(!gate);
+    void showTubePage(){showPage(false,true);}
+    void showPage(bool gate,bool tube=false) {
+        gatePage=gate;tubePage=tube;
+        const bool model=!gate&&!tube;
+        tubeEnabled.setVisible(tube);for(auto& slider:tubeKnobs)slider.setVisible(tube);
+        if(!model)sourceMenu.setVisible(false);
+        for(auto* part:{&input,&enabled})part->setVisible(model);
+        for(auto& simulation:simulations)simulation.setVisible(model);
+        amount.setVisible(model);trim.setVisible(model);
         gateEnabled.setVisible(gate);
         gateAdvanced.setVisible(gate);
         updateGateVisibility();
@@ -396,11 +417,12 @@ public:
         const auto* p=processor.state.getRawParameterValue("micPreOn");
         return p!=nullptr && p->load()>.5f;
     }
-    // The rack MIC indicator reflects EITHER independent front-end processor.
+    bool tubeOn() const {const auto* raw=processor.state.getRawParameterValue("micTubeOn");return raw&&raw->load()>.5f;}
+    // The rack MIC indicator reflects any of the three front-end processors.
     // Keep on() specific to mic modeling so its ON button never toggles the gate.
     bool anyActive() const {
         const auto* gate=processor.state.getRawParameterValue("micGateOn");
-        return on() || (gate && gate->load()>.5f);
+        return on() || tubeOn() || (gate && gate->load()>.5f);
     }
     void refreshIfChanged() {
         const auto* in=processor.state.getRawParameterValue("micPreInput");
@@ -411,7 +433,7 @@ public:
         const auto* gate=processor.state.getRawParameterValue("micGateOn");
         const bool gateNow=gate && gate->load()>.5f;
         if(inputIndex!=lastInput || targetIndex!=lastTarget ||
-           enabledNow!=lastEnabled || gateNow!=lastGateEnabled)
+           enabledNow!=lastEnabled || gateNow!=lastGateEnabled || tubeOn()!=lastTubeEnabled)
             refresh();
     }
     void refresh() {
@@ -433,8 +455,12 @@ public:
             advancedGate?Theme::green.withAlpha(.16f):Theme::panelAlt);
         gateAdvanced.setColour(juce::TextButton::textColourOffId,
             advancedGate?Theme::green:Theme::white);
-        for(auto* tab:{&modelTab,&gateTab}){
-            const bool selected=(tab==&gateTab)==gatePage;
+        lastTubeEnabled=tubeOn();
+        tubeEnabled.setButtonText(lastTubeEnabled?"ON":"OFF");
+        tubeEnabled.setColour(juce::TextButton::buttonColourId,lastTubeEnabled?Theme::green.withAlpha(.24f):Theme::panelAlt);
+        tubeEnabled.setColour(juce::TextButton::textColourOffId,lastTubeEnabled?Theme::green:Theme::white);
+        for(auto* tab:{&modelTab,&gateTab,&tubeTab}){
+            const bool selected=tab==(tubePage?&tubeTab:gatePage?&gateTab:&modelTab);
             tab->setColour(juce::TextButton::buttonColourId,
                            selected?Theme::green.withAlpha(.23f):Theme::panelAlt);
             tab->setColour(juce::TextButton::textColourOffId,
@@ -470,6 +496,11 @@ public:
             slider->setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
             slider->setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
         }
+        for(auto& slider:tubeKnobs){
+            slider.setColour(juce::Slider::trackColourId,Theme::green);slider.setColour(juce::Slider::thumbColourId,Theme::white);
+            slider.setColour(juce::Slider::textBoxTextColourId,Theme::white);slider.setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
+            slider.setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
+        }
         repaint();
     }
     void resized() override {
@@ -478,8 +509,12 @@ public:
         // All advanced controls retain their original APVTS attachments.
         close.setBounds(w-32,7,23,23);
         enabled.setBounds(w-91,7,51,23);
-        modelTab.setBounds(12,38,(w-28)/2,26);
-        gateTab.setBounds(16+(w-28)/2,38,(w-28)/2,26);
+        const int tabW=(w-32)/3;
+        gateTab.setBounds(12,38,tabW,26);
+        modelTab.setBounds(16+tabW,38,tabW,26);
+        tubeTab.setBounds(20+2*tabW,38,w-32-2*tabW,26);
+        tubeEnabled.setBounds(w-91,7,51,23);
+        for(size_t i=0;i<tubeKnobs.size();++i)tubeKnobs[i].setBounds(93,102+40*(int)i,w-105,27);
         input.setBounds(12,90,w-24,27);
         sourceMenu.setBounds(12,120,w-24,115);
         const int cardWidth=(w-36)/2;
@@ -507,11 +542,16 @@ public:
         Theme::panelBox(g,getLocalBounds().toFloat(),10.f);
         g.setColour(Theme::green.withAlpha(.62f));
         g.fillRoundedRectangle({13.f,13.f,3.f,17.f},1.f);
-        Theme::text(g,"MIC MODELING",{22,7,getWidth()-135,23},
+        Theme::text(g,"MIC FRONT END",{22,7,getWidth()-135,23},
                     13.4f,Theme::white,true);
         // The title bar itself is draggable; avoid redundant caption text
         // colliding with the source label in this compact layout.
-        if(gatePage){
+        if(tubePage){
+            Theme::fittedText(g,"TUBE COLOR / INDEPENDENT PREAMP",{13,76,getWidth()-26,17},10.f,Theme::muted,true);
+            constexpr const char* labels[]{"INPUT","DRIVE","AIR","OUTPUT"};
+            for(int i=0;i<4;++i)Theme::text(g,labels[i],{13,103+40*i,77,25},10.5f,Theme::white,true);
+            Theme::fittedText(g,"EXPERIMENTAL TUBE COLOR / OPT-IN",{13,getHeight()-18,getWidth()-36,14},8.5f,Theme::muted);
+        }else if(gatePage){
             if(advancedGate) {
                 constexpr const char* labels[]{"THRESHOLD","ATTACK","HOLD",
                                                "RELEASE","HYSTERESIS","DEPTH"};
@@ -562,7 +602,7 @@ public:
     }
     bool testCompactGeometryForTest() {
         const auto oldBounds=getBounds();
-        const bool oldGate=gatePage,oldAdvanced=advancedGate;
+        const bool oldGate=gatePage,oldAdvanced=advancedGate,oldTube=tubePage;
         bool okay=true;
         constexpr int sizes[3][2]{{312,308},{324,320},{440,400}};
         for(const auto& dims:sizes){
@@ -585,6 +625,13 @@ public:
             }
             okay=okay && !amount.getBounds().intersects(trim.getBounds()) &&
                 trim.getBottom()<getHeight()-16;
+            showTubePage();
+            okay=okay && tubeTab.isVisible() && tubeEnabled.isVisible() && !input.isVisible() && !gateEnabled.isVisible();
+            okay=okay && !tubeTab.getBounds().intersects(modelTab.getBounds()) && !gateTab.getBounds().intersects(modelTab.getBounds());
+            for(size_t i=0;i<tubeKnobs.size();++i){
+                const auto rect=tubeKnobs[i].getBounds();okay=okay && tubeKnobs[i].isVisible() && area.contains(rect) && rect.getBottom()<getHeight()-16;
+                for(size_t j=i+1;j<tubeKnobs.size();++j)okay=okay && !rect.intersects(tubeKnobs[j].getBounds());
+            }
             showPage(true);
             advancedGate=false;updateGateVisibility();resized();
             okay=okay && gateThreshold.isVisible() &&
@@ -606,8 +653,16 @@ public:
         }
         advancedGate=oldAdvanced;
         setBounds(oldBounds);
-        showPage(oldGate);
+        showPage(oldGate,oldTube);
         return okay;
+    }
+    bool testTubePreampForTest(){
+        const bool was=tubeOn(),model=on();const auto* gate=processor.state.getRawParameterValue("micGateOn");
+        const bool gateWas=gate->load()>.5f;const float prior=processor.state.getRawParameterValue("micTubeDrive")->load();
+        showTubePage();tubeEnabled.onClick();tubeKnobs[1].setValue(.42,juce::sendNotificationSync);
+        const bool ok=tubePage && tubeOn()!=was && on()==model && (gate->load()>.5f)==gateWas &&
+            std::abs(processor.state.getRawParameterValue("micTubeDrive")->load()-.42f)<.005f;
+        setPhysical("micTubeOn",was?1.f:0.f);setPhysical("micTubeDrive",prior);showPage(false);return ok;
     }
     bool testNoiseGateAndBypass() {
         const auto* gateParameter=processor.state.getRawParameterValue("micGateOn");
@@ -689,7 +744,9 @@ private:
         }
     }
     SkellPresetAudioProcessor& processor;
-    juce::TextButton close,enabled,modelTab,gateTab,gateEnabled,gateAdvanced;
+    juce::TextButton close,enabled,modelTab,gateTab,gateEnabled,gateAdvanced,tubeTab,tubeEnabled;
+    std::array<juce::Slider,4> tubeKnobs;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,4> tubeLinks;
     juce::TextButton input;
     SourceMenu sourceMenu;
     std::array<ModelCard,4> simulations;
@@ -697,7 +754,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountLink,trimLink;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateThresholdLink,gateReleaseLink,gateHoldLink,gateAttackLink,gateHysteresisLink,gateDepthLink;
     int lastInput=-1,lastTarget=-1;
-    bool lastEnabled=false,lastGateEnabled=false,gatePage=false,advancedGate=false;
+    bool lastEnabled=false,lastGateEnabled=false,gatePage=false,advancedGate=false,tubePage=false,lastTubeEnabled=false;
     bool movedByUser=false,dragHeader=false,resizing=false;
     juce::Point<int> dragOrigin{};
     juce::Rectangle<int> resizeStart{};

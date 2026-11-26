@@ -21,5 +21,19 @@ int main(){
         if(left<.01||right!=0.)return 4;
         p.reset();if(!std::isfinite(p.process(std::numeric_limits<float>::quiet_NaN(),0)))return 5;
     }
-    std::puts("PASS: four-rate finite processing, exact neutral bypass, independent stereo, reset and nonfinite guard");
+    for(double sr:{44100.,48000.,96000.,192000.}){
+        MicTubeStage stage;stage.prepare(sr,false,12.,1.,6.,12.);
+        for(int i=0;i<4096;++i){float l=.3f,r=0.f;stage.process(l,r);if(l!=.3f||r!=0.f)return 6;}
+        stage.set(true,0.,.35,1.,-2.);
+        float prior=.3f;double difference=0.;
+        for(int i=0;i<(int)(sr*.05);++i){float l=.3f,r=0.f;stage.process(l,r);
+            if(!std::isfinite(l)||r!=0.f||std::abs(l-prior)>.04f)return 7;
+            difference+=std::abs(l-.3f);prior=l;}
+        if(difference<.001)return 8;
+        stage.set(false,12.,1.,6.,12.);
+        for(int i=0;i<(int)(sr*.03);++i){float l=.3f,r=0.f;stage.process(l,r);if(!std::isfinite(l)||r!=0.f)return 9;}
+        float l=.3f,r=0.f;stage.process(l,r);if(l!=.3f||r!=0.f)return 10;
+        stage.prepare(sr,true,0.,0.,0.,0.);l=.4f;r=-.2f;stage.process(l,r);if(l!=.4f||r!=-.2f)return 11;
+    }
+    std::puts("PASS: four-rate finite processing, exact neutral bypass, independent stereo, reset, 20 ms parameter smoothing and off transition");
 }

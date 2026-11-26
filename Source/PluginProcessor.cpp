@@ -128,6 +128,11 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
     rawMic.gateAttack=state.getRawParameterValue("micGateAttackMs");
     rawMic.gateHysteresis=state.getRawParameterValue("micGateHysteresisDb");
     rawMic.gateDepth=state.getRawParameterValue("micGateDepth");
+    rawMic.tubeOn=state.getRawParameterValue("micTubeOn");
+    rawMic.tubeGain=state.getRawParameterValue("micTubeGain");
+    rawMic.tubeDrive=state.getRawParameterValue("micTubeDrive");
+    rawMic.tubeAir=state.getRawParameterValue("micTubeAir");
+    rawMic.tubeTrim=state.getRawParameterValue("micTubeTrim");
     rawGlobal.mode=state.getRawParameterValue("mode");
     rawGlobal.input=state.getRawParameterValue("input");
     rawGlobal.mix=state.getRawParameterValue("mix");
@@ -370,6 +375,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             "Slot "+juce::String(slot)+" duck source",juce::StringArray{"Post MIC","Pre MIC","Slot input"},0));
         bl(prefix+"parallelReturn","Slot "+juce::String(slot)+" parallel return",false);
     }
+    // Independent MIC preamp: append IDs, never repurpose micPre* (mic model).
+    bl("micTubeOn","Mic Preamp active",false);
+    fl("micTubeGain","Mic Preamp input dB",-12.f,12.f,0.f);
+    fl("micTubeDrive","Mic Preamp tube drive",0.f,1.f,0.f);
+    fl("micTubeAir","Mic Preamp air dB",0.f,6.f,0.f);
+    fl("micTubeTrim","Mic Preamp output dB",-12.f,12.f,0.f);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -483,6 +494,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     for(auto& channel:suiteReturnRms)
         for(auto& meter:channel)meter.store(0.f,std::memory_order_relaxed);
     micFrontEnd.prepare(rate);
+    micTube.prepare(rate,rawMic.tubeOn->load()>.5f,rawMic.tubeGain->load(),rawMic.tubeDrive->load(),rawMic.tubeAir->load(),rawMic.tubeTrim->load());
     micInputGate.prepare(rate);
     // Output-stage separation is prepared with the processor's own sample rate
     // so its 10 ms glide is always the exact host rate, then snapped to the
@@ -858,6 +870,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     juce::jlimit(0.f,1.f,rawMic.amount->load()),
                     juce::jlimit(0.f,1.f,rawMic.trim->load()));
     micFrontWet.setTargetValue(rawMic.on->load()>.5f?1.f:0.f);
+    micTube.set(rawMic.tubeOn->load()>.5f,rawMic.tubeGain->load(),rawMic.tubeDrive->load(),rawMic.tubeAir->load(),rawMic.tubeTrim->load());
     micInputGate.threshold=juce::jlimit(-80.f,-10.f,rawMic.gateThreshold->load());
     micInputGate.release=juce::jlimit(20.f,1000.f,rawMic.gateRelease->load());
     micInputGate.holdMs=juce::jlimit(0.f,250.f,rawMic.gateHold->load());
@@ -1119,6 +1132,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 frontL+=(colored[0]-frontL)*micWet;
                 frontR+=(colored[1]-frontR)*micWet;
             }
+            // Gate -> Mic Mod -> Mic Preamp -> post-MIC detector / rack.
+            micTube.process(frontL,frontR);
             const auto original=bypassPdc.process(l,r,blockLatency);
             // Real pre-rack input spectrum; no fabricated energy curves.
             liveSpectrumInput.push(frontL,frontR);
@@ -1830,6 +1845,8 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
     setReal("micGateRelease",160.f);setReal("micGateHold",55.f);
     setReal("micGateAttackMs",4.f);setReal("micGateHysteresisDb",3.f);
     setReal("micGateDepth",1.f);
+    setReal("micTubeOn",0.f);setReal("micTubeGain",0.f);setReal("micTubeDrive",0.f);
+    setReal("micTubeAir",0.f);setReal("micTubeTrim",0.f);
     // Factory switches must reset all serialized macro values, including the
     // currently hidden compatibility slots 5..8, so imported state cannot leak.
     for(int i=1;i<=8;++i)setReal("macro"+juce::String(i),.5f);
@@ -1857,6 +1874,9 @@ juce::Result SkellPresetAudioProcessor::makePresetDocument(
     doc.micGateAttackMs=value("micGateAttackMs");
     doc.micGateHysteresisDb=value("micGateHysteresisDb");
     doc.micGateDepth=value("micGateDepth");
+    doc.micTubeOn=value("micTubeOn")>.5f;
+    doc.micTubeGain=value("micTubeGain");doc.micTubeDrive=value("micTubeDrive");
+    doc.micTubeAir=value("micTubeAir");doc.micTubeTrim=value("micTubeTrim");
     // Stored as a strict integer in the supplied raw range.
     doc.stereoSeparation=juce::jlimit(-96,96,
         juce::roundToInt(value("stereoSeparation")));
@@ -1965,6 +1985,8 @@ juce::Result SkellPresetAudioProcessor::applyValidatedPresetDocument(
     setReal("micGateAttackMs",doc.micGateAttackMs);
     setReal("micGateHysteresisDb",doc.micGateHysteresisDb);
     setReal("micGateDepth",doc.micGateDepth);
+    setReal("micTubeOn",doc.micTubeOn?1.f:0.f);setReal("micTubeGain",doc.micTubeGain);
+    setReal("micTubeDrive",doc.micTubeDrive);setReal("micTubeAir",doc.micTubeAir);setReal("micTubeTrim",doc.micTubeTrim);
     // Pre-R6 packages have no separation field; the document default is 0,
     // so every existing preset loads verified neutral rather than inheriting
     // whatever the previous program left on the control.
@@ -2182,7 +2204,8 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         constexpr GateLegacyDefault defaults[]{
             {"micGateAttackMs",4.f},{"micGateHysteresisDb",3.f},{"micGateDepth",1.f},
             // Pre-R6 snapshots predate the output-stage separation control.
-            {"stereoSeparation",0.f}
+            {"stereoSeparation",0.f},
+            {"micTubeOn",0.f},{"micTubeGain",0.f},{"micTubeDrive",0.f},{"micTubeAir",0.f},{"micTubeTrim",0.f}
         };
         for(const auto& def:defaults) {
             bool present=false;
@@ -2261,7 +2284,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
                         "micPreOn","micPreInput","micPreTarget","micPreAmount","micPreTrim",
                         "micGateOn","micGateThreshold","micGateRelease","micGateHold",
                         "micGateAttackMs","micGateHysteresisDb","micGateDepth",
-                        "stereoSeparation"})
+                        "stereoSeparation","micTubeOn","micTubeGain","micTubeDrive","micTubeAir","micTubeTrim"})
         add(id);
     for(int macro=1;macro<=8;++macro)add("macro"+juce::String(macro));
     for(const auto* lane:{"A","B","C"}) {

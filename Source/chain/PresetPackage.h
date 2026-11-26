@@ -60,6 +60,9 @@ struct Document {
     // -96..+96 (negative widens, positive merges, 0 neutral). Absent in older
     // packages, so every existing preset loads at verified neutral.
     int stereoSeparation = 0;
+    // Independent optional MIC preamp; legacy archives remain neutral/off.
+    bool micTubeOn=false;
+    float micTubeGain=0.f,micTubeDrive=0.f,micTubeAir=0.f,micTubeTrim=0.f;
     std::array<float, 8> macros {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
     std::array<Slot, slotCount> slots = [] {
         std::array<Slot, slotCount> result {};
