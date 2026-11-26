@@ -254,7 +254,7 @@ public:
             }
         }
         // Restrained moving key light leaves the static environment cached.
-        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.105f+.07f*activity),
+        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.135f+.10f*activity),
             centreX-65.f,feetY-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,feetY-70.f,true));
         g.fillEllipse(centreX-175.f*stage.scale,feetY-365.f*stage.scale,350.f*stage.scale,365.f*stage.scale);
         // Volumetric stage beams from the rig above the performer. These are
@@ -277,7 +277,7 @@ public:
                 wedge.closeSubPath();
                 const auto tint=(beam==1?accent:Theme::blue);
                 g.setGradientFill(juce::ColourGradient(
-                    tint.withAlpha(.095f+.16f*rigEnergy[(size_t)beam]),rigX,rigY,
+                    tint.withAlpha(.115f+.18f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));
                 g.fillPath(wedge);
             }
@@ -320,14 +320,14 @@ public:
             for(int ring=3;ring>=1;--ring) {
                 const float f=(float)ring/3.f;
                 g.setGradientFill(juce::ColourGradient(
-                    Theme::green.withAlpha(.050f*activity+.012f),centreX,feetY,
+                    Theme::blue.interpolatedWith(accent,.3f).withAlpha(.050f*activity+.027f),centreX,feetY,
                     Theme::bg.withAlpha(0.f),centreX+poolW*f*.55f,feetY,true));
                 g.fillEllipse(centreX-poolW*f,feetY-poolH*f*.42f,
                               poolW*2.f*f,poolH*2.f*f);
             }
             // Mirrored figure glint, kept subtle and tied to measured peak.
             g.setGradientFill(juce::ColourGradient(
-                Theme::white.withAlpha(.035f+.055f*activity),centreX,feetY,
+                Theme::white.withAlpha(.065f+.075f*activity),centreX,feetY,
                 Theme::bg.withAlpha(0.f),centreX,feetY+26.f*stage.scale,false));
             g.fillEllipse(centreX-26.f*stage.scale,feetY-2.f*stage.scale,
                           52.f*stage.scale,30.f*stage.scale);

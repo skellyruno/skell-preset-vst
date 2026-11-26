@@ -71,21 +71,25 @@ public:
         for(int i=0;i<processor.activeSlotCount();++i)if(processor.slotIdAt(i)==id)return true;
         return false;
     }
-    void refresh(){
-        if(target>=0 && !valid(target))target=-1;
+    bool refresh(){
+        bool changed=false;
+        if(target>=0 && !valid(target)){target=-1;changed=true;}
         for(int id=0;id<P::slotCount;++id){
             auto& b=targets[(size_t)id];int position=-1;
             for(int n=0;n<processor.activeSlotCount();++n)if(processor.slotIdAt(n)==id){position=n;break;}
             const int type=processor.slotType(id);
             const bool show=position>=0 && type!=P::Empty;
-            b.setVisible(show);
+            if(b.isVisible()!=show){b.setVisible(show);changed=true;}
             if(!show)continue;
             const auto name=processor.moduleDisplayName(type);
             const juce::String label=juce::String(position+1).paddedLeft('0',2)+"  "+name+
                 (valid(id)?(isConnected(id)?"  [LINKED]":""):"  [N/A]");
-            if(b.getButtonText()!=label)b.setButtonText(label);
-            b.setEnabled(valid(id));b.setToggleState(id==target,juce::dontSendNotification);
-            b.setBounds(targetBounds(position));
+            if(b.getButtonText()!=label){b.setButtonText(label);changed=true;}
+            const bool eligible=valid(id);
+            if(b.isEnabled()!=eligible){b.setEnabled(eligible);changed=true;}
+            if(b.getToggleState()!=(id==target)){b.setToggleState(id==target,juce::dontSendNotification);changed=true;}
+            const auto bounds=targetBounds(position);
+            if(b.getBounds()!=bounds){b.setBounds(bounds);changed=true;}
         }
         const bool available=valid(target);
         const int committed=available?committedSource(target):0;
@@ -102,10 +106,18 @@ public:
         if(count!=lastAudioCount){lastAudioCount=count;lastAudioTick=now;}
         const bool audioFresh=lastAudioTick!=0u && (unsigned)(now-lastAudioTick)<400u;
         const float raw=linked && audioFresh?processor.getSlotDuckReductionDb(target):0.f;
-        displayedReduction=std::isfinite(raw)?juce::jlimit(0.f,96.f,raw):0.f;
+        const float nextReduction=std::isfinite(raw)?std::round(10.f*juce::jlimit(0.f,96.f,raw))*.1f:0.f;
+        const bool meterChanged=displayedReduction!=nextReduction;
+        displayedReduction=nextReduction;
+        const int preview=source.getSelectedId();
+        changed|=paintTarget!=target || paintPreview!=preview || paintCommitted!=committed || paintLinked!=linked;
+        paintTarget=target;paintPreview=preview;paintCommitted=committed;paintLinked=linked;
         const auto label=linked?(pending?"UPDATE SOURCE":"UNLINK EFFECT"):"LINK EFFECT";
-        if(connect.getButtonText()!=label)connect.setButtonText(label);
-        source.setEnabled(available);repaint();
+        if(connect.getButtonText()!=label){connect.setButtonText(label);changed=true;}
+        source.setEnabled(available);
+        // A stable page needs no repaint; live metering invalidates only its own region.
+        if(changed)repaint();else if(meterChanged)repaint(30,347,244,76);
+        return changed || meterChanged;
     }
     void resized() override{
         back.setBounds(getWidth()-122,18,102,32);source.setBounds(30,139,244,42);
@@ -178,12 +190,15 @@ public:
             connect.getButtonText()=="UPDATE SOURCE";
         apply(false,false);const bool removed=!isConnected(id);
         set(suffix,oldOn);set(prefix+"duckExternal",oldExternal);set(prefix+"duckSource",oldSource);
-        refresh();return unchanged&&linked&&unlinkLabel&&previewSafe&&updated&&hostFollow&&previewPreserved&&removed;
+        refresh();const bool stable=!refresh();
+        return unchanged&&linked&&unlinkLabel&&previewSafe&&updated&&hostFollow&&previewPreserved&&removed&&stable;
     }
 private:
     P& processor;int target=-1,lastCommittedSource=0;
     unsigned lastAudioCount=0,lastAudioTick=0;
     float displayedReduction=0.f;
+    int paintTarget=-2,paintPreview=-1,paintCommitted=-1;
+    bool paintLinked=false;
     juce::ComboBox source;
     SkellActionButton connect,disconnect,edit,back;
     std::array<SkellActionButton,P::slotCount> targets;

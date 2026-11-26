@@ -964,6 +964,18 @@ int main(int argc, char** argv) {
                     ++failures;
                 }
             }
+            for(bool redoAvailable:{false,true}) {
+                editor.configureForScreenshot(0,1,false);
+                if(!editor.showHistoryForScreenshot(redoAvailable)){
+                    std::fprintf(stderr,"History screenshot fixture failed\n");++failures;continue;
+                }
+                for(int width:{818,1168}) {
+                    const auto shot=skellcore::ui::headless::capture(editor,width,width==818?482:688);
+                    const auto file=juce::String("obsidian-history-")+(redoAvailable?"redo":"undo")+(width==818?"-70.png":"-100.png");
+                    if(!shot.image.isValid() || shot.distinctColours<12 ||
+                       !skellcore::ui::headless::writePng(shot.image,folder.getChildFile(file)))++failures;
+                }
+            }
         }
         editor.configureForScreenshot(0, 1, false);
         std::printf("Skell-Preset shared SkellCore renderer: %d scenes, %d failures\n",

@@ -32,7 +32,7 @@ public:
             g.setGradientFill(juce::ColourGradient(base.brighter(enabled?(down?.01f:over?.23f:.12f):.035f),
                 disc.getTopLeft(),base.darker(down?.35f:.12f),disc.getBottomRight(),false));
             g.fillEllipse(disc);
-            g.setColour(Theme::white.withAlpha(enabled?(over?.32f:.18f):.065f));
+            g.setColour(Theme::white.withAlpha(enabled?(over?.36f:.22f):.10f));
             g.drawEllipse(disc.reduced(.45f),.8f);
             g.setColour(Theme::white.withAlpha(enabled?.045f:.018f));
             g.drawEllipse(disc.reduced(1.65f),.65f);
@@ -50,7 +50,7 @@ public:
             arrow.lineTo(cx+1.f,cy-2.5f);
             arrow.cubicTo(cx+8.f,cy-2.5f,cx+8.f,cy+6.f,cx+1.5f,cy+6.f);
             arrow.lineTo(cx-1.5f,cy+6.f);
-            g.setColour(Theme::white.withAlpha(enabled?(over?.96f:.72f):.22f));
+            g.setColour(Theme::white.withAlpha(enabled?(over?.96f:.78f):.29f));
             g.strokePath(arrow,juce::PathStrokeType(1.2f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             if(hasKeyboardFocus(true)){
                 g.setColour(Theme::white.withAlpha(.58f));g.drawEllipse(disc.reduced(2.8f),.85f);

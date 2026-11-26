@@ -500,6 +500,13 @@ public:
         slot.setModOrbForScreenshot(enabled);
     }
     void showRoutingForScreenshot(){openRouting(processor.slotIdAt(0));}
+    bool showHistoryForScreenshot(bool redoAvailable){
+        undoStates.clear();redoStates.clear();pendingHistory.reset();updateHistoryButtons();
+        processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+        browser.loadFactoryForHistoryTest(skellpreset::deuce_v25::factoryIndex);
+        if(redoAvailable)undo.onClick();
+        return redoAvailable?(redo.isEnabled()&&!undo.isEnabled()):(undo.isEnabled()&&!redo.isEnabled());
+    }
     void showHomeForScreenshot() {
         if(chain.onClearSelection)chain.onClearSelection();
         refresh();
@@ -1807,6 +1814,7 @@ void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
 }
 
 void SkellPresetAudioProcessorEditor::showRoutingForScreenshot(){canvas->showRoutingForScreenshot();}
+bool SkellPresetAudioProcessorEditor::showHistoryForScreenshot(bool redoAvailable){return canvas->showHistoryForScreenshot(redoAvailable);}
 void SkellPresetAudioProcessorEditor::showHomeForScreenshot() {
     canvas->showHomeForScreenshot();
 }
