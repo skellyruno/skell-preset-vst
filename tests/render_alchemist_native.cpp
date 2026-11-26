@@ -9,6 +9,7 @@
 #include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/chain/ABMetrics.h"
 #include "NativeVocalPreview.h"
+#include "NativeVocalAudition.h"
 #include "../Source/chain/VocalStarterChains.h"
 #include <algorithm>
 #include <array>
@@ -1871,7 +1872,19 @@ int vocalPreviewSmoke() {
     if(skellpreset::preview::render(dry,starter,1,{},.05).failed())return 10;
     reader.reset(formats.createReaderFor(starter));
     if(!reader || reader->lengthInSamples!=samples+2400)return 11;
-    std::puts("PASS: native preview, latency-aligned mono/stereo identity, partial block, no overwrite and explicit tail");
+    reader.reset();
+    const auto pair=root.getChildFile("pair");
+    if(skellpreset::preview::renderMatchedPair(dry,pair,-1,preset,.05).failed())return 12;
+    if(!pair.getChildFile("listen.html").existsAsFile()||!pair.getChildFile("processed-raw.wav").existsAsFile())return 13;
+    std::unique_ptr<juce::AudioFormatReader> aa(formats.createReaderFor(pair.getChildFile("A-dry.wav"))),
+        bb(formats.createReaderFor(pair.getChildFile("B-processed.wav")));
+    if(!aa||!bb||aa->lengthInSamples!=samples+2400||bb->lengthInSamples!=aa->lengthInSamples)return 14;
+    skellpreset::preview::Metrics am,bm;
+    if(skellpreset::preview::measureFile(*aa,samples,am).failed()||
+       skellpreset::preview::measureFile(*bb,samples,bm).failed()||
+       std::abs(am.rms()-bm.rms())>1.e-6||am.peak>.891252||bm.peak>.891252)return 15;
+    if(skellpreset::preview::renderMatchedPair(dry,pair,-1,preset).wasOk())return 16;
+    std::puts("PASS: native preview, latency alignment, matched audition WAVs, HTML player, no overwrite and explicit tail");
     return 0;
 }
 int monoSmoke() {
@@ -2820,8 +2833,10 @@ int stereoSeparationSmoke() {
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
     if(argc==2 && juce::String(argv[1])=="--preview-smoke")return vocalPreviewSmoke();
-    if(argc>=5 && argc<=7 && (juce::String(argv[1])=="--preview-starter" || juce::String(argv[1])=="--preview-preset")){
-        const bool starter=juce::String(argv[1])=="--preview-starter";
+    if(argc>=5 && argc<=7 && (juce::String(argv[1])=="--preview-starter" || juce::String(argv[1])=="--preview-preset" ||
+                                juce::String(argv[1])=="--audition-starter" || juce::String(argv[1])=="--audition-preset")){
+        const bool starter=juce::String(argv[1]).endsWith("-starter");
+        const bool audition=juce::String(argv[1]).startsWith("--audition-");
         const juce::String profile(argv[2]);
         int profileId=0,variant=0;
         if(starter){
@@ -2835,9 +2850,10 @@ int main(int argc,char** argv) {
         double tail=0.,bpm=120.;
         if(argc>=6){char* end=nullptr;tail=std::strtod(argv[5],&end);if(end==argv[5] || *end!='\0')return 7;}
         if(argc==7){char* end=nullptr;bpm=std::strtod(argv[6],&end);if(end==argv[6] || *end!='\0')return 7;}
-        const auto result=skellpreset::preview::render(juce::File(juce::String::fromUTF8(argv[3])),
-            juce::File(juce::String::fromUTF8(argv[4])),starter?profileId-1:-1,
-            starter?juce::File{}:juce::File(juce::String::fromUTF8(argv[2])),tail,bpm,variant);
+        const auto source=juce::File(juce::String::fromUTF8(argv[3])),destination=juce::File(juce::String::fromUTF8(argv[4]));
+        const auto package=starter?juce::File{}:juce::File(juce::String::fromUTF8(argv[2]));
+        const auto result=audition?skellpreset::preview::renderMatchedPair(source,destination,starter?profileId-1:-1,package,tail,bpm,variant):
+            skellpreset::preview::render(source,destination,starter?profileId-1:-1,package,tail,bpm,variant);
         if(result.failed()){std::fprintf(stderr,"%s\n",result.getErrorMessage().toRawUTF8());return 8;}
         return 0;
     }
@@ -2877,6 +2893,8 @@ int main(int argc,char** argv) {
     if(argc!=3) {
         std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53|54 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --factory-override 54 HPF_NORMALIZED BAND70_GAIN_NORMALIZED INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --audition-starter PROFILE[:VARIANT] INPUT NEW_FOLDER [TAIL_SECONDS] [BPM]\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --audition-preset PRESET.skellpreset INPUT NEW_FOLDER [TAIL_SECONDS] [BPM]\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-starter PROFILE[:VARIANT] INPUT NEW_OUTPUT.wav [TAIL_SECONDS] [BPM]\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-preset PRESET.skellpreset INPUT NEW_OUTPUT.wav [TAIL_SECONDS] [BPM]\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --lowend-override-smoke\n");
