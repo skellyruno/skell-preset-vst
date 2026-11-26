@@ -1731,8 +1731,10 @@ private:
         from.pop_back();
         // These snapshots were produced by getStateInformation itself.
         // In particular, no stale factory ID or slot-order renumbering occurs.
+        const auto presentation=processor.presentation();
         processor.setStateInformation(target.state.getData(),
                                       (int)target.state.getSize());
+        processor.setPresentation(presentation); // audio undo/redo never changes presentation
         browser.restoreHistorySelection(target.selectedPreset);
         pushHistory(to,std::move(current));
         pendingHistory.reset();

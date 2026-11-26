@@ -397,10 +397,10 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     addChildComponent(livePanel);
     liveView.setTooltip("Switch between the existing clean effect face and actual input/output traces");
     liveView.onClick=[this]{
-        const bool open=!livePanel.isVisible();
+        const bool open=processor.presentation()!=SkellPresetAudioProcessor::Presentation::Visual;
         dismissTransientOverlays();
-        livePanel.setVisible(open);liveView.setButtonText(open?"CLEAN":"VISUAL");
-        if(open){processor.requestSlotVisual(slot);livePanel.update(processor,slot);livePanel.toFront(false);}
+        processor.setPresentation(open?SkellPresetAudioProcessor::Presentation::Visual:SkellPresetAudioProcessor::Presentation::Clean);
+        syncPresentation();
     };
     for(auto* slider:{&duckDepth,&duckThreshold,&duckAttack,&duckRelease}) {
         slider->setSliderStyle(juce::Slider::LinearHorizontal);
@@ -1567,6 +1567,17 @@ void SlotEditor::select(int newSlot) {
         showSuitePage(0);
     repaint();
 }
+void SlotEditor::syncPresentation() {
+    const int type=processor.slotType(slot);
+    const bool eligible=type!=SkellPresetAudioProcessor::Empty && type!=SkellPresetAudioProcessor::ExternalVST3;
+    const bool want=processor.presentation()==SkellPresetAudioProcessor::Presentation::Visual;
+    const bool overlay=modulePicker.isVisible() || installedBrowser.isVisible() || duckPanel.isVisible() ||
+        vocalFeelStyles.isVisible() || eqNodeMenu.isVisible();
+    const bool visible=eligible && want && !overlay;
+    if(livePanel.isVisible()!=visible){livePanel.setVisible(visible);if(visible)livePanel.toFront(false);}
+    liveView.setButtonText(want?"CLEAN":"VISUAL");
+    processor.requestSlotVisual(visible && hostedPresentation && livePanel.isShowing()?slot:-1);
+}
 void SlotEditor::refreshIfChanged() {
     const auto prefix="s"+juce::String(slot+1)+"_";
     const int type=processor.slotType(slot);
@@ -1682,8 +1693,8 @@ void SlotEditor::refreshIfChanged() {
         const auto caption=inlineShown?"DETACH UI":"OPEN UI";
         if(editExternal.getButtonText()!=caption)editExternal.setButtonText(caption);
     }
+    syncPresentation();
     if(livePanel.isShowing() && hostedPresentation)livePanel.update(processor,slot);
-    liveView.setButtonText(livePanel.isVisible()?"CLEAN":"VISUAL");
     if(duckPanel.isVisible()){
         duckPanel.setReduction(processor.getSlotDuckReductionDb(slot));
     }
@@ -4045,16 +4056,21 @@ bool SlotEditor::keyPressed(const juce::KeyPress& key) {
 }
 bool SlotEditor::testLiveViewForTest() {
     const int previous=processor.slotType(slot);
+    const auto previousPresentation=processor.presentation();
+    processor.setPresentation(SkellPresetAudioProcessor::Presentation::Clean);
     processor.setSlotType(slot,SkellPresetAudioProcessor::EQ);select(slot);
     const auto oldWet=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_wet")->load();
     bool ok=liveView.isVisible() && !livePanel.isVisible();
     liveView.onClick();
     ok=ok && livePanel.isVisible() && livePanel.testLayoutForTest() &&
        getLocalBounds().contains(livePanel.getBounds()) && liveView.getButtonText()=="CLEAN";
+    select(slot);
+    ok=ok && livePanel.isVisible() && processor.presentation()==SkellPresetAudioProcessor::Presentation::Visual;
     liveView.onClick();
     ok=ok && !livePanel.isVisible() && liveView.getButtonText()=="VISUAL" &&
        processor.slotType(slot)==SkellPresetAudioProcessor::EQ &&
        processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_wet")->load()==oldWet;
+    processor.setPresentation(previousPresentation);
     processor.setSlotType(slot,previous);select(slot);
     return ok;
 }

@@ -137,7 +137,7 @@ public:
     void setHostedEditorPresentation(bool allowed) {
         hostedPresentation=allowed;
         if(!allowed){hideEmbeddedEditor();processor.requestSlotVisual(-1);}
-        else processor.requestSlotVisual(livePanel.isShowing()?slot:-1);
+        else syncPresentation();
     }
     void openInstalledVST3BrowserForScreenshot() {loadExternal.onClick();}
     bool testModulePickerInteraction();
@@ -263,6 +263,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> parallelReturnAttachment;
     juce::TextButton liveView{"VISUAL"};
     SkellLiveEffectPanel livePanel;
+    void syncPresentation();
     juce::ToggleButton duckOn{"DUCK WHEN VOCAL IS PRESENT"};
     juce::Slider duckDepth,duckThreshold,duckAttack,duckRelease;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> duckOnAttachment;

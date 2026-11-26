@@ -7,6 +7,7 @@
 #include "chain/LiveAudioScope.h"
 #include "chain/LiveSpectrum.h"
 #include "chain/SlotVisualCapture.h"
+#include "../SkellCore/include/SkellCore/PresentationMode.h"
 #include "chain/ClipRecorder.h"
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
@@ -159,6 +160,9 @@ public:
         const auto i=(size_t)juce::jlimit(0,slotCount-1,slot);
         slotInputScope[i].snapshot(input);slotOutputScope[i].snapshot(output);
     }
+    using Presentation=skellcore::ui::Presentation;
+    Presentation presentation() const noexcept {return effectPresentation.load(std::memory_order_relaxed);}
+    void setPresentation(Presentation value) noexcept {effectPresentation.store(value,std::memory_order_relaxed);}
     void requestSlotVisual(int slot) noexcept {slotVisual.request(slot);}
     bool getSlotVisual(int slot,skellpreset::visual::SlotVisualCapture::Frame& frame) const noexcept {
         return slotVisual.read(slot,frame);
@@ -301,6 +305,8 @@ private:
     std::array<RawSlot,slotCount> rawSlots;
     std::array<skellpreset::visual::LiveAudioScope,slotCount> slotInputScope,slotOutputScope;
     skellpreset::visual::SlotVisualCapture slotVisual;
+    std::array<float,skellpreset::visual::SlotVisualCapture::maxBlock> visualDynamics{};
+    std::atomic<Presentation> effectPresentation{Presentation::Clean};
     std::array<std::atomic<float>,slotCount> slotPeaks;
     std::array<std::atomic<float>,slotCount> slotGainReductionDb,slotDuckReductionDb;
     std::array<std::atomic<float>,slotCount> slotDeessReductionDb;

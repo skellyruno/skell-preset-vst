@@ -917,6 +917,32 @@ int limiterStateSmoke() {
     return 0;
 }
 int studioSmoke() {
+    {
+        using P=SkellPresetAudioProcessor;
+        auto a=std::make_unique<P>();auto b=std::make_unique<P>();
+        a->clearRackToEmpty();a->setSlotType(0,P::Compressor);a->setSlotOn(0,true);
+        a->setSlotParam(0,0,0.f);a->setSlotParam(0,1,1.f);
+        a->setPresentation(P::Presentation::Visual);
+        juce::MemoryBlock saved;a->getStateInformation(saved);
+        b->setStateInformation(saved.getData(),(int)saved.getSize());
+        if(b->presentation()!=P::Presentation::Visual)return 168;
+        b->setPresentation(P::Presentation::Clean);
+        a->prepareToPlay(48000.,256);b->prepareToPlay(48000.,256);
+        a->requestSlotVisual(0);
+        juce::AudioBuffer<float> x(2,256),y(2,256);juce::MidiBuffer midi;
+        for(int block=0;block<100;++block){
+            for(int ch=0;ch<2;++ch)for(int j=0;j<256;++j){const float z=.35f*std::sin((block*256+j)*.03f);x.setSample(ch,j,z);y.setSample(ch,j,z);}
+            a->processBlock(x,midi);b->processBlock(y,midi);
+            for(int ch=0;ch<2;++ch)for(int j=0;j<256;++j)if(x.getSample(ch,j)!=y.getSample(ch,j))return 169;
+        }
+        skellpreset::visual::SlotVisualCapture::Frame frame;
+        if(!a->getSlotVisual(0,frame) || !frame.sharedValid ||
+           !(frame.sharedOutput.flags&skellcore::telemetry::kFlagGrValid) || frame.sharedOutput.grDbMax<=0.f ||
+           frame.slowCount==0 || b->getSlotVisual(0,frame))return 170;
+        a->requestSlotVisual(-1);if(a->getSlotVisual(0,frame))return 171;
+        a->releaseResources();b->releaseResources();
+        std::puts("PASS: persistent presentation, shared compressor telemetry, bit-identical audio with tap on/off");
+    }
     if(const int limiterResult=limiterStateSmoke())return limiterResult;
     if(const int masterResult=masterSignalSmoke())return masterResult;
     // Host automation of newly appended parameters must change Empty Rack's

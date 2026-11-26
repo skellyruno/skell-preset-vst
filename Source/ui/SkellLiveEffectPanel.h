@@ -55,9 +55,25 @@ public:
             gr=std::max(p.getSlotGainReductionDb(slot),p.getSlotDeessReductionDb(slot));
             duck=p.getSlotDuckReductionDb(slot);
             correlation=frame.correlation;leftRms=frame.leftRms;rightRms=frame.rightRms;
+            sharedValid=frame.sharedValid;
+            if(sharedValid){
+                const auto& a=frame.sharedInput;const auto& b=frame.sharedOutput;
+                inputRms=std::sqrt(.5f*(a.rmsL*a.rmsL+a.rmsR*a.rmsR));
+                outputRms=std::sqrt(.5f*(b.rmsL*b.rmsL+b.rmsR*b.rmsR));
+                leftRms=b.rmsL;rightRms=b.rmsR;correlation=b.correlation;
+                sideRms=std::sqrt(std::max(0.f,b.sideMs));
+                grValid=(b.flags&skellcore::telemetry::kFlagGrValid)!=0;
+                gateMean=b.gateMean;
+                if(grValid)gr=b.grDbMax;
+                if(gateMean>=0.f)gr=std::max(0.f,-skellcore::telemetry::toDb(gateMean));
+            }
             mid=frame.mid;side=frame.side;
             shift(inputHistory,level(inputRms));shift(outputHistory,level(outputRms));
-            shift(grHistory,std::clamp(gr/24.f,0.f,1.f));
+            if(type==P::Compressor && sharedValid && grValid){
+                grHistory.fill(0.f);
+                for(size_t k=0;k<frame.slowCount;++k)
+                    grHistory[grHistory.size()-frame.slowCount+k]=std::clamp(frame.slow[k].grDbMax/24.f,0.f,1.f);
+            }else shift(grHistory,std::clamp(gr/24.f,0.f,1.f));
             shift(duckHistory,std::clamp(duck/24.f,0.f,1.f));
             // Spectrum analysis is UI-only and throttled to ~15 Hz.
             if((++ticks&1u)!=0 || ticks==1){
@@ -287,7 +303,9 @@ public:
         }
         if(pitch)metric("OUTPUT CONF.",pitchOut.hz>0.f?juce::String(juce::roundToInt(pitchOut.confidence*100.f))+"%":juce::String("--"),accent);
         else if(room)metric("TAIL DROP",tail.active?juce::String(tail.dropDb,1)+" dB":juce::String("--"),accent);
-        else metric(stereo?"CORRELATION":deess || gate || dynamics?"REDUCTION":space?"DUCK":"SIDE RMS",
+        else if(gate)metric("MEAN GATE GAIN",sharedValid && gateMean>=0.f?juce::String(gateMean*100.f,1)+"%":juce::String("--"),accent);
+        else if(compCurve)metric("CORE REDUCTION",sharedValid && grValid?juce::String(gr,1)+" dB":juce::String("--"),accent);
+        else metric(stereo?"CORRELATION":deess || dynamics?"REDUCTION":space?"DUCK":"SIDE RMS",
                stereo?(fresh && outputRms>1.e-6f?juce::String(correlation,2):juce::String("--")):
                deess || gate || dynamics?juce::String(gr,1)+" dB":space?juce::String(duck,1)+" dB":db(sideRms),accent);
         // The small footer trace is actual full-rate output, not a generated wave.
@@ -308,7 +326,7 @@ public:
             drive?juce::String("INPUT / OUTPUT WAVEFORM / 128 SAMPLES"):
             deess?"DE-ESS CENTER "+juce::String(deessHz/1000.f,2)+" kHz / BEFORE + AFTER":
             gate?juce::String("RMS HISTORY / DETECTOR OPEN-CLOSE THRESHOLDS"):
-            compCurve?juce::String("LIVE GR / STATIC DETECTOR ENVELOPE LAW (-60 TO 0 dB)"):
+            compCurve?juce::String("20 ms GR BUCKETS / STATIC DETECTOR ENVELOPE LAW"):
             dynamics?juce::String("GAIN REDUCTION / DUCKING / 24 dB RANGE"):
             delay?juce::String("LEFT (BLUE) / RIGHT (GREEN) / OUTPUT ENERGY"):
             space?juce::String("INPUT / OUTPUT / -72 TO 0 dBFS"):juce::String("INPUT / OUTPUT / -72 TO 0 dBFS");
@@ -348,6 +366,7 @@ private:
         leftHistory.fill(0);rightHistory.fill(0);mid.fill(0);side.fill(0);
         correlation=leftRms=rightRms=0.f;
         pitchIn={};pitchOut={};pitchInHistory.fill(-1.f);pitchOutHistory.fill(-1.f);
+        sharedValid=false;grValid=false;gateMean=-1.f;
         wetHistory.fill(0.f);wetAvailable=false;wetRms={};tapMs={};tail={};
         inputRms=outputRms=sideRms=gr=duck=0.f;lastSerial=0;lastFrame=0;fresh=false;ticks=0;
     }
@@ -358,7 +377,8 @@ private:
     std::array<float,129> transfer{},compressorCurve{};
     std::array<float,historySize> pitchInHistory{},pitchOutHistory{},wetHistory{};
     std::array<float,2> wetRms{},tapMs{};
-    bool wetAvailable=false;
+    bool wetAvailable=false,sharedValid=false,grValid=false;
+    float gateMean=-1.f;
     std::array<float,Analyzer::bands> inBands{},outBands{};
     std::array<float,historySize> inputHistory{},outputHistory{},grHistory{},duckHistory{};
     std::array<float,128> wave{},inputWave{},mid{},side{};

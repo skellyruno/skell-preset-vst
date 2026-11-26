@@ -62,16 +62,22 @@ int main() {
     if(selected.beginBlock()!=2 || selected.read(2,frame))return 30;
     selected.captureInput(l.data(),r.data(),1024);
     if(selected.read(2,frame))return 35; // do not expose an incomplete pair
-    selected.captureOutput(l.data(),r.data(),1024);
+    std::array<float,1024> reduction{};reduction.fill(3.f);
+    skellcore::telemetry::SideInfo measured;measured.grDbPerSample=reduction.data();
+    selected.captureOutput(l.data(),r.data(),1024,measured);
     if(!selected.read(2,frame) || std::abs(frame.outputRms-.25f)>1.e-6f ||
        std::abs(frame.sideRms-.25f)>1.e-6f || frame.output[1023]!=0.f ||
        std::abs(frame.correlation+1.f)>1.e-6f || frame.mid[0]!=0.f || frame.side[0]!=.25f ||
-       frame.leftRms!=.25f || frame.rightRms!=.25f)return 31;
+       frame.leftRms!=.25f || frame.rightRms!=.25f || !frame.sharedValid ||
+       frame.sharedOutput.grDbMax!=3.f || frame.sharedOutput.endSample()!=1024 ||
+       frame.slowCount!=1 || frame.slow[0].grDbMax!=3.f)return 31;
     selected.request(4);
     if(selected.read(2,frame) || selected.read(4,frame) || selected.beginBlock()!=4)return 32;
     r.fill(.25f);selected.captureInput(l.data(),r.data(),1024);selected.captureOutput(l.data(),r.data(),1024);
     if(!selected.read(4,frame) || frame.sideRms!=0.f || frame.output[1023]!=.25f ||
-       frame.correlation!=1.f || frame.mid[0]!=.25f || frame.side[0]!=0.f)return 33;
+       frame.correlation!=1.f || frame.mid[0]!=.25f || frame.side[0]!=0.f ||
+       !frame.sharedValid || (frame.sharedOutput.flags&skellcore::telemetry::kFlagGrValid) ||
+       frame.sharedOutput.endSample()!=1024)return 33;
     l.fill(0.f);r.fill(0.f);selected.captureInput(l.data(),r.data(),1024);selected.captureOutput(l.data(),r.data(),1024);
     if(!selected.read(4,frame) || frame.correlation!=0.f || frame.outputRms!=0.f)return 36;
     selected.request(-1);

@@ -461,6 +461,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     liveSpectrumInput.reset();liveSpectrumOutput.reset();slotVisual.invalidate();
     rate=(std::isfinite(sampleRate)&&sampleRate>=8000.)?sampleRate:48000.;
     displayedRate.store(rate,std::memory_order_release);
+    slotVisual.prepare(rate);
     hostChunkCapacity=juce::jlimit(64,8192,juce::jmax(512,samplesPerBlock));
     rackWork.setSize(2,hostChunkCapacity,false,true);
     sidechainWork.setSize(2,hostChunkCapacity,false,true);
@@ -1214,6 +1215,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     case Compressor: {
                         const float g=e.comp.gain(std::max(std::abs(l),std::abs(r)));
                         grMeter[(size_t)s]=std::max(grMeter[(size_t)s],e.comp.lastReductionDb);
+                        if(captureVisual)visualDynamics[(size_t)n]=e.comp.lastReductionDb;
                         wetL=l*g;wetR=r*g;break;
                     }
                     case StudioLimiterFX: {
@@ -1266,6 +1268,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case Gate: {
                         const float g=e.gate.processGain(std::max(std::abs(l),std::abs(r)));
+                        if(captureVisual)visualDynamics[(size_t)n]=g;
                         minimumGain[(size_t)s]=std::min(minimumGain[(size_t)s],g);
                         wetL=l*g;wetR=r*g;break;
                     }
@@ -1448,7 +1451,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     else if(c.type==Delay)times.fill((float)(1000.*e.delay.samples/rate));
                     slotVisual.setReturn((float)std::sqrt(wetEnergyL/frames),(float)std::sqrt(wetEnergyR/frames),times[0],times[1]);
                 }
-                slotVisual.captureOutput(measuredOutput.getReadPointer(0),measuredOutput.getReadPointer(1),frames);
+                skellcore::telemetry::SideInfo dynamics;
+                if(c.type==Compressor)dynamics.grDbPerSample=visualDynamics.data();
+                if(c.type==Gate)dynamics.gatePerSample=visualDynamics.data();
+                slotVisual.captureOutput(measuredOutput.getReadPointer(0),measuredOutput.getReadPointer(1),frames,dynamics);
             }
             if(c.type==VocalFeelOptoFX && c.on)
                 grMeter[(size_t)s]=std::max(grMeter[(size_t)s],
@@ -2009,6 +2015,7 @@ const juce::String SkellPresetAudioProcessor::getProgramName(int index) {
 }
 void SkellPresetAudioProcessor::getStateInformation(juce::MemoryBlock& dest) {
     auto snapshot=state.copyState();
+    snapshot.setProperty("effectPresentation",skellcore::ui::toString(presentation()),nullptr);
     juce::String sequence;
     for(int i=0;i<slotCount;i++)sequence+=juce::String(slotIdAt(i))+(i==slotCount-1?"":",");
     snapshot.setProperty("slotOrder",sequence,nullptr);
@@ -2209,6 +2216,8 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             }
         // Repair untrusted host XML before JUCE copies it into APVTS atomics.
         sanitizeParameterStateValues(loaded, state);
+        setPresentation(skellcore::ui::presentationFromString(loaded.getProperty("effectPresentation").toString().toStdString()));
+        loaded.removeProperty("effectPresentation",nullptr); // UI state, not a parameter
         state.replaceState(loaded);
         bool slotsEmpty=true;
         for(int slot=0;slot<slotCount;++slot) {

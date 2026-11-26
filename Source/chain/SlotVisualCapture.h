@@ -1,6 +1,7 @@
 #pragma once
 #include "LiveSpectrum.h"
 #include "VisualAnalysis.h"
+#include "../../SkellCore/include/SkellCore/Telemetry.h"
 namespace skellpreset::visual {
 // A single on-demand stereo measurement pair per processor. The message
 // thread requests a slot; only the audio callback resets/writes capture.
@@ -8,7 +9,12 @@ namespace skellpreset::visual {
 class SlotVisualCapture final {
 public:
     using Samples=std::array<float,LiveSpectrumCapture::capacity>;
-    static constexpr int stereoPoints=128;
+    static constexpr int stereoPoints=128, maxBlock=8192;
+    using Metrics=skellcore::telemetry::LevelMetrics;
+    using Bucket=skellcore::telemetry::Bucket;
+    using SideInfo=skellcore::telemetry::SideInfo;
+    SlotVisualCapture() noexcept {prepare(48000.);}
+    void prepare(double sr) noexcept {tap.prepare(sr);invalidate();}
     struct Frame {
         Samples input{},output{};
         PitchHistory::Samples pitchInput{},pitchOutput{};
@@ -17,6 +23,10 @@ public:
         std::array<float,2> returnRms{},tapMs{};
         std::array<float,stereoPoints> mid{},side{};
         float inputRms=0.f,outputRms=0.f,sideRms=0.f,correlation=0.f,leftRms=0.f,rightRms=0.f;
+        Metrics sharedInput{},sharedOutput{};
+        std::array<Bucket,90> slow{};
+        size_t slowCount=0;
+        bool sharedValid=false;
         std::uint64_t serial=0;
     };
     void request(int slot) noexcept {
@@ -29,17 +39,20 @@ public:
         const auto next=requested.load(std::memory_order_acquire);
         if(next!=active){
             published.store(0,std::memory_order_release);
-            input.reset();output.reset();pitchIn.reset();pitchOut.reset();active=next;
+            input.reset();output.reset();pitchIn.reset();pitchOut.reset();tap.reset();active=next;
+            tap.setConsumerActive((active&31u)!=0);
         }
         return (int)(active&31u)-1;
     }
     void invalidate() noexcept {
         published.store(0,std::memory_order_release);
-        input.reset();output.reset();pitchIn.reset();pitchOut.reset();
+        input.reset();output.reset();pitchIn.reset();pitchOut.reset();tap.reset();
     }
     void captureInput(const float* l,const float* r,int n,bool pitch=false,double sr=48000.) noexcept {
         sequence.fetch_add(1,std::memory_order_acq_rel); // odd while the pair is being written
         input.pushBlock(l,r,n);
+        sharedFrames=l && n>0 && n<=maxBlock?n:0;
+        if(sharedFrames){std::copy_n(l,n,sharedL.data());std::copy_n(r?r:l,n,sharedR.data());}
         pitchMode=pitch;pitchSampleRate=sr;
         if(pitch)pitchIn.push(l,r,n,sr);
         wetAvailable.store(false,std::memory_order_relaxed);
@@ -50,7 +63,8 @@ public:
         tapLeft.store(timeL,std::memory_order_relaxed);tapRight.store(timeR,std::memory_order_relaxed);
         wetAvailable.store(true,std::memory_order_relaxed);
     }
-    void captureOutput(const float* l,const float* r,int n) noexcept {
+    void captureOutput(const float* l,const float* r,int n,const SideInfo& dynamics={}) noexcept {
+        if(sharedFrames==n && n>0)tap.process(sharedL.data(),sharedR.data(),l,r,n,dynamics);
         output.pushBlock(l,r,n);
         if(pitchMode)pitchOut.push(l,r,n,pitchSampleRate);
         pitchAvailable.store(pitchMode,std::memory_order_relaxed);
@@ -108,6 +122,9 @@ public:
         frame.returnAvailable=wetAvailable.load(std::memory_order_relaxed);
         frame.returnRms={wetLeft.load(std::memory_order_relaxed),wetRight.load(std::memory_order_relaxed)};
         frame.tapMs={tapLeft.load(std::memory_order_relaxed),tapRight.load(std::memory_order_relaxed)};
+        frame.sharedValid=tap.readInput(frame.sharedInput) && tap.readOutput(frame.sharedOutput) &&
+            frame.sharedInput.endSample()==frame.sharedOutput.endSample() && frame.sharedOutput.blockSamples>0;
+        frame.slowCount=frame.sharedValid?tap.readSlow(frame.slow.data(),frame.slow.size()):0;
         frame.serial=output.samplesCaptured();
         return sequence.load(std::memory_order_acquire)==before &&
                published.load(std::memory_order_acquire)==key &&
@@ -127,6 +144,9 @@ private:
         return (float)std::sqrt(energy/n);
     }
     LiveSpectrumCapture input,output;
+    skellcore::telemetry::EffectTelemetry tap;
+    std::array<float,maxBlock> sharedL{},sharedR{};
+    int sharedFrames=0;
     PitchHistory pitchIn,pitchOut;
     bool pitchMode=false;double pitchSampleRate=48000.;
     std::atomic<bool> pitchAvailable{false},wetAvailable{false};
