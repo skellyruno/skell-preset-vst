@@ -98,6 +98,7 @@ public:
 
         undo.setButtonText(juce::String::charToString(0x21B6));
         redo.setButtonText(juce::String::charToString(0x21B7));
+        undo.setTitle("Undo");redo.setTitle("Redo");
         undo.setTooltip("Undo preset load, native rack removal or routing (Ctrl+Z). Hosted VST3 state excluded.");
         redo.setTooltip("Redo preset load, native rack removal or routing (Ctrl+Y or Ctrl+Shift+Z)");
         style(undo);style(redo);
@@ -571,7 +572,9 @@ public:
            undo.getX()-preset.getRight()>12 || stageButton.getRight()>preset.getX())
             issues.add("Owner header order changed");
         if(undo.getWidth()>34 || redo.getWidth()>34 ||
-           undo.getHeight()>32 || redo.getHeight()>32)
+           undo.getHeight()>32 || redo.getHeight()>32 ||
+           undo.getWidth()!=undo.getHeight() || redo.getWidth()!=redo.getHeight() ||
+           undo.getTitle()!="Undo" || redo.getTitle()!="Redo")
             issues.add("Undo and Redo icons have become oversized again");
         if(!micPanel.hasBeenMoved() &&
            (micPanel.getWidth()>330 || micPanel.getHeight()>325 ||

@@ -71,6 +71,8 @@ int main() {
        frame.leftRms!=.25f || frame.rightRms!=.25f || !frame.sharedValid ||
        frame.sharedOutput.grDbMax!=3.f || frame.sharedOutput.endSample()!=1024 ||
        frame.slowCount!=1 || frame.slow[0].grDbMax!=3.f)return 31;
+    const auto firstRevision=frame.revision;
+    SKELL_REQUIRE(selected.read(2,frame) && frame.revision==firstRevision);
     selected.request(4);
     if(selected.read(2,frame) || selected.read(4,frame) || selected.beginBlock()!=4)return 32;
     r.fill(.25f);selected.captureInput(l.data(),r.data(),1024);selected.captureOutput(l.data(),r.data(),1024);
@@ -78,6 +80,7 @@ int main() {
        frame.correlation!=1.f || frame.mid[0]!=.25f || frame.side[0]!=0.f ||
        !frame.sharedValid || (frame.sharedOutput.flags&skellcore::telemetry::kFlagGrValid) ||
        frame.sharedOutput.endSample()!=1024)return 33;
+    SKELL_REQUIRE(frame.serial==1024 && frame.revision!=firstRevision);
     l.fill(0.f);r.fill(0.f);selected.captureInput(l.data(),r.data(),1024);selected.captureOutput(l.data(),r.data(),1024);
     if(!selected.read(4,frame) || frame.correlation!=0.f || frame.outputRms!=0.f)return 36;
     selected.request(-1);

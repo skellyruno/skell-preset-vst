@@ -47,7 +47,7 @@ public:
         repaint();
     }
     void open(int physical){
-        target=-1;source.setSelectedId(1,juce::dontSendNotification);
+        target=-1;lastCommittedSource=0;source.setSelectedId(1,juce::dontSendNotification);
         setVisible(true);
         if(!valid(physical)){
             for(int i=0;i<processor.activeSlotCount();++i){
@@ -59,11 +59,8 @@ public:
     }
     void selectTarget(int physical){
         target=valid(physical)?physical:-1;
-        if(target>=0){
-            const auto prefix=slotPrefix(target);
-            const bool external=read(prefix+"duckExternal")>.5f;
-            source.setSelectedId(external?4:juce::jlimit(1,3,1+(int)read(prefix+"duckSource")),juce::dontSendNotification);
-        }
+        lastCommittedSource=target>=0?committedSource(target):0;
+        if(target>=0)source.setSelectedId(lastCommittedSource,juce::dontSendNotification);
         refresh();
     }
     bool isConnected(int id) const{
@@ -91,9 +88,21 @@ public:
             b.setBounds(targetBounds(position));
         }
         const bool available=valid(target);
+        const int committed=available?committedSource(target):0;
+        // Follow host automation unless the user is intentionally previewing another source.
+        if(available && lastCommittedSource!=0 && committed!=lastCommittedSource &&
+           source.getSelectedId()==lastCommittedSource)
+            source.setSelectedId(committed,juce::dontSendNotification);
+        lastCommittedSource=committed;
         const bool linked=available && isConnected(target);
-        const bool pending=available && (!linked || source.getSelectedId()!=committedSource(target));
+        const bool pending=available && (!linked || source.getSelectedId()!=committed);
         connect.setEnabled(available);disconnect.setVisible(false);edit.setEnabled(available);
+        const unsigned count=processor.liveScopeSampleCount();
+        const unsigned now=juce::Time::getMillisecondCounter();
+        if(count!=lastAudioCount){lastAudioCount=count;lastAudioTick=now;}
+        const bool audioFresh=lastAudioTick!=0u && (unsigned)(now-lastAudioTick)<400u;
+        const float raw=linked && audioFresh?processor.getSlotDuckReductionDb(target):0.f;
+        displayedReduction=std::isfinite(raw)?juce::jlimit(0.f,96.f,raw):0.f;
         const auto label=linked?(pending?"UPDATE SOURCE":"UNLINK EFFECT"):"LINK EFFECT";
         if(connect.getButtonText()!=label)connect.setButtonText(label);
         source.setEnabled(available);repaint();
@@ -119,7 +128,7 @@ public:
                 {30,187,244,23},15.f,Theme::white,true);
             Theme::text(g,same?"LINKED":linked?"SOURCE CHANGED":"NOT LINKED",{30,211,244,19},11.5f,same?Theme::green:Theme::muted,true);
             Theme::text(g,"DUCKING",{30,347,244,20},11.f,Theme::muted,true);
-            const float reduction=linked?processor.getSlotDuckReductionDb(target):0.f;
+            const float reduction=linked?displayedReduction:0.f;
             Theme::text(g,juce::String(reduction,1)+" dB",{30,369,244,30},22.f,Theme::white,true);
             const juce::Rectangle<float> meter(30.f,405.f,244.f,8.f);
             g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,4.f);
@@ -160,12 +169,21 @@ public:
             connect.getButtonText()=="UPDATE SOURCE";
         apply(true,false);
         const bool updated=isConnected(id) && read(prefix+"duckExternal")<.5f && read(prefix+"duckSource")==1.f;
+        // A host change must follow the committed source when no preview is pending.
+        set(prefix+"duckSource",2.f);refresh();
+        const bool hostFollow=source.getSelectedId()==3;
+        source.setSelectedId(1,juce::dontSendNotification);refresh();
+        set(prefix+"duckSource",0.f);set(prefix+"duckExternal",1.f);refresh();
+        const bool previewPreserved=source.getSelectedId()==1 && committedSource(id)==4 &&
+            connect.getButtonText()=="UPDATE SOURCE";
         apply(false,false);const bool removed=!isConnected(id);
         set(suffix,oldOn);set(prefix+"duckExternal",oldExternal);set(prefix+"duckSource",oldSource);
-        refresh();return unchanged&&linked&&unlinkLabel&&previewSafe&&updated&&removed;
+        refresh();return unchanged&&linked&&unlinkLabel&&previewSafe&&updated&&hostFollow&&previewPreserved&&removed;
     }
 private:
-    P& processor;int target=-1;
+    P& processor;int target=-1,lastCommittedSource=0;
+    unsigned lastAudioCount=0,lastAudioTick=0;
+    float displayedReduction=0.f;
     juce::ComboBox source;
     SkellActionButton connect,disconnect,edit,back;
     std::array<SkellActionButton,P::slotCount> targets;

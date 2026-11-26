@@ -39,9 +39,9 @@ public:
         const auto now=juce::Time::getMillisecondCounter();
         skellpreset::visual::SlotVisualCapture::Frame frame;
         const bool available=p.getSlotVisual(slot,frame);
-        if(available && frame.serial!=lastSerial){
+        if(available && frame.revision!=lastRevision){
             const float elapsed=lastSerial && frame.serial>lastSerial?(float)((frame.serial-lastSerial)/p.preparedAudioRate()):0.f;
-            lastSerial=frame.serial;lastFrame=now;fresh=true;
+            lastRevision=frame.revision;lastSerial=frame.serial;lastFrame=now;fresh=true;
             wetAvailable=frame.returnAvailable;tapMs=frame.tapMs;wetRms=frame.returnRms;
             if(wetAvailable && type==P::VoxRackRoom)tail.update(frame.inputRms,std::sqrt(.5f*(wetRms[0]*wetRms[0]+wetRms[1]*wetRms[1])),elapsed);
             if(type==P::StudioPitchFormantFX && frame.pitchReady && (ticks&1u)==0){
@@ -101,7 +101,11 @@ public:
             shift(leftHistory,level(wetAvailable?wetRms[0]:leftRms));shift(rightHistory,level(wetAvailable?wetRms[1]:rightRms));
             shift(wetHistory,wetAvailable?level(std::sqrt(.5f*(wetRms[0]*wetRms[0]+wetRms[1]*wetRms[1]))):0.f);
         }else if((unsigned)(now-lastFrame)>=400u){
-            if(fresh){reset();return true;}
+            if(fresh){
+                // Clear stale graphics, not the last consumed capture identity.
+                // Otherwise the same stopped frame would reappear every 400 ms.
+                reset();return true;
+            }
             return controlsChanged || selectionChanged;
         }else return controlsChanged || selectionChanged;
         return true;
@@ -514,6 +518,7 @@ private:
     float correlation=0.f,leftRms=0.f,rightRms=0.f,deessHz=7500.f,gateDb=-40.f,gateCloseDb=-44.f;
     int lastSlot=-1,lastType=-1;
     std::uint64_t lastSerial=0;
+    unsigned lastRevision=0;
     unsigned lastFrame=0,ticks=0;
     bool fresh=false;
     float inputRms=0,outputRms=0,sideRms=0,gr=0,duck=0;

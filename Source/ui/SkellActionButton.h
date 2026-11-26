@@ -20,6 +20,43 @@ public:
             return;
         }
         const bool enabled=isEnabled();
+        const auto caption=getButtonText();
+        if(caption.length()==1 && (caption[0]==0x21B6 || caption[0]==0x21B7)) {
+            // Owner reference: recessed circular, neutral utility buttons.
+            // Draw before the generic rectangular button face.
+            const auto disc=bounds.withSizeKeepingCentre(
+                juce::jmin(bounds.getWidth(),bounds.getHeight())-1.f,
+                juce::jmin(bounds.getWidth(),bounds.getHeight())-1.f);
+            const auto base=Theme::bg.interpolatedWith(Theme::panelAlt,enabled?.52f:.30f);
+            g.setColour(Theme::bg.withAlpha(.65f));g.fillEllipse(disc.translated(0.f,.55f));
+            g.setGradientFill(juce::ColourGradient(base.brighter(enabled?(down?.01f:over?.23f:.12f):.035f),
+                disc.getTopLeft(),base.darker(down?.35f:.12f),disc.getBottomRight(),false));
+            g.fillEllipse(disc);
+            g.setColour(Theme::white.withAlpha(enabled?(over?.32f:.18f):.065f));
+            g.drawEllipse(disc.reduced(.45f),.8f);
+            g.setColour(Theme::white.withAlpha(enabled?.045f:.018f));
+            g.drawEllipse(disc.reduced(1.65f),.65f);
+            const float cx=disc.getCentreX(),cy=disc.getCentreY()+(down?.4f:0.f);
+            const float scale=disc.getWidth()/31.f;
+            const bool redo=caption[0]==0x21B7;
+            juce::Graphics::ScopedSaveState saved(g);
+            g.addTransform(juce::AffineTransform::translation(-cx,-cy)
+                .scaled(redo?-scale:scale,scale).translated(cx,cy));
+            juce::Path arrow;
+            arrow.startNewSubPath(cx-1.5f,cy-6.5f);
+            arrow.lineTo(cx-5.5f,cy-2.5f);
+            arrow.lineTo(cx-1.5f,cy+1.1f);
+            arrow.startNewSubPath(cx-5.5f,cy-2.5f);
+            arrow.lineTo(cx+1.f,cy-2.5f);
+            arrow.cubicTo(cx+8.f,cy-2.5f,cx+8.f,cy+6.f,cx+1.5f,cy+6.f);
+            arrow.lineTo(cx-1.5f,cy+6.f);
+            g.setColour(Theme::white.withAlpha(enabled?(over?.96f:.72f):.22f));
+            g.strokePath(arrow,juce::PathStrokeType(1.2f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            if(hasKeyboardFocus(true)){
+                g.setColour(Theme::white.withAlpha(.58f));g.drawEllipse(disc.reduced(2.8f),.85f);
+            }
+            return;
+        }
         const bool active=getToggleState();
         const auto accent=getButtonText().startsWithIgnoreCase("STOP")?Theme::red:Theme::green;
         const auto face=Theme::panelAlt;
@@ -62,35 +99,6 @@ public:
             g.drawLine(x,y+5.f,x,y+10.f,1.4f);
             g.drawLine(x-4.f,y+10.f,x+4.f,y+10.f,1.4f);
             if(hasKeyboardFocus(true)) {g.setColour(accent);g.drawRoundedRectangle(bounds.reduced(2.5f),4.f,1.1f);}
-            return;
-        }
-        const bool historySymbol=buttonCaption.length()==1 &&
-            (buttonCaption[0]==0x21B6 || buttonCaption[0]==0x21B7);
-        if(historySymbol) {
-            // Crisp, custom vector history arrows instead of platform
-            // font glyphs that render too thin or off-centre at 70% scaling.
-            const bool reverse=buttonCaption[0]==0x21B7;
-            const float cx=bounds.getCentreX(),cy=bounds.getCentreY();
-            juce::Graphics::ScopedSaveState saved(g);
-            const float iconScale=juce::jmin(1.f,bounds.getWidth()/37.f);
-            g.addTransform(juce::AffineTransform::translation(-cx,-cy)
-                .scaled(reverse?-iconScale:iconScale,iconScale)
-                .translated(cx,cy));
-            juce::Path arc;
-            arc.startNewSubPath(cx-8.f,cy-3.f);
-            arc.cubicTo(cx-2.f,cy-9.f,cx+10.f,cy-6.f,cx+10.f,cy+2.f);
-            arc.cubicTo(cx+10.f,cy+8.f,cx+4.f,cy+10.f,cx-3.f,cy+8.f);
-            g.setColour(enabled?(over?accent:Theme::white):Theme::muted.withAlpha(.5f));
-            g.strokePath(arc,juce::PathStrokeType(2.0f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-            juce::Path arrow;
-            arrow.startNewSubPath(cx-7.f,cy-10.f);
-            arrow.lineTo(cx-9.f,cy-3.f);
-            arrow.lineTo(cx-1.f,cy-1.f);
-            g.strokePath(arrow,juce::PathStrokeType(2.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-            if(hasKeyboardFocus(true)){
-                g.setColour(accent.withAlpha(.85f));
-                g.drawRoundedRectangle(bounds.reduced(2.5f),4.f,1.25f);
-            }
             return;
         }
         const float fontSize=getWidth()<=36?13.f:

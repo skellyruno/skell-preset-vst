@@ -29,6 +29,7 @@ public:
         size_t slowCount=0;
         bool sharedValid=false;
         std::uint64_t serial=0;
+        unsigned revision=0; // monotonic capture identity, even after sample counter reset
     };
     void request(int slot) noexcept {
         const unsigned code=slot>=0 && slot<16?(unsigned)slot+1:0;
@@ -134,6 +135,7 @@ public:
             frame.sharedInput.endSample()==frame.sharedOutput.endSample() && frame.sharedOutput.blockSamples>0;
         frame.slowCount=frame.sharedValid?tap.readSlow(frame.slow.data(),frame.slow.size()):0;
         frame.serial=output.samplesCaptured();
+        frame.revision=before;
         return sequence.load(std::memory_order_acquire)==before &&
                published.load(std::memory_order_acquire)==key &&
                requested.load(std::memory_order_acquire)==key && frame.serial>0;
