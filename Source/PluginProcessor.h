@@ -27,6 +27,7 @@
 #include "chain/VoxRackFX.h"
 #include "chain/FactoryPresets.h"
 #include "chain/PresetPackage.h"
+#include "chain/VocalAssistant.h"
 #include "host/HostedVST3.h"
 #include <array>
 #include <atomic>
@@ -70,6 +71,21 @@ public:
     void setStateInformation(const void*,int) override;
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState state;
+    // Explicit offline clip, supplied by the caller. No audio-thread collection,
+    // parameter updates, host calls, or automatic preset application.
+    // Invoke on a worker with an immutable buffer and its original sample rate.
+    static skellpreset::assistant::Features analyseAssistantClip(
+        const juce::AudioBuffer<float>& clip,double sampleRate) {
+        if(clip.getNumChannels()<1||clip.getNumChannels()>2)return {};
+        return skellpreset::assistant::analyse(clip.getReadPointer(0),
+            clip.getNumChannels()==2?clip.getReadPointer(1):nullptr,
+            static_cast<std::size_t>(clip.getNumSamples()),sampleRate);
+    }
+    static skellpreset::assistant::Plan previewAssistantPlan(
+        const skellpreset::assistant::Features& features,
+        skellpreset::assistant::Goal goal) noexcept {
+        return skellpreset::assistant::recommend(features,goal);
+    }
     void loadFactoryPreset(int index);
     void clearRackToEmpty();
     // Message-thread only, validated native .skellpreset ZIP packages.

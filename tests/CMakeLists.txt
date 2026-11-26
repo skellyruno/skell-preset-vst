@@ -195,3 +195,8 @@ add_test(NAME SkellPresetStudioDelayTest COMMAND SkellPresetStudioDelayTest)
 add_executable(SkellPresetStereoSeparationTest test_stereo_separation.cpp)
 target_compile_features(SkellPresetStereoSeparationTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetStereoSeparationTest COMMAND SkellPresetStereoSeparationTest)
+
+# Read-only offline vocal assistant regression (no JUCE or cloud dependency).
+add_executable(SkellPresetVocalAssistantTest test_vocal_assistant.cpp)
+target_compile_features(SkellPresetVocalAssistantTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVocalAssistantTest COMMAND SkellPresetVocalAssistantTest)
