@@ -14,7 +14,7 @@ public:
         source.addItem("SLOT INPUT",3);source.addItem("EXTERNAL HOST KEY",4);
         source.setSelectedId(1,juce::dontSendNotification);
         source.setTooltip("Choose a key; routing changes only when you press Connect");
-        addAndMakeVisible(source);source.onChange=[this]{repaint();};
+        addAndMakeVisible(source);source.onChange=[this]{refresh();};
         connect.setButtonText("CONNECT");disconnect.setButtonText("DISCONNECT");
         edit.setButtonText("EDIT TARGET");back.setButtonText("BACK TO STAGE");
         for(auto* b:{&connect,&disconnect,&edit,&back})addAndMakeVisible(*b);
@@ -74,14 +74,16 @@ public:
             if(!show)continue;
             const auto name=processor.moduleDisplayName(type);
             const juce::String label=juce::String(position+1).paddedLeft('0',2)+"  "+name+
-                (valid(id)?(isConnected(id)?"  / LINKED":""):"  / HOSTED");
+                (valid(id)?(isConnected(id)?"  / LINKED":""):(type==P::ExternalVST3?"  / HOSTED":"  / UNAVAILABLE"));
             if(b.getButtonText()!=label)b.setButtonText(label);
             b.setEnabled(valid(id));b.setToggleState(id==target,juce::dontSendNotification);
             b.setBounds(targetBounds(position));
         }
         const bool available=valid(target);
-        connect.setEnabled(available);disconnect.setEnabled(available && isConnected(target));edit.setEnabled(available);
-        const auto label=available && isConnected(target)?"UPDATE LINK":"CONNECT";
+        const bool linked=available && isConnected(target);
+        const bool pending=available && (!linked || source.getSelectedId()!=committedSource(target));
+        connect.setEnabled(pending);disconnect.setEnabled(linked);edit.setEnabled(available);
+        const auto label=linked?(pending?"UPDATE LINK":"CONNECTED"):"CONNECT";
         if(connect.getButtonText()!=label)connect.setButtonText(label);
         source.setEnabled(available);repaint();
     }
@@ -129,6 +131,26 @@ public:
         }else{
             Theme::fittedText(g,"Select a rack effect first.",{22,180,222,40},12.f,Theme::muted);
             Theme::fittedText(g,"Add an effect in the rack if no target is available.",{22,424,222,62},11.5f,Theme::muted);
+        }
+        // Use the available lower half as a real routing summary, not a fake
+        // signal graphic. Never cover cards on a full 16-slot rack.
+        int occupied=0,eligible=0,linkedCount=0;
+        for(int i=0;i<processor.activeSlotCount();++i){
+            const int id=processor.slotIdAt(i);
+            if(processor.slotType(id)==P::Empty)continue;
+            ++occupied;
+            if(valid(id)){++eligible;if(isConnected(id))++linkedCount;}
+        }
+        const int rows=juce::jlimit(1,8,(occupied+1)/2);
+        const int summaryY=132+(rows-1)*45+54;
+        const int summaryH=getHeight()-summaryY-48;
+        if(summaryH>=92){
+            const juce::Rectangle<float> summary(300.f,(float)summaryY,(float)getWidth()-320.f,(float)summaryH);
+            Theme::panelBox(g,summary,7.f);
+            const int left=312,top=summaryY+9,width=getWidth()-344;
+            Theme::fittedText(g,"ROUTING SUMMARY",{left,top,width,19},11.5f,Theme::muted,true);
+            Theme::fittedText(g,juce::String(linkedCount)+" LINKED    /    "+juce::String(eligible)+" AVAILABLE    /    "+juce::String(occupied-eligible)+" UNAVAILABLE",{left,top+23,width,23},14.f,linkedCount?Theme::green:Theme::white,true);
+            Theme::fittedText(g,eligible==0?"Add a native effect to create a link.":"Choose a key and target. Connect applies the change; Disconnect removes only that target's link.",{left,top+48,width,24},11.f,Theme::muted);
         }
         Theme::fittedText(g,"Native effect and return ducking. Hosted VST3 key buses are not yet routed.",
             {18,getHeight()-37,getWidth()-36,24},11.f,Theme::muted);

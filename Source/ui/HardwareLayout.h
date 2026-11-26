@@ -21,8 +21,10 @@ inline juce::Rectangle<int> control(int type,int index) noexcept {
         return {328+(index-1)*181,302,170,181};
     }
     if(dynamics(type)) {
-        if(index<2)return {49+index*244,191,226,264};
-        return {551+(index-2)*171,300,157,180};
+        // Keep dial centers fixed while reducing oversized primary caps.
+        // Shared geometry is used by the real controls and their captions.
+        if(index<2)return {62+index*244,201,200,244};
+        return {556+(index-2)*171,306,147,168};
     }
     if(type==11 || type==28) {
         if(index==0)return {48,181,257,278};

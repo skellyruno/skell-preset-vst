@@ -50,16 +50,21 @@ public:
             const float nx=-dy/len,ny=dx/len;
             const float mx=(x0+x1)*.5f,my=(y0+y1)*.5f;
             const float mr=(r0+r1)*.5f;
-            const float cap=std::atan2(ny,nx);
+            // Single continuous contour. addCentredArc(..., true) started
+            // separate subpaths and used an incompatible angular convention,
+            // producing disconnected caps and flat, angular-looking bones.
+            const float tx=dx/len,ty=dy/len;
+            constexpr float halfCircle=4.f/3.f;
             juce::Path p;
             p.startNewSubPath(x0+nx*r0,y0+ny*r0);
-            p.quadraticTo(mx+nx*mr*1.10f,my+ny*mr*1.10f,x1+nx*r1,y1+ny*r1);
-            p.addCentredArc(x1,y1,r1,r1,0.f,cap,
-                cap+juce::MathConstants<float>::pi,true);
-            p.lineTo(x0-nx*r0,y0-ny*r0);
-            p.addCentredArc(x0,y0,r0,r0,0.f,
-                cap+juce::MathConstants<float>::pi,
-                cap+juce::MathConstants<float>::twoPi,true);
+            p.quadraticTo(mx+nx*mr*.87f,my+ny*mr*.87f,x1+nx*r1,y1+ny*r1);
+            p.cubicTo(x1+nx*r1+tx*r1*halfCircle,y1+ny*r1+ty*r1*halfCircle,
+                      x1-nx*r1+tx*r1*halfCircle,y1-ny*r1+ty*r1*halfCircle,
+                      x1-nx*r1,y1-ny*r1);
+            p.quadraticTo(mx-nx*mr*.87f,my-ny*mr*.87f,x0-nx*r0,y0-ny*r0);
+            p.cubicTo(x0-nx*r0-tx*r0*halfCircle,y0-ny*r0-ty*r0*halfCircle,
+                      x0+nx*r0-tx*r0*halfCircle,y0+ny*r0-ty*r0*halfCircle,
+                      x0+nx*r0,y0+ny*r0);
             p.closeSubPath();
             g.setGradientFill(juce::ColourGradient(
                 ivory.withAlpha(gloss*.98f),mx-nx*mr*1.05f,my-ny*mr*1.05f,
@@ -68,12 +73,12 @@ public:
             g.setColour(ink.withAlpha(.58f));
             g.strokePath(p,juce::PathStrokeType(juce::jmax(.45f,r1*.16f)));
             if(r1>1.2f){
-                g.setColour(alive.withAlpha(.12f+.28f*react));
+                g.setColour(alive.withAlpha(.06f+.16f*react));
                 g.drawLine(x0+nx*r0*.72f,y0+ny*r0*.72f,x1+nx*r1*.72f,y1+ny*r1*.72f,juce::jmax(.5f,r1*.20f));
-                g.setColour(ivory.withAlpha(.34f*gloss+.06f));
+                g.setColour(ivory.withAlpha(.22f*gloss+.04f));
                 g.drawLine(x0-nx*r0*.40f,y0-ny*r0*.40f,
                            x1-nx*r1*.40f,y1-ny*r1*.40f,
-                           juce::jmax(.5f,juce::jmin(r0,r1)*.44f));
+                           juce::jmax(.45f,juce::jmin(r0,r1)*.32f));
             }
         };
         // Joint spheres are kept below the radius of the shaft they cap, so the

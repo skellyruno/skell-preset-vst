@@ -132,8 +132,21 @@ public:
         Theme::panelBox(g,area,6.f,true);
         auto plot=area.reduced(10.f,7.f);
         auto title=plot.removeFromTop(15.f);
-        Theme::fittedText(g,reduction?"GAIN REDUCTION  /  0–24 dB":"INPUT / OUTPUT  /  -72–0 dBFS",title.toNearestInt(),9.5f,Theme::muted,true);
-        plot.removeFromTop(4.f);
+        // ASCII range labels are portable across the Linux and Windows fonts.
+        // Distinguish the measured gain-reduction and sidechain traces.
+        const auto titleText=reduction?juce::String("REDUCTION / 0-24 dB"):juce::String("INPUT / OUTPUT / -72 TO 0 dBFS");
+        Theme::fittedText(g,titleText,title.toNearestInt(),10.f,Theme::muted,true);
+        const auto legend=plot.removeFromBottom(13.f);
+        const auto left=legend.withWidth(legend.getWidth()*.5f);
+        const auto right=legend.withTrimmedLeft(legend.getWidth()*.5f);
+        if(reduction) {
+            Theme::fittedText(g,"GR "+juce::String(grHistory.back()*24.f,1)+" dB",left.toNearestInt(),9.5f,Theme::amber,true);
+            Theme::fittedText(g,"KEY "+juce::String(duckHistory.back()*24.f,1)+" dB",right.toNearestInt(),9.5f,Theme::blue,true,juce::Justification::centredRight);
+        } else {
+            Theme::fittedText(g,"INPUT",left.toNearestInt(),9.5f,Theme::muted,true);
+            Theme::fittedText(g,"OUTPUT",right.toNearestInt(),9.5f,Theme::green,true,juce::Justification::centredRight);
+        }
+        plot.removeFromTop(3.f);
         g.setColour(Theme::stroke.withAlpha(.45f));
         for(int i=0;i<=3;++i)g.drawHorizontalLine(static_cast<int>(plot.getY()+i*plot.getHeight()/3.f),plot.getX(),plot.getRight());
         auto draw=[&](const auto& values,juce::Colour colour,bool down){

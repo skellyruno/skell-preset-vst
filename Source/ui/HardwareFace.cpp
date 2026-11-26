@@ -36,9 +36,9 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
     g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.08f),panel.getTopLeft(),
                                           Theme::bg,panel.getBottomRight(),false));
     g.fillRoundedRectangle(panel,9.f);
-    g.setColour(Theme::white.withAlpha(.035f));
+    g.setColour(Theme::white.withAlpha(.017f));
     for(int y=148;y<518;y+=4)g.drawHorizontalLine(y,25.f,880.f);
-    g.setColour(Theme::stroke.withAlpha(.5f));g.drawRoundedRectangle(panel,.0f,1.f);
+    g.setColour(Theme::stroke.withAlpha(.5f));g.drawRoundedRectangle(panel,9.f,1.f);
     for(float x:{28.f,878.f})for(float y:{151.f,510.f}) {
         g.setColour(Theme::bg);g.fillEllipse(x-3.f,y-3.f,6.f,6.f);
         g.setColour(Theme::muted.withAlpha(.4f));g.drawLine(x-1.7f,y+1.f,x+1.7f,y-1.f,.8f);
@@ -64,7 +64,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         // comes from this slot's actual envelope, never a transfer-curve proxy.
         const bool measured=type==2 || type==36 || type==43;
         livePanel.paintHistory(g,{548.f,169.f,306.f,88.f},measured);
-        if(type==36)Theme::text(g,"KNEE",{445,107,92,20},10.f,Theme::muted,true);
+        if(type==36)Theme::text(g,"SOFT KNEE",{430,107,116,20},11.5f,Theme::white,true);
     } else if(type==4 || type==29) {
         livePanel.paintHistory(g,{342.f,170.f,496.f,83.f},false);
         const bool open=peak>.0001f;
@@ -126,7 +126,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         const float drive=std::pow(10.f,(driveParam*24.f+10.f*(macroGrit-.5f))/20.f);
         const float blend=.5f+character;
         const float denom=std::max(.5f,drive*.6f);
-        const auto screen=juce::Rectangle<float>(272.f,176.f,362.f,282.f);
+        const auto screen=juce::Rectangle<float>(272.f,176.f,362.f,310.f);
         g.setGradientFill(juce::ColourGradient(
             juce::Colour(0xff070d0a),screen.getTopLeft(),
             juce::Colour(0xff020504),screen.getBottomRight(),false));
@@ -134,7 +134,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         g.setColour(Theme::stroke.withAlpha(.55f));
         g.drawRoundedRectangle(screen,7.f,1.f);
         // Graticule plus the 1:1 reference diagonal.
-        const auto plot=screen.reduced(26.f,22.f).withTrimmedBottom(54.f);
+        const auto plot=juce::Rectangle<float>(298.f,207.f,310.f,175.f);
         g.setColour(Theme::stroke.withAlpha(.22f));
         for(int line=1;line<4;++line) {
             const float f=(float)line/4.f;
@@ -191,7 +191,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         g.fillRoundedRectangle(bar,2.5f);
         g.setColour(Theme::green.withAlpha(.82f));
         g.fillRoundedRectangle(bar.withWidth(
-            bar.getWidth()*(.12f+.76f*juce::jlimit(0.f,1.f,character))),2.5f);
+            bar.getWidth()*juce::jlimit(0.f,1.f,character)),2.5f);
     } else {
         // Dedicated central hardware instrument, with a live level ring and
         // a purpose-specific description. No generic frequency/XY graph.

@@ -486,6 +486,15 @@ void SlotEditor::applyKnobReadouts() {
         return juce::jlimit(0.,1.,text.getDoubleValue()/100.);
     };
     studioGateFloor.updateText();
+    // SliderAttachment installs host formatters; restore the knee's physical
+    // presentation after every rebind, just like the gate floor.
+    studioCompKnee.textFromValueFunction=[](double v) {
+        return juce::String(juce::roundToInt(juce::jlimit(0.,1.,v)*100.))+"%";
+    };
+    studioCompKnee.valueFromTextFunction=[](const juce::String& text) {
+        return juce::jlimit(0.,1.,text.getDoubleValue()/100.);
+    };
+    studioCompKnee.updateText();
     eqQSlider.textFromValueFunction=[this](double normalized) {
         // The dedicated label above already says BAND N WIDTH/Q.
         // Redundant "WIDTH 0.63" could not fit the 59px text box and
@@ -4316,6 +4325,15 @@ bool SlotEditor::testAllNativeEffectLayoutsForTest() {
             updateGraphNode({x,220.f});
             clean=clean && std::abs(processor.getSlotParam(probeSlot,0)-.3125f)<.002f &&
                 std::abs(processor.getSlotParam(probeSlot,1)-threshold)<.0001f;
+        }
+        if(type==SkellPresetAudioProcessor::StudioCompressorFX) {
+            const bool kneeOK=studioCompKnee.textFromValueFunction &&
+                studioCompKnee.valueFromTextFunction &&
+                studioCompKnee.textFromValueFunction(.5)=="50%" &&
+                std::abs(studioCompKnee.valueFromTextFunction("75%")-.75)<1.e-6 &&
+                studioCompKnee.textFromValueFunction(0.)=="0%" &&
+                studioCompKnee.textFromValueFunction(1.)=="100%";
+            if(!kneeOK){std::fprintf(stderr,"Studio knee physical readout failed after attachment\n");clean=false;}
         }
         const bool geometryOK=testIntegratedEffectLayout();
         const bool popupsOK=testPopupLayoutsForTest();

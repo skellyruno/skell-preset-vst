@@ -297,12 +297,15 @@ void ChainPanel::paint(juce::Graphics& g) {
     }
     clampScroll();
     const int active=processor.activeSlotCount();
-    int links=0;
-    for(int row=0;row<active;++row)
-        if(sidechainLinked(processor.slotIdAt(row)))++links;
+    int links=0,occupied=0;
+    for(int row=0;row<active;++row){
+        const int id=processor.slotIdAt(row);
+        if(processor.slotType(id)!=SkellPresetAudioProcessor::Empty)++occupied;
+        if(sidechainLinked(id))++links;
+    }
     Theme::fittedText(g,"EFFECT RACK",{12,7,118,20},13.f,Theme::white,true);
-    Theme::text(g,dockingDrag?"RELEASE TO DOCK":
-        (dockedRight?"DRAG LEFT":"DRAG RIGHT"),
+    Theme::text(g,dockingDrag?juce::String("RELEASE TO DOCK"):
+        juce::String(occupied)+" FX / "+juce::String(active)+" SLOTS",
         {12,27,118,14},9.5f,dockingDrag?Theme::green:Theme::muted);
     for(int visual=0;visual<visibleRows && scrollOffset+visual<active;++visual) {
         const int row=scrollOffset+visual;
@@ -415,8 +418,8 @@ void ChainPanel::paint(juce::Graphics& g) {
         // The 0-100 readout appears ONLY while hovering/dragging this
         // particular wet dial; it is the same host-automated normalized wet.
         if(wetReadoutVisibleForTest(slot))
-            Theme::text(g,juce::String(juce::roundToInt(wet*100.f)),
-                {149,top+32,33,12},9.2f,enabled?Theme::green:Theme::muted,
+            Theme::text(g,juce::String(juce::roundToInt(wet*100.f))+"%",
+                {148,top+31,35,13},9.6f,enabled?Theme::green:Theme::muted,
                 true,juce::Justification::centred);
         }
         // Hit target is wider than the dot, for usable control at 70% scale.
@@ -450,8 +453,8 @@ void ChainPanel::paint(juce::Graphics& g) {
     const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
     g.setColour(active==16?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
     g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
-    Theme::text(g,active==16?"RACK FULL  (16 / 16)":"+   ADD SLOT  "+juce::String(active)+"/16",
-        {24,addTop+5,173,23},12,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
+    Theme::fittedText(g,active==16?juce::String("16/16 SLOTS ALLOCATED"):"+ ADD SLOT  ("+juce::String(active)+"/16)",
+        {18,addTop+5,180,23},11.6f,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
     // The dock fits the unused footer without shrinking the eight-row viewport.
     // Cable spine terminates in the real vocal-source link box; rack-side
     // scrolling and left/right docking retain the same local geometry.
