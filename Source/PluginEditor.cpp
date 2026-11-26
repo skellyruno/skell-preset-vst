@@ -56,6 +56,7 @@ public:
         moonButton.onClick=[this]{toggleView();};
         stageButton.setButtonText("STAGE_HOME");
         stageButton.setTooltip("Click SKELLPRESET to return to the stage");
+        stageButton.setTitle("Return to the stage");
         style(stageButton);addAndMakeVisible(stageButton);
         stageButton.onClick=[this]{if(chain.onClearSelection)chain.onClearSelection();};
         chain.setSelectedSlot(-1);
@@ -565,6 +566,10 @@ public:
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
                     issues.add("Overlapping top-bar controls " + juce::String((int)i)
                                + " / " + juce::String((int)j));
+        if(powerButton.getX()<=settings.getRight() ||
+           Theme::width-powerButton.getRight()>22 ||
+           undo.getX()-preset.getRight()>12 || stageButton.getRight()>preset.getX())
+            issues.add("Owner header order changed");
         if(undo.getWidth()>34 || redo.getWidth()>34 ||
            undo.getHeight()>32 || redo.getHeight()>32)
             issues.add("Undo and Redo icons have become oversized again");
@@ -1270,6 +1275,9 @@ public:
         Theme::text(g,"LATENCY",{780,18,142,17},10.5f,Theme::muted,true);
         Theme::text(g,juce::String(latencyMs,1)+" ms",{780,35,142,24},15.f,Theme::white,true);
         g.setColour(Theme::stroke.withAlpha(.55f));g.drawVerticalLine(766,19.f,60.f);
+        Theme::text(g,"SIGNAL PATH",{926,18,122,17},10.5f,Theme::muted,true);
+        const bool bypassed=(int)processor.state.getRawParameterValue("mode")->load()==3;
+        Theme::text(g,bypassed?"BYPASSED":"ACTIVE",{926,35,122,24},14.f,bypassed?Theme::amber:Theme::white,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(661,0.f,(float)Theme::width);
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withMultipliedBrightness(.88f),0.f,662.f,

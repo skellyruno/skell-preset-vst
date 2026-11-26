@@ -48,7 +48,14 @@ public:
     }
     void open(int physical){
         target=-1;source.setSelectedId(1,juce::dontSendNotification);
-        setVisible(true);selectTarget(physical);refresh();
+        setVisible(true);
+        if(!valid(physical)){
+            for(int i=0;i<processor.activeSlotCount();++i){
+                const int id=processor.slotIdAt(i);
+                if(valid(id)){physical=id;break;}
+            }
+        }
+        selectTarget(physical);refresh();
     }
     void selectTarget(int physical){
         target=valid(physical)?physical:-1;
@@ -103,8 +110,8 @@ public:
         Theme::fittedText(g,"Use one signal to lower an effect while it plays.",{24,57,getWidth()-48,23},13.f,Theme::muted);
         g.setColour(Theme::stroke);g.drawHorizontalLine(88,24.f,(float)getWidth()-24.f);
         Theme::panelBox(g,{18.f,103.f,268.f,408.f},8.f);
-        Theme::text(g,"1   SIGNAL",{30,111,244,25},14.f,Theme::white,true);
-        Theme::text(g,"2   EFFECT",{318,106,getWidth()-342,24},14.f,Theme::white,true);
+        Theme::text(g,"SIGNAL",{30,111,244,25},14.f,Theme::white,true);
+        Theme::text(g,"CHOOSE EFFECT",{318,106,getWidth()-342,24},14.f,Theme::white,true);
         if(valid(target)){
             const bool linked=isConnected(target);
             const bool same=linked && source.getSelectedId()==committedSource(target);
@@ -147,9 +154,15 @@ public:
         selectTarget(id);source.setSelectedId(4,juce::dontSendNotification);
         const bool unchanged=read(suffix)==oldOn && read(prefix+"duckExternal")==oldExternal;
         apply(true,false);const bool linked=isConnected(id) && read(prefix+"duckExternal")>.5f;
+        const bool unlinkLabel=connect.getButtonText()=="UNLINK EFFECT";
+        source.setSelectedId(2,juce::dontSendNotification);refresh();
+        const bool previewSafe=isConnected(id) && read(prefix+"duckExternal")>.5f &&
+            connect.getButtonText()=="UPDATE SOURCE";
+        apply(true,false);
+        const bool updated=isConnected(id) && read(prefix+"duckExternal")<.5f && read(prefix+"duckSource")==1.f;
         apply(false,false);const bool removed=!isConnected(id);
         set(suffix,oldOn);set(prefix+"duckExternal",oldExternal);set(prefix+"duckSource",oldSource);
-        refresh();return unchanged&&linked&&removed;
+        refresh();return unchanged&&linked&&unlinkLabel&&previewSafe&&updated&&removed;
     }
 private:
     P& processor;int target=-1;

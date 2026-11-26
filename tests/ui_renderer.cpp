@@ -327,6 +327,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-threeband-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-vox-velvet-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-module-picker-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-empty-library-100",1168,688,0,1,false});
         options.scenes.push_back({"obsidian-factory-rider-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-eightband-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-opto-70",818,482,0,1,false});
@@ -487,6 +488,10 @@ int main(int argc, char** argv) {
                 processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(39));
             } else if(scene.id=="obsidian-factory-noise-70") {
                 processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(40));
+            } else if(scene.id=="obsidian-empty-library-100") {
+                processor.loadFactoryPreset(0);
+                processor.setSlotType(0,SkellPresetAudioProcessor::Empty);
+                processor.setSlotOn(0,false);
             } else if(scene.id=="obsidian-module-picker-70") {
                 processor.loadFactoryPreset(0);
             } else if(scene.id=="obsidian-rack-wet-dot-70"
@@ -560,6 +565,10 @@ int main(int argc, char** argv) {
             }
             if(scene.id=="obsidian-module-picker-70")
                 editor.openModulePickerForScreenshot();
+            if(scene.id=="obsidian-empty-library-100"){
+                editor.selectRackSlotForScreenshot(0,0);
+                editor.openModulePickerForScreenshot();
+            }
             if(scene.id=="obsidian-guided-tour-70" && !editor.showGuidedTourForScreenshot())
                 std::fprintf(stderr,"Guided tour did not show in real-editor render\\n");
             if(scene.id=="obsidian-expanded-70")

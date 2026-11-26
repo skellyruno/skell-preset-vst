@@ -159,8 +159,9 @@ public:
                                       Theme::muted);
         repaint();
     }
-    void open(int type) {
+    void open(int type,const juce::String& categoryFilter={}) {
         currentType=type;
+        selectedCategory=categoryFilter;
         topItem=0;selectedRow=0;wheelCarry=0.f;
         hoveredClose=false;hoveredExternal=false;
         search.setText({},juce::dontSendNotification);
@@ -188,6 +189,11 @@ public:
         return matches(query,type);
     }
     int resultCountForTest() const noexcept {return (int)results.size();}
+    bool testCategoryForTest(const juce::String& wanted) const {
+        return !results.empty() && std::all_of(results.begin(),results.end(),[&](int type){
+            return category(type).equalsIgnoreCase(wanted);
+        });
+    }
     bool testVisibleKeyboardRow() {
         const int count=visibleRows();
         if(static_cast<int>(results.size())<=count)return true;
@@ -227,8 +233,8 @@ public:
         g.setColour(hoveredClose?Theme::white:Theme::muted);
         g.drawLine(W-32.f,17.f,W-20.f,29.f,1.5f);
         g.drawLine(W-20.f,17.f,W-32.f,29.f,1.5f);
-        Theme::fittedText(g,"SEARCH  /  "+juce::String(results.size())+" RESULTS",
-                    {18,86,getWidth()-34,17},10.5f,Theme::muted,true);
+        Theme::fittedText(g,(selectedCategory.isEmpty()?juce::String("ALL EFFECTS"):selectedCategory.toUpperCase())+" / "+juce::String(results.size())+" RESULTS",
+                    {18,86,getWidth()-34,17},11.5f,Theme::muted,true);
 
         const int visible=visibleRows();
         constexpr int rowHeight=37,rowY=108;
@@ -257,7 +263,7 @@ public:
             const auto name=processor.moduleDisplayName(type);
             // Reserve the category chip's right-side area at 340px minimum
             // width; the old fixed 203px name field overlapped it by 20px.
-            Theme::fittedText(g,name,{27,y+4,juce::jmax(110,getWidth()-165),23},14.0f,
+            Theme::fittedText(g,name,{27,y+4,juce::jmax(110,getWidth()-165),23},15.0f,
                               active?Theme::green:Theme::white,true);
             const auto group=category(type);
             const auto colour=group=="Dynamics"?Theme::amber:group=="Space"?Theme::blue:
@@ -297,7 +303,7 @@ public:
             const float progress=topItem/(float)std::max(1,(int)results.size()-visible);
             g.setColour(Theme::stroke);
             g.fillRoundedRectangle(W-11.f,(float)rowY,3.f,trackH,1.5f);
-            g.setColour(Theme::green.withAlpha(.75f));
+            g.setColour(Theme::muted.withAlpha(.58f));
             g.fillRoundedRectangle(W-11.f,(float)rowY+progress*(trackH-gripH),
                                    3.f,gripH,1.5f);
         }
@@ -465,7 +471,9 @@ private:
     void filter(){
         results.clear();
         for(int type=0;type<SkellPresetAudioProcessor::NumberOfModules;++type)
-            if((skellpreset::registry::recommended(type) || (type==currentType && type!=32 && type!=12))
+            if(type!=SkellPresetAudioProcessor::Empty &&
+               (skellpreset::registry::recommended(type) || (type==currentType && type!=32 && type!=12))
+               && (selectedCategory.isEmpty() || category(type).equalsIgnoreCase(selectedCategory))
                && matches(search.getText(),type))results.push_back(type);
         // Stable sort within categories retains each existing module ID
         // and automation mapping, while giving users a predictable catalog.
@@ -487,6 +495,7 @@ private:
     }
     SkellPresetAudioProcessor& processor;
     SearchBox search;
+    juce::String selectedCategory;
     std::vector<int> results;
     int currentType=0,selectedRow=0,topItem=0;
     bool movedByUser=false,dragHeader=false,resizing=false;

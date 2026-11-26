@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 #include "ModulePicker.h"
+#include "SkellActionButton.h"
 #include "VocalFeelStyles.h"
 #include "InstalledVST3Browser.h"
 #include "SkellEQNodeMenu.h"
@@ -214,6 +215,10 @@ private:
     juce::ComboBox moduleBox;
     SkellSlotPowerDot slotPower;
     SkellModulePicker modulePicker;
+    SkellActionButton browseEffects{"BROWSE ALL EFFECTS"},browseExternal{"LOAD A VST3"};
+    std::array<SkellActionButton,6> effectCategories;
+    static constexpr std::array<const char*,6> categoryNames{{"Dynamics","Tone","Space","Motion","Pitch","Vocal"}};
+    void openEffectCategory(const juce::String& category);
     SkellInstalledVST3Browser installedBrowser;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
     juce::TextButton upgradeEq{"UPGRADE TO PARAMETRIC EQ"};

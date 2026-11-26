@@ -166,6 +166,22 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     };
     addAndMakeVisible(modulePicker);
     modulePicker.setVisible(false);
+    addChildComponent(browseEffects);addChildComponent(browseExternal);
+    browseEffects.setTooltip("Search the complete native effect library");
+    browseEffects.onClick=[this]{openEffectCategory({});};
+    browseExternal.setTooltip("Search installed third-party VST3 effects");
+    browseExternal.onClick=[this]{
+        if(processor.slotType(slot)!=SkellPresetAudioProcessor::Empty)return;
+        modulePicker.hide();externalBrowsePending=true;hideEmbeddedEditor();
+        installedBrowser.open();installedBrowser.toFront(true);
+    };
+    for(size_t i=0;i<effectCategories.size();++i){
+        auto& button=effectCategories[i];
+        button.setButtonText(juce::String(categoryNames[i]).toUpperCase());
+        button.setTooltip("Browse "+juce::String(categoryNames[i]).toLowerCase()+" effects");
+        button.onClick=[this,i]{openEffectCategory(categoryNames[i]);};
+        addChildComponent(button);
+    }
     for(auto* button:{&loadExternal,&editExternal}){
         button->setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
         button->setColour(juce::TextButton::textColourOffId,Theme::green);
@@ -1495,6 +1511,11 @@ bool SlotEditor::testMatchFinishPages() {
         std::abs(knobs[0].getValue()-.20)<.002 &&
         std::abs(processor.getSlotParam(0,4)-.67f)<.002f;
 }
+void SlotEditor::openEffectCategory(const juce::String& category){
+    if(processor.slotType(slot)!=SkellPresetAudioProcessor::Empty)return;
+    installedBrowser.hide();hideEmbeddedEditor();
+    modulePicker.open(processor.slotType(slot),category);
+}
 void SlotEditor::openModulePicker() {
     installedBrowser.hide();
     livePanel.setVisible(false);liveView.setButtonText("VISUAL");
@@ -1780,6 +1801,9 @@ void SlotEditor::refreshIfChanged() {
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
+    const bool empty=type==SkellPresetAudioProcessor::Empty;
+    browseEffects.setVisible(empty);browseExternal.setVisible(empty);
+    for(auto& category:effectCategories)category.setVisible(empty);
     if(!external && !externalBrowsePending && installedBrowser.isVisible())
         installedBrowser.hide();
     syncEmbeddedEditor();
@@ -1827,7 +1851,13 @@ void SlotEditor::refreshIfChanged() {
 void SlotEditor::resized() {
     // The rack row now owns wet, bypass and module replacement.
     moduleBox.setBounds(489,25,211,29);
-    modulePicker.positionWithin({405,66,470,400});
+    modulePicker.positionWithin({105,70,696,450});
+    browseEffects.setBounds(48,424,500,44);
+    browseExternal.setBounds(564,424,294,44);
+    for(size_t i=0;i<effectCategories.size();++i){
+        const int col=(int)i%3,row=(int)i/3;
+        effectCategories[i].setBounds(48+col*274,200+row*106,262,42);
+    }
     eqQSlider.setBounds(672,114,186,26);
     eqCutSliders[0].setBounds(68,125,270,23);
     eqCutSliders[1].setBounds(425,125,215,23);
@@ -1966,15 +1996,25 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(type==SkellPresetAudioProcessor::Empty) {
         Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),
             {21,10,200,18},10,Theme::muted,true);
-        const auto add=juce::Rectangle<int>(333,204,240,90);
-        g.setColour(Theme::green.withAlpha(.10f));
-        g.fillRoundedRectangle(add.toFloat(),9.f);
-        g.setColour(Theme::green.withAlpha(.54f));
-        g.drawRoundedRectangle(add.toFloat(),9.f,1.f);
-        g.drawLine(445.f,231.f,461.f,231.f,1.8f);
-        g.drawLine(453.f,223.f,453.f,239.f,1.8f);
-        Theme::fittedText(g,"ADD EFFECT",{333,248,240,30},
-            17.f,Theme::white,true,juce::Justification::centred);
+        Theme::text(g,"Add an effect",{21,29,690,38},26.f,Theme::white,true);
+        Theme::panelBox(g,{24.f,90.f,858.f,414.f},9.f);
+        Theme::text(g,"CHOOSE A CATEGORY",{48,109,740,24},15.f,Theme::muted,true);
+        Theme::fittedText(g,"Find the right processor without leaving your rack.",
+            {48,141,810,28},18.f,Theme::white);
+        constexpr const char* descriptions[]{
+            "Compression, gates, limiting","EQ, saturation, colour","Delay, reverb, doubling",
+            "Chorus, flanger, modulation","Pitch and formant","Complete vocal processing"
+        };
+        for(int i=0;i<6;++i){
+            const int x=48+(i%3)*274,y=184+(i/3)*106;
+            const auto colour=i==0?Theme::amber:i==2||i==4?Theme::blue:i==3?Theme::pink:Theme::green;
+            Theme::panelBox(g,{(float)x,(float)y,262.f,98.f},6.f);
+            g.setColour(colour.withAlpha(.78f));g.fillRoundedRectangle((float)x+12.f,(float)y+9.f,30.f,2.5f,1.2f);
+            Theme::fittedText(g,descriptions[i],{x+10,y+60,242,23},12.5f,Theme::muted,false,juce::Justification::centred);
+        }
+        g.setColour(Theme::stroke);g.drawHorizontalLine(405,48.f,858.f);
+        Theme::fittedText(g,"Only your selected slot changes. Existing effects stay untouched.",
+            {48,476,810,22},12.f,Theme::muted);
         return;
     }
     const auto family=juce::String(skellpreset::registry::at(type).category);
@@ -4146,9 +4186,8 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
     if(eqNodeMenu.isVisible()){eqNodeMenu.close();return;}
     if(vocalFeelStyles.isVisible()){vocalFeelStyles.close();return;}
     if(type==SkellPresetAudioProcessor::Empty) {
-        if(e.mods.isLeftButtonDown() && e.getNumberOfClicks()==1 &&
-           juce::Rectangle<int>(333,204,240,90).contains(e.getPosition()))
-            openModulePicker();
+        // The empty face uses real keyboard-accessible buttons. Blank
+        // space must not select or instantiate an effect.
         return;
     }
     // A read-only analyzer must not silently edit the return parameters.
@@ -4336,6 +4375,14 @@ bool SlotEditor::testAllNativeEffectLayoutsForTest() {
                 studioCompKnee.textFromValueFunction(1.)=="100%";
             if(!kneeOK){std::fprintf(stderr,"Studio knee physical readout failed after attachment\n");clean=false;}
         }
+        if(type==SkellPresetAudioProcessor::Empty){
+            const int before=processor.slotType(probeSlot);
+            openEffectCategory("Dynamics");
+            const bool browserOK=modulePicker.isVisible() && modulePicker.testCategoryForTest("Dynamics") &&
+                processor.slotType(probeSlot)==before;
+            modulePicker.hide();
+            if(!browserOK){std::fprintf(stderr,"Empty-slot category browsing mutated the rack or showed unrelated effects\n");clean=false;}
+        }
         const bool geometryOK=testIntegratedEffectLayout();
         const bool popupsOK=testPopupLayoutsForTest();
         if(!geometryOK || !popupsOK){
@@ -4369,6 +4416,19 @@ bool SlotEditor::testIntegratedEffectLayout() const {
     for(const auto& button:matchPageButtons)
         if(button.isVisible() && categoryBounds.intersects(button.getBounds()))return false;
     if(slotPower.isVisible()!=(faceType!=SkellPresetAudioProcessor::Empty))return false;
+    const bool empty=faceType==SkellPresetAudioProcessor::Empty;
+    if(browseEffects.isVisible()!=empty || browseExternal.isVisible()!=empty)return false;
+    const auto area=getLocalBounds();
+    if(!area.contains(browseEffects.getBounds()) || !area.contains(browseExternal.getBounds()) ||
+       browseEffects.getBounds().intersects(browseExternal.getBounds()))return false;
+    for(size_t i=0;i<effectCategories.size();++i){
+        const auto& category=effectCategories[i];
+        if(category.isVisible()!=empty || !area.contains(category.getBounds()) ||
+           category.getBounds().intersects(browseEffects.getBounds()) ||
+           category.getBounds().intersects(browseExternal.getBounds()))return false;
+        for(size_t j=i+1;j<effectCategories.size();++j)
+            if(category.getBounds().intersects(effectCategories[j].getBounds()))return false;
+    }
     if(skellpreset::face::hardware(faceType)) {
         for(int i=0;i<4;++i) {
             const auto& knob=knobs[(size_t)i];

@@ -19,3 +19,5 @@
   independently from visual capture. Keep PRs draft until verified.
 
 - Latest owner correction (supersedes prior layout): Power is the rightmost header control, after Settings. Remove the dedicated Live Stage button. The wordmark returns to the stage; presets sit immediately beside undo/redo. Keep the logo theme switch separate. Verify the exact order at all UI scales.
+
+- Empty effect slots use the native category chooser and existing searchable library; browsing must never change the selected slot until a real effect is chosen. Do not restore the single floating plus on an empty face. Sidechain must remain a direct signal/target/link workflow; no decorative cable maze.

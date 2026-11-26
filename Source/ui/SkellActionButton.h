@@ -46,8 +46,15 @@ public:
         const auto buttonCaption=getButtonText();
         if(buttonCaption=="MIC") {
             const float x=bounds.getCentreX(),y=bounds.getCentreY();
+            // Engraved inset round control, sharing the stereo dial's bezel.
+            const float radius=juce::jmin(bounds.getWidth(),bounds.getHeight())*.35f;
+            const juce::Rectangle<float> disc(x-radius,y-radius,2.f*radius,2.f*radius);
+            g.setColour(Theme::bg.withAlpha(.75f));g.fillEllipse(disc.translated(.5f,1.f));
+            g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.22f),disc.getTopLeft(),
+                Theme::panelAlt.darker(.34f),disc.getBottomRight(),false));g.fillEllipse(disc);
+            g.setColour(Theme::stroke);g.drawEllipse(disc,.9f);
             g.setColour(enabled?(active||over?Theme::green:Theme::white):Theme::muted);
-            g.drawRoundedRectangle(x-3.f,y-9.f,6.f,12.f,3.f,1.5f);
+            g.drawRoundedRectangle(x-2.6f,y-8.f,5.2f,10.5f,2.6f,1.3f);
             juce::Path cradle;
             cradle.startNewSubPath(x-6.f,y-2.f);
             cradle.cubicTo(x-6.f,y+8.f,x+6.f,y+8.f,x+6.f,y-2.f);
@@ -79,7 +86,7 @@ public:
             arrow.startNewSubPath(cx-7.f,cy-10.f);
             arrow.lineTo(cx-9.f,cy-3.f);
             arrow.lineTo(cx-1.f,cy-1.f);
-            g.strokePath(arrow,juce::PathStrokeType(2.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            g.strokePath(arrow,juce::PathStrokeType(2.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             if(hasKeyboardFocus(true)){
                 g.setColour(accent.withAlpha(.85f));
                 g.drawRoundedRectangle(bounds.reduced(2.5f),4.f,1.25f);
