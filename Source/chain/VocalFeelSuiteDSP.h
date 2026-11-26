@@ -198,7 +198,8 @@ public:
             ml*=compression*2.7f;mr*=compression*2.7f;
             doublerL.push(.5f*(ml+mr));doublerR.push(.5f*(ml+mr));
             phaseL+=doubleIncL;phaseR+=doubleIncR;
-            if(phaseL>=1.f)phaseL-=1.f;if(phaseR>=1.f)phaseR-=1.f;
+            if(phaseL>=1.f)phaseL-=1.f;
+            if(phaseR>=1.f)phaseR-=1.f;
             // Use single-precision modulation on the audio thread. A
             // double-to-float narrowing here raised MSVC /W4 concerns and
             // the computed delay needs only sub-sample float precision.
