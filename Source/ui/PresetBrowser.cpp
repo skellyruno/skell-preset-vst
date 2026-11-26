@@ -453,6 +453,21 @@ bool PresetBrowser::configureDirectoryForScreenshot(int page,int width,int heigh
             scanLibrary();refreshArtistChoices();
         }
     }
+    if(page>=9){
+        if(embeddedArtistMetadata.empty())return false;
+        const auto artist=embeddedArtistMetadata.begin()->second.artist;
+        userPlaced=true;setBounds(constrainWindow({usableBounds.getX()+8,usableBounds.getY()+4,width,height}));
+        chooseBank(2);
+        const auto tier=artistTier(artist);
+        if(!activateDirectoryRow(tier=="Underground"?0:tier=="Mainstream"?1:2))return false;
+        if(page>9){
+            const auto cards=directoryCards();int row=-1;
+            for(int n=0;n<(int)cards.size();++n)if(cards[(size_t)n].label.equalsIgnoreCase(artist))row=n;
+            if(!activateDirectoryRow(row))return false;
+            vocalTabs[(size_t)(page==11?1:page==12?2:0)].onClick();
+        }
+        resetResults();return true;
+    }
     if(page>=1){
         const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
             .getChildFile("Skell UI fixture "+juce::Uuid().toString());
@@ -654,15 +669,16 @@ void PresetBrowser::startPresetRead(const juce::File& file,bool external) {
     juce::Component::SafePointer<PresetBrowser> safe(this);
     juce::Thread::launch([safe,file,external,selection,program,folder,previous] {
         skellpreset::package::Document doc;
-        const auto result=skellpreset::package::read(file,doc);
+        auto result=skellpreset::package::read(file,doc);
         juce::File copy=file;
         LibrarySnapshot snapshot;
         BackdropSnapshot backdrop;
         if(result.wasOk()) {
             if(external) {
                 std::lock_guard<std::mutex> lock(libraryWriteMutex);
-                copy=copyToLibraryFile(file,folder);
-                snapshot=collectLibrary(folder,previous);
+                skellpreset::artistbank::LibraryMutationLock mutation(folder.getParentDirectory());
+                if(!mutation.acquired())result=juce::Result::fail("Artist library is busy; try again.");
+                else {copy=copyToLibraryFile(file,folder);snapshot=collectLibrary(folder,previous);}
             }
             backdrop=collectBackdrop(copy);
         }
@@ -775,6 +791,8 @@ void PresetBrowser::startPresetWrite(const juce::File& destination) {
         BackdropSnapshot backdrop;
         const auto result=[&] {
             std::lock_guard<std::mutex> lock(libraryWriteMutex);
+            skellpreset::artistbank::LibraryMutationLock mutation(folder.getParentDirectory());
+            if(!mutation.acquired())return juce::Result::fail("Artist library is busy; try again.");
             const auto written=skellpreset::package::write(target,doc);
             if(written.failed())return written;
             libraryCopy=copyToLibraryFile(target,folder);

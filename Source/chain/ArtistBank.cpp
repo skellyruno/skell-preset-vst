@@ -57,6 +57,9 @@ bool writeManifest(const juce::File& f,const juce::var& v) {
     return json.getNumBytesAsUTF8()<=maxManifest && atomicWrite(f,juce::MemoryBlock(json.toRawUTF8(),json.getNumBytesAsUTF8()));
 }
 }
+LibraryMutationLock::LibraryMutationLock(const juce::File& root)
+    : lock("SkellPresetArtistBank-"+juce::SHA256(root.getFullPathName().toRawUTF8(),root.getFullPathName().getNumBytesAsUTF8()).toHexString().substring(0,32)),locked(lock.enter(2000)) {}
+LibraryMutationLock::~LibraryMutationLock(){if(locked)lock.exit();}
 SyncResult sync(const juce::File& root,const juce::String& json) {
     SyncResult out;
     auto fail=[&](const juce::String& error){out.error=error;return out;};
@@ -104,10 +107,8 @@ SyncResult sync(const juce::File& root,const juce::String& json) {
     }
     if(root.isSymbolicLink() || root.createDirectory().failed())return fail("Artist library unavailable");
     // Across editors/processes. Never acquire this on the audio or message thread.
-    const auto lockName="SkellPresetArtistBank-"+juce::SHA256(root.getFullPathName().toRawUTF8(),root.getFullPathName().getNumBytesAsUTF8()).toHexString().substring(0,32);
-    juce::InterProcessLock lock(lockName);
-    if(!lock.enter(2000))return fail("Artist library is busy");
-    struct Unlock {juce::InterProcessLock& l;~Unlock(){l.exit();}} unlock{lock};
+    LibraryMutationLock lock(root);
+    if(!lock.acquired())return fail("Artist library is busy");
     const auto folder=root.getChildFile("Presets"),manifestFile=root.getChildFile("SoundMatchInstalled.json");
     if(folder.isSymbolicLink() || folder.createDirectory().failed() || manifestFile.isSymbolicLink())return fail("Unsafe artist library path");
     auto manifest=object();auto installed=object();

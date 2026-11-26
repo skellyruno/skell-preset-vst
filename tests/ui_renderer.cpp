@@ -423,6 +423,12 @@ int main(int argc, char** argv) {
         const char* directoryNames[]{"default","genres","genre-leaf","tiers","underground","mainstream","artist","artist-main","artist-adlib"};
         for(int page=0;page<9;++page)for(int view=0;view<2;++view)
             options.scenes.push_back({juce::String("audit-browser-")+juce::String(page)+"-"+directoryNames[page]+(view==0?"-thumbnails":"-list"),1168,688,0,1,true});
+        if(juce::SystemStats::getEnvironmentVariable("SKELL_ARTIST_BANK_QA",{})=="1"){
+            options.scenes.push_back({"audit-browser-9-embedded-artist-directory-list",1168,688,0,1,true});
+            options.scenes.push_back({"audit-browser-10-embedded-all-list",1168,688,0,1,true});
+            options.scenes.push_back({"audit-browser-11-embedded-main-list",1168,688,0,1,true});
+            options.scenes.push_back({"audit-browser-12-embedded-adlib-list",1168,688,0,1,true});
+        }
         options.scenes.push_back({"audit-browser-0-minimum",818,482,0,1,true});
         options.scenes.push_back({"audit-browser-0-maximum",1460,860,0,1,true});
         if(factorySlots){
