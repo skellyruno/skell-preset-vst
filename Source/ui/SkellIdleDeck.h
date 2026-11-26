@@ -509,31 +509,42 @@ public:
                 g.drawHorizontalLine(juce::roundToInt(pitTop),stageBounds.getX(),stageBounds.getRight());
             }
         }
-        // Side towers show actual output spectrum, arranged by increasing frequency.
-        // Kept outside the singer's silhouette and above the crowd.
+        // The spectrum is part of the cemetery set: two banks of illuminated
+        // fence spires, with ground reflections instead of floating meter cards.
         if(width>=580.f && stageBounds.getHeight()>270.f){
-            const float towerW=juce::jlimit(78.f,150.f,width*.15f);
-            const float towerY=stageBounds.getY()+48.f;
-            const float towerH=juce::jlimit(80.f,160.f,feetY-towerY-12.f);
+            juce::Graphics::ScopedSaveState scene(g);g.reduceClipRegion(stageBounds.toNearestInt());
+            const float bankW=juce::jlimit(108.f,205.f,width*.235f);
+            const float base=horizon+juce::jmin(20.f,stage.scale*22.f);
+            const float maxH=juce::jlimit(62.f,128.f,(base-stageBounds.getY())*.66f);
             for(int side=0;side<2;++side){
-                const float x=side==0?stageBounds.getX()+18.f:stageBounds.getRight()-towerW-18.f;
-                const juce::Rectangle<float> tower(x,towerY,towerW,towerH);
-                g.setColour(Theme::bg.withAlpha(.68f));g.fillRoundedRectangle(tower,7.f);
-                g.setColour(Theme::stroke.withAlpha(.65f));g.drawRoundedRectangle(tower,7.f,.8f);
-                Theme::fittedText(g,side==0?"LOW / MID":"MID / HIGH",tower.withHeight(21.f).reduced(5.f,0.f).toNearestInt(),10.f,Theme::muted,true,juce::Justification::centred);
-                const auto graph=tower.reduced(9.f,0.f).withTrimmedTop(24.f).withTrimmedBottom(13.f);
+                const float start=side==0?stageBounds.getX()+22.f:stageBounds.getRight()-bankW-22.f;
+                const auto tint=side==0?accent:Theme::blue;
+                const float spacing=bankW/18.f;
                 for(int band=0;band<18;++band){
-                    const float v=stageBands[(size_t)(side*18+band)];
-                    const float bw=graph.getWidth()/18.f;
-                    const auto bar=juce::Rectangle<float>(graph.getX()+bw*band,graph.getY(),juce::jmax(1.f,bw-1.3f),graph.getHeight());
-                    g.setColour(Theme::stroke.withAlpha(.22f));g.fillRoundedRectangle(bar,1.f);
-                    if(v>.002f){
-                        const auto lit=bar.withTop(bar.getBottom()-bar.getHeight()*v);
-                        const auto tint=side==0?accent:Theme::blue;
-                        g.setGradientFill(juce::ColourGradient(tint.withAlpha(.92f),lit.getTopLeft(),tint.withAlpha(.17f),lit.getBottomLeft(),false));
-                        g.fillRoundedRectangle(lit,1.f);
+                    const int index=side==0?band:17-band;
+                    const float depth=(float)index/17.f;
+                    const float x=start+spacing*(band+.5f);
+                    const float floor=base+12.f*(1.f-depth);
+                    const float height=maxH*(.70f+.30f*(1.f-depth));
+                    const float value=juce::jlimit(0.f,1.f,stageBands[(size_t)(side*18+band)]);
+                    const float w=juce::jmax(1.2f,spacing*.38f);
+                    g.setColour(Theme::bg.withAlpha(.55f));g.drawLine(x,floor-height,x,floor,w+2.f);
+                    g.setColour(tint.withAlpha(.10f));g.drawLine(x,floor-height,x,floor,w*.55f);
+                    if(value>.002f){
+                        const float top=floor-height*value;
+                        g.setGradientFill(juce::ColourGradient(tint.withAlpha(.10f),x,top,tint.withAlpha(.02f),x,floor,false));
+                        g.fillRect(x-w*2.f,top,w*4.f,floor-top);
+                        g.setGradientFill(juce::ColourGradient(tint.interpolatedWith(Theme::white,.30f).withAlpha(.90f),x,top,
+                            tint.withAlpha(.12f),x,floor,false));
+                        g.fillRoundedRectangle(x-w*.5f,top,w,floor-top,1.f);
+                        g.setColour(tint.withAlpha(.13f*value));
+                        g.drawLine(x,floor+2.f,x+(x-centreX)*.055f,floor+height*value*.20f,w);
                     }
+                    juce::Path spear;spear.startNewSubPath(x,floor-height-4.f);
+                    spear.lineTo(x-w*.8f,floor-height+1.f);spear.lineTo(x+w*.8f,floor-height+1.f);spear.closeSubPath();
+                    g.setColour(tint.withAlpha(.16f+.27f*value));g.fillPath(spear);
                 }
+                g.setColour(tint.withAlpha(.22f));g.drawLine(start,base+12.f,start+bankW,base,1.f);
             }
         }
         // The trace and bone illumination are directly audio-reactive;

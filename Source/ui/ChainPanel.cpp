@@ -222,6 +222,31 @@ bool ChainPanel::toggleSidechainLink(int physicalSlot) {
     repaint();
     return true;
 }
+void ChainPanel::openSidechainTargets() {
+    juce::PopupMenu menu;menu.addSectionHeader("VOCAL DETECTOR / EFFECT TARGETS");
+    bool any=false;
+    for(int row=0;row<processor.activeSlotCount();++row){
+        const int id=processor.slotIdAt(row);
+        if(!sidechainParameter(id))continue;
+        any=true;
+        const auto* source=processor.state.getRawParameterValue("s"+juce::String(id+1)+"_duckSource");
+        const int sourceId=source?juce::jlimit(0,2,(int)source->load()):0;
+        const char* labels[]{"POST MIC","PRE MIC","SLOT INPUT"};
+        menu.addItem(id+1,juce::String(row+1).paddedLeft('0',2)+"  "+processor.moduleName(processor.slotType(id))+" / "+labels[sourceId],true,sidechainLinked(id));
+    }
+    if(!any)menu.addItem(100,"Add a delay, reverb or doubler first",false,false);
+    menu.addSeparator();menu.addItem(101,"Edit selected target",sidechainParameter(selected)!=nullptr,false);
+    juce::Component::SafePointer<ChainPanel> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe](int id){
+        if(!safe)return;
+        if(id==101){if(safe->sidechainParameter(safe->selected) && safe->onSidechainEdit)safe->onSidechainEdit(safe->selected);return;}
+        if(id<1 || id>SkellPresetAudioProcessor::slotCount)return;
+        const int target=id-1;
+        if(!safe->toggleSidechainLink(target))return;
+        safe->selected=target;
+        if(safe->onSelection)safe->onSelection(target);
+    });
+}
 bool ChainPanel::testSidechainDock() {
     bool found=false;
     for(int row=0;row<processor.activeSlotCount();++row) {
@@ -343,7 +368,7 @@ void ChainPanel::paint(juce::Graphics& g) {
             g.setColour(ink.withAlpha(linked?.93f:.53f));
             g.drawLine(5.f,(float)top+37.f,13.f,(float)top+37.f,1.2f);
             g.fillEllipse(15.f,(float)top+34.f,5.f,5.f);
-            Theme::text(g,linked?"SC":"LINK",{31,top+30,45,12},9.f,ink,true);
+            Theme::text(g,linked?"DUCK":"CONNECT",{31,top+30,62,12},9.f,ink,true);
         }
         // Thin bone engraving on each module face; no generic FL clone art.
         drawIcon(g,type,54,top+10);
@@ -465,13 +490,13 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour(Theme::panelAlt);g.fillRoundedRectangle(dock,5.f);
     g.setColour((sidechainLinkMode?Theme::green:Theme::stroke).withAlpha(.7f));
     g.drawRoundedRectangle(dock,5.f,.85f);
-    Theme::text(g,"SIDECHAIN",{18,dockTop+3,108,17},11.f,Theme::white,true);
+    Theme::text(g,"VOCAL ROUTING",{18,dockTop+3,116,17},10.5f,Theme::white,true);
     const auto linkButton=juce::Rectangle<float>(137.f,(float)dockTop+3.f,62.f,19.f);
     g.setColour(Theme::green.withAlpha(sidechainLinkMode?.28f:.08f));
     g.fillRoundedRectangle(linkButton,4.f);
-    Theme::text(g,sidechainLinkMode?"DONE":"LINK",{137,dockTop+3,62,19},
+    Theme::text(g,sidechainLinkMode?"DONE":"PATCH",{137,dockTop+3,62,19},
         10.f,Theme::green,true,juce::Justification::centred);
-    Theme::fittedText(g,sidechainLinkMode?juce::String("CLICK FX TO LINK"):"VOCAL  /  "+juce::String(links)+" SC",{18,dockTop+23,119,18},
+    Theme::fittedText(g,sidechainLinkMode?juce::String("CLICK TARGET ROW"):"TARGETS: "+juce::String(links)+"  >",{18,dockTop+23,119,18},
         10.f,links?Theme::green:Theme::muted,true);
     const bool canEdit=sidechainParameter(selected)!=nullptr;
     Theme::text(g,"EDIT",{143,dockTop+23,53,18},10.f,
@@ -632,6 +657,8 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
                 onSidechainEdit(selected);
                 repaint();
             }
+        } else if(e.x<137) {
+            cancelPointerGestures();sidechainLinkMode=false;openSidechainTargets();
         } else if(e.x>=137 && e.y<dockTop+23) {
             cancelPointerGestures();
             sidechainLinkMode=!sidechainLinkMode;

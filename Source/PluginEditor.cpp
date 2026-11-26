@@ -1341,18 +1341,27 @@ public:
             g.setColour(Theme::stroke.withAlpha(.65f));g.drawRoundedRectangle(bandRail,7.f,.8f);
             Theme::text(g,"OUTPUT SPECTRUM",{53,492,160,18},10.5f,Theme::muted,true);
             Theme::text(g,"80 Hz - 9 kHz",{53,510,160,20},11.f,Theme::white);
-            const auto graph=bandRail.withTrimmedLeft(185.f).reduced(10.f,9.f);
+            const auto graph=bandRail.withTrimmedLeft(185.f).reduced(10.f,8.f);
             const auto& values=idle.spectrumBands();
-            const float step=graph.getWidth()/(float)values.size();
+            const float step=graph.getWidth()/(float)(values.size()-1);
+            for(int line=0;line<4;++line){
+                const float y=graph.getY()+graph.getHeight()*line/3.f;
+                g.setColour(Theme::stroke.withAlpha(.28f));g.drawLine(graph.getX(),y,graph.getRight(),y,.65f);
+            }
+            juce::Path trace;
             for(size_t n=0;n<values.size();++n){
-                const auto bar=juce::Rectangle<float>(graph.getX()+step*(float)n,graph.getY(),step-3.f,graph.getHeight());
-                g.setColour(Theme::stroke.withAlpha(.32f));g.fillRoundedRectangle(bar,2.f);
-                const float value=juce::jlimit(0.f,1.f,values[n]);
-                if(value>0.f){
-                    const auto lit=bar.withTop(bar.getBottom()-bar.getHeight()*value);
-                    g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.9f),lit.getTopLeft(),
-                        Theme::green.withAlpha(.18f),lit.getBottomLeft(),false));g.fillRoundedRectangle(lit,2.f);
-                }
+                const float x=graph.getX()+step*(float)n;
+                const float y=graph.getBottom()-juce::jlimit(0.f,1.f,values[n])*graph.getHeight();
+                if(n==0)trace.startNewSubPath(x,y);else trace.lineTo(x,y);
+            }
+            auto fill=trace;fill.lineTo(graph.getRight(),graph.getBottom());fill.lineTo(graph.getX(),graph.getBottom());fill.closeSubPath();
+            g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.38f),graph.getTopLeft(),
+                Theme::green.withAlpha(.025f),graph.getBottomLeft(),false));g.fillPath(fill);
+            g.setColour(Theme::green.withAlpha(.13f));g.strokePath(trace,juce::PathStrokeType(4.f));
+            g.setColour(Theme::green.withAlpha(.90f));g.strokePath(trace,juce::PathStrokeType(1.5f));
+            for(size_t n=0;n<values.size();n+=6){
+                const float x=graph.getX()+step*(float)n;
+                g.setColour(Theme::stroke.withAlpha(.25f));g.drawLine(x,graph.getY(),x,graph.getBottom(),.65f);
             }
             // Master row: one continuous hardware strip rather than three
             // floating boxes, so Input / Mix / Output read as one output stage.

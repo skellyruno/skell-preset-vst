@@ -123,6 +123,7 @@ private:
     void toggleSlotPower(int physicalSlot);
     bool selectAndReplace(int row);
     bool sidechainLinkMode=false;
+    void openSidechainTargets();
     juce::RangedAudioParameter* sidechainParameter(int physicalSlot) const;
     bool sidechainLinked(int physicalSlot) const;
     bool toggleSidechainLink(int physicalSlot);

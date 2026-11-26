@@ -25,6 +25,7 @@ public:
         const float react=juce::jlimit(0.f,1.f,activity);
         const float sway=std::sin(phase*.62f);
         const float beat=std::sin(phase*1.45f);
+        const float breath=juce::jlimit(0.f,1.f,vocal<0.f?react:vocal);
         // Mouth opening follows measured vocal energy rather than a timed
         // sine wave. Body sway remains theatrical set animation.
         const float jawDrop=8.5f*std::sqrt(vocal<0.f?react:juce::jlimit(0.f,1.f,vocal));
@@ -36,7 +37,7 @@ public:
 
         juce::Graphics::ScopedSaveState saved(g);
         g.addTransform(juce::AffineTransform::rotation(
-                (sway*.55f+beat*.45f)*react*.010f,151.f,368.f)
+                (sway*.65f+beat*.35f)*react*.023f,151.f,368.f)
             .scaled(scale,scale*(1.f+.004f*react))
             .translated(originX,originY));
 
@@ -62,11 +63,13 @@ public:
             p.closeSubPath();
             g.setGradientFill(juce::ColourGradient(
                 ivory.withAlpha(gloss*.98f),mx-nx*mr*1.05f,my-ny*mr*1.05f,
-                stone.withAlpha(gloss*.74f),mx+nx*mr*1.20f,my+ny*mr*1.20f,false));
+                stone.interpolatedWith(cool,.18f+.15f*react).withAlpha(gloss*.84f),mx+nx*mr*1.20f,my+ny*mr*1.20f,false));
             g.fillPath(p);
             g.setColour(ink.withAlpha(.58f));
             g.strokePath(p,juce::PathStrokeType(juce::jmax(.45f,r1*.16f)));
             if(r1>1.2f){
+                g.setColour(alive.withAlpha(.12f+.28f*react));
+                g.drawLine(x0+nx*r0*.72f,y0+ny*r0*.72f,x1+nx*r1*.72f,y1+ny*r1*.72f,juce::jmax(.5f,r1*.20f));
                 g.setColour(ivory.withAlpha(.34f*gloss+.06f));
                 g.drawLine(x0-nx*r0*.40f,y0-ny*r0*.40f,
                            x1-nx*r1*.40f,y1-ny*r1*.40f,
@@ -347,6 +350,9 @@ public:
 
         // ---- Left arm hangs loose with a soft curl in the fingers that
         // breathes with the measured level.
+        {
+        juce::Graphics::ScopedSaveState arm(g);
+        g.addTransform(juce::AffineTransform::rotation((.035f+.09f*breath)*react*std::sin(phase*.82f),112.f,101.f));
         joint(112.f,101.f,5.0f,.92f);
         limb(113.f,102.f,6.8f,86.f,158.f,4.8f,.96f);
         joint(86.f,159.f,4.0f,.88f);
@@ -372,6 +378,7 @@ public:
             limb(79.f,217.f+drift,1.5f,72.f,224.f+drift,1.2f,.80f);
         }
 
+        }
         // ---- Right arm: shoulder, elbow dropped and pushed out, forearm
         // rising back in to the wrist so the fist can close on the mic barrel.
         // The wrist is placed at the exact anchor the microphone block uses.
@@ -482,6 +489,13 @@ public:
                 ivory.withAlpha(.88f),129.f,20.f,
                 stone.withAlpha(.54f),173.f,72.f,false));
             g.fillPath(skull);
+            {
+                juce::Graphics::ScopedSaveState rim(g);g.reduceClipRegion(skull);
+                g.setGradientFill(juce::ColourGradient(cool.withAlpha(.16f+.19f*react),174.f,32.f,cool.withAlpha(0.f),155.f,38.f,false));
+                g.fillRect(150.f,13.f,26.f,65.f);
+                g.setGradientFill(juce::ColourGradient(alive.withAlpha(.12f+.17f*breath),148.f,76.f,alive.withAlpha(0.f),148.f,48.f,false));
+                g.fillRect(127.f,46.f,49.f,32.f);
+            }
             {
                 juce::Graphics::ScopedSaveState texture(g);
                 g.reduceClipRegion(skull);
