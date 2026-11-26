@@ -53,7 +53,7 @@ public:
             g.fillRect(0.f,0.f,width,horizonY);
 
             // Stars, denser and brighter at the zenith, dimmed near the moon.
-            for(int i=0;i<300;++i) {
+            for(int i=0;i<120;++i) {
                 const float sx=hash01(i*3741)*width;
                 const float sy=hash01(i*9173+11)*horizonY*.90f;
                 const float depth=1.f-sy/juce::jmax(1.f,horizonY);
@@ -89,27 +89,26 @@ public:
 
             // --- Moon: heavy silver disc with layered halo, craters and a
             // green rim from the fog.
-            for(int i=12;i>0;--i) {
-                const float r=moonR*(1.14f+.40f*i);
-                g.setColour(fog.withAlpha(.016f*(13-i)*(.5f+.5f*hash01(i))));
-                g.fillEllipse(moonX-r,moonY-r,r*2.f,r*2.f);
-            }
+            const float halo=moonR*3.4f;
+            g.setGradientFill(juce::ColourGradient(fog.withAlpha(.18f),moonX,moonY,
+                fog.withAlpha(0.f),moonX+halo,moonY,true));
+            g.fillEllipse(moonX-halo,moonY-halo,halo*2.f,halo*2.f);
             g.setGradientFill(juce::ColourGradient(
                 juce::Colour(0xfff2f7ee).withAlpha(.94f),moonX-moonR*.45f,moonY-moonR*.55f,
                 juce::Colour(0xff93a89f).withAlpha(.62f),moonX+moonR*.6f,moonY+moonR*.75f,false));
             g.fillEllipse(moonX-moonR,moonY-moonR,moonR*2.f,moonR*2.f);
             // Mare and craters.
-            for(int c=0;c<16;++c) {
+            for(int c=0;c<8;++c) {
                 const float a=hash01(c*211)*6.2831f,r=moonR*.70f*std::sqrt(hash01(c*97));
                 const float cx=moonX+std::cos(a)*r,cy=moonY+std::sin(a)*r;
                 const float cr=moonR*(.07f+.20f*hash01(c*43));
-                g.setColour(juce::Colour(0xff4d5c58).withAlpha(.20f+.14f*hash01(c*13)));
+                g.setColour(juce::Colour(0xff4d5c58).withAlpha(.10f+.10f*hash01(c*13)));
                 g.fillEllipse(cx-cr,cy-cr,cr*2.f,cr*2.f);
                 g.setColour(juce::Colours::white.withAlpha(.09f));
                 g.drawEllipse(cx-cr,cy-cr,cr*2.f,cr*2.f,.6f);
             }
             // Ragged wisps crossing the disc so the moon is not a clean coin.
-            for(int wisp=0;wisp<4;++wisp) {
+            for(int wisp=0;wisp<2;++wisp) {
                 const float wy=moonY-moonR+ (wisp+.5f)*moonR*.55f;
                 g.setGradientFill(juce::ColourGradient(
                     juce::Colour(0xff2b3b3d).withAlpha(.34f),moonX-moonR*1.4f,wy,
@@ -235,11 +234,11 @@ public:
 
             // --- Wrought-iron fence with a central gate arch.
             const float fenceY=horizonY-54.f;
-            for(int i=0;i<78;++i) {
-                const float x=width*i/77.f;
+            for(int i=0;i<52;++i) {
+                const float x=width*i/51.f;
                 const bool gate=std::abs(x-width*.5f)<width*.060f;
                 const float barTop=gate?fenceY-40.f:fenceY-26.f;
-                g.setColour(juce::Colour(0xff101a1c).withAlpha(.95f));
+                g.setColour(juce::Colour(0xff101a1c).withAlpha(.60f));
                 g.drawLine(x,barTop,x,fenceY+10.f,1.f);
                 juce::Path spear;
                 spear.addTriangle(x-2.2f,barTop+1.f,x,barTop-7.f,x+2.2f,barTop+1.f);

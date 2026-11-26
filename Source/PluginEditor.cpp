@@ -534,8 +534,8 @@ public:
             if(child->getWidth()<=0 || child->getHeight()<=0 || !canvasBounds.contains(child->getBounds()))
                 issues.add("Control outside canvas bounds: " + child->getName());
         }
-        if(record.isVisible() || micButton.isVisible())
-            issues.add("Removed REC WAV and legacy MIC header buttons still visible");
+        if(record.isVisible())
+            issues.add("Removed REC WAV header button still visible");
         if(input.getBounds().intersects(mix.getBounds()) ||
            mix.getBounds().intersects(output.getBounds()))
             issues.add("Footer master knobs overlap");
@@ -602,7 +602,16 @@ public:
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
         if(powerButton.isBypassed()!=(current==3))
             issues.add("Power indicator disagrees with host bypass state");
+        if(!stereoSeparation.isVisible() || !canvasBounds.contains(stereoSeparation.getBounds()) ||
+           micButton.isVisible()==advanced)
+            issues.add("Stereo or MIC control missing from its workspace");
+        if(advanced && (!chain.getBounds().contains(stereoSeparation.getBounds()) ||
+            stereoSeparation.getRight()>chain.getX()+158))
+            issues.add("Stereo dial must sit beside the rack MIC icon");
         if(!advanced) {
+            if(micButton.getBounds().intersects(stereoSeparation.getBounds()) ||
+               stereoSeparation.getX()-micButton.getRight()>12)
+                issues.add("Simple MIC and stereo controls are not grouped");
             for(int i=0;i<4;++i) {
                 const auto card=juce::Rectangle<int>(40+i*268,196,252,352);
                 if(!card.contains(macro[(size_t)i].getBounds()))
@@ -1384,7 +1393,7 @@ public:
                     g.setColour(Theme::stroke.withAlpha(.55f));
                     g.drawVerticalLine((int)(x-6.f),strip.getY()+12.f,strip.getBottom()-12.f);
                 }
-                Theme::text(g,masterNames[i],{(int)x+94,574,120,16},10.6f,
+                Theme::text(g,masterNames[i],{(int)x+(i==3?133:94),574,i==3?105:120,16},10.6f,
                             Theme::muted,true);
                 if(*masterUnits[i])
                     Theme::fittedText(g,masterUnits[i],{(int)x+94,592,120,14},8.6f,
@@ -1429,8 +1438,7 @@ public:
         // The two small actions never obscure the Power / Settings group.
         undo.setBounds(987,29,32,32);
         redo.setBounds(1025,29,32,32);
-        micButton.setBounds(0,0,44,36);
-        micButton.setVisible(false);
+        micButton.setBounds(859,589,38,36);
         // Same approved header direction as AdlibLab: POWER then SETTINGS.
         // Compact 36px controls on one baseline, visually grouped.
         powerButton.setBounds(1069,28,36,36);
@@ -1453,11 +1461,15 @@ public:
         input.setBounds(58,570,74,74);
         mix.setBounds(330,570,74,74);
         output.setBounds(602,570,74,74);
-        stereoSeparation.setBounds(874,570,74,74);
+        micButton.setVisible(display==0);
+        stereoSeparation.setBounds(display==0?juce::Rectangle<int>(901,575,64,64):
+            juce::Rectangle<int>(chain.getX()+115,chain.getY()+1,42,40));
         for(auto* control:{&input,&mix,&output})control->setVisible(display==0);
-        stereoSeparation.setVisible(display==0);
+        stereoSeparation.setVisible(true);
+        stereoSeparation.setEnabled(raw!=3);
+        micButton.setEnabled(raw!=3);
         for(size_t i=0;i<masterValues.size();++i){
-            masterValues[i].setBounds(140+(int)i*272,584,150,30);
+            masterValues[i].setBounds(i==3?1007:140+(int)i*272,584,i==3?114:150,30);
             masterValues[i].setVisible(display==0);
         }
         syncMasterReadouts();
@@ -1500,6 +1512,9 @@ public:
             s->setEnabled(!bypass);
             s->setAlpha(bypass?.35f:1.f);
         }
+        stereoSeparation.setEnabled(!bypass);
+        stereoSeparation.setAlpha(bypass?.45f:1.f);
+        micButton.setEnabled(!bypass);
         for(auto& value:masterValues){value.setVisible(display==0);value.setAlpha(bypass?.50f:1.f);}
         syncMasterReadouts();
         bypassShade.setVisible(bypass);

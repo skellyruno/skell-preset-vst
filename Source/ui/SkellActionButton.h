@@ -36,6 +36,18 @@ public:
         }
         g.setColour(enabled?(active?accent:Theme::white):Theme::muted.withAlpha(.4f));
         const auto buttonCaption=getButtonText();
+        if(buttonCaption=="MIC") {
+            const float x=bounds.getCentreX(),y=bounds.getCentreY();
+            g.setColour(enabled?Theme::green:Theme::muted);
+            g.drawRoundedRectangle(x-3.f,y-9.f,6.f,12.f,3.f,1.5f);
+            juce::Path cradle;
+            cradle.startNewSubPath(x-6.f,y-2.f);
+            cradle.cubicTo(x-6.f,y+8.f,x+6.f,y+8.f,x+6.f,y-2.f);
+            g.strokePath(cradle,juce::PathStrokeType(1.4f));
+            g.drawLine(x,y+5.f,x,y+10.f,1.4f);
+            g.drawLine(x-4.f,y+10.f,x+4.f,y+10.f,1.4f);
+            return;
+        }
         const bool historySymbol=buttonCaption.length()==1 &&
             (buttonCaption[0]==0x21B6 || buttonCaption[0]==0x21B7);
         if(historySymbol) {

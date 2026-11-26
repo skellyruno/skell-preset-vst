@@ -1,7 +1,7 @@
 // Native output-stage stereo separation: verification for
 // skellpreset::dsp::MixerStereoSeparation.
 //
-// Covers the supplied Stereo Enhancer separation law, the -96..+96 raw range,
+// Covers the mixer-style unity-mid separation candidate, the -96..+96 raw range,
 // 10 ms sample-count smoothing, neutral initialization and exact neutral
 // bypass, mono compatibility, mid/side response, peak safety, block-size
 // consistency and preservation of the documented matrix.
@@ -82,20 +82,21 @@ int main() {
     // ---- The published law, sampled across the whole raw range ----------
     for (int raw = MixerStereoSeparation::minimumRaw;
          raw <= MixerStereoSeparation::maximumRaw; ++raw) {
-        const float s = (float)raw / 128.f;
+        const float s = (float)raw / 96.f;
         const float a = 1.f - s * .5f;
-        const float b = a * s;
-        assert(MixerStereoSeparation::matrixA(raw) == a);
-        assert(MixerStereoSeparation::matrixB(raw) == b);
+        const float b = s * .5f;
+        assert(std::abs(MixerStereoSeparation::matrixA(raw) - a) < 2.e-7f);
+        assert(std::abs(MixerStereoSeparation::matrixB(raw) - b) < 2.e-7f);
+        assert(std::abs(MixerStereoSeparation::matrixA(raw)+MixerStereoSeparation::matrixB(raw)-1.f)<2.e-7f);
     }
     // Neutral is the identity, and the ends of the range behave as documented.
     assert(MixerStereoSeparation::matrixA(0) == 1.f);
     assert(MixerStereoSeparation::matrixB(0) == 0.f);
     assert(MixerStereoSeparation::peakGainBound(0) == 1.f);
     // -96 is the widest, +96 the closest to mono. Both stay finite.
-    assert(MixerStereoSeparation::matrixA(-96) == 1.375f);
-    assert(MixerStereoSeparation::matrixA(96) == .625f);
-    assert(std::abs(MixerStereoSeparation::matrixB(96) - .46875f) < 1.e-7f);
+    assert(MixerStereoSeparation::matrixA(-96) == 1.5f);
+    assert(MixerStereoSeparation::matrixA(96) == .5f);
+    assert(std::abs(MixerStereoSeparation::matrixB(96) - .5f) < 1.e-7f);
     // Out-of-range raw values clamp rather than extrapolate.
     assert(MixerStereoSeparation::matrixA(-400) == MixerStereoSeparation::matrixA(-96));
     assert(MixerStereoSeparation::matrixA(400) == MixerStereoSeparation::matrixA(96));
@@ -146,7 +147,7 @@ int main() {
             mono.right = noise.left;
             const auto out = processRate(mono, raw, rate, 512);
             for (size_t i = 0; i < out.size(); ++i)
-                assert(out.left[i] == out.right[i]);
+                assert(out.left[i] == mono.left[i] && out.right[i] == mono.right[i]);
             // And the mono sum is the documented (a+b) gain, not a phase flip.
             const float expected = MixerStereoSeparation::matrixA(raw)
                                  + MixerStereoSeparation::matrixB(raw);
@@ -192,7 +193,10 @@ int main() {
             // Mid content is scaled, never inverted: the waveform keeps sign.
             for (size_t i = settle; i < neutral.size(); i += 211) {
                 const float mid = (merged.left[i] + merged.right[i]) * .5f;
-                assert(mid * midOfSource[i] >= 0.f);
+                assert(std::abs(mid-midOfSource[i])<2.e-6f);
+                assert(merged.left[i]==merged.right[i]);
+                const float wideMid=(wider.left[i]+wider.right[i])*.5f;
+                assert(std::abs(wideMid-midOfSource[i])<2.e-6f);
             }
             // Widening raises the side/mid ratio, merging lowers it. The
             // supplied law over-separates at the extreme (b turns negative),
@@ -239,7 +243,7 @@ int main() {
             std::vector<float> l(8192, .25f), r(8192, 0.f);
             sep.process(l.data(), r.data(), (int)l.size());
             const float target = MixerStereoSeparation::matrixA(96);
-            const float settling = 1.375f; // widest a, bounds the ramp range
+            const float settling = 1.5f; // widest a, bounds the ramp range
             assert(std::abs(l.back() - (target * .25f)) < 2.e-6f);
             assert(l.back() <= settling * .25f);
             // Exactly one ramp window after the change the value is monotonic

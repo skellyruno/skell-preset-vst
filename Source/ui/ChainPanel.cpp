@@ -223,7 +223,16 @@ bool ChainPanel::toggleSidechainLink(int physicalSlot) {
     return true;
 }
 void ChainPanel::openSidechainTargets() {
-    juce::PopupMenu menu;menu.addSectionHeader("VOCAL DETECTOR / EFFECT TARGETS");
+    Theme::selectFor(processor.state);
+    // Keep the menu palette alive for its asynchronous lifetime.
+    auto menuSkin=std::make_shared<juce::LookAndFeel_V4>();
+    menuSkin->setColour(juce::PopupMenu::backgroundColourId,Theme::panel);
+    menuSkin->setColour(juce::PopupMenu::textColourId,Theme::white);
+    menuSkin->setColour(juce::PopupMenu::headerTextColourId,Theme::muted);
+    menuSkin->setColour(juce::PopupMenu::highlightedBackgroundColourId,Theme::green.withAlpha(.20f));
+    menuSkin->setColour(juce::PopupMenu::highlightedTextColourId,Theme::white);
+    juce::PopupMenu menu;menu.setLookAndFeel(menuSkin.get());
+    menu.addSectionHeader("VOCAL TARGETS");
     bool any=false;
     for(int row=0;row<processor.activeSlotCount();++row){
         const int id=processor.slotIdAt(row);
@@ -234,10 +243,17 @@ void ChainPanel::openSidechainTargets() {
         const char* labels[]{"POST MIC","PRE MIC","SLOT INPUT"};
         menu.addItem(id+1,juce::String(row+1).paddedLeft('0',2)+"  "+processor.moduleName(processor.slotType(id))+" / "+labels[sourceId],true,sidechainLinked(id));
     }
-    if(!any)menu.addItem(100,"Add a delay, reverb or doubler first",false,false);
-    menu.addSeparator();menu.addItem(101,"Edit selected target",sidechainParameter(selected)!=nullptr,false);
+    if(!any)menu.addItem(100,"Add a delay, reverb or doubler",false,false);
+    else {
+        menu.addSeparator();
+        menu.addItem(101,"Edit selected target",sidechainParameter(selected)!=nullptr,false);
+    }
     juce::Component::SafePointer<ChainPanel> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe](int id){
+    const auto anchor=localAreaToGlobal(juce::Rectangle<int>(10,dockTop,196,45));
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this)
+        .withTargetScreenArea(anchor).withMinimumWidth(196).withStandardItemHeight(25),
+        [safe,menuSkin](int id){
+        (void)menuSkin;
         if(!safe)return;
         if(id==101){if(safe->sidechainParameter(safe->selected) && safe->onSidechainEdit)safe->onSidechainEdit(safe->selected);return;}
         if(id<1 || id>SkellPresetAudioProcessor::slotCount)return;
@@ -299,10 +315,10 @@ void ChainPanel::paint(juce::Graphics& g) {
     int links=0;
     for(int row=0;row<active;++row)
         if(sidechainLinked(processor.slotIdAt(row)))++links;
-    Theme::text(g,"EFFECT RACK",{15,8,142,22},15,Theme::white,true);
+    Theme::fittedText(g,"EFFECT RACK",{12,7,102,20},13.f,Theme::white,true);
     Theme::text(g,dockingDrag?"RELEASE TO DOCK":
-        (dockedRight?"DRAG LEFT TO DOCK":"DRAG RIGHT TO DOCK"),
-        {15,28,141,15},10.1f,dockingDrag?Theme::green:Theme::muted);
+        (dockedRight?"DRAG LEFT":"DRAG RIGHT"),
+        {12,27,100,14},9.5f,dockingDrag?Theme::green:Theme::muted);
     // Dedicated MIC widget trigger replaces redundant FX and 10/16 badges.
     // Compact mic art retains a generous 42x38 hit target, not just the 1px microphone path.
     const auto micRegion=juce::Rectangle<float>(164.f,9.f,31.f,29.f);
@@ -689,7 +705,7 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
         if(!e.mods.isPopupMenu() && onMicRequest)onMicRequest();
         return;
     }
-    if(!e.mods.isPopupMenu() && e.x>=8 && e.x<=142 && e.y>=5 && e.y<43) {
+    if(!e.mods.isPopupMenu() && e.x>=8 && e.x<=112 && e.y>=5 && e.y<43) {
         dockingDrag=true;
         dockCandidateRight=dockedRight;
         setMouseCursor(juce::MouseCursor::DraggingHandCursor);
@@ -855,7 +871,7 @@ void ChainPanel::mouseMove(const juce::MouseEvent& e) {
     if(e.y>=5 && e.y<43 && e.x>=158 && e.x<=200) {
         setTooltip("Open movable microphone modeling widget");
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    } else if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=142)
+    } else if(e.y>=5 && e.y<43 && e.x>=8 && e.x<=112)
         setMouseCursor(juce::MouseCursor::DraggingHandCursor);
     else if(next>=0 && e.x>=wetControlLeft && e.x<wetControlRight) {
         const int physical=processor.slotIdAt(next);

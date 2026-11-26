@@ -33,7 +33,9 @@ public:
         };
         valueFromTextFunction=[](const juce::String& text) {
             const double value=text.getDoubleValue();
-            return juce::jlimit(-96.,96.,text.contains("%")?value*96./100.:value);
+            const double raw=text.contains("%")?value*96./100.:value;
+            return juce::jlimit(-96.,96.,text.containsIgnoreCase("WIDE")?-std::abs(raw):
+                text.containsIgnoreCase("MONO")?std::abs(raw):raw);
         };
         updateText();
     }
@@ -47,7 +49,9 @@ public:
         };
         valueFromTextFunction=[](const juce::String& text) {
             const double value=text.getDoubleValue();
-            return juce::jlimit(-96.,96.,text.contains("%")?value*96./100.:value);
+            const double raw=text.contains("%")?value*96./100.:value;
+            return juce::jlimit(-96.,96.,text.containsIgnoreCase("WIDE")?-std::abs(raw):
+                text.containsIgnoreCase("MONO")?std::abs(raw):raw);
         };
         updateText();
     }
@@ -68,7 +72,7 @@ public:
         if (area.getWidth()<15.f || area.getHeight()<15.f) return;
         constexpr float pi=juce::MathConstants<float>::pi;
         const float centreX=area.getCentreX(),centreY=area.getCentreY();
-        const float dial=std::min(area.getWidth(),area.getHeight())*.5f-7.f;
+        const float dial=std::min(area.getWidth(),area.getHeight())*.5f-(area.getWidth()<50.f?4.f:7.f);
         const float rim=dial*.77f;
         const float body=dial*.67f;
         const double range=getMaximum()-getMinimum();

@@ -590,6 +590,8 @@ void PresetBrowser::resized(){
     for(auto* b:{&thumbnailView,&listView})b->setVisible(!detailsOpen);
     thumbnailView.setColour(juce::TextButton::buttonColourId,!listMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
     listView.setColour(juce::TextButton::buttonColourId,listMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
+    thumbnailView.setColour(juce::TextButton::textColourOffId,!listMode?Theme::green:Theme::muted);
+    listView.setColour(juce::TextButton::textColourOffId,listMode?Theme::green:Theme::muted);
     directoryBack.setVisible(!detailsOpen && hasDirectoryParent());
     directoryBack.setBounds(207,69,64,29);
     detailsButton.setBounds(18,detailsOpen?112:getHeight()-38,166,28);
@@ -2158,7 +2160,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
             const bool selected=i==bank && (i!=0 || !mainAdlibs);
             const bool hovered=i==hoveredBank;
             g.setColour(selected?Theme::green.withAlpha(.14f):
-                        hovered?Theme::panelAlt.brighter(.17f):Theme::panel);
+                        hovered?Theme::panelAlt.brighter(.075f):Theme::panel);
             g.fillRoundedRectangle(b,6.f);
             g.setColour(selected?Theme::green.withAlpha(.78f):
                         hovered?Theme::muted.withAlpha(.68f):Theme::stroke.withAlpha(.75f));
@@ -2174,8 +2176,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
         }
         const auto sub=adlibsBounds().toFloat();
         g.setColour(mainAdlibs?Theme::green.withAlpha(.15f):
-                   hoveredAdlibs?Theme::panelAlt.brighter(.19f):
-                                 Theme::panelAlt.withAlpha(.47f));
+                   hoveredAdlibs?Theme::panelAlt.brighter(.075f):
+                                 Theme::panel);
         g.fillRoundedRectangle(sub,5.f);
         g.setColour(mainAdlibs?Theme::green.withAlpha(.68f):
                    hoveredAdlibs?Theme::muted.withAlpha(.75f):
@@ -2291,9 +2293,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
             g.fillRoundedRectangle(rect.getX(),rect.getY()+9.f,2.5f,
                                    rect.getHeight()-18.f,1.25f);
         }
-        Theme::fittedText(g,itemName,{292,y+5,juce::jmax(1,getWidth()-376),27},17.f,Theme::white,true,
+        Theme::fittedText(g,itemName,{292,y+6,juce::jmax(1,getWidth()-376),25},17.f,Theme::white,true,
                           juce::Justification::centredLeft);
-        const auto bankColour=custom?Theme::green:Theme::blue;
+        const auto bankColour=custom?Theme::green:Theme::muted;
         Theme::fittedText(g,itemBank,{292,y+33,juce::jmax(1,getWidth()-376),17},11.5f,bankColour,true,
                           juce::Justification::centredLeft);
         // Independent star target: selecting a favorite must not audition the

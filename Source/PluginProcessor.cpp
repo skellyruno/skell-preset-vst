@@ -502,6 +502,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     stereoSeparation.prepare(rate);
     if(auto* raw=rawGlobal.stereoSeparation)
         stereoSeparation.setRaw(juce::roundToInt(raw->load()));
+    stereoSeparation.reset(); // restored position must apply from the first sample
     micFrontWet.reset(rate,.020);
     micFrontWet.setCurrentAndTargetValue(rawMic.on->load()>.5f?1.f:0.f);
     micGateWet.reset(rate,.020);

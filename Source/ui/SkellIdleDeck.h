@@ -161,7 +161,7 @@ public:
         // Keep enough room for the smallest supported figure before the pit
         // takes its share, so tiny frames still produce a valid layout.
         const float pitMax=juce::jmax(0.f,available-372.f*.30f);
-        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f?.25f:.30f)));
+        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f?.18f:.24f)));
         const float feet=stageBottom-pitHeight;
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
             // Let the performer read as the headliner, using the space recovered
@@ -231,10 +231,10 @@ public:
             g.setGradientFill(juce::ColourGradient(accent.withAlpha(.055f+.09f*rigEnergy[1]),cx,cy,
                 Theme::bg.withAlpha(0.f),cx+r*1.8f,cy,true));
             g.fillEllipse(cx-r*1.8f,cy-r*1.8f,r*3.6f,r*3.6f);
-            for(int ring=0;ring<3;++ring){
+            for(int ring=0;ring<2;++ring){
                 const float radius=r*(.80f+.15f*ring);
                 juce::Path arc;arc.addCentredArc(cx,cy,radius,radius,0.f,.22f+ring*.3f,5.9f-ring*.32f,true);
-                g.setColour((ring==1?Theme::blue:accent).withAlpha(.11f+.16f*rigEnergy[(size_t)ring]));
+                g.setColour((ring==1?Theme::blue:accent).withAlpha(.055f+.12f*rigEnergy[(size_t)ring]));
                 g.strokePath(arc,juce::PathStrokeType(juce::jmax(.7f,1.3f*stage.scale)));
             }
         }
@@ -262,7 +262,7 @@ public:
                 wedge.closeSubPath();
                 const auto tint=(beam==1?accent:Theme::blue);
                 g.setGradientFill(juce::ColourGradient(
-                    tint.withAlpha(.045f+.15f*rigEnergy[(size_t)beam]),rigX,rigY,
+                    tint.withAlpha(.025f+.12f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));
                 g.fillPath(wedge);
             }
@@ -368,8 +368,8 @@ public:
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.72f+.20f*t);
-                    const auto rimColour=porcelain.withAlpha(.06f+.16f*t);
-                    const auto edgeGlow=accent.withAlpha(.05f+.10f*activity);
+                    const auto rimColour=porcelain.withAlpha(.035f+.09f*t);
+                    const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
                         if(figure.layer!=row)continue;
@@ -488,7 +488,7 @@ public:
                             g.fillEllipse(px-5.2f*unit,py-5.2f*unit,10.4f*unit,10.4f*unit);
                             g.setColour(juce::Colours::white.withAlpha(.16f*glow));
                             g.fillEllipse(px-3.f*unit,py-3.f*unit,6.f*unit,6.f*unit);
-                            g.setColour(juce::Colours::white.withAlpha(.48f+.50f*glow));
+                            g.setColour(juce::Colours::white.withAlpha(.20f+.40f*glow));
                             g.fillEllipse(px-unit,py-unit,2.f*unit,2.f*unit);
                         }
                         if(row>=crowdLayers-2) {
@@ -529,7 +529,7 @@ public:
                     const float value=juce::jlimit(0.f,1.f,stageBands[(size_t)(side*18+band)]);
                     const float w=juce::jmax(1.2f,spacing*.38f);
                     g.setColour(Theme::bg.withAlpha(.55f));g.drawLine(x,floor-height,x,floor,w+2.f);
-                    g.setColour(tint.withAlpha(.10f));g.drawLine(x,floor-height,x,floor,w*.55f);
+                    g.setColour(tint.withAlpha(.045f));g.drawLine(x,floor-height,x,floor,w*.55f);
                     if(value>.002f){
                         const float top=floor-height*value;
                         g.setGradientFill(juce::ColourGradient(tint.withAlpha(.10f),x,top,tint.withAlpha(.02f),x,floor,false));
@@ -542,9 +542,9 @@ public:
                     }
                     juce::Path spear;spear.startNewSubPath(x,floor-height-4.f);
                     spear.lineTo(x-w*.8f,floor-height+1.f);spear.lineTo(x+w*.8f,floor-height+1.f);spear.closeSubPath();
-                    g.setColour(tint.withAlpha(.16f+.27f*value));g.fillPath(spear);
+                    g.setColour(tint.withAlpha(.05f+.30f*value));g.fillPath(spear);
                 }
-                g.setColour(tint.withAlpha(.22f));g.drawLine(start,base+12.f,start+bankW,base,1.f);
+                g.setColour(tint.withAlpha(.09f));g.drawLine(start,base+12.f,start+bankW,base,1.f);
             }
         }
         // The trace and bone illumination are directly audio-reactive;
@@ -624,7 +624,7 @@ private:
         bool phoneSide=false;
     };
     static constexpr int crowdLayers=4;
-    static constexpr int crowdCount=150;
+    static constexpr int crowdCount=88;
     std::array<CrowdFigure,crowdCount> crowd{};
     bool crowdBuilt=false;
     void ensureCrowd() {
@@ -634,7 +634,7 @@ private:
         // Slots per row, farthest (top) to nearest (bottom). Distant rows hold
         // more people at a tighter spacing; near rows are wider and sparser,
         // which is what sells the perspective.
-        constexpr int perRow[crowdLayers]{46,38,33,31};
+        constexpr int perRow[crowdLayers]{28,24,20,16};
         constexpr float spread[crowdLayers]{1.02f,1.08f,1.16f,1.28f};
         for(int layer=0;layer<crowdLayers && index<crowdCount;++layer) {
             const int people=perRow[layer];

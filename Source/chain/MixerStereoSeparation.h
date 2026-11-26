@@ -4,18 +4,18 @@
 
 // Skell Preset: native stereo separation for the final output stage.
 //
-// The transfer law is the Stereo Enhancer separation matrix from the private
-// R6 checkpoint (original StereoFx.cpp/.h), not a generic stereo widener:
+// Mixer-style candidate: preserve the mid signal and scale only the side.
+// Keep the published raw range, but map its full travel to the endpoints.
 //
-//     s  = raw / 128            (raw is the supplied -96..+96 range)
+//     s  = raw / 96             (-96..+96, host range unchanged)
 //     a  = 1 - s/2
-//     b  = a * s
+//     b  = s/2
 //     L' = a*L + b*R
 //     R' = a*R + b*L
 //
 // Negative raw widens, positive raw merges toward mono, raw 0 is exactly
 // neutral. The module introduces no delay, no chorus, no phase inversion and
-// no side signal: a mono input stays bit-exactly mono at every position.
+// no generated side signal. Full right is a true averaged mono signal.
 //
 // Smoothing is sample-count based over 10 ms, initialized neutral so a fresh
 // instance (or a prepared-but-unset one) passes audio through unchanged.
@@ -26,11 +26,10 @@ public:
     static constexpr int maximumRaw = 96;
 
     static float matrixA(int raw) noexcept {
-        return 1.f - static_cast<float>(clampRaw(raw)) * (1.f / 256.f);
+        return 1.f - static_cast<float>(clampRaw(raw)) * (1.f / 192.f);
     }
     static float matrixB(int raw) noexcept {
-        const float a = matrixA(raw);
-        return a * (static_cast<float>(clampRaw(raw)) * (1.f / 128.f));
+        return 1.f - matrixA(raw);
     }
     // Worst-case broadband peak gain of the matrix, used to audit headroom:
     // |L'| <= (|a|+|b|) * max(|L|,|R|). Neutral is exactly 1.
@@ -78,6 +77,12 @@ public:
             if (a == 1.f && b == 0.f) continue;
             const float x = left[i];
             const float y = right[i];
+            if (x == y) continue; // exact mono-source transparency at every setting
+            if (a == .5f && b == .5f) {
+                const float mid = .5f*x + .5f*y;
+                left[i] = right[i] = mid;
+                continue;
+            }
             left[i] = a * x + b * y;
             right[i] = a * y + b * x;
         }
