@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "Theme.h"
 #include "../PluginProcessor.h"
+#include "../../SkellCore/include/SkellCore/VisualMath.h"
 
 class SkellLiveEffectPanel final:public juce::Component {
     using P=SkellPresetAudioProcessor;
@@ -14,7 +15,8 @@ public:
             lastSlot=slot;lastType=type;reset();
         }
         const auto oldTransfer=transfer;
-        const float oldDeess=deessHz,oldGate=gateDb;
+        const auto oldComp=compressorCurve;
+        const float oldDeess=deessHz,oldGate=gateDb,oldClose=gateCloseDb;
         deessHz=3500.f+p.getSlotParam(slot,0)*8000.f;
         if(type==P::Saturator){
             const auto* grit=p.state.getRawParameterValue("macro4");
@@ -26,7 +28,15 @@ public:
             for(size_t n=0;n<transfer.size();++n)transfer[n]=curveDist.sample(2.f*(float)n/(transfer.size()-1)-1.f);
         }
         gateDb=-75.f+p.getSlotParam(slot,0)*70.f;
-        const bool controlsChanged=oldTransfer!=transfer || oldDeess!=deessHz || oldGate!=gateDb;
+        gateCloseDb=skellcore::visual::gateThresholds(gateDb,p.getSlotParam(slot,3)*8.f).closeDb;
+        if(type==P::Compressor){
+            const auto* punch=p.state.getRawParameterValue("macro2");
+            const float threshold=-48.f+p.getSlotParam(slot,0)*42.f-12.f*((punch?punch->load():.5f)-.5f);
+            skellcore::visual::buildCompressorCurve(compressorCurve.data(),compressorCurve.size(),-60.f,0.f,
+                threshold,1.f+p.getSlotParam(slot,1)*11.f,(p.getSlotParam(slot,4)-.5f)*24.f,0.f);
+        }
+        const bool controlsChanged=oldTransfer!=transfer || oldComp!=compressorCurve ||
+            oldDeess!=deessHz || oldGate!=gateDb || oldClose!=gateCloseDb;
         const auto now=juce::Time::getMillisecondCounter();
         skellpreset::visual::SlotVisualCapture::Frame frame;
         const bool available=p.getSlotVisual(slot,frame);
@@ -83,6 +93,7 @@ public:
         const bool room=lastType==P::VoxRackRoom;
         const bool deess=lastType==P::DeEsser,gate=lastType==P::Gate;
         const bool dynamics=isDynamics(lastType) && !deess && !gate;
+        const bool compCurve=lastType==P::Compressor;
         const bool delay=lastType==P::Delay || lastType==P::StudioDelayFX ||
             lastType==P::DuckingPingPongFX || lastType==P::AdlibThrow;
         const bool space=P::supportsWetSidechain(lastType) && !stereo;
@@ -219,9 +230,28 @@ public:
                 drawWave(inputWave,Theme::muted);drawWave(wave,accent);
             }else if(gate){
                 plot(inputHistory,Theme::muted,false);plot(outputHistory,accent,true);
-                const float y=graph.getBottom()-std::clamp((gateDb+72.f)/72.f,0.f,1.f)*graph.getHeight();
+                const float y=graph.getBottom()-skellcore::visual::dbToNorm(gateDb,-72.f,0.f)*graph.getHeight();
+                const float closeY=graph.getBottom()-skellcore::visual::dbToNorm(gateCloseDb,-72.f,0.f)*graph.getHeight();
+                g.setColour(accent.withAlpha(.13f));g.fillRect(graph.getX(),y,graph.getWidth(),std::max(0.f,closeY-y));
+                g.setColour(accent.withAlpha(.8f));g.drawLine(graph.getX(),closeY,graph.getRight(),closeY,.8f);
                 g.setColour(Theme::white.withAlpha(.8f));g.drawLine(graph.getX(),y,graph.getRight(),y,1.f);
-                Theme::fittedText(g,"THRESHOLD "+juce::String(gateDb,1)+" dB",juce::Rectangle<int>((int)graph.getX()+4,(int)std::clamp(y-16.f,graph.getY(),graph.getBottom()-16.f),170,16),10.f,Theme::white,true);
+                Theme::fittedText(g,"OPEN "+juce::String(gateDb,1)+" / CLOSE "+juce::String(gateCloseDb,1)+" dB",juce::Rectangle<int>((int)graph.getX()+4,(int)std::clamp(y-16.f,graph.getY(),graph.getBottom()-16.f),260,16),10.f,Theme::white,true);
+            }else if(compCurve){
+                const auto original=graph;
+                graph=original.withTrimmedRight(original.getWidth()*.46f+8.f);
+                plot(grHistory,accent,true,true);
+                const auto curveArea=original.withTrimmedLeft(original.getWidth()*.54f+8.f).reduced(6.f,4.f);
+                const auto area=curveArea.withTrimmedTop(16.f);
+                g.setColour(Theme::muted.withAlpha(.45f));g.drawLine(area.getX(),area.getBottom(),area.getRight(),area.getY(),.8f);
+                juce::Path curve;
+                for(size_t n=0;n<compressorCurve.size();++n){
+                    const float x=area.getX()+area.getWidth()*(float)n/(compressorCurve.size()-1);
+                    const float y=area.getBottom()-skellcore::visual::dbToNorm(compressorCurve[n],-60.f,0.f)*area.getHeight();
+                    if(n==0)curve.startNewSubPath(x,y);else curve.lineTo(x,y);
+                }
+                g.setColour(accent);g.strokePath(curve,juce::PathStrokeType(1.8f));
+                Theme::fittedText(g,"STATIC HARD-KNEE LAW",curveArea.withHeight(15.f).toNearestInt(),9.f,Theme::muted,true);
+                graph=original;
             }else if(dynamics){plot(grHistory,accent,true,true);plot(duckHistory,Theme::blue,false,true);}
             else if(delay){
                 plot(leftHistory,accent,true);plot(rightHistory,Theme::green,false);
@@ -277,7 +307,8 @@ public:
             stereo?juce::String("ACTUAL OUTPUT / MID-SIDE"):
             drive?juce::String("INPUT / OUTPUT WAVEFORM / 128 SAMPLES"):
             deess?"DE-ESS CENTER "+juce::String(deessHz/1000.f,2)+" kHz / BEFORE + AFTER":
-            gate?juce::String("INPUT / OUTPUT LEVEL / -72 TO 0 dBFS"):
+            gate?juce::String("RMS HISTORY / DETECTOR OPEN-CLOSE THRESHOLDS"):
+            compCurve?juce::String("LIVE GR / STATIC DETECTOR ENVELOPE LAW (-60 TO 0 dB)"):
             dynamics?juce::String("GAIN REDUCTION / DUCKING / 24 dB RANGE"):
             delay?juce::String("LEFT (BLUE) / RIGHT (GREEN) / OUTPUT ENERGY"):
             space?juce::String("INPUT / OUTPUT / -72 TO 0 dBFS"):juce::String("INPUT / OUTPUT / -72 TO 0 dBFS");
@@ -324,7 +355,7 @@ private:
     skellpreset::visual::PitchReading pitchIn{},pitchOut{};
     skellpreset::visual::TailReading tail;
     skellpreset::studio::FastDist curveDist;
-    std::array<float,129> transfer{};
+    std::array<float,129> transfer{},compressorCurve{};
     std::array<float,historySize> pitchInHistory{},pitchOutHistory{},wetHistory{};
     std::array<float,2> wetRms{},tapMs{};
     bool wetAvailable=false;
@@ -332,7 +363,7 @@ private:
     std::array<float,historySize> inputHistory{},outputHistory{},grHistory{},duckHistory{};
     std::array<float,128> wave{},inputWave{},mid{},side{};
     std::array<float,historySize> leftHistory{},rightHistory{};
-    float correlation=0.f,leftRms=0.f,rightRms=0.f,deessHz=7500.f,gateDb=-40.f;
+    float correlation=0.f,leftRms=0.f,rightRms=0.f,deessHz=7500.f,gateDb=-40.f,gateCloseDb=-44.f;
     int lastSlot=-1,lastType=-1;
     std::uint64_t lastSerial=0;
     unsigned lastFrame=0,ticks=0;
