@@ -14,7 +14,7 @@
 //     R' = a*R + b*L
 //
 // Negative raw widens, positive raw merges toward mono, raw 0 is exactly
-// neutral. The module introduces no delay, no chorus, no phase inversion and
+// neutral. The module introduces no delay, no chorus and
 // no generated side signal. Full right is a true averaged mono signal.
 //
 // Smoothing is sample-count based over 10 ms, initialized neutral so a fresh
@@ -47,7 +47,7 @@ public:
         a = targetA;
         b = targetB;
         remaining = 0;
-        stepA = stepB = 0.f;
+        stepA = 0.f;
     }
     void setRaw(int raw) noexcept {
         const float na = matrixA(raw);
@@ -59,7 +59,6 @@ public:
         targetB = nb;
         remaining = rampSamples;
         stepA = (targetA - a) / static_cast<float>(remaining);
-        stepB = (targetB - b) / static_cast<float>(remaining);
     }
     void process(float* left, float* right, int samples) noexcept {
         if (left == nullptr || right == nullptr || samples <= 0) return;
@@ -67,7 +66,7 @@ public:
             if (remaining != 0) {
                 if (--remaining != 0) {
                     a += stepA;
-                    b += stepB;
+                    b = 1.f - a;
                 } else {
                     a = targetA;
                     b = targetB;
@@ -98,7 +97,7 @@ private:
     }
     float a = 1.f, b = 0.f;
     float targetA = 1.f, targetB = 0.f;
-    float stepA = 0.f, stepB = 0.f;
+    float stepA = 0.f;
     int rampSamples = 441, remaining = 0;
 };
 } // namespace skellpreset::dsp

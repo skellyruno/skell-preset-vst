@@ -1,6 +1,7 @@
 #include "ChainPanel.h"
 #include "Theme.h"
 #include <cmath>
+#include <memory>
 namespace {void drawIcon(juce::Graphics&g,int type,int x,int y) {
     g.setColour(Theme::green.withAlpha(.77f));
     juce::Path p;
@@ -222,6 +223,11 @@ bool ChainPanel::toggleSidechainLink(int physicalSlot) {
     repaint();
     return true;
 }
+namespace {
+constexpr int rowStart=47, rowStep=51, rowHeight=45;
+constexpr int addTop=472, addHeight=33;
+constexpr int dockTop=510;
+}
 void ChainPanel::openSidechainTargets() {
     Theme::selectFor(processor.state);
     // Keep the menu palette alive for its asynchronous lifetime.
@@ -283,11 +289,6 @@ bool ChainPanel::testSidechainDock() {
            processor.slotType(id)!=oldType || processor.slotIdAt(row)!=orderBefore)return false;
     }
     return found;
-}
-namespace {
-constexpr int rowStart=47, rowStep=51, rowHeight=45;
-constexpr int addTop=472, addHeight=33;
-constexpr int dockTop=510;
 }
 void ChainPanel::clampScroll() {
     scrollOffset=juce::jlimit(0,juce::jmax(0,processor.activeSlotCount()-visibleRows),scrollOffset);
