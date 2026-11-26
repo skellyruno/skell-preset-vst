@@ -593,10 +593,16 @@ public:
         const std::array<const juce::Slider*,3> masterSliders{{&input,&mix,&output}};
         for(size_t i=0;i<3;++i) {
             const auto& value=masterValues[i];
-            if(value.isVisible()!=drawer || !canvasBounds.contains(value.getBounds()) ||
-               value.getBounds().intersects(masterSliders[i]->getBounds()) ||
-               value.getText()!= (i==1 ? juce::String(juce::roundToInt(juce::jlimit(0.,1.,masterSliders[i]->getValue())*100.))+"%" : (masterSliders[i]->getValue()>0. ? juce::String("+") : juce::String())+juce::String(masterSliders[i]->getValue(),1)+" dB"))
-                issues.add("Stage master readout overlaps or is stale");
+            const auto& slider=*masterSliders[i];
+            const auto name=juce::String(i==0?"Input":i==1?"Mix":"Output");
+            if(value.isVisible()!=drawer)issues.add(name+" drawer readout visibility mismatch");
+            if(!canvasBounds.contains(value.getBounds()) || value.getBounds().intersects(slider.getBounds()))
+                issues.add(name+" drawer readout geometry mismatch");
+            // JUCE's getTextFromValue is non-const. The installed formatter
+            // is callable from a const slider and preserves the actual sign threshold.
+            if(!slider.textFromValueFunction ||
+               value.getText()!=slider.textFromValueFunction(slider.getValue()))
+                issues.add(name+" drawer readout stale: "+value.getText());
         }
         if(masterValues[3].isVisible())issues.add("Stereo direction text must remain hidden");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
