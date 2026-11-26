@@ -833,10 +833,15 @@ public:
         if(!powerButton.isBypassed() || !chain.isVisible())
             issues.add("Simple mode power button changed the view or failed");
         if(powerButton.getButtonText().isNotEmpty() ||
-           settings.getX()<=powerButton.getX() ||
-           settings.getX()-powerButton.getRight()>8 ||
+           powerButton.getX()<preset.getRight() ||
+           stageButton.getX()-powerButton.getRight()<0 ||
+           stageButton.getX()-powerButton.getRight()>12 ||
+           undo.getX()-stageButton.getRight()<0 ||
+           undo.getX()-stageButton.getRight()>12 ||
+           redo.getX()-undo.getRight()>12 ||
+           settings.getX()<=redo.getRight() ||
            settings.getWidth()>37 || powerButton.getWidth()>37)
-            issues.add("Header controls must be compact Power then Settings");
+            issues.add("Header order must be preset / power / stage / undo / redo / settings with compact gaps");
         powerButton.onClick();
         settings.onClick();
         if(!settingsPanel.isVisible())
@@ -1245,18 +1250,18 @@ public:
         wordmark.createLayout(brand,340.f);
         const float titleX=75.f,titleY=26.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
         wordmark.draw(g,{titleX,titleY,titleW,titleH});
-        const int subY=58;
+        const int subY=56;
         juce::AttributedString edition;edition.append("v.01",Theme::font(9.5f,true),Theme::green);
         juce::TextLayout editionLayout;editionLayout.createLayout(edition,60.f);
         const int editionX=juce::roundToInt(titleX+titleW-editionLayout.getWidth());
         Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{75,subY,editionX-83,16},
                           10.5f,Theme::muted,true,juce::Justification::centredLeft);
         editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
-        Theme::text(g,"PRESET",{431,12,318,14},10,Theme::muted,true);
+        Theme::text(g,"PRESET",{366,12,420,14},10,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
         Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
-                    {758,12,135,14},9,Theme::muted,true);
+                    {844,12,172,14},9,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(661,0.f,(float)Theme::width);
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withMultipliedBrightness(.88f),0.f,662.f,
@@ -1344,16 +1349,16 @@ public:
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
-        preset.setBounds(431,27,318,37);
-        stageButton.setBounds(758,28,142,36);
+        preset.setBounds(366,27,420,37);
+        stageButton.setBounds(844,28,172,36);
         // Bounded message-thread preset history in the top bar.
         // The two small actions never obscure the Power / Settings group.
-        undo.setBounds(987,30,30,30);
-        redo.setBounds(1025,30,30,30);
+        undo.setBounds(1026,30,30,30);
+        redo.setBounds(1064,30,30,30);
         micButton.setBounds(chain.getX()+174,chain.getY()+6,34,34);
-        // Same approved header direction as AdlibLab: POWER then SETTINGS.
+        // Power belongs before Live Stage, not next to Settings.
         // Compact 36px controls on one baseline, visually grouped.
-        powerButton.setBounds(1069,28,36,36);
+        powerButton.setBounds(798,28,36,36);
         const bool drawer=drawerVisible();
         const auto deck=slot.getBounds();
         const int y=deck.getBottom()-206;

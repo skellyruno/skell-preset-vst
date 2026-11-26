@@ -104,9 +104,10 @@ public:
             const auto card=targetBounds(position);
             const float x=(float)card.getX(),y=(float)card.getCentreY();
             juce::Path cable;cable.startNewSubPath(254.f,153.f);
-            const float rail=position<8?276.f:574.f;
+            const bool secondColumn=card.getX()>300;
+            const float rail=secondColumn?574.f:276.f;
             cable.lineTo(276.f,153.f);
-            if(position>=8){cable.lineTo(276.f,120.f);cable.lineTo(rail,120.f);}
+            if(secondColumn){cable.lineTo(276.f,120.f);cable.lineTo(rail,120.f);}
             cable.lineTo(rail,y);cable.lineTo(x,y);
             const bool linked=isConnected(target) && source.getSelectedId()==committedSource(target);
             const auto ink=linked?Theme::green:Theme::muted;
@@ -154,7 +155,8 @@ private:
         }
     }
     juce::Rectangle<int> targetBounds(int position) const{
-        const int col=position/8,row=position%8;return {300+col*284,132+row*45,266,36};
+        const int rows=juce::jlimit(1,8,(processor.activeSlotCount()+1)/2);
+        const int col=position/rows,row=position%rows;return {300+col*284,132+row*45,266,36};
     }
     int committedSource(int id) const {
         const auto prefix=slotPrefix(id);

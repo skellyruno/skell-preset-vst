@@ -30,8 +30,8 @@ public:
         // sine wave. Body sway remains theatrical set animation.
         const float jawDrop=8.5f*std::sqrt(vocal<0.f?react:juce::jlimit(0.f,1.f,vocal));
         const auto ink=Theme::bg;
-        const auto ivory=Theme::white;
-        const auto stone=Theme::muted;
+        const auto ivory=juce::Colour(0xffe1dacc);
+        const auto stone=juce::Colour(0xff737c7b);
         const auto alive=Theme::green;
         const auto cool=Theme::blue;
 
@@ -486,8 +486,8 @@ public:
             g.setColour(ink);
             g.strokePath(skull,juce::PathStrokeType(3.8f));
             g.setGradientFill(juce::ColourGradient(
-                ivory.withAlpha(.88f),129.f,20.f,
-                stone.withAlpha(.54f),173.f,72.f,false));
+                ivory.withAlpha(.98f),137.f,19.f,
+                stone.withAlpha(.88f),173.f,72.f,false));
             g.fillPath(skull);
             {
                 juce::Graphics::ScopedSaveState rim(g);g.reduceClipRegion(skull);
@@ -546,23 +546,25 @@ public:
             // Sockets and nasal aperture.
             juce::Path sockets;
             sockets.startNewSubPath(131.f,45.f);
-            sockets.lineTo(146.f,42.f);
-            sockets.lineTo(147.f,53.f);
-            sockets.lineTo(137.f,57.f);
-            sockets.lineTo(131.f,52.f);
+            sockets.cubicTo(135.f,41.f,144.f,40.f,147.f,44.f);
+            sockets.cubicTo(150.f,49.f,145.f,56.f,139.f,57.f);
+            sockets.cubicTo(132.f,57.f,128.f,51.f,131.f,45.f);
             sockets.closeSubPath();
             sockets.startNewSubPath(156.f,42.f);
-            sockets.lineTo(171.f,45.f);
-            sockets.lineTo(171.f,53.f);
-            sockets.lineTo(162.f,57.f);
-            sockets.lineTo(156.f,52.f);
+            sockets.cubicTo(160.f,40.f,170.f,41.f,173.f,46.f);
+            sockets.cubicTo(174.f,52.f,168.f,58.f,162.f,57.f);
+            sockets.cubicTo(157.f,56.f,153.f,48.f,156.f,42.f);
             sockets.closeSubPath();
-            sockets.startNewSubPath(146.f,55.f);
-            sockets.lineTo(156.f,55.f);
-            sockets.lineTo(151.f,64.f);
+            sockets.startNewSubPath(151.f,53.f);
+            sockets.cubicTo(148.f,56.f,145.f,61.f,146.f,63.f);
+            sockets.quadraticTo(149.f,64.f,151.f,61.f);
+            sockets.quadraticTo(154.f,65.f,157.f,63.f);
+            sockets.cubicTo(157.f,59.f,153.f,55.f,151.f,53.f);
             sockets.closeSubPath();
-            g.setColour(ink.withAlpha(.95f));
+            g.setColour(ink.withAlpha(.99f));
             g.fillPath(sockets);
+            g.setColour(stone.withAlpha(.55f));
+            g.strokePath(sockets,juce::PathStrokeType(.65f));
             g.setColour(ivory.withAlpha(.30f));
             g.drawLine(133.f,44.f,145.f,42.f,1.f);
             g.drawLine(158.f,43.f,170.f,45.f,1.f);
@@ -587,8 +589,8 @@ public:
             g.fillRoundedRectangle(139.f,64.f,24.f,6.6f+jawDrop*.28f,2.f);
             for(int tooth=0;tooth<7;++tooth){
                 const float x=140.f+3.4f*tooth;
-                g.setColour(ivory.withAlpha(.78f));
-                g.fillRect(x,64.f,2.9f,4.f);
+                g.setGradientFill(juce::ColourGradient(ivory,x,64.f,stone,x+2.9f,68.6f,false));
+                g.fillRoundedRectangle(x,64.f,2.9f,4.6f,.75f);
                 g.setColour(ink.withAlpha(.50f));
                 g.drawLine(x+2.9f,64.f,x+2.9f,68.f,.5f);
             }
@@ -600,8 +602,8 @@ public:
             jaw.cubicTo(157.f,81.f+jawDrop,164.f,76.f+jawDrop*.6f,165.f,68.f);
             g.setColour(ink.withAlpha(.58f));
             g.strokePath(jaw,juce::PathStrokeType(3.8f));
-            g.setColour(ivory.withAlpha(.56f));
-            g.strokePath(jaw,juce::PathStrokeType(2.f));
+            g.setGradientFill(juce::ColourGradient(ivory.withAlpha(.92f),139.f,69.f,stone,164.f,82.f+jawDrop,false));
+            g.strokePath(jaw,juce::PathStrokeType(3.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             for(int tooth=0;tooth<6;++tooth){
                 const float x=140.f+3.6f*tooth;
                 const float drop=jawDrop*.55f;

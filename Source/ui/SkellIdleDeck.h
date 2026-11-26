@@ -404,7 +404,14 @@ public:
                         // Near rows retain the full articulated skeleton art.
                         if(ry<2.6f) {
                             g.setColour(bodyColour);
-                            g.fillEllipse(x-rx,headY-ry,2.f*rx,2.f*ry);
+                            juce::Path backSkull;
+                        backSkull.startNewSubPath(x,headY-ry);
+                        backSkull.cubicTo(x-rx*1.2f,headY-ry,x-rx*1.15f,headY+ry*.20f,x-rx*.66f,headY+ry*.62f);
+                        backSkull.quadraticTo(x,headY+ry*1.06f,x+rx*.66f,headY+ry*.62f);
+                        backSkull.cubicTo(x+rx*1.15f,headY+ry*.20f,x+rx*1.2f,headY-ry,x,headY-ry);
+                        backSkull.closeSubPath();
+                        g.setGradientFill(juce::ColourGradient(rimColour.withMultipliedAlpha(.62f),x-rx,headY-ry,bodyColour,x+rx,headY+ry,false));
+                        g.fillPath(backSkull);
                             g.fillRoundedRectangle(x-shoulderW,shoulderY,
                                 2.f*shoulderW,juce::jmax(1.f,base-shoulderY),rx);
                             g.setColour(rimColour);

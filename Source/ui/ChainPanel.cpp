@@ -359,7 +359,7 @@ void ChainPanel::paint(juce::Graphics& g) {
             // Cable endpoint is the indicator; leave room for direct remove.
         }
         // Thin bone engraving on each module face; no generic FL clone art.
-        drawIcon(g,type,54,top+10);
+        drawIcon(g,type,51,top+10);
         // Always-visible direct removal target, separate from drag, wet and power.
         g.setColour(hovering?Theme::red:Theme::muted.withAlpha(.66f));
         g.drawLine(35.f,(float)top+31.f,43.f,(float)top+39.f,1.4f);
@@ -375,16 +375,16 @@ void ChainPanel::paint(juce::Graphics& g) {
             (enabled?Theme::white:Theme::muted);
         // Two short fitted lines keep long native and third-party product
         // names legible in the hardware rack without colliding with wet.
-        const int wrapAt=compact.substring(0,15).lastIndexOfChar(' ');
+        const int wrapAt=compact.substring(0,17).lastIndexOfChar(' ');
         if(compact.length()>12 && wrapAt>2 && wrapAt<compact.length()-2) {
             Theme::fittedText(g,compact.substring(0,wrapAt),
-                              {78,top+4,69,15},10.6f,labelColour,selected==slot);
+                              {76,top+4,76,15},11.1f,labelColour,selected==slot);
             Theme::fittedText(g,compact.substring(wrapAt+1),
-                              {78,top+20,69,14},10.6f,labelColour,false);
+                              {76,top+20,76,14},11.0f,labelColour,false);
         } else {
             const float nameSize=compact.length()>10?10.1f:
                                  compact.length()>8?10.7f:11.6f;
-            Theme::fittedText(g,compact,{78,top+8,69,19},nameSize,
+            Theme::fittedText(g,compact,{76,top+8,76,19},nameSize,
                               labelColour,selected==slot);
         }
         const float cx=165.f, cy=(float)top+19.f;

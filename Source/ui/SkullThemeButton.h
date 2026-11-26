@@ -64,8 +64,8 @@ public:
             g.setColour(Theme::bg.darker(.3f));
             g.fillPath(skull);
             g.setGradientFill(juce::ColourGradient(
-                Theme::white.withAlpha(.95f),18.f,11.f,
-                Theme::muted.withAlpha(.64f),42.f,33.f,false));
+                juce::Colour(0xffe7dfd0),19.f,11.f,
+                juce::Colour(0xff777e7c),42.f,35.f,false));
             g.fillPath(skull);
             g.setColour(Theme::white.withAlpha(.30f));
             g.strokePath(skull,juce::PathStrokeType(.75f));
@@ -75,11 +75,11 @@ public:
             g.setColour(Theme::bg);
             juce::Path eyes;
             eyes.startNewSubPath(19.f,23.f);
-            eyes.lineTo(28.f,23.f);eyes.lineTo(27.f,28.f);
-            eyes.quadraticTo(22.f,30.f,19.f,26.f);eyes.closeSubPath();
+            eyes.cubicTo(22.f,20.f,27.f,21.f,29.f,24.f);
+            eyes.cubicTo(29.f,30.f,21.f,31.f,19.f,26.f);eyes.closeSubPath();
             eyes.startNewSubPath(32.f,23.f);
-            eyes.lineTo(41.f,22.f);eyes.lineTo(39.f,27.f);
-            eyes.quadraticTo(35.f,30.f,32.f,27.f);eyes.closeSubPath();
+            eyes.cubicTo(35.f,20.f,40.f,21.f,41.f,23.f);
+            eyes.cubicTo(42.f,28.f,36.f,31.f,32.f,27.f);eyes.closeSubPath();
             eyes.startNewSubPath(30.f,28.f);
             eyes.lineTo(27.f,34.f);eyes.lineTo(34.f,34.f);eyes.closeSubPath();
             g.fillPath(eyes);
