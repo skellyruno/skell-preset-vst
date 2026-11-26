@@ -1,21 +1,36 @@
 #pragma once
 #include "PresetPackage.h"
 #include "VocalPreviewAnalysis.h"
+#include <iterator>
 
 namespace skellpreset::starter {
 // Original Skell starter profiles. Not artist matches or factory programs.
 // Template parameter maps to the existing, stable processor ModuleType IDs.
-inline constexpr const char* names[]{"Warm Upfront","Atmospheric Trap","Airy Melodic","Clean Studio","Punchy Rap",
-    "Afro Silk Lead","Amapiano Close","Highlife Harmony","Afro R&B Velvet","Dancehall Rhythm"};
-inline constexpr int count=10,variations=64;
+// Profile indices 0..9 and variant seeds remain stable. Existing serialized
+// user presets retain their own names; these are not factory program IDs.
+inline constexpr const char* names[]{
+    "Skelly Velvet","Skelly Eclipse","Skelly Halo","Skelly Platinum","Skelly Pressure",
+    "Skelly Lagos","Skelly Log Drum","Skelly Highlife","Skelly Sable","Skelly Riddim",
+    "Skelly Stardust","Skelly Moonwalk","Skelly After Hours","Skelly Timber",
+    "Skelly Concrete","Skelly Black Ice","Skelly Overload","Skelly Candy Code",
+    "Skelly Phantom","Skelly Glitch Angel"};
+inline constexpr const char* genres[]{
+    "Warm R&B","Atmospheric Trap","Melodic Rap","Radio / Clean","Mainstream Rap",
+    "Afrobeats","Amapiano","Highlife","Afro R&B","Dancehall",
+    "Pop","Melodic Trap","Neo Soul","Indie / Acoustic",
+    "Boom Bap","Drill","Rage","Pluggnb","Cloud Rap","Hyperpop"};
+inline constexpr const char* collections[]{"Mainstream","Underground","Global Rhythms"};
+inline constexpr int groups[]{0,0,0,0,0,2,2,2,2,2,0,0,0,0,1,1,1,1,1,1};
+inline constexpr int count=20,variations=64;
+static_assert(std::size(names)==count && std::size(genres)==count && std::size(groups)==count);
 inline constexpr const char* moods[]{"Gentle","Forward","Spacious","Intimate"};
 template<class P>
 package::Document make(int profile,int variant=0) {
     const int index=juce::jlimit(0,count-1,profile);
-    constexpr int base[]{0,1,2,3,4,0,3,2,0,4};
+    constexpr int base[]{0,1,2,3,4,0,3,2,0,4,3,1,0,3,4,4,1,2,1,2};
     const int k=base[index];
     package::Document doc;
-    doc.name=names[index];doc.bank="Vocal Starter Chains";doc.mode=1;
+    doc.name=names[index];doc.bank="Skelly Sound Lab";doc.mode=1;
     doc.micGateOn=true;doc.micGateThreshold=-52.f;doc.micGateDepth=.85f;
     doc.micPreOn=true;doc.micPreInput=0;doc.micPreTarget=k==0?1:k==2?3:k==4?2:0;
     doc.micPreAmount=k==2?.55f:.35f;
@@ -62,6 +77,51 @@ package::Document make(int profile,int variant=0) {
         doc.slots[3].params[1]=.30f;doc.slots[5].wet=.09f;
         reverb.wet=.065f;echo.params[10]=.18f;echo.params[13]=.44f;
         echo.params[2]=.61f;echo.rightFirst=true;
+    }else if(index==10){ // Pop: controlled dynamics, clean top, short wide space
+        doc.slots[2].params[1]=.62f;doc.slots[3].params[0]=.53f;doc.slots[3].params[1]=.24f;
+        doc.slots[4].wet=.055f;doc.slots[5].wet=.16f;reverb.wet=.13f;
+        echo.params[10]=.09f;echo.params[13]=.44f;
+        slot(8,P::VocalChorusFX,.055f,{.10f,.26f,.32f,.24f});
+    }else if(index==11){ // Melodic trap: controlled ping-pong and longer tails
+        doc.slots[3].params[0]=.49f;doc.slots[4].wet=.16f;doc.slots[5].wet=.15f;
+        reverb.wet=.28f;reverb.params[0]=.83f;reverb.duckDepth=.70f;
+        echo.params[2]=.64f;echo.params[10]=.21f;echo.params[13]=.32f;echo.rightFirst=true;
+    }else if(index==12){ // Neo soul: slower, softer, close and warm
+        doc.micPreAmount=.62f;doc.micGateThreshold=-62.f;doc.slots[0].wet=.15f;
+        doc.slots[3].params[0]=.67f;doc.slots[3].params[1]=.14f;doc.slots[3].params[2]=.24f;
+        doc.slots[4].wet=.15f;doc.slots[5].wet=.045f;reverb.wet=.115f;echo.params[10]=.05f;
+    }else if(index==13){ // Acoustic / indie: preserve dynamics and breath
+        doc.micPreOn=false;doc.micGateThreshold=-64.f;doc.micGateDepth=.45f;doc.slots[0].wet=.10f;
+        doc.slots[1].params[3]=.16f;doc.slots[3].params[0]=.72f;doc.slots[3].params[1]=.11f;
+        doc.slots[3].params[2]=.30f;doc.slots[4].wet=.035f;doc.slots[5].wet=.055f;
+        reverb.wet=.095f;echo.params[10]=.025f;
+    }else if(index==14){ // Boom bap: narrow ambience, warm mid-forward edge
+        doc.micPreTarget=1;doc.slots[1].params[1]=.46f;doc.slots[3].params[2]=.18f;
+        doc.slots[4].params[0]=.38f;doc.slots[4].wet=.20f;doc.slots[5].wet=.055f;
+        reverb.wet=.06f;echo.params[10]=.065f;echo.params[13]=.69f;echo.params[14]=.56f;
+    }else if(index==15){ // Drill: dry, close, hard consonants, short dark throw
+        doc.slots[3].params[0]=.40f;doc.slots[3].params[1]=.40f;doc.slots[3].params[2]=.035f;
+        doc.slots[1].params[3]=.34f;doc.slots[4].wet=.20f;reverb.wet=.045f;
+        echo.params[10]=.075f;echo.params[13]=.57f;echo.params[14]=.54f;
+    }else if(index==16){ // Rage: gritty and dense but bounded; no new gain law
+        doc.slots[3].params[0]=.39f;doc.slots[3].params[1]=.41f;
+        doc.slots[4].params[0]=.58f;doc.slots[4].wet=.24f;doc.slots[5].wet=.10f;
+        reverb.wet=.18f;echo.params[10]=.17f;doc.outputDb=-6.f;
+        slot(8,P::Radio,.08f,{.06f,.28f,.20f,.45f});
+    }else if(index==17){ // Pluggnb: soft shimmering doubling and gentle echoes
+        doc.slots[3].params[0]=.63f;doc.slots[3].params[1]=.16f;doc.slots[4].wet=.065f;
+        doc.slots[5].wet=.16f;reverb.wet=.24f;echo.params[10]=.17f;
+        slot(8,P::VocalChorusFX,.14f,{.12f,.33f,.42f,.60f});
+    }else if(index==18){ // Cloud rap: diffuse wet field with protected dry lead
+        doc.slots[3].params[0]=.62f;doc.slots[4].wet=.075f;doc.slots[5].wet=.065f;
+        reverb.wet=.33f;reverb.params[0]=.91f;reverb.duckDepth=.70f;
+        echo.params[10]=.27f;echo.params[1]=.48f;echo.params[15]=.35f;echo.params[14]=.44f;
+        slot(8,P::AdlibDoubler,.075f,{.31f,.39f,.38f,.50f}).parallelReturn=true;
+    }else if(index==19){ // Hyperpop: animated texture, not an imported tuner
+        doc.slots[3].params[0]=.45f;doc.slots[4].params[0]=.45f;doc.slots[4].wet=.23f;
+        doc.slots[5].wet=.18f;reverb.wet=.15f;echo.params[10]=.14f;doc.outputDb=-5.f;
+        slot(8,P::RetroCrush,.08f,{.52f,.75f,.24f,.40f});
+        slot(9,P::VocalChorusFX,.09f,{.27f,.30f,.43f,.55f});
     }
     // Four coordinated intents, sixteen reproducible choices per intent.
     // Only existing controls change; all values remain conservatively bounded.

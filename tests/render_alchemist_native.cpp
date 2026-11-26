@@ -947,15 +947,15 @@ int studioSmoke() {
         using namespace skellpreset::starter;
         for(int profile=0;profile<count;++profile)for(int variant=1;variant<=variations;++variant){
             auto a=make<P>(profile,variant),b=make<P>(profile,variant);
-            if(a.name!=b.name || a.name==make<P>(profile,0).name)return 178;
+            if(a.name!=b.name || a.name==make<P>(profile,0).name || !a.name.startsWith("Skelly "))return 178;
             for(size_t s=0;s<a.slots.size();++s){
                 if(a.slots[s].params!=b.slots[s].params || a.slots[s].type==P::StudioPitchFormantFX ||
                    a.slots[s].type==P::ExternalVST3 || a.slots[s].wet<0.f || a.slots[s].wet>1.f)return 179;
                 for(float value:a.slots[s].params)if(!std::isfinite(value)||value<0.f||value>1.f)return 179;
             }
         }
-        if(p->loadVocalStarter(0,65).wasOk() || p->loadVocalStarter(9,64).failed())return 180;
-        std::puts("PASS: ten original starters, 640 bounded reproducible variants, zero reported latency and host-state recall for base profiles");
+        if(p->loadVocalStarter(0,65).wasOk() || p->loadVocalStarter(count-1,64).failed())return 180;
+        std::puts("PASS: twenty original starters, 1280 bounded reproducible variants, zero reported latency and host-state recall for base profiles");
     }
     {
         using P=SkellPresetAudioProcessor;

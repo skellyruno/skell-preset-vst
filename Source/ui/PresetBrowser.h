@@ -81,7 +81,7 @@ private:
     juce::ComboBox genrePicker,genreFilter,sortPicker,artistTierFilter,artistFilter,typeFilter,tierEditor,typeEditor;
     juce::TextEditor pairEditor;
     juce::TextButton metadataButton{"SAVE ORGANIZATION"},relatedButton{"MATCHING PRESETS"},directoryBack{"BACK"};
-    juce::TextButton starterButton{"VOCAL CHAIN BUILDER"};
+    juce::TextButton starterButton{"SKELLY SOUND LAB"};
     void showVocalStarters();
     juce::TextButton importButton{"IMPORT"},exportButton{"SAVE"},
         saveAsButton{"SAVE AS…"},

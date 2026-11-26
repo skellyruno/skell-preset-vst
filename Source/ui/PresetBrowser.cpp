@@ -2408,8 +2408,11 @@ void PresetBrowser::paint(juce::Graphics&g) {
 }
 void PresetBrowser::showVocalStarters() {
     if(chooserActive || saveInFlight || loadInFlight || coverWriteInFlight)return;
-    juce::PopupMenu menu;menu.addSectionHeader("BUILD AN ORIGINAL SKELL VOCAL CHAIN");
-    for(int i=0;i<skellpreset::starter::count;++i){
+    juce::PopupMenu menu;menu.addSectionHeader("SKELLY SOUND LAB / CHOOSE A SOUND");
+    for(int group=0;group<3;++group){
+        juce::PopupMenu collection;
+        for(int i=0;i<skellpreset::starter::count;++i){
+        if(skellpreset::starter::groups[i]!=group)continue;
         juce::PopupMenu profile;profile.addItem(1+i*65,"Original chain");
         for(int m=0;m<4;++m){
             juce::PopupMenu variants;
@@ -2417,7 +2420,9 @@ void PresetBrowser::showVocalStarters() {
                 variants.addItem(1+i*65+variant,"Variation "+juce::String(variant).paddedLeft('0',2));}
             profile.addSubMenu(skellpreset::starter::moods[m],variants);
         }
-        menu.addSubMenu(skellpreset::starter::names[i],profile);
+        collection.addSubMenu(juce::String(skellpreset::starter::names[i])+" / "+skellpreset::starter::genres[i],profile);
+        }
+        menu.addSubMenu(skellpreset::starter::collections[group],collection);
     }
     juce::Component::SafePointer<PresetBrowser> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&starterButton),[safe](int id){
