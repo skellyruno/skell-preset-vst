@@ -2011,8 +2011,9 @@ void SlotEditor::paint(juce::Graphics&g) {
             :type==SkellPresetAudioProcessor::AlchemistMatchFinishFX
                 ?juce::String("MATCH")
                 :juce::String(skellpreset::registry::at(type).category).toUpperCase();
-        // Compact category, no extra header card competing with effects.
-        Theme::fittedText(g,category,{516,70,296,21},10.8f,
+        // Category occupies the dedicated metadata row above the title.
+        // The former y=70 rectangle intersected the Match page buttons.
+        Theme::fittedText(g,category,{528,10,294,18},10.8f,
                           familyAccent.withAlpha(.92f),true,
                           juce::Justification::centredRight);
         // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
@@ -4364,6 +4365,9 @@ bool SlotEditor::testIntegratedEffectLayout() const {
        slotPower.getBounds().intersects(editExternal.getBounds()) ||
        !getLocalBounds().contains(slotPower.getBounds()))return false;
     const int faceType=processor.slotType(slot);
+    const juce::Rectangle<int> categoryBounds(528,10,294,18);
+    for(const auto& button:matchPageButtons)
+        if(button.isVisible() && categoryBounds.intersects(button.getBounds()))return false;
     if(slotPower.isVisible()!=(faceType!=SkellPresetAudioProcessor::Empty))return false;
     if(skellpreset::face::hardware(faceType)) {
         for(int i=0;i<4;++i) {

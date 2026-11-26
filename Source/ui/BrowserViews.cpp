@@ -1,5 +1,6 @@
 #include "PresetBrowser.h"
 #include "Theme.h"
+#include "PresetCoverArt.h"
 #include "../chain/AlchemistNativePreset.h"
 
 void PresetBrowser::setListView(bool list,bool persist) {
@@ -51,9 +52,14 @@ void PresetBrowser::paintPresetGrid(juce::Graphics& g,const std::vector<int>& en
     for(int i=0;i<pageCapacity() && scroll+i<(int)entries.size();++i) {
         const int index=scroll+i,entry=entries[(size_t)index];
         const auto bounds=directoryCardBounds(i).toFloat();
-        const bool selected=entry>=0?processor.getCurrentProgram()==entry:
+        const bool selected=entry>=0?processor.loadedFactoryPresetIndex()==entry:
             userPresets[(size_t)(-entry-1)]==activeUserPreset;
-        Theme::panelBox(g,bounds,7.f,selected || keyboardCard==index);
+        const bool focused=keyboardCard==index;
+        Theme::panelBox(g,bounds,7.f,selected);
+        if(focused){
+            g.setColour(Theme::blue.withAlpha(.90f));
+            g.drawRoundedRectangle(bounds.reduced(1.1f),7.f,1.5f);
+        }
         auto art=bounds.reduced(6.f).removeFromTop(bounds.getHeight()-49.f);
         juce::Image cover;
         if(entry<0 && -entry-1<(int)userArtwork.size())cover=userArtwork[(size_t)(-entry-1)];
@@ -63,11 +69,9 @@ void PresetBrowser::paintPresetGrid(juce::Graphics& g,const std::vector<int>& en
             g.drawImageWithin(cover,(int)art.getX(),(int)art.getY(),(int)art.getWidth(),(int)art.getHeight(),
                               juce::RectanglePlacement::fillDestination);
         } else {
-            g.setGradientFill(juce::ColourGradient(Theme::stroke.withAlpha(.45f),art.getTopLeft(),
-                                                  Theme::plot,art.getBottomRight(),false));
-            g.fillRoundedRectangle(art,5.f);
-            Theme::fittedText(g,entry<0?artistForUser(-entry-1).toUpperCase():"SKELL / FACTORY",
-                art.reduced(10.f).toNearestInt(),14.f,Theme::muted,true,juce::Justification::centred);
+            const std::array<juce::Colour,4> accents{{Theme::green,Theme::amber,Theme::pink,Theme::white}};
+            const int seed=entry<0?-entry:entry+1;
+            skellpreset::art::paintCover(g,art,seed,accents[(size_t)artworkPaletteIndexForTest(seed)]);
         }
         const auto star=bounds.withLeft(bounds.getRight()-35.f).withHeight(35.f);
         g.setColour(Theme::bg.withAlpha(.8f));g.fillRoundedRectangle(star.reduced(3.f),5.f);
@@ -78,15 +82,20 @@ void PresetBrowser::paintPresetGrid(juce::Graphics& g,const std::vector<int>& en
         else g.strokePath(glyph,juce::PathStrokeType(1.5f));
         const auto name=entry>=0?processor.getProgramName(entry):userPresets[(size_t)(-entry-1)].getFileNameWithoutExtension();
         const auto card=directoryCardBounds(i);
-        Theme::fittedText(g,name,{card.getX()+10,card.getBottom()-43,card.getWidth()-20,22},
+        const int nameWidth=card.getWidth()-(selected?34:20);
+        Theme::fittedText(g,name,{card.getX()+10,card.getBottom()-43,nameWidth,22},
                           14.f,Theme::white,true);
+        if(selected){
+            g.setColour(Theme::green);
+            g.fillEllipse((float)card.getRight()-15.f,(float)card.getBottom()-35.f,6.f,6.f);
+        }
         Theme::fittedText(g,entry>=0?juce::String("FACTORY PRESET"):artistForUser(-entry-1),
-            {card.getX()+10,card.getBottom()-21,card.getWidth()-20,16},10.f,Theme::muted);
+            {card.getX()+10,card.getBottom()-21,card.getWidth()-20,16},10.5f,Theme::muted);
         if(index==hoveredCard) {
             g.setColour(Theme::green.withAlpha(.6f));g.drawRoundedRectangle(card.toFloat().reduced(.7f),7.f,1.3f);
         }
     }
-    Theme::text(g,juce::String(scroll+1)+"–"+juce::String(juce::jmin((int)entries.size(),scroll+pageCapacity()))+
+    Theme::text(g,juce::String(scroll+1)+"-"+juce::String(juce::jmin((int)entries.size(),scroll+pageCapacity()))+
                 " / "+juce::String(entries.size()),{207,getHeight()-27,getWidth()-227,18},10.f,Theme::muted);
 }
 bool PresetBrowser::testViewSwitchForTest() {
