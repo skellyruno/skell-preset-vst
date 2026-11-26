@@ -2409,13 +2409,22 @@ void PresetBrowser::paint(juce::Graphics&g) {
 void PresetBrowser::showVocalStarters() {
     if(chooserActive || saveInFlight || loadInFlight || coverWriteInFlight)return;
     juce::PopupMenu menu;menu.addSectionHeader("BUILD AN ORIGINAL SKELL VOCAL CHAIN");
-    for(int i=0;i<skellpreset::starter::count;++i)menu.addItem(i+1,skellpreset::starter::names[i]);
+    for(int i=0;i<skellpreset::starter::count;++i){
+        juce::PopupMenu profile;profile.addItem(1+i*65,"Original chain");
+        for(int m=0;m<4;++m){
+            juce::PopupMenu variants;
+            for(int k=1;k<=16;++k){const int variant=m*16+k;
+                variants.addItem(1+i*65+variant,"Variation "+juce::String(variant).paddedLeft('0',2));}
+            profile.addSubMenu(skellpreset::starter::moods[m],variants);
+        }
+        menu.addSubMenu(skellpreset::starter::names[i],profile);
+    }
     juce::Component::SafePointer<PresetBrowser> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&starterButton),[safe](int id){
-        if(!safe || id<1 || id>skellpreset::starter::count || safe->chooserActive || safe->saveInFlight || safe->loadInFlight || safe->coverWriteInFlight)return;
+        if(!safe || id<1 || id>skellpreset::starter::count*65 || safe->chooserActive || safe->saveInFlight || safe->loadInFlight || safe->coverWriteInFlight)return;
         if(safe->onBeforeLoad)safe->onBeforeLoad();
-        const auto result=safe->processor.loadVocalStarter(id-1);
-        if(result.failed()){if(safe->onLoadFailed)safe->onLoadFailed();return;}
+        const auto result=safe->processor.loadVocalStarter((id-1)/65,(id-1)%65);
+        if(result.failed()){if(safe->onLoadFailed)safe->onLoadFailed();safe->setSaveStatus("STARTER FAILED");return;}
         ++safe->selectionRevision;safe->activeUserPreset=juce::File{};
         safe->refreshArtwork();
         safe->setSaveStatus("STARTER LOADED / SAVE COPY TO KEEP");

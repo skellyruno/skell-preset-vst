@@ -233,3 +233,7 @@ add_executable(SkellPresetVisualMathTest test_visual_math.cpp)
 target_include_directories(SkellPresetVisualMathTest PRIVATE ../SkellCore/include)
 target_compile_features(SkellPresetVisualMathTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetVisualMathTest COMMAND SkellPresetVisualMathTest)
+
+add_executable(SkellPresetVocalPreviewAnalysisTest test_vocal_preview_analysis.cpp)
+target_compile_features(SkellPresetVocalPreviewAnalysisTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVocalPreviewAnalysisTest COMMAND SkellPresetVocalPreviewAnalysisTest)

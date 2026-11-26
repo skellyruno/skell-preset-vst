@@ -76,7 +76,7 @@ public:
     void loadFactoryPreset(int index);
     void clearRackToEmpty();
     // Original opt-in chain templates, not new host program IDs.
-    juce::Result loadVocalStarter(int profile);
+    juce::Result loadVocalStarter(int profile,int variant=0);
     // Message-thread only, validated native .skellpreset ZIP packages.
     juce::Result exportPreset(const juce::File& file) const;
     // Snapshot of the live chain. Runs on the message thread so the ZIP

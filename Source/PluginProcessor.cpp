@@ -1904,9 +1904,10 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     if(const auto result=skellpreset::package::read(file,doc);result.failed())return result;
     return applyValidatedPresetDocument(doc);
 }
-juce::Result SkellPresetAudioProcessor::loadVocalStarter(int profile) {
-    if(profile<0 || profile>=skellpreset::starter::count)return juce::Result::fail("Invalid vocal starter");
-    auto doc=skellpreset::starter::make<SkellPresetAudioProcessor>(profile);
+juce::Result SkellPresetAudioProcessor::loadVocalStarter(int profile,int variant) {
+    if(profile<0 || profile>=skellpreset::starter::count || variant<0 || variant>skellpreset::starter::variations)
+        return juce::Result::fail("Invalid vocal starter or variation");
+    auto doc=skellpreset::starter::make<SkellPresetAudioProcessor>(profile,variant);
     const int mode=(int)state.getRawParameterValue("mode")->load();
     if(mode==0 || mode==3)doc.mode=mode;
     return applyValidatedPresetDocument(doc);

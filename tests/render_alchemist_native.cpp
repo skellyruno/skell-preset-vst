@@ -9,6 +9,7 @@
 #include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/chain/ABMetrics.h"
 #include "NativeVocalPreview.h"
+#include "../Source/chain/VocalStarterChains.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -923,7 +924,7 @@ int studioSmoke() {
     {
         using P=SkellPresetAudioProcessor;
         auto p=std::make_unique<P>();
-        for(int profile=0;profile<5;++profile){
+        for(int profile=0;profile<skellpreset::starter::count;++profile){
             if(p->loadVocalStarter(profile).failed() || p->loadedFactoryPresetIndex()!=-1 ||
                p->slotType(0)!=P::AdaptiveNoiseFX || p->slotType(7)!=P::StudioDelayFX ||
                p->state.getRawParameterValue("micGateOn")->load()<.5f)return 172;
@@ -943,7 +944,18 @@ int studioSmoke() {
             p->releaseResources();
         }
         if(p->loadVocalStarter(-1).wasOk())return 177;
-        std::puts("PASS: five original vocal starters, native rack, finite output, zero reported latency and host-state recall");
+        using namespace skellpreset::starter;
+        for(int profile=0;profile<count;++profile)for(int variant=1;variant<=variations;++variant){
+            auto a=make<P>(profile,variant),b=make<P>(profile,variant);
+            if(a.name!=b.name || a.name==make<P>(profile,0).name)return 178;
+            for(size_t s=0;s<a.slots.size();++s){
+                if(a.slots[s].params!=b.slots[s].params || a.slots[s].type==P::StudioPitchFormantFX ||
+                   a.slots[s].type==P::ExternalVST3 || a.slots[s].wet<0.f || a.slots[s].wet>1.f)return 179;
+                for(float value:a.slots[s].params)if(!std::isfinite(value)||value<0.f||value>1.f)return 179;
+            }
+        }
+        if(p->loadVocalStarter(0,65).wasOk() || p->loadVocalStarter(9,64).failed())return 180;
+        std::puts("PASS: ten original starters, 640 bounded reproducible variants, zero reported latency and host-state recall for base profiles");
     }
     {
         using P=SkellPresetAudioProcessor;
@@ -2808,15 +2820,24 @@ int stereoSeparationSmoke() {
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
     if(argc==2 && juce::String(argv[1])=="--preview-smoke")return vocalPreviewSmoke();
-    if((argc==5 || argc==6) && (juce::String(argv[1])=="--preview-starter" || juce::String(argv[1])=="--preview-preset")){
+    if(argc>=5 && argc<=7 && (juce::String(argv[1])=="--preview-starter" || juce::String(argv[1])=="--preview-preset")){
         const bool starter=juce::String(argv[1])=="--preview-starter";
         const juce::String profile(argv[2]);
-        if(starter && (profile.length()!=1 || profile<"1" || profile>"5"))return 7;
-        double tail=0.;
-        if(argc==6){char* end=nullptr;tail=std::strtod(argv[5],&end);if(end==argv[5] || *end!='\0')return 7;}
+        int profileId=0,variant=0;
+        if(starter){
+            const auto parts=juce::StringArray::fromTokens(profile,":","");
+            if(parts.size()<1 || parts.size()>2)return 7;
+            if(parts[0].isEmpty() || !parts[0].containsOnly("0123456789") || parts[0].length()>2)return 7;
+            profileId=parts[0].getIntValue();
+            if(parts.size()==2){if(parts[1].isEmpty() || parts[1].length()>2 || !parts[1].containsOnly("0123456789"))return 7;variant=parts[1].getIntValue();}
+            if(profileId<1 || profileId>skellpreset::starter::count || variant>skellpreset::starter::variations)return 7;
+        }
+        double tail=0.,bpm=120.;
+        if(argc>=6){char* end=nullptr;tail=std::strtod(argv[5],&end);if(end==argv[5] || *end!='\0')return 7;}
+        if(argc==7){char* end=nullptr;bpm=std::strtod(argv[6],&end);if(end==argv[6] || *end!='\0')return 7;}
         const auto result=skellpreset::preview::render(juce::File(juce::String::fromUTF8(argv[3])),
-            juce::File(juce::String::fromUTF8(argv[4])),starter?profile.getIntValue()-1:-1,
-            starter?juce::File{}:juce::File(juce::String::fromUTF8(argv[2])),tail);
+            juce::File(juce::String::fromUTF8(argv[4])),starter?profileId-1:-1,
+            starter?juce::File{}:juce::File(juce::String::fromUTF8(argv[2])),tail,bpm,variant);
         if(result.failed()){std::fprintf(stderr,"%s\n",result.getErrorMessage().toRawUTF8());return 8;}
         return 0;
     }
@@ -2856,8 +2877,8 @@ int main(int argc,char** argv) {
     if(argc!=3) {
         std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53|54 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --factory-override 54 HPF_NORMALIZED BAND70_GAIN_NORMALIZED INPUT.wav NEW_OUTPUT.wav\n");
-        std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-starter 1..5 INPUT NEW_OUTPUT.wav [TAIL_SECONDS]\n");
-        std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-preset PRESET.skellpreset INPUT NEW_OUTPUT.wav [TAIL_SECONDS]\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-starter PROFILE[:VARIANT] INPUT NEW_OUTPUT.wav [TAIL_SECONDS] [BPM]\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-preset PRESET.skellpreset INPUT NEW_OUTPUT.wav [TAIL_SECONDS] [BPM]\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --lowend-override-smoke\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
