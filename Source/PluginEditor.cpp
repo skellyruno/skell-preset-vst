@@ -15,7 +15,12 @@
 #include "ui/SkellIdleDeck.h"
 #include "chain/AlchemistNativePreset.h"
 #include "chain/NativeSoundMatchTrials.h"
+// Select the bundled UI implementation before headers-only dependency snapshots.
+#if __has_include("../SkellCore/include/SkellCore/UI.h")
+#include "../SkellCore/include/SkellCore/UI.h"
+#else
 #include <SkellCore/UI.h>
+#endif
 #include "ui/SkellMoonButton.h"
 #include "ui/SkellRoutingPage.h"
 #include <array>
