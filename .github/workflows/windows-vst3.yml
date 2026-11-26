@@ -79,6 +79,57 @@ jobs:
           compression-level: 0
           retention-days: 7
 
+  quick4-linux-local-runner:
+    needs: quick4-source-cache
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+    runs-on: ubuntu-latest
+    container: debian:13
+    timeout-minutes: 45
+    steps:
+      - name: Prepare Debian 13 native build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates build-essential cmake ninja-build pkg-config python3 git libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libgl1-mesa-dev libxrender-dev libxcomposite-dev libxfixes-dev libxkbcommon-dev
+      - uses: actions/download-artifact@v4
+        with:
+          name: Quick4-offline-source-cache
+          path: cache
+      - name: Build exact native renderer for local execution only
+        shell: bash
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
+        run: |
+          set -euo pipefail
+          root="$PWD/offline"
+          mkdir -p "$root"
+          tar -xzf cache/quick4-source-cache.tar.gz -C "$root"
+          cmake -S "$root/plugin" -B "$root/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSKELL_PRESET_BUILD_UI_RENDERER=ON \
+            -DSKELL_PRESET_TEST_SHARED_SKELLAY=ON \
+            -DJUCE_PATH="$root/juce" -DSKELLCORE_PATH="$root/core/SkellCore" \
+            -DFETCHCONTENT_SOURCE_DIR_SKELLGUIDEDTOURHEADERS="$root/guided" \
+            -DFETCHCONTENT_SOURCE_DIR_SKELLWORLDPRESENCEHEADERS="$root/presence" \
+            -DFETCHCONTENT_SOURCE_DIR_SKELLADLIBFXHEADERS="$root/adlib" \
+            -DSKELLAY_SOURCE_DIR="$root/skellay" -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+          cmake --build "$root/build" --target SkellPresetUIRenderer --parallel 2
+          mkdir -p Quick4-Linux
+          exe="$(find "$root/build" -type f -name SkellPresetUIRenderer -print -quit)"
+          test -n "$exe" && test -x "$exe"
+          cp "$exe" Quick4-Linux/
+          cp "$root/PLUGIN_COMMIT" "$root/DEPENDENCIES" Quick4-Linux/
+          ldd "$exe" > Quick4-Linux/LINKED_LIBRARIES.txt
+          ! grep -q 'not found' Quick4-Linux/LINKED_LIBRARIES.txt
+          printf '%s\n' 'Capture locally: xvfb-run -a ./SkellPresetUIRenderer --output captures' > Quick4-Linux/README.txt
+          tar -czf quick4-linux-local-runner.tar.gz -C Quick4-Linux .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Skell-Preset-Quick4-Linux-local-runner
+          path: quick4-linux-local-runner.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
   windows-vst3:
     runs-on: windows-latest
     needs: portable-tests
