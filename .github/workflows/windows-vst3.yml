@@ -39,6 +39,46 @@ jobs:
       - name: Test offline reference WAV diagnostics
         run: python3 -m unittest discover -s tests -p test_reference_wav_inspect.py -v
 
+  quick4-source-cache:
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Collect pinned source dependencies (no builds or screenshots)
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/quick4-source-cache"
+          mkdir -p "$root"
+          git archive HEAD | tar -x -C "$(mkdir -p "$root/plugin"; echo "$root/plugin")"
+          git rev-parse HEAD > "$root/PLUGIN_COMMIT"
+          fetch() {
+            local url="$1" ref="$2" name="$3"
+            git init -q "$root/$name"
+            git -C "$root/$name" fetch --depth 1 "$url" "$ref"
+            git -C "$root/$name" checkout -q --detach FETCH_HEAD
+            printf '%s %s %s\n' "$name" "$ref" "$(git -C "$root/$name" rev-parse HEAD)" >> "$root/DEPENDENCIES"
+            rm -rf "$root/$name/.git"
+          }
+          fetch https://github.com/juce-framework/JUCE.git refs/tags/8.0.12 juce
+          fetch https://github.com/skellyruno/skell-vst-template.git 1f759e4f6ab08d950aaccfc2dfc0415825461ff1 core
+          fetch https://github.com/skellyruno/skellcore-vst-template.git 6a2077b3275819dcc1166f8c5a4a04a5f3558caf guided
+          fetch https://github.com/skellyruno/skellcore-vst-template.git c4ae09c896fa84279d3cc42f19925f97a7e5c124 presence
+          fetch https://github.com/skellyruno/skellcore-vst-template.git cf2d182a1c4b1b45f97253f5e1b17dd91343aeaa adlib
+          fetch https://github.com/skellyruno/skellay.git 8a0904b99dba671195f139907e09ac86a09ad5f4 skellay
+          test -f "$root/juce/CMakeLists.txt"
+          test -f "$root/plugin/tests/ui_renderer.cpp"
+          tar -czf "$RUNNER_TEMP/quick4-source-cache.tar.gz" -C "$root" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Quick4-offline-source-cache
+          path: ${{ runner.temp }}/quick4-source-cache.tar.gz
+          compression-level: 0
+          retention-days: 7
+
   windows-vst3:
     runs-on: windows-latest
     needs: portable-tests
@@ -148,6 +188,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native factory recall/audio/PDC/state regression failed: $LASTEXITCODE" }
           & $renderer.FullName --lowend-override-smoke
           if ($LASTEXITCODE -ne 0) { throw "Factory 54 low-end override regression failed: $LASTEXITCODE" }
+      - name: Package native Quick4 executable for local capture only
+        shell: pwsh
+        run: |
+          $renderer = Get-ChildItem build -Recurse -File -Filter 'SkellPresetUIRenderer.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Native Quick4 executable missing' }
+          New-Item -ItemType Directory -Force -Path Quick4-Windows | Out-Null
+          Copy-Item -LiteralPath $renderer.FullName -Destination Quick4-Windows -Force
+          git rev-parse HEAD | Set-Content Quick4-Windows/COMMIT.txt
+          @('Run locally: .\SkellPresetUIRenderer.exe --output captures','For deep audit add --full. No screenshots are generated in CI.') | Set-Content Quick4-Windows/README.txt
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Skell-Preset-Quick4-Windows
+          path: Quick4-Windows/**
+          if-no-files-found: error
+
       - name: Package compiled Alchemist diagnostic renderer
         shell: pwsh
         run: |
