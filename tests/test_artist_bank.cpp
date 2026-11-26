@@ -28,6 +28,23 @@ int main(int argc,char** argv){
         auto dest=lib.getChildFile("Presets/qa--example_main [Trial].skellpreset");require(digest(dest)==digest(a),"exact bytes");
         require(artistbank::sync(lib,one).current==1,"idempotent install");
         require(artistbank::sync(lib,{}).metadata.size()==1,"artist metadata retained without embedded payload");
+        // A same-generation relabel must not diverge from persisted metadata.
+        const auto relabel=one.replace("QA Artist","Renamed Artist");
+        auto conflict=artistbank::sync(lib,relabel);
+        require(conflict.conflicts==1 && conflict.metadata.size()==1 && conflict.metadata.begin()->second.artist=="QA Artist","same-generation metadata conflict");
+        const auto reopened=artistbank::sync(lib,{});
+        require(reopened.metadata.size()==1 && reopened.metadata.begin()->second.artist=="QA Artist","metadata stays stable on reopen");
+        auto metadataLib=root.getChildFile("metadata-only");
+        require(artistbank::sync(metadataLib,one).installed==1,"metadata fixture");
+        auto relabelNext=bank(a,2).replace("QA Artist","Renamed Artist");
+        auto changed=artistbank::sync(metadataLib,relabelNext);
+        require(changed.error.isEmpty() && changed.current==1 && changed.conflicts==0 && changed.metadata.size()==1 && changed.metadata.begin()->second.artist=="Renamed Artist","new-generation metadata update");
+        const auto persisted=artistbank::sync(metadataLib,{});
+        require(persisted.metadata.size()==1 && persisted.metadata.begin()->second.artist=="Renamed Artist","metadata update persists");
+        auto missing=metadataLib.getChildFile("Presets/qa--example_main [Trial].skellpreset");
+        require(missing.deleteFile(),"missing managed fixture");
+        require(artistbank::sync(metadataLib,bank(a,2)).conflicts==1 && !missing.exists(),"same-generation relabel cannot restore missing file");
+        require(artistbank::sync(metadataLib,relabelNext).installed==1 && digest(missing)==digest(a),"correct generation restores missing file");
         auto update=artistbank::sync(lib,two);require(update.updated==1&&digest(dest)==digest(b),"revision update");
         require(digest(lib.getChildFile("SoundMatchHistory/example_main--trial/"+digest(a)+".skellpreset"))==digest(a),"immutable backup");
         require(artistbank::sync(lib,one).conflicts==1&&digest(dest)==digest(b),"older binary cannot roll back");

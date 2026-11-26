@@ -65,6 +65,8 @@ SyncResult sync(const juce::File& root,const juce::String& json) {
     auto fail=[&](const juce::String& error){out.error=error;return out;};
     if(json.isEmpty()){
         // Public/non-bundled builds can still browse previously seeded entries.
+        const auto folder=root.getChildFile("Presets");
+        if(root.isSymbolicLink() || folder.isSymbolicLink())return fail("Unsafe artist library path");
         const auto f=root.getChildFile("SoundMatchInstalled.json");
         if(f.existsAsFile() && !f.isSymbolicLink() && f.getSize()>0 && f.getSize()<=maxManifest){
             const auto m=juce::JSON::parse(f.loadFileAsString());
@@ -131,6 +133,13 @@ SyncResult sync(const juce::File& root,const juce::String& json) {
         const auto actual=exists?digest(existing):juce::String{};
         if(owned && exists && out.metadata.find(key)==out.metadata.end())out.metadata.emplace(key,e.meta); // local edits retain artist identity
         if(owned && (oldGeneration>generation || (oldGeneration==generation && oldHash!=e.hash))){++out.conflicts;continue;} // older binary must never roll back a newer bank
+        const auto oldMeta=readMeta(old);
+        // A generation identifies the whole catalog revision, not only its audio bytes.
+        // Reject conflicting labels even if the managed file needs to be restored.
+        if(owned && oldGeneration==generation && oldMeta.artist.isNotEmpty() &&
+           (oldMeta.artist!=e.meta.artist || oldMeta.title!=e.meta.title || oldMeta.type!=e.meta.type || oldMeta.pair!=e.meta.pair)){
+            ++out.conflicts;continue;
+        }
         if(exists && actual!=e.hash){
             if(!owned || actual!=oldHash || oldGeneration==generation || (oldGeneration<=0 && !e.history.contains(actual))){++out.conflicts;continue;}
             const auto history=root.getChildFile("SoundMatchHistory"),channel=history.getChildFile(e.channel);
@@ -141,7 +150,7 @@ SyncResult sync(const juce::File& root,const juce::String& json) {
             juce::MemoryBlock check;
             if(!readBytes(dest,check) || digest(check)!=actual){++out.conflicts;continue;}
         }
-        if(owned && exists && actual==e.hash && oldGeneration==generation && !readMeta(old).artist.isEmpty()){++out.current;out.metadata[key]=e.meta;continue;}
+        if(owned && exists && actual==e.hash && oldGeneration==generation && !oldMeta.artist.isEmpty()){++out.current;out.metadata[key]=oldMeta;continue;}
         if(actual!=e.hash && !atomicWrite(dest,e.bytes)){++out.conflicts;continue;}
         auto item=object();item.getDynamicObject()->setProperty("file",e.file);item.getDynamicObject()->setProperty("sha256",e.hash);item.getDynamicObject()->setProperty("generation",generation);
         item.getDynamicObject()->setProperty("artist",e.meta.artist);item.getDynamicObject()->setProperty("title",e.meta.title);item.getDynamicObject()->setProperty("type",e.meta.type);item.getDynamicObject()->setProperty("pair",e.meta.pair);
