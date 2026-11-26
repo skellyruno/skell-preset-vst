@@ -241,3 +241,13 @@ add_test(NAME SkellPresetVocalPreviewAnalysisTest COMMAND SkellPresetVocalPrevie
 add_executable(SkellPresetTubePreampCandidateTest test_tube_preamp_candidate.cpp)
 target_compile_features(SkellPresetTubePreampCandidateTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetTubePreampCandidateTest COMMAND SkellPresetTubePreampCandidateTest)
+
+# Recovered from closed preview branch; isolated offline utilities, no plugin state changes.
+add_executable(SkellPresetFLRawStateTest test_fl_raw_state.cpp)
+target_compile_features(SkellPresetFLRawStateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetFLRawStateTest COMMAND SkellPresetFLRawStateTest)
+add_executable(SkellPresetDynamicsPeakHistoryTest test_dynamics_peak_history.cpp)
+target_compile_features(SkellPresetDynamicsPeakHistoryTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetDynamicsPeakHistoryTest COMMAND SkellPresetDynamicsPeakHistoryTest)
+add_executable(SkellPresetStateInspect ../tools/state_inspect.cpp)
+target_compile_features(SkellPresetStateInspect PRIVATE cxx_std_17)
