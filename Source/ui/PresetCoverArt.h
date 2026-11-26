@@ -15,8 +15,8 @@ inline void paintCover(juce::Graphics& g,juce::Rectangle<float> r,int seed,
     // Use a consistent 65x46 design motif, scaled to fit and centred.
     // A large thumbnail and a compact list therefore show the same identity.
     const float scale=juce::jmax(.01f,juce::jmin(r.getWidth()/65.f,r.getHeight()/46.f));
-    const float x=r.getCentreX()-32.5f*scale,y=r.getCentreY()-23.f*scale;
-    g.addTransform(juce::AffineTransform::scale(scale).translated(x,y));
+    const float originX=r.getCentreX()-32.5f*scale,originY=r.getCentreY()-23.f*scale;
+    g.addTransform(juce::AffineTransform::scale(scale).translated(originX,originY));
     r={0.f,0.f,65.f,46.f};
     const int variation=(seed<0?-seed:seed)%4;
     const float cx=r.getCentreX(),cy=r.getCentreY();

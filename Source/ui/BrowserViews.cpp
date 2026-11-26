@@ -111,6 +111,25 @@ bool PresetBrowser::testViewSwitchForTest() {
         resultAt({row.getX(),row.getBottom()+2})==-1 &&
         bank==oldBank && artistTierFilter.getSelectedId()==tier && artistFilter.getSelectedId()==artist &&
         genreFilter.getSelectedId()==genre && typeFilter.getSelectedId()==type && search.getText()==query;
+    // Render the same factory motif in two sizes on the real graphics path.
+    // Artwork must have spatial variation and different seeds must remain
+    // distinguishable; a blank or identical placeholder fails this check.
+    auto sampleCover=[](int seed,int w,int h){
+        juce::Image img(juce::Image::ARGB,w,h,true);
+        juce::Graphics g(img);
+        skellpreset::art::paintCover(g,img.getBounds().toFloat(),seed,Theme::green);
+        return img;
+    };
+    const auto first=sampleCover(1,65,46),second=sampleCover(2,65,46);
+    const auto large=sampleCover(1,260,104);
+    int distinct=0,nonUniform=0;
+    const auto corner=first.getPixelAt(4,4);
+    for(int y=4;y<42;++y)for(int x=4;x<61;++x){
+        if(first.getPixelAt(x,y)!=second.getPixelAt(x,y))++distinct;
+        if(first.getPixelAt(x,y)!=corner)++nonUniform;
+    }
+    ok=ok && distinct>100 && nonUniform>100 &&
+        large.getPixelAt(130,52).getAlpha()>0;
     setListView(savedMode,false);keyboardCard=oldFocus;scroll=oldScroll;resized();
     preferencesReadOnly=savedReadOnly;
     return ok;
