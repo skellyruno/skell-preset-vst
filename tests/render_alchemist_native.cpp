@@ -2737,6 +2737,37 @@ int stereoSeparationSmoke() {
             if (side != 0.) fail("mono input gained a side signal");
         }
 
+        // Independent expected transfer for the actual processor. A static
+        // hard-panned probe separates width law, gain, and routing errors.
+        // No private audio is required for this deterministic regression.
+        for (int raw : {-96,-72,-48,-24,0,24,48,72,96}) {
+            setP(plugin,"stereoSeparation",static_cast<float>(raw));
+            const int settleBlocks=static_cast<int>(std::ceil(rate*.020/blockSize))+1;
+            for(int block=0;block<settleBlocks;++block) {
+                juce::AudioBuffer<float> drain(2,blockSize);
+                fill(drain,block,blockSize,false);
+                juce::MidiBuffer midi;
+                plugin.processBlock(drain,midi);
+            }
+            juce::AudioBuffer<float> probe(2,blockSize);
+            fill(probe,7,blockSize,false);
+            const float width=1.f-static_cast<float>(raw)/96.f;
+            juce::AudioBuffer<float> original;
+            original.makeCopyOf(probe);
+            juce::MidiBuffer midi;
+            plugin.processBlock(probe,midi);
+            double error=0.;
+            for(int n=0;n<blockSize;++n) {
+                const float mid=.5f*(original.getSample(0,n)+original.getSample(1,n));
+                const float side=.5f*(original.getSample(0,n)-original.getSample(1,n))*width;
+                error=std::max(error,static_cast<double>(std::abs(probe.getSample(0,n)-(mid+side))));
+                error=std::max(error,static_cast<double>(std::abs(probe.getSample(1,n)-(mid-side))));
+                if(raw==96 && probe.getSample(0,n)!=probe.getSample(1,n))
+                    fail("maximum mono retained a side signal");
+            }
+            if(error>2.e-5)fail("actual processor separation transfer or center gain differs");
+        }
+
         // Peak safety and finiteness.
         for (int raw : {-96, -60, 0, 60, 96}) {
             setP(plugin, "stereoSeparation", (float)raw);

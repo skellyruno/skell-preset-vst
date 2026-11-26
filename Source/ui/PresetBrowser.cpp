@@ -207,7 +207,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     clearSearchButton.onClick=[this] {
         search.clear();
         search.grabKeyboardFocus();
-        scroll=0;hoveredCard=-1;keyboardCard=-1;repaint();
+        resetResults();
     };
     genreButton.setButtonText("TAG +");
     genreButton.setTooltip("Add this genre to the selected preset. Multiple tags are allowed. Choose Uncategorized to clear all genre assignments.");

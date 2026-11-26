@@ -228,6 +228,29 @@ constexpr int rowStart=47, rowStep=51, rowHeight=45;
 constexpr int addTop=472, addHeight=33;
 constexpr int dockTop=510;
 }
+bool ChainPanel::hasSidechainTargets() const {
+    for(int row=0;row<processor.activeSlotCount();++row)
+        if(sidechainParameter(processor.slotIdAt(row)))return true;
+    return false;
+}
+bool ChainPanel::canChooseRoutingEffect() const {
+    for(int row=0;row<processor.activeSlotCount();++row)
+        if(processor.slotType(processor.slotIdAt(row))==SkellPresetAudioProcessor::Empty)return true;
+    return processor.activeSlotCount()<SkellPresetAudioProcessor::slotCount;
+}
+void ChainPanel::chooseRoutingEffect() {
+    if(!onReplaceRequest)return;
+    for(int row=0;row<processor.activeSlotCount();++row) {
+        const int id=processor.slotIdAt(row);
+        if(processor.slotType(id)==SkellPresetAudioProcessor::Empty) {
+            setSelectedSlot(id);
+            if(onSelection)onSelection(id);
+            onReplaceRequest(id);
+            return;
+        }
+    }
+    if(canChooseRoutingEffect())addModule();
+}
 void ChainPanel::openSidechainTargets() {
     Theme::selectFor(processor.state);
     // Keep the menu palette alive for its asynchronous lifetime.
@@ -249,7 +272,7 @@ void ChainPanel::openSidechainTargets() {
         const char* labels[]{"POST MIC","PRE MIC","SLOT INPUT"};
         menu.addItem(id+1,juce::String(row+1).paddedLeft('0',2)+"  "+processor.moduleName(processor.slotType(id))+" / "+labels[sourceId],true,sidechainLinked(id));
     }
-    if(!any)menu.addItem(100,"Add a delay, reverb or doubler",false,false);
+    if(!any)menu.addItem(100,"Choose delay / reverb / doubler",canChooseRoutingEffect(),false);
     else {
         menu.addSeparator();
         menu.addItem(101,"Edit selected target",sidechainParameter(selected)!=nullptr,false);
@@ -261,6 +284,7 @@ void ChainPanel::openSidechainTargets() {
         [safe,menuSkin](int id){
         (void)menuSkin;
         if(!safe)return;
+        if(id==100){safe->chooseRoutingEffect();return;}
         if(id==101){if(safe->sidechainParameter(safe->selected) && safe->onSidechainEdit)safe->onSidechainEdit(safe->selected);return;}
         if(id<1 || id>SkellPresetAudioProcessor::slotCount)return;
         const int target=id-1;
@@ -508,12 +532,13 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.setColour((sidechainLinkMode?Theme::green:Theme::stroke).withAlpha(.7f));
     g.drawRoundedRectangle(dock,5.f,.85f);
     Theme::text(g,"VOCAL ROUTING",{18,dockTop+3,116,17},10.5f,Theme::white,true);
+    const bool hasTargets=hasSidechainTargets();
     const auto linkButton=juce::Rectangle<float>(137.f,(float)dockTop+3.f,62.f,19.f);
     g.setColour(Theme::green.withAlpha(sidechainLinkMode?.28f:.08f));
     g.fillRoundedRectangle(linkButton,4.f);
-    Theme::text(g,sidechainLinkMode?"DONE":"PATCH",{137,dockTop+3,62,19},
+    Theme::text(g,sidechainLinkMode?"DONE":hasTargets?"PATCH":"ADD FX",{137,dockTop+3,62,19},
         10.f,Theme::green,true,juce::Justification::centred);
-    Theme::fittedText(g,sidechainLinkMode?juce::String("CLICK TARGET ROW"):"TARGETS: "+juce::String(links)+"  >",{18,dockTop+23,119,18},
+    Theme::fittedText(g,sidechainLinkMode?juce::String("CLICK TARGET ROW"):hasTargets?"TARGETS: "+juce::String(links)+"  >":juce::String("NO TARGETS"),{18,dockTop+23,119,18},
         10.f,links?Theme::green:Theme::muted,true);
     const bool canEdit=sidechainParameter(selected)!=nullptr;
     Theme::text(g,"EDIT",{143,dockTop+23,53,18},10.f,
@@ -552,6 +577,7 @@ void ChainPanel::refreshIfChanged() {
     const int currentSlots=processor.activeSlotCount();
     bool changed=!visualSnapshotValid || currentSlots!=lastSlotCount;
     lastSlotCount=currentSlots;
+    if(sidechainLinkMode && !hasSidechainTargets()){sidechainLinkMode=false;changed=true;}
     clampScroll();
     if(contextOpen && contextPosition()<0){
         contextOpen=false;contextHover=-1;changed=true;
@@ -678,6 +704,11 @@ void ChainPanel::mouseDown(const juce::MouseEvent& e) {
             cancelPointerGestures();sidechainLinkMode=false;openSidechainTargets();
         } else if(e.x>=137 && e.y<dockTop+23) {
             cancelPointerGestures();
+            if(!hasSidechainTargets()) {
+                sidechainLinkMode=false;
+                openSidechainTargets();
+                return;
+            }
             sidechainLinkMode=!sidechainLinkMode;
             grabKeyboardFocus();
             repaint();

@@ -47,7 +47,7 @@ public:
         a = targetA;
         b = targetB;
         remaining = 0;
-        stepA = 0.f;
+        startA = a;
     }
     void setRaw(int raw) noexcept {
         const float na = matrixA(raw);
@@ -58,14 +58,16 @@ public:
         targetA = na;
         targetB = nb;
         remaining = rampSamples;
-        stepA = (targetA - a) / static_cast<float>(remaining);
+        startA = a;
     }
     void process(float* left, float* right, int samples) noexcept {
         if (left == nullptr || right == nullptr || samples <= 0) return;
+        if (neutral() && remaining == 0) return;
         for (int i = 0; i < samples; ++i) {
             if (remaining != 0) {
                 if (--remaining != 0) {
-                    a += stepA;
+                    const float t = 1.f - static_cast<float>(remaining) / static_cast<float>(rampSamples);
+                    a = startA + (targetA - startA) * t;
                     b = 1.f - a;
                 } else {
                     a = targetA;
@@ -97,7 +99,7 @@ private:
     }
     float a = 1.f, b = 0.f;
     float targetA = 1.f, targetB = 0.f;
-    float stepA = 0.f;
+    float startA = 1.f;
     int rampSamples = 441, remaining = 0;
 };
 } // namespace skellpreset::dsp

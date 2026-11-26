@@ -820,6 +820,22 @@ public:
         output.setValue(oldMasters[2],juce::sendNotificationSync);
         if(!simpleShown || !automated || !hiddenInAdvanced || !recalled || !hostReadouts)
             issues.add("Simple Input/Mix/Output visibility or automation recall regressed");
+        const double oldStereo=stereoSeparation.getValue();
+        stereoSeparation.setValue(-48.,juce::sendNotificationSync);
+        const bool stereoSimple=stereoSeparation.isVisible() && micButton.isVisible() &&
+            masterValues[3].getText()=="50%  WIDE" &&
+            std::abs(processor.state.getRawParameterValue("stereoSeparation")->load()+48.f)<.01f;
+        toggleView();
+        const bool stereoAdvanced=stereoSeparation.isVisible() && !micButton.isVisible() &&
+            chain.getBounds().contains(stereoSeparation.getBounds()) &&
+            std::abs(stereoSeparation.getValue()+48.)<.01;
+        stereoSeparation.setValue(96.,juce::sendNotificationSync);
+        toggleView();
+        const bool stereoRecall=masterValues[3].getText()=="100%  MONO" &&
+            std::abs(stereoSeparation.getValue()-96.)<.01;
+        stereoSeparation.setValue(oldStereo,juce::sendNotificationSync);
+        if(!stereoSimple || !stereoAdvanced || !stereoRecall)
+            issues.add("Stereo MIC grouping or automation across workspaces regressed");
         for(int i=0;i<4;++i) {
             if(!macro[(size_t)i].isVisible()
                || macro[(size_t)i].getSliderStyle()!=
@@ -1463,7 +1479,7 @@ public:
         output.setBounds(602,570,74,74);
         micButton.setVisible(display==0);
         stereoSeparation.setBounds(display==0?juce::Rectangle<int>(901,575,64,64):
-            juce::Rectangle<int>(chain.getX()+115,chain.getY()+1,42,40));
+            juce::Rectangle<int>(chain.getX()+113,chain.getY()+1,44,44));
         for(auto* control:{&input,&mix,&output})control->setVisible(display==0);
         stereoSeparation.setVisible(true);
         stereoSeparation.setEnabled(raw!=3);
@@ -1660,7 +1676,8 @@ public:
             browser.isVisible() || settingsPanel.isVisible();
         const auto micTrigger=juce::Rectangle<int>(chain.getX()+158,chain.getY()+5,42,38);
         if(micPanel.isVisible() && !micPanel.getBounds().contains(point)
-           && !micTrigger.contains(point))
+           && !(chain.isVisible() && micTrigger.contains(point))
+           && !(micButton.isVisible() && micButton.getBounds().contains(point)))
             micPanel.setVisible(false);
         if(browser.isVisible() && !browser.getBounds().contains(point) && !preset.getBounds().contains(point)) {
             browser.setVisible(false);preset.repaint();

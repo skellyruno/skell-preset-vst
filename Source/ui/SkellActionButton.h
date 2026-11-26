@@ -38,7 +38,7 @@ public:
         const auto buttonCaption=getButtonText();
         if(buttonCaption=="MIC") {
             const float x=bounds.getCentreX(),y=bounds.getCentreY();
-            g.setColour(enabled?Theme::green:Theme::muted);
+            g.setColour(enabled?(active||over?Theme::green:Theme::white):Theme::muted);
             g.drawRoundedRectangle(x-3.f,y-9.f,6.f,12.f,3.f,1.5f);
             juce::Path cradle;
             cradle.startNewSubPath(x-6.f,y-2.f);
@@ -46,6 +46,7 @@ public:
             g.strokePath(cradle,juce::PathStrokeType(1.4f));
             g.drawLine(x,y+5.f,x,y+10.f,1.4f);
             g.drawLine(x-4.f,y+10.f,x+4.f,y+10.f,1.4f);
+            if(hasKeyboardFocus(true)) {g.setColour(accent);g.drawRoundedRectangle(bounds.reduced(2.5f),4.f,1.1f);}
             return;
         }
         const bool historySymbol=buttonCaption.length()==1 &&

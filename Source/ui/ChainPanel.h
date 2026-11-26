@@ -124,6 +124,9 @@ private:
     bool selectAndReplace(int row);
     bool sidechainLinkMode=false;
     void openSidechainTargets();
+    bool hasSidechainTargets() const;
+    bool canChooseRoutingEffect() const;
+    void chooseRoutingEffect();
     juce::RangedAudioParameter* sidechainParameter(int physicalSlot) const;
     bool sidechainLinked(int physicalSlot) const;
     bool toggleSidechainLink(int physicalSlot);

@@ -304,6 +304,32 @@ int main() {
         }
     }
 
+    // A restored control must take effect on the first frame, including
+    // the hard-panned impulse. Retargeting midway must never shift the mid.
+    for (double rate : rates) {
+        MixerStereoSeparation sep;
+        sep.prepare(rate);
+        sep.setRaw(-96);
+        sep.reset();
+        float l=.25f,r=0.f;
+        sep.process(&l,&r,1);
+        assert(l==.375f && r==-.125f);
+        for(int raw : {96,-37,0,51,-96,96,0}) {
+            sep.setRaw(raw);
+            const int partial=std::max(1,sep.rampLength()/3);
+            for(int n=0;n<partial;++n) {
+                l=.375f;r=-.125f;
+                sep.process(&l,&r,1);
+                assert(std::abs((l+r)-.25f)<2.e-7f);
+            }
+        }
+        sep.setRaw(96);sep.reset();
+        l=.25f;r=0.f;sep.process(&l,&r,1);
+        assert(l==.125f && r==.125f);
+        sep.setRaw(0);sep.reset();
+        l=.25f;r=0.f;sep.process(&l,&r,1);
+        assert(l==.25f && r==0.f);
+    }
     std::printf("stereo separation: all checks passed\n");
     return 0;
 }
