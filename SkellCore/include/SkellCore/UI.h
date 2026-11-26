@@ -88,16 +88,20 @@ public:
         g.strokePath(active,juce::PathStrokeType(3.25f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         const auto knob=juce::Rectangle<float>(cx-bodyRadius,cy-bodyRadius,2.f*bodyRadius,2.f*bodyRadius);
         g.setColour(colours_.background.withAlpha(.65f));g.fillEllipse(knob.expanded(1.f));
-        g.setGradientFill(juce::ColourGradient(colours_.surface.brighter(.50f),
-                         cx-bodyRadius*.48f,cy-bodyRadius*.75f,
-                         colours_.background.darker(.24f),cx+bodyRadius,cy+bodyRadius,true));
+        g.setGradientFill(juce::ColourGradient(colours_.surface.interpolatedWith(colours_.foreground,.23f),
+                         cx-bodyRadius*.38f,cy-bodyRadius*.62f,
+                         colours_.background.darker(.15f),cx+bodyRadius,cy+bodyRadius,true));
         g.fillEllipse(knob);
         g.setColour(colours_.secondary.withAlpha(.35f));g.drawEllipse(knob,1.f);
-        g.setColour(colours_.foreground.withAlpha(.12f));
-        g.drawEllipse(knob.reduced(3.f),.85f);
+        g.setColour(colours_.foreground.withAlpha(.23f));
+        g.drawEllipse(knob.reduced(2.2f),.9f);
+        juce::Path bevel;
+        bevel.addCentredArc(cx,cy,bodyRadius*.89f,bodyRadius*.89f,0.f,4.65f,6.05f,true);
+        g.setColour(colours_.foreground.withAlpha(.29f));
+        g.strokePath(bevel,juce::PathStrokeType(1.1f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         const float pointerRadius=bodyRadius*.57f;
         const auto px=cx+std::sin(angle)*pointerRadius,py=cy-std::cos(angle)*pointerRadius;
-        g.setColour(colours_.accent);
+        g.setColour(colours_.foreground.interpolatedWith(colours_.accent,.55f));
         g.drawLine(cx+std::sin(angle)*bodyRadius*.18f,cy-std::cos(angle)*bodyRadius*.18f,
                    px,py,juce::jmax(1.7f,bodyRadius*.15f));
         g.fillEllipse(px-1.5f,py-1.5f,3.f,3.f);

@@ -377,7 +377,7 @@ public:
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.72f+.20f*t);
-                    const auto rimColour=porcelain.withAlpha(.035f+.09f*t);
+                    const auto rimColour=porcelain.withAlpha(.045f+.15f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
@@ -404,14 +404,7 @@ public:
                         // Near rows retain the full articulated skeleton art.
                         if(ry<2.6f) {
                             g.setColour(bodyColour);
-                            juce::Path backSkull;
-                        backSkull.startNewSubPath(x,headY-ry);
-                        backSkull.cubicTo(x-rx*1.2f,headY-ry,x-rx*1.15f,headY+ry*.20f,x-rx*.66f,headY+ry*.62f);
-                        backSkull.quadraticTo(x,headY+ry*1.06f,x+rx*.66f,headY+ry*.62f);
-                        backSkull.cubicTo(x+rx*1.15f,headY+ry*.20f,x+rx*1.2f,headY-ry,x,headY-ry);
-                        backSkull.closeSubPath();
-                        g.setGradientFill(juce::ColourGradient(rimColour.withMultipliedAlpha(.62f),x-rx,headY-ry,bodyColour,x+rx,headY+ry,false));
-                        g.fillPath(backSkull);
+                            g.fillEllipse(x-rx,headY-ry,2.f*rx,2.f*ry);
                             g.fillRoundedRectangle(x-shoulderW,shoulderY,
                                 2.f*shoulderW,juce::jmax(1.f,base-shoulderY),rx);
                             g.setColour(rimColour);
@@ -474,20 +467,27 @@ public:
                         shouldersR.startNewSubPath(x+rx*.60f,shoulderY);
                         shouldersR.quadraticTo(x+shoulderW*.56f,shoulderY-ry*.44f,x+shoulderW*.94f,shoulderY+ry*.34f);
                         g.strokePath(shouldersR,juce::PathStrokeType(juce::jmax(.7f,hgt*.014f)));
-                        // Skull dome: dark fill, then a thin lit crescent.
-                        g.setColour(bodyColour);
-                        g.fillEllipse(x-rx,headY-ry,2.f*rx,2.f*ry);
+                        // Near skulls use shaped craniums; distant ones remain cheap silhouettes.
+                        juce::Path backSkull;
+                        backSkull.startNewSubPath(x,headY-ry);
+                        backSkull.cubicTo(x-rx*1.2f,headY-ry,x-rx*1.15f,headY+ry*.20f,x-rx*.66f,headY+ry*.62f);
+                        backSkull.quadraticTo(x,headY+ry*1.06f,x+rx*.66f,headY+ry*.62f);
+                        backSkull.cubicTo(x+rx*1.15f,headY+ry*.20f,x+rx*1.2f,headY-ry,x,headY-ry);
+                        backSkull.closeSubPath();
+                        g.setGradientFill(juce::ColourGradient(rimColour.withMultipliedAlpha(.62f),x-rx,headY-ry,bodyColour,x+rx,headY+ry,false));
+                        g.fillPath(backSkull);
                         juce::Path crescent;
                         crescent.addCentredArc(x,headY,rx,ry,0.f,
                             juce::MathConstants<float>::pi*1.06f,
                             juce::MathConstants<float>::pi*1.94f,true);
                         g.setColour(rimColour);
                         g.strokePath(crescent,juce::PathStrokeType(juce::jmax(.7f,hgt*.016f)));
-                        // Jaw hinge and open maw read as a notch, not a face.
+                        // Rear-facing skull: occipital shadow and cervical joint, not a face.
                         if(ry>2.6f) {
                             g.setColour(juce::Colour(0xff0b1012));
-                            g.fillEllipse(x-rx*.34f,headY+ry*.30f,rx*.68f,
-                                          ry*(.42f+.26f*std::abs(wave)));
+                            g.fillEllipse(x-rx*.45f,headY+ry*.38f,rx*.90f,ry*.37f);
+                            g.setColour(rimColour.withMultipliedAlpha(.58f));
+                            g.drawLine(x,headY+ry*.64f,x,shoulderY+ry*.35f,juce::jmax(.65f,rx*.21f));
                             if(ry>4.5f) {
                                 g.setColour(rimColour.withMultipliedAlpha(.55f));
                                 g.drawLine(x-rx*.92f,headY-ry*.10f,x-rx*.92f,headY+ry*.55f,

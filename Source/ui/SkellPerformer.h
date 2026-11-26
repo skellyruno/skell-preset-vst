@@ -149,9 +149,9 @@ public:
                 const float s=(float)side;
                 juce::Path wing;
                 wing.startNewSubPath(151.f+s*6.f,181.f);
-                wing.cubicTo(151.f+s*20.f,176.f,151.f+s*32.f,183.f,
-                             151.f+s*31.f,195.f);
-                wing.cubicTo(151.f+s*30.f,206.f,151.f+s*20.f,213.f,
+                wing.cubicTo(151.f+s*17.f,171.f,151.f+s*33.f,177.f,
+                             151.f+s*31.f,192.f);
+                wing.cubicTo(151.f+s*28.f,201.f,151.f+s*18.f,215.f,
                              151.f+s*9.f,212.f);
                 wing.cubicTo(151.f+s*7.f,202.f,151.f+s*6.f,191.f,
                              151.f+s*6.f,181.f);
@@ -160,6 +160,13 @@ public:
                     ivory.withAlpha(.80f),151.f+s*12.f,179.f,
                     stone.withAlpha(.54f),151.f+s*31.f,211.f,false));
                 g.fillPath(wing);
+                juce::Path iliacFossa;
+                iliacFossa.startNewSubPath(151.f+s*10.f,182.f);
+                iliacFossa.cubicTo(151.f+s*20.f,177.f,151.f+s*28.f,184.f,151.f+s*25.f,191.f);
+                iliacFossa.quadraticTo(151.f+s*17.f,199.f,151.f+s*10.f,182.f);
+                iliacFossa.closeSubPath();
+                g.setGradientFill(juce::ColourGradient(ink.withAlpha(.38f),151.f+s*12.f,181.f,stone.withAlpha(.04f),151.f+s*28.f,196.f,false));
+                g.fillPath(iliacFossa);
                 g.setColour(ink.withAlpha(.66f));
                 g.strokePath(wing,juce::PathStrokeType(.9f));
                 // Bright iliac crest along the top of each wing.
@@ -282,8 +289,8 @@ public:
                 g.setColour(ink.withAlpha(.86f));
                 g.strokePath(p,juce::PathStrokeType(4.3f,
                     juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-                g.setColour(ivory.withAlpha(.64f-.022f*r));
-                g.strokePath(p,juce::PathStrokeType(2.5f,
+                g.setGradientFill(juce::ColourGradient(ivory.withAlpha(.90f-.035f*r),151.f+s*9.f,ys,stone.withAlpha(.78f),151.f+s*reach,ys+drop,false));
+                g.strokePath(p,juce::PathStrokeType(3.1f,
                     juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
                 g.setColour(alive.withAlpha(.03f+.08f*react));
                 g.strokePath(p,juce::PathStrokeType(.7f,
