@@ -70,6 +70,7 @@ void sanitizeParameterStateValues(
 
 SkellPresetAudioProcessor::SkellPresetAudioProcessor()
 : AudioProcessor(BusesProperties().withInput("Input",juce::AudioChannelSet::stereo(),true)
+                                .withInput("External Sidechain",juce::AudioChannelSet::stereo(),false)
                                 .withOutput("Output",juce::AudioChannelSet::stereo(),true)),
   state(*this,nullptr,"PARAMETERS",createParameterLayout()) {
     std::uint64_t initialOrder=0;
@@ -100,6 +101,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.dubDuckOn=state.getRawParameterValue(prefix+"dubDuckOn");
         r.duckSource=state.getRawParameterValue(prefix+"duckSource");
         r.parallelReturn=state.getRawParameterValue(prefix+"parallelReturn");
+        r.duckExternal=state.getRawParameterValue(prefix+"duckExternal");
         r.duckDepth=state.getRawParameterValue(prefix+"duckDepth");
         r.duckThreshold=state.getRawParameterValue(prefix+"duckThreshold");
         r.duckRelease=state.getRawParameterValue(prefix+"duckRelease");
@@ -381,6 +383,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
     fl("micTubeDrive","Mic Preamp tube drive",0.f,1.f,0.f);
     fl("micTubeAir","Mic Preamp air dB",0.f,6.f,0.f);
     fl("micTubeTrim","Mic Preamp output dB",-12.f,12.f,0.f);
+    // Append, do not extend the existing three-choice parameter: its normalized automation must remain stable.
+    for(int slot=1;slot<=slotCount;++slot)
+        bl("s"+juce::String(slot)+"_duckExternal","Slot "+juce::String(slot)+" external sidechain key",false);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -516,6 +521,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     parallelPdc.prepare(pdcCapacity);
     preMicHistory.prepare(pdcCapacity,hostChunkCapacity);
     postMicHistory.prepare(pdcCapacity,hostChunkCapacity);
+    externalKeyHistory.prepare(pdcCapacity,hostChunkCapacity);
     updateHostLatency();
     for(auto* smooth:{&inputSmooth,&outputSmooth,&mixSmooth,&bypassSmooth})smooth->reset(rate,.020);
     inputSmooth.setCurrentAndTargetValue(dbToGain(rawGlobal.input->load()));
@@ -533,6 +539,10 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
 void SkellPresetAudioProcessor::releaseResources() { hosted.release(); }
 bool SkellPresetAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout) const {
     const auto in=layout.getMainInputChannelSet(),out=layout.getMainOutputChannelSet();
+    if(layout.inputBuses.size()>1) {
+        const auto aux=layout.getChannelSet(true,1);
+        if(!aux.isDisabled() && aux!=juce::AudioChannelSet::mono() && aux!=juce::AudioChannelSet::stereo())return false;
+    }
     return (in==juce::AudioChannelSet::mono() && (out==juce::AudioChannelSet::mono() || out==juce::AudioChannelSet::stereo()))
         || (in==juce::AudioChannelSet::stereo() && out==juce::AudioChannelSet::stereo());
 }
@@ -588,7 +598,7 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(chosen!=slotType(slot)) {
         setReal(id+"rightFirst",0.f);
         setReal(id+"dubDuckOn",0.f);
-        setReal(id+"duckSource",0.f);setReal(id+"parallelReturn",0.f);
+        setReal(id+"duckSource",0.f);setReal(id+"parallelReturn",0.f);setReal(id+"duckExternal",0.f);
     }
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
@@ -846,12 +856,17 @@ void SkellPresetAudioProcessor::handleAsyncUpdate() {
 
 void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&) {
     juce::ScopedNoDenormals noDenormals;
-    const int channels=juce::jmin(2,buffer.getNumChannels());
+    const int channels=juce::jmin(getMainBusNumOutputChannels(),buffer.getNumChannels());
     const int total=buffer.getNumSamples();
     if(channels<1 || total<=0)return;
     skellpreset::host::HostedVST3::AudioReadScope hostedBlock(hosted);
     const int visualSlot=slotVisual.beginBlock();
-    const bool monoSource=getTotalNumInputChannels()==1;
+    const bool monoSource=getMainBusNumInputChannels()==1;
+    const int auxChannels=getBusCount(true)>1?getChannelCountOfBus(true,1):0;
+    const int auxOffset=auxChannels>0?getChannelIndexInProcessBlockBuffer(true,1,0):0;
+    const bool auxValid=auxChannels>0 && auxOffset>=0 && auxOffset+auxChannels<=buffer.getNumChannels();
+    const float* keyL=auxValid?buffer.getReadPointer(auxOffset):nullptr;
+    const float* keyR=auxValid?buffer.getReadPointer(auxOffset+(auxChannels>1?1:0)):nullptr;
     // Query the host once per block, never inside the sample loop. The new
     // ducking delay uses a deterministic 120-BPM fallback when stopped/unknown.
     juce::Optional<juce::AudioPlayHead::PositionInfo> hostPosition;
@@ -910,6 +925,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         c.duckOn=(c.type==AdlibDoubler?raw.dubDuckOn:raw.duckOn)->load()>.5f;
         c.rightFirst=raw.rightFirst->load()>.5f;
         c.duckSource=juce::jlimit(0,2,(int)raw.duckSource->load());
+        c.duckExternal=raw.duckExternal->load()>.5f;
         c.parallelReturn=supportsParallelReturn(c.type) && raw.parallelReturn->load()>.5f;
         c.duckDepth=raw.duckDepth->load();
         c.duckThreshold=raw.duckThreshold->load();
@@ -1150,6 +1166,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             sidechainWork.setSample(1,n,frontR);
             preMicHistory.push(preL,preR);
             postMicHistory.push(frontL,frontR);
+            // Read before writing outputs: mono main + stereo output can alias auxiliary channel 0.
+            externalKeyHistory.push(keyL?keyL[offset+n]:0.f,keyR?keyR[offset+n]:0.f);
             dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
             bypassWork.setSample(0,n,original[0]);
             bypassWork.setSample(1,n,original[1]);
@@ -1231,7 +1249,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     // input is already aligned and must not be delayed again.
                     const int keyDelay=c.parallelReturn?0:precedingLatency[(size_t)s];
                     const auto& detector=c.duckSource==1?rawDetectorWork:c.duckSource==2?source:sidechainWork;
-                    const auto key=(keyDelay>0 && c.duckSource!=2)?
+                    const auto key=c.duckExternal?externalKeyHistory.at(frames,n,keyDelay):
+                        (keyDelay>0 && c.duckSource!=2)?
                         (c.duckSource==1?preMicHistory:postMicHistory).at(frames,n,keyDelay):
                         std::array<float,2>{detector.getSample(0,n),detector.getSample(1,n)};
                     duckGain=e.voiceDuck.processGain(key[0],key[1]);
@@ -1461,6 +1480,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     const double a=(c.type==StudioDelayFX?observedEcho[0]:wetL)*wet;
                     const double b=(c.type==StudioDelayFX?observedEcho[1]:wetR)*wet;
                     wetEnergyL+=a*a;wetEnergyR+=b*b;
+                    visualWetL[(size_t)n]=static_cast<float>(a);visualWetR[(size_t)n]=static_cast<float>(b);
                 }
                 const float processedL=c.parallelReturn?wetL*wet:l+(wetL-l)*wet;
                 const float processedR=c.parallelReturn?wetR*wet:r+(wetR-r)*wet;
@@ -1482,6 +1502,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     if(c.type==StudioDelayFX)times=e.studioDelay.tapBaseMs();
                     else if(c.type==Delay)times.fill((float)(1000.*e.delay.samples/rate));
                     slotVisual.setReturn((float)std::sqrt(wetEnergyL/frames),(float)std::sqrt(wetEnergyR/frames),times[0],times[1]);
+                    slotVisual.captureReturn(visualWetL.data(),visualWetR.data(),frames);
                 }
                 skellcore::telemetry::SideInfo dynamics;
                 if(c.type==Compressor)dynamics.grDbPerSample=visualDynamics.data();
@@ -1612,7 +1633,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
         setReal(slotPrefix(s)+"duckOn",0.f);
         setReal(slotPrefix(s)+"rightFirst",0.f);
         setReal(slotPrefix(s)+"dubDuckOn",0.f);
-        setReal(slotPrefix(s)+"duckSource",0.f);setReal(slotPrefix(s)+"parallelReturn",0.f);
+        setReal(slotPrefix(s)+"duckSource",0.f);setReal(slotPrefix(s)+"parallelReturn",0.f);setReal(slotPrefix(s)+"duckExternal",0.f);
         setReal(slotPrefix(s)+"duckDepth",.65f);
         setReal(slotPrefix(s)+"duckThreshold",-32.f);
         setReal(slotPrefix(s)+"duckRelease",320.f);
@@ -1913,6 +1934,7 @@ juce::Result SkellPresetAudioProcessor::makePresetDocument(
         dst.dubDuckOn=value(prefix+"dubDuckOn")>.5f;
         dst.duckSource=juce::jlimit(0,2,(int)value(prefix+"duckSource"));
         dst.parallelReturn=value(prefix+"parallelReturn")>.5f;
+        dst.duckExternal=value(prefix+"duckExternal")>.5f;
         dst.duckDepth=value(prefix+"duckDepth");
         dst.duckThreshold=value(prefix+"duckThreshold");
         dst.duckRelease=value(prefix+"duckRelease");
@@ -1963,6 +1985,7 @@ juce::Result SkellPresetAudioProcessor::applyValidatedPresetDocument(
         setReal(prefix+"dubDuckOn",slot.dubDuckOn?1.f:0.f);
         setReal(prefix+"duckSource",(float)slot.duckSource);
         setReal(prefix+"parallelReturn",slot.parallelReturn?1.f:0.f);
+        setReal(prefix+"duckExternal",slot.duckExternal?1.f:0.f);
         setReal(prefix+"duckDepth",slot.duckDepth);
         setReal(prefix+"duckThreshold",slot.duckThreshold);
         setReal(prefix+"duckRelease",slot.duckRelease);
@@ -2252,7 +2275,7 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
         }
         // Old states must not inherit a current opt-in send.
         for(int slot=1;slot<=slotCount;++slot)
-            for(const auto* suffix:{"rightFirst","dubDuckOn","duckSource","parallelReturn"}) {
+            for(const auto* suffix:{"rightFirst","dubDuckOn","duckSource","parallelReturn","duckExternal"}) {
                 const auto id="s"+juce::String(slot)+"_"+suffix;
                 bool present=false;
                 for(int i=0;i<loaded.getNumChildren();++i)
@@ -2314,7 +2337,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
         for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
                                 "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
                                 "fxExt8","fxExt9","fxExt10","fxExt11","eqLowCut","eqHighCut",
-                                "rightFirst","dubDuckOn","duckSource","parallelReturn"})add(prefix+suffix);
+                                "rightFirst","dubDuckOn","duckSource","parallelReturn","duckExternal"})add(prefix+suffix);
         for(int parameter=1;parameter<=16;++parameter)
             add(prefix+"p"+juce::String(parameter));
         for(int band=1;band<=8;++band) {

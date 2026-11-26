@@ -144,6 +144,7 @@ juce::var toJson(const Document& d) {
         item->setProperty("dubDuckOn",slot.dubDuckOn);
         item->setProperty("duckSource",slot.duckSource);
         item->setProperty("parallelReturn",slot.parallelReturn);
+        item->setProperty("duckExternal",slot.duckExternal);
         item->setProperty("duckDepth",slot.duckDepth);
         item->setProperty("duckThreshold",slot.duckThreshold);
         item->setProperty("duckRelease",slot.duckRelease);
@@ -337,6 +338,11 @@ juce::Result fromJson(const juce::var& root, Document& out) {
         }
         if(hasJsonProperty(item,"duckSource") && !decodeInteger(item.getProperty("duckSource",{}),0,2,slot.duckSource))
             return juce::Result::fail("Invalid duck source");
+        if(hasJsonProperty(item,"duckExternal")) {
+            const auto flag=item.getProperty("duckExternal",{});
+            if(!flag.isBool())return juce::Result::fail("Invalid external sidechain flag");
+            slot.duckExternal=(bool)flag;
+        }
         if(hasJsonProperty(item,"parallelReturn")) {
             const auto flag=item.getProperty("parallelReturn",{});
             if(!flag.isBool())return juce::Result::fail("Invalid parallel return flag");

@@ -244,7 +244,7 @@ private:
     int hostChunkCapacity=512;
     struct Controls {
         int type=0;bool on=false;float wet=1;float eqLowCut=0,eqHighCut=0;
-        bool duckOn=false,rightFirst=false,parallelReturn=false;
+        bool duckOn=false,rightFirst=false,parallelReturn=false,duckExternal=false;
         int duckSource=0;
         float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
               duckAttack=12.f;
@@ -272,7 +272,7 @@ private:
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
         std::atomic<float>* duckOn=nullptr,*duckDepth=nullptr;
-        std::atomic<float>* rightFirst=nullptr,*dubDuckOn=nullptr,*duckSource=nullptr,*parallelReturn=nullptr;
+        std::atomic<float>* rightFirst=nullptr,*dubDuckOn=nullptr,*duckSource=nullptr,*parallelReturn=nullptr,*duckExternal=nullptr;
         std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr,
                           *duckAttack=nullptr;
         std::atomic<float>* limitAttack=nullptr,*limitRelease=nullptr;
@@ -310,7 +310,7 @@ private:
     std::array<RawSlot,slotCount> rawSlots;
     std::array<skellpreset::visual::LiveAudioScope,slotCount> slotInputScope,slotOutputScope;
     skellpreset::visual::SlotVisualCapture slotVisual;
-    std::array<float,skellpreset::visual::SlotVisualCapture::maxBlock> visualDynamics{};
+    std::array<float,skellpreset::visual::SlotVisualCapture::maxBlock> visualDynamics{},visualWetL{},visualWetR{};
     std::atomic<Presentation> effectPresentation{Presentation::Clean};
     std::array<std::atomic<float>,slotCount> slotPeaks;
     std::array<std::atomic<float>,slotCount> slotGainReductionDb,slotDuckReductionDb;
@@ -328,7 +328,7 @@ private:
     juce::StringArray programIdentityListenerIds;
     juce::String name="Empty Rack";
     skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc,parallelPdc;
-    skellpreset::dsp::DetectorHistory preMicHistory,postMicHistory;
+    skellpreset::dsp::DetectorHistory preMicHistory,postMicHistory,externalKeyHistory;
     // Native Stereo Enhancer separation matrix on the final output stage.
     // Owned here (not per slot) so it applies after the whole vocal chain,
     // including stereo modulation, delay and reverb, exactly once.

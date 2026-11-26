@@ -66,7 +66,8 @@ public:
                 if(grValid)gr=b.grDbMax;
                 if(gateMean>=0.f)gr=std::max(0.f,-skellcore::telemetry::toDb(gateMean));
             }
-            mid=frame.mid;side=frame.side;
+            // Interpolate measured positions between captures, never generate synthetic particles.
+            for(size_t i=0;i<mid.size();++i){mid[i]+=.55f*(frame.mid[i]-mid[i]);side[i]+=.55f*(frame.side[i]-side[i]);}
             shift(inputHistory,level(inputRms));shift(outputHistory,level(outputRms));
             if(type==P::Compressor && sharedValid && grValid){
                 grHistory.fill(0.f);
@@ -82,7 +83,14 @@ public:
                     inBands[i]=follow(inBands[i],level(input[i]));
                     outBands[i]=follow(outBands[i],level(output[i]));
                 }
-                spectrumHistory[historyHead]=outBands;
+                const bool isolated=frame.returnSpectrumReady;
+                if(isolated!=isolatedHistory){historyHead=historyCount=0;isolatedHistory=isolated;}
+                auto& row=spectrumHistory[historyHead];
+                if(isolated){
+                    const auto l=analyzer.analyze(frame.returnLeft,p.preparedAudioRate());
+                    const auto r=analyzer.analyze(frame.returnRight,p.preparedAudioRate());
+                    for(size_t i=0;i<row.size();++i)row[i]=level(std::sqrt(.5f*(l[i]*l[i]+r[i]*r[i])));
+                }else row=outBands;
                 historyHead=(historyHead+1)%spectrumHistory.size();
                 historyCount=std::min(historyCount+1,spectrumHistory.size());
             }
@@ -143,7 +151,7 @@ public:
         Theme::panelBox(g,area,6.f,true);
         auto plot=area.reduced(10.f,7.f);
         auto title=plot.removeFromTop(15.f);
-        Theme::fittedText(g,"OUTPUT SPECTRUM HISTORY  /  80 Hz – 9 kHz",title.toNearestInt(),9.5f,Theme::muted,true);
+        Theme::fittedText(g,isolatedHistory?"ISOLATED WET DECAY  /  80 Hz – 9 kHz":"OUTPUT SPECTRUM HISTORY  /  80 Hz – 9 kHz",title.toNearestInt(),9.5f,Theme::muted,true);
         const auto legend=plot.removeFromBottom(12.f);
         Theme::fittedText(g,"LOW                                  HIGH   /   NEWEST AT FRONT",legend.toNearestInt(),8.f,Theme::muted);
         const float dx=plot.getWidth()/static_cast<float>(Analyzer::bands);
@@ -160,6 +168,16 @@ public:
             }
         }
         if(!fresh)Theme::fittedText(g,"WAITING FOR AUDIO",plot.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);
+    }
+    void paintHarmonicSpectrum(juce::Graphics& g,juce::Rectangle<float> area) const {
+        if(!fresh)return;
+        const float dx=area.getWidth()/static_cast<float>(inBands.size());
+        for(size_t i=0;i<inBands.size();++i){
+            const float before=inBands[i]*area.getHeight(),after=outBands[i]*area.getHeight();
+            const float x=area.getX()+dx*i;
+            g.setColour(Theme::muted.withAlpha(.42f));g.fillRect(x,area.getBottom()-before,dx*.40f,before);
+            g.setColour(Theme::green.withAlpha(.86f));g.fillRect(x+dx*.46f,area.getBottom()-after,dx*.40f,after);
+        }
     }
     void paintSignalOrb(juce::Graphics& g,juce::Point<float> centre,float radius) const {
         const auto tint=Theme::green;
@@ -448,7 +466,7 @@ private:
         pitchIn={};pitchOut={};pitchInHistory.fill(-1.f);pitchOutHistory.fill(-1.f);
         sharedValid=false;grValid=false;gateMean=-1.f;
         wetHistory.fill(0.f);wetAvailable=false;wetRms={};tapMs={};tail={};
-        historyHead=historyCount=0;for(auto& row:spectrumHistory)row.fill(0.f);
+        historyHead=historyCount=0;isolatedHistory=false;for(auto& row:spectrumHistory)row.fill(0.f);
         inputRms=outputRms=sideRms=gr=duck=0.f;lastSerial=0;lastFrame=0;fresh=false;ticks=0;
     }
     Analyzer analyzer;
@@ -463,6 +481,7 @@ private:
     std::array<float,Analyzer::bands> inBands{},outBands{};
     std::array<std::array<float,Analyzer::bands>,24> spectrumHistory{};
     size_t historyHead=0,historyCount=0;
+    bool isolatedHistory=false;
     std::array<float,historySize> inputHistory{},outputHistory{},grHistory{},duckHistory{};
     std::array<float,128> wave{},inputWave{},mid{},side{};
     std::array<float,historySize> leftHistory{},rightHistory{};

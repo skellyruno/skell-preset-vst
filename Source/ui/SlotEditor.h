@@ -258,7 +258,8 @@ private:
     juce::TextButton duckOpen{"SIDECHAIN"},duckClose{"X"};
     SkellWetDuckPanel duckPanel;
     juce::ComboBox duckSource;
-    juce::ToggleButton parallelReturn{"PARALLEL RETURN (POST MIC)"};
+    juce::ToggleButton parallelReturn{"PARALLEL RETURN (POST MIC)"},duckExternal{"EXTERNAL HOST KEY"};
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> duckExternalAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> duckSourceAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> parallelReturnAttachment;
     juce::TextButton liveView{"VISUAL"};

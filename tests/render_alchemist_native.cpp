@@ -1395,6 +1395,35 @@ int studioSmoke() {
         }
         std::printf("PASS: measured pre/post MIC detector difference %.2f dB\n",pre-post);
     }
+    {
+        auto p=std::make_unique<SkellPresetAudioProcessor>();
+        p->clearRackToEmpty();
+        auto layout=p->getBusesLayout();
+        layout.inputBuses.set(1,juce::AudioChannelSet::stereo());
+        if(!p->setBusesLayout(layout))return 181;
+        p->setSlotType(0,SkellPresetAudioProcessor::Delay);p->setSlotOn(0,true);
+        auto set=[&](const juce::String& id,float v){
+            if(auto* param=p->state.getParameter(id))param->setValueNotifyingHost(param->convertTo0to1(v));
+        };
+        set("s1_duckOn",1.f);set("s1_duckExternal",1.f);
+        set("s1_duckDepth",.9f);set("s1_duckThreshold",-40.f);set("s1_duckRelease",50.f);
+        p->prepareToPlay(48000.,256);
+        auto measure=[&](float key){
+            juce::AudioBuffer<float> audio(4,256);juce::MidiBuffer midi;
+            float peak=0.f;
+            for(int i=0;i<220;++i){
+                audio.clear();
+                for(int n=0;n<256;++n){audio.setSample(2,n,key);audio.setSample(3,n,-key);}
+                p->processBlock(audio,midi);
+                for(int n=0;n<256;++n)peak=std::max(peak,std::abs(audio.getSample(0,n))+std::abs(audio.getSample(1,n)));
+            }
+            return std::array<float,2>{p->getSlotDuckReductionDb(0),peak};
+        };
+        const auto silent=measure(0.f),active=measure(.5f),released=measure(0.f);
+        p->releaseResources();
+        if(silent[0]>1.f || active[0]<8.f || released[0]>1.f || active[1]>1.e-6f || p->getLatencySamples()!=0)return 182;
+        std::puts("PASS: external stereo key, silence release, no key leakage, zero added PDC");
+    }
     // Exercise the FRONT-END mic gate through the actual JUCE audio callback.
     // It must be opt-in, zero-PDC, stereo linked, recallable, and bypass clean.
     processor->setSlotOn(0,false);

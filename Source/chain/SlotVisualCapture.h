@@ -16,7 +16,8 @@ public:
     SlotVisualCapture() noexcept {prepare(48000.);}
     void prepare(double sr) noexcept {tap.prepare(sr);invalidate();}
     struct Frame {
-        Samples input{},output{};
+        Samples input{},output{},returnLeft{},returnRight{};
+        bool returnSpectrumReady=false;
         PitchHistory::Samples pitchInput{},pitchOutput{};
         float pitchRate=0.f;
         bool pitchReady=false,returnAvailable=false;
@@ -39,14 +40,14 @@ public:
         const auto next=requested.load(std::memory_order_acquire);
         if(next!=active){
             published.store(0,std::memory_order_release);
-            input.reset();output.reset();pitchIn.reset();pitchOut.reset();tap.reset();active=next;
+            input.reset();output.reset();wetSpectrumL.reset();wetSpectrumR.reset();pitchIn.reset();pitchOut.reset();tap.reset();active=next;
             tap.setConsumerActive((active&31u)!=0);
         }
         return (int)(active&31u)-1;
     }
     void invalidate() noexcept {
         published.store(0,std::memory_order_release);
-        input.reset();output.reset();pitchIn.reset();pitchOut.reset();tap.reset();
+        input.reset();output.reset();wetSpectrumL.reset();wetSpectrumR.reset();pitchIn.reset();pitchOut.reset();tap.reset();
     }
     void captureInput(const float* l,const float* r,int n,bool pitch=false,double sr=48000.) noexcept {
         sequence.fetch_add(1,std::memory_order_acq_rel); // odd while the pair is being written
@@ -56,12 +57,17 @@ public:
         pitchMode=pitch;pitchSampleRate=sr;
         if(pitch)pitchIn.push(l,r,n,sr);
         wetAvailable.store(false,std::memory_order_relaxed);
+        wetSpectrumReady.store(false,std::memory_order_relaxed);
         inRms.store(rms(l,r,n,false),std::memory_order_relaxed);
     }
     void setReturn(float l,float r,float timeL=0.f,float timeR=0.f) noexcept {
         wetLeft.store(l,std::memory_order_relaxed);wetRight.store(r,std::memory_order_relaxed);
         tapLeft.store(timeL,std::memory_order_relaxed);tapRight.store(timeR,std::memory_order_relaxed);
         wetAvailable.store(true,std::memory_order_relaxed);
+    }
+    void captureReturn(const float* l,const float* r,int n) noexcept {
+        wetSpectrumL.pushBlock(l,l,n);wetSpectrumR.pushBlock(r,r,n);
+        wetSpectrumReady.store(true,std::memory_order_relaxed);
     }
     void captureOutput(const float* l,const float* r,int n,const SideInfo& dynamics={}) noexcept {
         if(sharedFrames==n && n>0)tap.process(sharedL.data(),sharedR.data(),l,r,n,dynamics);
@@ -120,6 +126,8 @@ public:
                 pitchOut.snapshot(frame.pitchOutput,outputRate) && outputRate==frame.pitchRate;
         }
         frame.returnAvailable=wetAvailable.load(std::memory_order_relaxed);
+        frame.returnSpectrumReady=wetSpectrumReady.load(std::memory_order_relaxed);
+        if(frame.returnSpectrumReady){wetSpectrumL.snapshot(frame.returnLeft);wetSpectrumR.snapshot(frame.returnRight);}
         frame.returnRms={wetLeft.load(std::memory_order_relaxed),wetRight.load(std::memory_order_relaxed)};
         frame.tapMs={tapLeft.load(std::memory_order_relaxed),tapRight.load(std::memory_order_relaxed)};
         frame.sharedValid=tap.readInput(frame.sharedInput) && tap.readOutput(frame.sharedOutput) &&
@@ -143,7 +151,8 @@ private:
         }
         return (float)std::sqrt(energy/n);
     }
-    LiveSpectrumCapture input,output;
+    LiveSpectrumCapture input,output,wetSpectrumL,wetSpectrumR;
+    std::atomic<bool> wetSpectrumReady{false};
     skellcore::telemetry::EffectTelemetry tap;
     std::array<float,maxBlock> sharedL{},sharedR{};
     int sharedFrames=0;

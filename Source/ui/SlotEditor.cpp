@@ -391,6 +391,8 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     duckSource.addItem("POST MIC",1);duckSource.addItem("PRE MIC",2);duckSource.addItem("SLOT INPUT",3);
     duckSource.setTooltip("Detector source: after MIC, before MIC, or this effect input");
     duckPanel.addAndMakeVisible(duckSource);
+    duckExternal.setTooltip("Use the host auxiliary input instead of the internal source. Unconnected key is silent; no automatic vocal fallback.");
+    duckPanel.addAndMakeVisible(duckExternal);
     parallelReturn.setTooltip("Independent post-MIC send, summed after the serial rack. Change while stopped.");
     duckPanel.addAndMakeVisible(parallelReturn);
     addAndMakeVisible(liveView);liveView.setVisible(false);
@@ -1071,6 +1073,7 @@ void SlotEditor::applyTheme() {
     duckClose.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);
     duckClose.setColour(juce::TextButton::textColourOffId,Theme::white);
     duckOn.setColour(juce::ToggleButton::textColourId,Theme::white);
+    duckExternal.setColour(juce::ToggleButton::textColourId,Theme::white);
     rightFirst.setColour(juce::ToggleButton::textColourId,Theme::white);
     duckPanel.repaint();
     for(int page=0;page<4;++page) {
@@ -1506,7 +1509,7 @@ void SlotEditor::select(int newSlot) {
     duckPanel.setVisible(false);livePanel.setVisible(false);liveView.setButtonText("VISUAL");
     graphSnapshotValid=false;
     eqQAttachment.reset();
-    duckSourceAttachment.reset();parallelReturnAttachment.reset();
+    duckSourceAttachment.reset();parallelReturnAttachment.reset();duckExternalAttachment.reset();
     gateFloorAttachment.reset();
     duckOnAttachment.reset();
     rightFirstAttachment.reset();
@@ -1521,6 +1524,7 @@ void SlotEditor::select(int newSlot) {
         processor.state,prefix+"rightFirst",rightFirst);
     duckSourceAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.state,prefix+"duckSource",duckSource);
     parallelReturnAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"parallelReturn",parallelReturn);
+    duckExternalAttachment=std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.state,prefix+"duckExternal",duckExternal);
     duckAttachments[0]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.state,prefix+"duckDepth",duckDepth);
     duckAttachments[1]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -1691,6 +1695,7 @@ void SlotEditor::refreshIfChanged() {
         repaint(19,142,868,378);
     if(duckPanel.isVisible()){
         duckPanel.setReduction(processor.getSlotDuckReductionDb(slot));
+        duckSource.setEnabled(!duckExternal.getToggleState());
     }
     if(!changed){
         if(peakChanged){
@@ -1832,7 +1837,7 @@ void SlotEditor::resized() {
     duckOpen.setBounds(708,106,157,28);
     liveView.setBounds({});
     livePanel.setBounds(33,151,835,206);
-    duckPanel.setBounds(505,136,353,326);
+    duckPanel.setBounds(505,136,353,356);
     duckClose.setBounds(318,11,25,23);
     duckOn.setBounds(16,41,326,31);
     duckDepth.setBounds(108,80,232,30);
@@ -1840,7 +1845,8 @@ void SlotEditor::resized() {
     duckAttack.setBounds(108,162,232,30);
     duckRelease.setBounds(108,203,232,30);
     duckSource.setBounds(17,237,323,28);
-    parallelReturn.setBounds(17,271,323,28);
+    duckExternal.setBounds(17,267,323,27);
+    parallelReturn.setBounds(17,298,323,28);
     studioGateFloor.setBounds(548,104,298,27);
     studioCompKnee.setBounds(548,104,298,27);
     loadExternal.setBounds(542,33,164,32);
@@ -1884,7 +1890,7 @@ bool SlotEditor::testPopupLayoutsForTest() const {
     // Overlays may occupy the same coordinates, but only one popup from
     // the mutually-exclusive effect-picker / VST3 browser pair can be visible.
     if(modulePicker.isVisible() && installedBrowser.isVisible())return false;
-    const juce::Component* duckControls[]{&duckClose,&duckOn,
+    const juce::Component* duckControls[]{&duckClose,&duckOn,&duckExternal,&duckSource,&parallelReturn,
         &duckDepth,&duckThreshold,&duckAttack,&duckRelease};
     for(const auto* child:duckControls)
         if(!duckPanel.getLocalBounds().contains(child->getBounds()))return false;

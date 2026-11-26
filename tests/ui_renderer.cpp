@@ -378,9 +378,12 @@ int main(int argc, char** argv) {
             {"mic-modeling",SkellPresetAudioProcessor::MicModelFX},
             {"skelldizer",SkellPresetAudioProcessor::SkelldizerFX}
         }};
-        for(const auto& effect:effectScenes)
-            options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
-                                      818,482,0,1,false});
+        for(const auto& effect:effectScenes) {
+            options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",818,482,0,1,false});
+            options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-100",1168,688,0,1,false});
+        }
+        options.scenes.push_back({"obsidian-external-100",1168,688,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-voice-100",1168,688,0,1,false});
         // Real JUCE suite captures are part of the deep, local visual audit,
         // not Quick4's four stable fast-start views.
         options.scenes.push_back({"obsidian-vocal-suite-voice-70",818,482,0,1,false});
@@ -480,7 +483,7 @@ int main(int argc, char** argv) {
                 processor.setSlotOn(0,false);
                 if(auto* wet=processor.state.getParameter("s3_wet"))
                     wet->setValueNotifyingHost(wet->convertTo0to1(.36f));
-            } else if(scene.id=="obsidian-external-70" ||
+            } else if(scene.id=="obsidian-external-70" || scene.id=="obsidian-external-100" ||
                       scene.id=="obsidian-installed-vst3-browser-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
@@ -516,7 +519,8 @@ int main(int argc, char** argv) {
             } else if(scene.id.startsWith("obsidian-effect-")) {
                 processor.loadFactoryPreset(0);
                 for(const auto& effect:effectScenes)
-                    if(scene.id==juce::String("obsidian-effect-")+effect.first+"-70") {
+                    if(scene.id==juce::String("obsidian-effect-")+effect.first+"-70" ||
+                       scene.id==juce::String("obsidian-effect-")+effect.first+"-100") {
                         processor.setSlotType(0,effect.second);
                         processor.setSlotOn(0,effect.second!=SkellPresetAudioProcessor::Empty);
                         processor.setSlotParam(0,0,.68f);
@@ -552,7 +556,7 @@ int main(int argc, char** argv) {
                 editor.selectRackSlotForScreenshot(6,0);
             else if(scene.id.startsWith("obsidian-effect-")
                     || scene.id.startsWith("obsidian-vocal-suite-")
-                    || scene.id=="obsidian-external-70"
+                    || scene.id=="obsidian-external-70" || scene.id=="obsidian-external-100"
                     || scene.id=="obsidian-installed-vst3-browser-70")
                 editor.selectRackSlotForScreenshot(0,0);
             else if(scene.id=="obsidian-factory-digital-70")

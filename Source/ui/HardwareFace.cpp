@@ -134,7 +134,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         g.setColour(Theme::stroke.withAlpha(.55f));
         g.drawRoundedRectangle(screen,7.f,1.f);
         // Graticule plus the 1:1 reference diagonal.
-        const auto plot=screen.reduced(26.f,22.f);
+        const auto plot=screen.reduced(26.f,22.f).withTrimmedBottom(54.f);
         g.setColour(Theme::stroke.withAlpha(.22f));
         for(int line=1;line<4;++line) {
             const float f=(float)line/4.f;
@@ -183,6 +183,8 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         Theme::fittedText(g,output,{436,432,190,16},10.f,Theme::muted,true,
                           juce::Justification::centredRight);
         // Harmonic balance readout driven by the real Character value.
+        Theme::text(g,"INPUT / OUTPUT SPECTRUM",{286,393,320,13},8.6f,Theme::muted,true);
+        livePanel.paintHarmonicSpectrum(g,{286.f,407.f,330.f,22.f});
         Theme::text(g,"CHARACTER CONTROL",{286,450,220,14},8.6f,Theme::muted,true);
         const auto bar=juce::Rectangle<float>(286.f,466.f,330.f,5.f);
         g.setColour(Theme::stroke.withAlpha(.60f));

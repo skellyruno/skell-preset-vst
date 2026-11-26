@@ -1,0 +1,5 @@
+# External key and integrated visuals
+
+Appended sN_duckExternal opt-in flag (existing three-choice normalization and all existing indices retained); optional host mono/stereo auxiliary input, disabled by default. Silent or absent bus supplies silence, no fallback or key audio mixing. Shared preallocated key history uses earlier serial latency; independent parallel returns use zero delay. Native ZIP and host migration support; factory default off. Native processor regression added. Host routing and Windows VST3 must be verified separately.
+
+Isolated stereo wet spectra captured for Delay, Studio Delay and VoxRackRoom only; independent L/R energy avoids cancellation. Other effects keep accurately labelled output spectrum. Saturator has measured before/after spectrum, not a claim of isolated harmonic distortion; M/S particle smoothing is based on actual captured samples. Full local renderer now has 70 and 100 percent inventory coverage. No local JUCE dependency or FL reference recordings available; no screenshot/FL audio validation claimed.
