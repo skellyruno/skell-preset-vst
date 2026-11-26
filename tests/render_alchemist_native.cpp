@@ -2751,20 +2751,22 @@ int stereoSeparationSmoke() {
             }
             juce::AudioBuffer<float> probe(2,blockSize);
             fill(probe,7,blockSize,false);
-            const float width=1.f-static_cast<float>(raw)/96.f;
+            const float travel=static_cast<float>(raw)/96.f;
+            const float width=1.f-(travel<=0.f?travel:static_cast<float>((std::pow(5.,static_cast<double>(travel))-1.)*.25));
             juce::AudioBuffer<float> original;
             original.makeCopyOf(probe);
             juce::MidiBuffer midi;
             plugin.processBlock(probe,midi);
             double error=0.;
+            bool exactMono=true;
             for(int n=0;n<blockSize;++n) {
                 const float mid=.5f*(original.getSample(0,n)+original.getSample(1,n));
                 const float side=.5f*(original.getSample(0,n)-original.getSample(1,n))*width;
                 error=std::max(error,static_cast<double>(std::abs(probe.getSample(0,n)-(mid+side))));
                 error=std::max(error,static_cast<double>(std::abs(probe.getSample(1,n)-(mid-side))));
-                if(raw==96 && probe.getSample(0,n)!=probe.getSample(1,n))
-                    fail("maximum mono retained a side signal");
+                if(raw==96 && probe.getSample(0,n)!=probe.getSample(1,n))exactMono=false;
             }
+            if(!exactMono)fail("maximum mono retained a side signal");
             if(error>2.e-5)fail("actual processor separation transfer or center gain differs");
         }
 

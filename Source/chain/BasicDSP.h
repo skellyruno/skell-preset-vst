@@ -247,6 +247,33 @@ inline float softLimit(float x,float ceiling=0.96f) noexcept {
 }
 
 
+// Shared stereo history: append the entire current chunk once and read
+// arbitrary earlier taps for serial sidechain alignment, even when FX are off.
+// The capacity includes a complete maximum chunk so earlier samples survive.
+struct DetectorHistory {
+    std::array<std::vector<float>,2> data;
+    size_t head=0;
+    void prepare(int maxDelay,int maxChunk) {
+        const size_t capacity=static_cast<size_t>(std::max(0,maxDelay))+
+            static_cast<size_t>(std::max(1,maxChunk))+1;
+        for(auto& d:data)d.assign(capacity,0.f);
+        head=0;
+    }
+    void push(float l,float r) noexcept {
+        if(data[0].empty())return;
+        data[0][head]=std::isfinite(l)?l:0.f;data[1][head]=std::isfinite(r)?r:0.f;
+        if(++head==data[0].size())head=0;
+    }
+    std::array<float,2> at(int frames,int n,int delay) const noexcept {
+        if(data[0].empty() || n<0 || n>=frames)return {0.f,0.f};
+        const auto size=data[0].size();
+        const size_t age=static_cast<size_t>(frames-n)+static_cast<size_t>(std::max(0,delay));
+        if(age>=size)return {0.f,0.f};
+        const size_t ix=(head+size-age)%size;
+        return {data[0][ix],data[1][ix]};
+    }
+};
+
 // Preallocated PDC line: all dry/wet alignment runs without reallocations or locks.
 struct StereoSampleDelay {
     std::array<std::vector<float>,2> channel;

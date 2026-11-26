@@ -514,6 +514,8 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     dryPdc.prepare(pdcCapacity);
     bypassPdc.prepare(pdcCapacity);
     parallelPdc.prepare(pdcCapacity);
+    preMicHistory.prepare(pdcCapacity,hostChunkCapacity);
+    postMicHistory.prepare(pdcCapacity,hostChunkCapacity);
     updateHostLatency();
     for(auto* smooth:{&inputSmooth,&outputSmooth,&mixSmooth,&bypassSmooth})smooth->reset(rate,.020);
     inputSmooth.setCurrentAndTargetValue(dbToGain(rawGlobal.input->load()));
@@ -1081,10 +1083,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         sequence[(size_t)i]=(int)((packed>>(4*i)) & 0x0fU);
     const int lookahead=limiterLookahead.load(std::memory_order_acquire);
     int blockLatency=0;
+    std::array<int,slotCount> precedingLatency{};
     for(int position=0;position<chainCount;++position) {
         const int id=sequence[(size_t)position];
         if(id<0 || id>=slotCount)continue;
         const auto type=controlCache[(size_t)id].type;
+        precedingLatency[(size_t)id]=blockLatency;
         blockLatency+=skellpreset::realtime::stageLatency(
             (type==StudioLimiterFX?Limiter:type),Limiter,ExternalVST3,StudioPitchFormantFX,lookahead,
             type==ExternalVST3?hostedBlock.getLatency(id):0,
@@ -1144,6 +1148,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             rackWork.setSample(0,n,frontL);rackWork.setSample(1,n,frontR);
             sidechainWork.setSample(0,n,frontL);
             sidechainWork.setSample(1,n,frontR);
+            preMicHistory.push(preL,preR);
+            postMicHistory.push(frontL,frontR);
             dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
             bypassWork.setSample(0,n,original[0]);
             bypassWork.setSample(1,n,original[1]);
@@ -1218,9 +1224,18 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 float l=source.getSample(0,n);
                 float r=source.getSample(1,n);
                 float wetL=l,wetR=r;
-                const auto& detector=c.duckSource==1?rawDetectorWork:c.duckSource==2?source:sidechainWork;
-                const float duckGain=supportsWetSidechain(c.type)
-                    ?e.voiceDuck.processGain(detector.getSample(0,n),detector.getSample(1,n)):1.f;
+                float duckGain=1.f;
+                if(supportsWetSidechain(c.type)) {
+                    // Serial keys follow the latency of all preceding slots.
+                    // Parallel returns start at the post-MIC timeline; slot
+                    // input is already aligned and must not be delayed again.
+                    const int keyDelay=c.parallelReturn?0:precedingLatency[(size_t)s];
+                    const auto& detector=c.duckSource==1?rawDetectorWork:c.duckSource==2?source:sidechainWork;
+                    const auto key=(keyDelay>0 && c.duckSource!=2)?
+                        (c.duckSource==1?preMicHistory:postMicHistory).at(frames,n,keyDelay):
+                        std::array<float,2>{detector.getSample(0,n),detector.getSample(1,n)};
+                    duckGain=e.voiceDuck.processGain(key[0],key[1]);
+                }
                 if(c.on && c.duckOn && c.wet>0.f)
                     duckMinimum[(size_t)s]=std::min(duckMinimum[(size_t)s],duckGain);
                 switch(c.type) {
@@ -1497,8 +1512,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float wetR=rackWork.getSample(1,n)+returns[1];
             // The wet scratch becomes the mixed scratch: it is read here and
             // never needed again, so no extra per-block allocation is added.
-            rackWork.setSample(0,n,dryL+(wetL-dryL)*mix);
-            rackWork.setSample(1,n,dryR+(wetR-dryR)*mix);
+            rackWork.setSample(0,n,mix>=1.f?wetL:mix<=0.f?dryL:dryL+(wetL-dryL)*mix);
+            rackWork.setSample(1,n,mix>=1.f?wetR:mix<=0.f?dryR:dryR+(wetR-dryR)*mix);
         }
         stereoSeparation.process(rackWork.getWritePointer(0),
                                  rackWork.getWritePointer(1),frames);
@@ -1511,10 +1526,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float blend=bypassSmooth.getNextValue();
             const float finalL=(delta?mixedL-dryL:mixedL)*outGain;
             const float finalR=(delta?mixedR-dryR:mixedR)*outGain;
-            const float outputL=bypassWork.getSample(0,n)+
-                (finalL-bypassWork.getSample(0,n))*blend;
-            const float outputR=bypassWork.getSample(1,n)+
-                (finalR-bypassWork.getSample(1,n))*blend;
+            // Exact endpoints avoid channel-dependent cancellation/rounding
+            // when the wet signal has already collapsed to true mono.
+            const float outputL=blend>=1.f?finalL:blend<=0.f?bypassWork.getSample(0,n):
+                bypassWork.getSample(0,n)+(finalL-bypassWork.getSample(0,n))*blend;
+            const float outputR=blend>=1.f?finalR:blend<=0.f?bypassWork.getSample(1,n):
+                bypassWork.getSample(1,n)+(finalR-bypassWork.getSample(1,n))*blend;
             inL[n]=std::isfinite(outputL)?outputL:0.f;
             if(inR)inR[n]=std::isfinite(outputR)?outputR:0.f;
             liveSpectrumOutput.push(inL[n],inR?inR[n]:inL[n]);

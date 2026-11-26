@@ -395,13 +395,9 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     duckPanel.addAndMakeVisible(parallelReturn);
     addAndMakeVisible(liveView);liveView.setVisible(false);
     addChildComponent(livePanel);
-    liveView.setTooltip("Switch between the existing clean effect face and actual input/output traces");
-    liveView.onClick=[this]{
-        const bool open=processor.presentation()!=SkellPresetAudioProcessor::Presentation::Visual;
-        dismissTransientOverlays();
-        processor.setPresentation(open?SkellPresetAudioProcessor::Presentation::Visual:SkellPresetAudioProcessor::Presentation::Clean);
-        syncPresentation();
-    };
+    // Legacy presentation state remains readable for old sessions; there
+    // is no separate clean/visual face. Telemetry is drawn inside each face.
+    liveView.setVisible(false);
     for(auto* slider:{&duckDepth,&duckThreshold,&duckAttack,&duckRelease}) {
         slider->setSliderStyle(juce::Slider::LinearHorizontal);
         slider->setTextBoxStyle(juce::Slider::TextBoxRight,false,78,22);
@@ -1570,13 +1566,9 @@ void SlotEditor::select(int newSlot) {
 void SlotEditor::syncPresentation() {
     const int type=processor.slotType(slot);
     const bool eligible=type!=SkellPresetAudioProcessor::Empty && type!=SkellPresetAudioProcessor::ExternalVST3;
-    const bool want=processor.presentation()==SkellPresetAudioProcessor::Presentation::Visual;
-    const bool overlay=modulePicker.isVisible() || installedBrowser.isVisible() || duckPanel.isVisible() ||
-        vocalFeelStyles.isVisible() || eqNodeMenu.isVisible();
-    const bool visible=eligible && want && !overlay;
-    if(livePanel.isVisible()!=visible){livePanel.setVisible(visible);if(visible)livePanel.toFront(false);}
-    liveView.setButtonText(want?"CLEAN":"VISUAL");
-    processor.requestSlotVisual(visible && hostedPresentation && livePanel.isShowing()?slot:-1);
+    liveView.setVisible(false);
+    livePanel.setVisible(false);
+    processor.requestSlotVisual(eligible && hostedPresentation && isShowing()?slot:-1);
 }
 void SlotEditor::refreshIfChanged() {
     const auto prefix="s"+juce::String(slot+1)+"_";
@@ -1694,7 +1686,9 @@ void SlotEditor::refreshIfChanged() {
         if(editExternal.getButtonText()!=caption)editExternal.setButtonText(caption);
     }
     syncPresentation();
-    if(livePanel.isShowing() && hostedPresentation)livePanel.update(processor,slot);
+    if(hostedPresentation && isShowing() && type!=SkellPresetAudioProcessor::Empty &&
+       type!=SkellPresetAudioProcessor::ExternalVST3 && livePanel.update(processor,slot))
+        repaint(19,142,868,378);
     if(duckPanel.isVisible()){
         duckPanel.setReduction(processor.getSlotDuckReductionDb(slot));
     }
@@ -1783,8 +1777,7 @@ void SlotEditor::refreshIfChanged() {
     upgradeEq.setVisible(false);
     modOrbButton.setVisible(false);modOrbButton.setBounds({});
     const bool hasSidechain=SkellPresetAudioProcessor::supportsWetSidechain(type);
-    liveView.setVisible(!external && type!=SkellPresetAudioProcessor::Empty);
-    if(!liveView.isVisible())livePanel.setVisible(false);
+    liveView.setVisible(false);livePanel.setVisible(false);
     parallelReturn.setEnabled(SkellPresetAudioProcessor::supportsParallelReturn(type));
     duckOpen.setVisible(hasSidechain);
     if(!hasSidechain)duckPanel.setVisible(false);
@@ -1837,7 +1830,7 @@ void SlotEditor::resized() {
     suiteSpectrumButton.setBounds(721,161,132,27);
     rightFirst.setBounds(47,196,242,25);
     duckOpen.setBounds(708,106,157,28);
-    liveView.setBounds(708,27,122,31);
+    liveView.setBounds({});
     livePanel.setBounds(33,151,835,206);
     duckPanel.setBounds(505,136,353,326);
     duckClose.setBounds(318,11,25,23);
@@ -2054,6 +2047,9 @@ void SlotEditor::paint(juce::Graphics&g) {
     constexpr float frequencies[]{20.f,50.f,100.f,200.f,500.f,1000.f,2000.f,5000.f,10000.f,20000.f};
     const bool emptyFace=type==SkellPresetAudioProcessor::Empty;
     if(eqFace) {
+        // Actual pre/post spectrum behind editable response nodes; graph
+        // gestures remain on the same coordinate system.
+        livePanel.paintEqSpectrum(g,plot);
         for(float freq:frequencies){
             const auto x=plot.getX()+plot.getWidth()*std::log(freq/20.f)/std::log(1000.f);
             g.setColour(Theme::stroke.withAlpha(.48f));g.drawVerticalLine((int)x,plot.getY(),plot.getBottom());
@@ -4057,22 +4053,16 @@ bool SlotEditor::keyPressed(const juce::KeyPress& key) {
 bool SlotEditor::testLiveViewForTest() {
     const int previous=processor.slotType(slot);
     const auto previousPresentation=processor.presentation();
-    processor.setPresentation(SkellPresetAudioProcessor::Presentation::Clean);
     processor.setSlotType(slot,SkellPresetAudioProcessor::EQ);select(slot);
-    const auto oldWet=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_wet")->load();
-    bool ok=liveView.isVisible() && !livePanel.isVisible();
-    liveView.onClick();
-    ok=ok && livePanel.isVisible() && livePanel.testLayoutForTest() &&
-       getLocalBounds().contains(livePanel.getBounds()) && liveView.getButtonText()=="CLEAN";
-    select(slot);
-    ok=ok && livePanel.isVisible() && processor.presentation()==SkellPresetAudioProcessor::Presentation::Visual;
-    liveView.onClick();
-    ok=ok && !livePanel.isVisible() && liveView.getButtonText()=="VISUAL" &&
-       processor.slotType(slot)==SkellPresetAudioProcessor::EQ &&
-       processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_wet")->load()==oldWet;
+    const auto* wet=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_wet");
+    const float oldWet=wet->load();
+    processor.setPresentation(SkellPresetAudioProcessor::Presentation::Clean);syncPresentation();
+    const bool cleanIgnored=!liveView.isVisible() && !livePanel.isVisible();
+    processor.setPresentation(SkellPresetAudioProcessor::Presentation::Visual);syncPresentation();
+    const bool visualIgnored=!liveView.isVisible() && !livePanel.isVisible() && wet->load()==oldWet;
     processor.setPresentation(previousPresentation);
     processor.setSlotType(slot,previous);select(slot);
-    return ok;
+    return cleanIgnored && visualIgnored;
 }
 bool SlotEditor::testEffectPageShortcutsForTest() {
     const int previousType=processor.slotType(slot);

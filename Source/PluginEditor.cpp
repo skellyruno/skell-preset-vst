@@ -989,7 +989,7 @@ public:
             issues.add("Mic Modeling profile cards failed to update stable host parameters");
         if(!slot.testModOrbToggle())
             issues.add("Modulation orb/graph toggle is not reversible");
-        if(!slot.testLiveViewForTest())issues.add("Live effect view layout, toggle or rack wet preservation failed");
+        if(!slot.testLiveViewForTest())issues.add("Integrated effect visuals or rack wet preservation failed");
         if(!slot.testEffectPageShortcutsForTest())
             issues.add("Effect editor numeric/arrow pages and Ctrl+F/Escape overlay keyboard regression");
         // This drives the same XY mutation code as real mouse dragging:

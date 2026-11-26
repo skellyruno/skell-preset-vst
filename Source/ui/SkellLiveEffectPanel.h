@@ -9,11 +9,10 @@ class SkellLiveEffectPanel final:public juce::Component {
     using Analyzer=skellpreset::visual::LiveSpectrumAnalyzer;
     static constexpr int historySize=90;
 public:
-    void update(P& p,int slot) {
+    bool update(P& p,int slot) {
         const int type=p.slotType(slot);
-        if(slot!=lastSlot || type!=lastType){
-            lastSlot=slot;lastType=type;reset();
-        }
+        const bool selectionChanged=slot!=lastSlot || type!=lastType;
+        if(selectionChanged){lastSlot=slot;lastType=type;reset();}
         const auto oldTransfer=transfer;
         const auto oldComp=compressorCurve;
         const float oldDeess=deessHz,oldGate=gateDb,oldClose=gateCloseDb;
@@ -83,6 +82,9 @@ public:
                     inBands[i]=follow(inBands[i],level(input[i]));
                     outBands[i]=follow(outBands[i],level(output[i]));
                 }
+                spectrumHistory[historyHead]=outBands;
+                historyHead=(historyHead+1)%spectrumHistory.size();
+                historyCount=std::min(historyCount+1,spectrumHistory.size());
             }
             for(size_t i=0;i<wave.size();++i){
                 wave[i]=frame.output[frame.output.size()-wave.size()+i];
@@ -91,11 +93,89 @@ public:
             shift(leftHistory,level(wetAvailable?wetRms[0]:leftRms));shift(rightHistory,level(wetAvailable?wetRms[1]:rightRms));
             shift(wetHistory,wetAvailable?level(std::sqrt(.5f*(wetRms[0]*wetRms[0]+wetRms[1]*wetRms[1]))):0.f);
         }else if((unsigned)(now-lastFrame)>=400u){
-            if(fresh){reset();repaint();}
-            else if(controlsChanged)repaint();
-            return;
-        }else {if(controlsChanged)repaint();return;}
-        repaint();
+            if(fresh){reset();return true;}
+            return controlsChanged || selectionChanged;
+        }else return controlsChanged || selectionChanged;
+        return true;
+    }
+    bool hasSignal() const noexcept {return fresh && inputRms>1.e-6f;}
+    float measuredInputRms() const noexcept {return fresh?inputRms:0.f;}
+    void paintEqSpectrum(juce::Graphics& g,juce::Rectangle<float> plot) const {
+        if(!fresh)return;
+        juce::Graphics::ScopedSaveState clipped(g);
+        g.reduceClipRegion(plot.toNearestInt());
+        const auto draw=[&](const auto& values,juce::Colour colour,bool filled){
+            juce::Path line;
+            for(size_t i=0;i<values.size();++i){
+                const float x=plot.getX()+plot.getWidth()*std::log(Analyzer::frequency(static_cast<int>(i))/20.f)/std::log(1000.f);
+                const float y=plot.getBottom()-values[i]*plot.getHeight()*.82f;
+                if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);
+            }
+            if(filled){auto area=line;const float left=plot.getX()+plot.getWidth()*std::log(80.f/20.f)/std::log(1000.f);
+                const float right=plot.getX()+plot.getWidth()*std::log(9000.f/20.f)/std::log(1000.f);
+                area.lineTo(right,plot.getBottom());area.lineTo(left,plot.getBottom());area.closeSubPath();
+                g.setGradientFill(juce::ColourGradient(colour.withAlpha(.19f),plot.getCentreX(),plot.getY(),colour.withAlpha(.025f),plot.getCentreX(),plot.getBottom(),false));
+                g.fillPath(area);}
+            g.setColour(colour.withAlpha(.68f));g.strokePath(line,juce::PathStrokeType(1.35f));
+        };
+        draw(inBands,Theme::muted,false);draw(outBands,Theme::blue,true);
+    }
+    void paintHistory(juce::Graphics& g,juce::Rectangle<float> area,bool reduction) const {
+        Theme::panelBox(g,area,6.f,true);
+        auto plot=area.reduced(10.f,7.f);
+        auto title=plot.removeFromTop(15.f);
+        Theme::fittedText(g,reduction?"GAIN REDUCTION  /  0–24 dB":"INPUT / OUTPUT  /  -72–0 dBFS",title.toNearestInt(),9.5f,Theme::muted,true);
+        plot.removeFromTop(4.f);
+        g.setColour(Theme::stroke.withAlpha(.45f));
+        for(int i=0;i<=3;++i)g.drawHorizontalLine(static_cast<int>(plot.getY()+i*plot.getHeight()/3.f),plot.getX(),plot.getRight());
+        auto draw=[&](const auto& values,juce::Colour colour,bool down){
+            juce::Path line;for(size_t i=0;i<values.size();++i){
+                const float x=plot.getX()+plot.getWidth()*static_cast<float>(i)/static_cast<float>(values.size()-1);
+                const float y=down?plot.getY()+values[i]*plot.getHeight():plot.getBottom()-values[i]*plot.getHeight();
+                if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);}
+            g.setColour(colour.withAlpha(.17f));g.strokePath(line,juce::PathStrokeType(4.f));
+            g.setColour(colour);g.strokePath(line,juce::PathStrokeType(1.5f));
+        };
+        if(reduction){draw(grHistory,Theme::amber,true);draw(duckHistory,Theme::blue,true);}
+        else {draw(inputHistory,Theme::muted,false);draw(outputHistory,Theme::green,false);}
+    }
+    void paintSpace(juce::Graphics& g,juce::Rectangle<float> area) const {
+        Theme::panelBox(g,area,6.f,true);
+        auto plot=area.reduced(10.f,7.f);
+        auto title=plot.removeFromTop(15.f);
+        Theme::fittedText(g,"OUTPUT SPECTRUM HISTORY  /  80 Hz – 9 kHz",title.toNearestInt(),9.5f,Theme::muted,true);
+        const auto legend=plot.removeFromBottom(12.f);
+        Theme::fittedText(g,"LOW                                  HIGH   /   NEWEST AT FRONT",legend.toNearestInt(),8.f,Theme::muted);
+        const float dx=plot.getWidth()/static_cast<float>(Analyzer::bands);
+        const float dy=plot.getHeight()/static_cast<float>(spectrumHistory.size());
+        for(size_t row=0;row<historyCount;++row){
+            const size_t index=(historyHead+spectrumHistory.size()-historyCount+row)%spectrumHistory.size();
+            const float y=plot.getY()+(spectrumHistory.size()-historyCount+row)*dy;
+            for(size_t band=0;band<spectrumHistory[index].size();++band){
+                const float v=spectrumHistory[index][band];
+                if(v<.015f)continue;
+                const auto tint=Theme::blue.interpolatedWith(Theme::green,v);
+                g.setColour(tint.withAlpha(.10f+.78f*v*v));
+                g.fillRect(plot.getX()+band*dx,y,dx+.2f,dy+.2f);
+            }
+        }
+        if(!fresh)Theme::fittedText(g,"WAITING FOR AUDIO",plot.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);
+    }
+    void paintSignalOrb(juce::Graphics& g,juce::Point<float> centre,float radius) const {
+        const auto tint=Theme::green;
+        g.setGradientFill(juce::ColourGradient(tint.withAlpha(.08f),centre.x,centre.y,Theme::bg.withAlpha(0.f),centre.x+radius,centre.y,true));
+        g.fillEllipse(centre.x-radius,centre.y-radius,2.f*radius,2.f*radius);
+        g.setColour(tint.withAlpha(.23f));g.drawEllipse(centre.x-radius,centre.y-radius,2.f*radius,2.f*radius,1.f);
+        if(!fresh)return;
+        // Only measured M/S points determine particle positions.
+        for(size_t i=0;i<mid.size();++i){
+            const float x=centre.x+std::clamp(side[i],-1.f,1.f)*radius;
+            const float y=centre.y-std::clamp(mid[i],-1.f,1.f)*radius;
+            const float energy=std::min(1.f,std::hypot(mid[i],side[i]));
+            if(energy<.00001f)continue;
+            g.setColour(tint.withAlpha(.12f+.26f*energy));g.fillEllipse(x-3.f,y-3.f,6.f,6.f);
+            g.setColour(Theme::white.withAlpha(.38f+.55f*energy));g.fillEllipse(x-1.f,y-1.f,2.f,2.f);
+        }
     }
     bool testLayoutForTest() const noexcept {return getWidth()>=600 && getHeight()>=190;}
     void paint(juce::Graphics& g) override {
@@ -368,6 +448,7 @@ private:
         pitchIn={};pitchOut={};pitchInHistory.fill(-1.f);pitchOutHistory.fill(-1.f);
         sharedValid=false;grValid=false;gateMean=-1.f;
         wetHistory.fill(0.f);wetAvailable=false;wetRms={};tapMs={};tail={};
+        historyHead=historyCount=0;for(auto& row:spectrumHistory)row.fill(0.f);
         inputRms=outputRms=sideRms=gr=duck=0.f;lastSerial=0;lastFrame=0;fresh=false;ticks=0;
     }
     Analyzer analyzer;
@@ -380,6 +461,8 @@ private:
     bool wetAvailable=false,sharedValid=false,grValid=false;
     float gateMean=-1.f;
     std::array<float,Analyzer::bands> inBands{},outBands{};
+    std::array<std::array<float,Analyzer::bands>,24> spectrumHistory{};
+    size_t historyHead=0,historyCount=0;
     std::array<float,historySize> inputHistory{},outputHistory{},grHistory{},duckHistory{};
     std::array<float,128> wave{},inputWave{},mid{},side{};
     std::array<float,historySize> leftHistory{},rightHistory{};

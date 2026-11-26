@@ -83,8 +83,9 @@ int main() {
     for (int raw = MixerStereoSeparation::minimumRaw;
          raw <= MixerStereoSeparation::maximumRaw; ++raw) {
         const float s = (float)raw / 96.f;
-        const float a = 1.f - s * .5f;
-        const float b = s * .5f;
+        const float q=s<=0.f?s:static_cast<float>((std::pow(5.,static_cast<double>(s))-1.)*.25);
+        const float a=1.f-q*.5f;
+        const float b=q*.5f;
         assert(std::abs(MixerStereoSeparation::matrixA(raw) - a) < 2.e-7f);
         assert(std::abs(MixerStereoSeparation::matrixB(raw) - b) < 2.e-7f);
         assert(std::abs(MixerStereoSeparation::matrixA(raw)+MixerStereoSeparation::matrixB(raw)-1.f)<2.e-7f);
@@ -97,6 +98,8 @@ int main() {
     assert(MixerStereoSeparation::matrixA(-96) == 1.5f);
     assert(MixerStereoSeparation::matrixA(96) == .5f);
     assert(std::abs(MixerStereoSeparation::matrixB(96) - .5f) < 1.e-7f);
+    assert(std::abs(MixerStereoSeparation::matrixB(48)-static_cast<float>((std::sqrt(5.)-1.)/8.))<2.e-7f);
+    assert(MixerStereoSeparation::matrixB(48)<.25f);
     // Out-of-range raw values clamp rather than extrapolate.
     assert(MixerStereoSeparation::matrixA(-400) == MixerStereoSeparation::matrixA(-96));
     assert(MixerStereoSeparation::matrixA(400) == MixerStereoSeparation::matrixA(96));

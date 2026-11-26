@@ -328,6 +328,7 @@ private:
     juce::StringArray programIdentityListenerIds;
     juce::String name="Empty Rack";
     skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc,parallelPdc;
+    skellpreset::dsp::DetectorHistory preMicHistory,postMicHistory;
     // Native Stereo Enhancer separation matrix on the final output stage.
     // Owned here (not per slot) so it applies after the whole vocal chain,
     // including stereo modulation, delay and reverb, exactly once.

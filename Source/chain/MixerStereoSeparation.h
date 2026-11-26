@@ -4,12 +4,13 @@
 
 // Skell Preset: native stereo separation for the final output stage.
 //
-// Mixer-style candidate: preserve the mid signal and scale only the side.
-// Keep the published raw range, but map its full travel to the endpoints.
-//
-//     s  = raw / 96             (-96..+96, host range unchanged)
-//     a  = 1 - s/2
-//     b  = s/2
+// FL mixer candidate from Skell Studio's measured-model research.
+// The supplied mixer-track FST endpoints are signed -64/+64; preserve the
+// existing host range -96/+96 and map normalized travel without quantizing.
+// Widening is linear; merging follows a base-five exponential.
+//     s = raw / 96
+//     q = s <= 0 ? s : (5^s - 1)/4
+//     a = 1 - q/2, b = 1-a
 //     L' = a*L + b*R
 //     R' = a*R + b*L
 //
@@ -26,7 +27,11 @@ public:
     static constexpr int maximumRaw = 96;
 
     static float matrixA(int raw) noexcept {
-        return 1.f - static_cast<float>(clampRaw(raw)) * (1.f / 192.f);
+        const int value=clampRaw(raw);
+        if(value==96)return .5f;
+        if(value<=0)return 1.f-static_cast<float>(value)*(1.f/192.f);
+        const double s=static_cast<double>(value)/96.;
+        return 1.f-static_cast<float>(std::expm1(s*std::log(5.))*.125);
     }
     static float matrixB(int raw) noexcept {
         return 1.f - matrixA(raw);
@@ -50,8 +55,11 @@ public:
         startA = a;
     }
     void setRaw(int raw) noexcept {
-        const float na = matrixA(raw);
-        const float nb = matrixB(raw);
+        raw=clampRaw(raw);
+        if(raw==lastRaw)return; // no exponential work on unchanged automation
+        lastRaw=raw;
+        const float na=matrixA(raw);
+        const float nb=1.f-na;
         // Repeating the destination must not restart the ramp. When the target
         // is unchanged the in-flight 10 ms glide simply keeps running.
         if (na == targetA && nb == targetB) return;
@@ -100,6 +108,6 @@ private:
     float a = 1.f, b = 0.f;
     float targetA = 1.f, targetB = 0.f;
     float startA = 1.f;
-    int rampSamples = 441, remaining = 0;
+    int rampSamples = 441, remaining = 0, lastRaw = 0;
 };
 } // namespace skellpreset::dsp

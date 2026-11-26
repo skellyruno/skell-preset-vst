@@ -63,11 +63,10 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         // Wide reduction meter above the two timing controls. Atomic telemetry
         // comes from this slot's actual envelope, never a transfer-curve proxy.
         const bool measured=type==2 || type==36 || type==43;
-        meter(g,{548.f,169.f,306.f,88.f},measured?reduction/24.f:level,
-              measured?"GAIN REDUCTION":"SLOT OUTPUT",measured?gr:output);
+        livePanel.paintHistory(g,{548.f,169.f,306.f,88.f},measured);
         if(type==36)Theme::text(g,"KNEE",{445,107,92,20},10.f,Theme::muted,true);
     } else if(type==4 || type==29) {
-        meter(g,{342.f,170.f,496.f,83.f},level,"SIGNAL ACTIVITY",output);
+        livePanel.paintHistory(g,{342.f,170.f,496.f,83.f},false);
         const bool open=peak>.0001f;
         g.setColour(open?Theme::green:Theme::stroke);
         g.fillEllipse(330.f,485.f,6.f,6.f);
@@ -80,19 +79,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         meter(g,{624.f,171.f,214.f,81.f},type==11?reduction/24.f:level,
               type==11?"REDUCTION":"OUTPUT",type==11?gr:output);
     } else if(space(type)) {
-        const bool room=type==6 || type==18;
-        const auto display=juce::Rectangle<float>(344.f,166.f,493.f,91.f);
-        Theme::panelBox(g,display,6.f);
-        Theme::text(g,room?"DECAY ENVELOPE":"ECHO SPACING",{358,174,440,18},10.f,Theme::muted,true);
-        const float feedback=processor.getSlotParam(slot,1);
-        for(int echo=0;echo<11;++echo) {
-            const float strength=room?std::exp(-(float)echo/(1.f+5.f*processor.getSlotParam(slot,0))):
-                (float)std::pow(juce::jlimit(.05f,.94f,feedback),echo);
-            const float x=360.f+41.f*echo;
-            g.setColour(Theme::green.withAlpha(.2f+.6f*strength));
-            g.fillRoundedRectangle(x,239.f-35.f*strength,room?25.f:5.f,35.f*strength+1.f,2.f);
-        }
-        Theme::text(g,room?"DECAY MODEL":"REPEAT LEVEL MODEL",{353,260,470,18},9.f,Theme::muted);
+        livePanel.paintSpace(g,{344.f,166.f,493.f,109.f});
         meter(g,{66.f,478.f,215.f,37.f},level,"RETURN",output);
     } else if(type==30) {
         Theme::text(g,"PITCH",{111,140,245,20},11.f,Theme::muted,true);
@@ -179,8 +166,8 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         g.strokePath(curve,juce::PathStrokeType(2.f,
             juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         // Live operating point: where the current slot output sits on the curve.
-        if(peak>.00002f) {
-            const float inLevel=juce::jlimit(-1.1f,1.1f,std::sqrt(peak)*1.1f);
+        if(livePanel.hasSignal()) {
+            const float inLevel=juce::jlimit(0.f,1.1f,livePanel.measuredInputRms());
             const float outLevel=std::tanh(inLevel*drive*blend)/denom;
             const float px=plot.getCentreX()+plot.getWidth()*.5f*(inLevel/1.1f);
             const float py=juce::jlimit(plot.getY(),plot.getBottom(),
@@ -196,7 +183,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         Theme::fittedText(g,output,{436,432,190,16},10.f,Theme::muted,true,
                           juce::Justification::centredRight);
         // Harmonic balance readout driven by the real Character value.
-        Theme::text(g,"ODD-HARMONIC WEIGHT",{286,450,220,14},8.6f,Theme::muted,true);
+        Theme::text(g,"CHARACTER CONTROL",{286,450,220,14},8.6f,Theme::muted,true);
         const auto bar=juce::Rectangle<float>(286.f,466.f,330.f,5.f);
         g.setColour(Theme::stroke.withAlpha(.60f));
         g.fillRoundedRectangle(bar,2.5f);
@@ -220,8 +207,9 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
             type==15?"PULSE":type==16?"WIDTH":type==20?"ENSEMBLE":type==21?"FLANGE":
             type==22?"CARRIER":type==25?"VIBRATO":type==39?"CHOP":type==41?"FILTER":
             type==8?"AIR":type==33?"ENHANCE":"CHARACTER";
-        Theme::fittedText(g,caption,{337,273,232,29},19.f,Theme::white,true,juce::Justification::centred);
-        Theme::fittedText(g,output,{352,310,202,26},14.f,Theme::green,true,juce::Justification::centred);
-        Theme::text(g,"SLOT OUTPUT",{353,340,200,20},10.f,Theme::muted,false,juce::Justification::centred);
+        livePanel.paintSignalOrb(g,{cx,cy-10.f},76.f);
+        Theme::fittedText(g,caption,{337,192,232,25},15.f,Theme::white,true,juce::Justification::centred);
+        Theme::fittedText(g,output,{352,382,202,26},13.f,Theme::green,true,juce::Justification::centred);
+        Theme::text(g,"MEASURED M/S FIELD",{353,410,200,15},9.f,Theme::muted,false,juce::Justification::centred);
     }
 }

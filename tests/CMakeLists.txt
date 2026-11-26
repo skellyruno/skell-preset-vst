@@ -251,3 +251,7 @@ target_compile_features(SkellPresetDynamicsPeakHistoryTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetDynamicsPeakHistoryTest COMMAND SkellPresetDynamicsPeakHistoryTest)
 add_executable(SkellPresetStateInspect ../tools/state_inspect.cpp)
 target_compile_features(SkellPresetStateInspect PRIVATE cxx_std_17)
+
+add_executable(SkellPresetDetectorHistoryTest test_detector_history.cpp)
+target_compile_features(SkellPresetDetectorHistoryTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetDetectorHistoryTest COMMAND SkellPresetDetectorHistoryTest)
