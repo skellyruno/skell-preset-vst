@@ -416,13 +416,14 @@ public:
         limb(224.f,160.f,4.8f,208.f,123.f,3.6f,.92f);
         joint(205.f,124.f,3.6f,.88f);
 
+        constexpr float micAngle=-.46f;
+        const auto micFrame=juce::AffineTransform::rotation(micAngle,205.f,124.f);
         // ---- Microphone: capsule beside the jaw, barrel angled down-right to
         // meet the fist at the wrist anchor (205,124). The whole assembly is
         // rotated about the wrist so the grip and the arm share one pivot.
         {
             juce::Graphics::ScopedSaveState mic(g);
-            g.addTransform(juce::AffineTransform::rotation(
-                -.14f,205.f,124.f));
+            g.addTransform(micFrame);
             // Barrel along the local -y axis from the wrist.
             juce::Path barrel;
             barrel.addRoundedRectangle(196.f,80.f,18.f,48.f,8.f);
@@ -463,9 +464,10 @@ public:
             g.setColour(ink.withAlpha(.94f));
             g.fillRoundedRectangle(199.f,127.f,12.f,8.f,3.f);
         }
-        // ---- The fist, drawn upright (not in the mic frame) so the fingers
-        // visibly wrap the sleeve at the wrist anchor.
+        // The fist rotates with the microphone, keeping the fingers wrapped
+        // around its handle instead of floating independently.
         {
+            juce::Graphics::ScopedSaveState grip(g);g.addTransform(micFrame);
             g.setGradientFill(juce::ColourGradient(
                 ivory.withAlpha(.74f),200.f,112.f,
                 stone.withAlpha(.50f),214.f,134.f,false));
@@ -484,9 +486,11 @@ public:
         // Slack cable falling from the mic base, past the ribs and away.
         {
             juce::Path cable;
-            cable.startNewSubPath(209.f,133.f);
+            const auto anchor=juce::Point<float>(205.f,133.f).transformedBy(micFrame);
+            cable.startNewSubPath(anchor);
             cable.cubicTo(224.f,150.f,232.f,176.f,228.f,206.f);
-            cable.cubicTo(225.f,232.f,238.f,250.f,250.f,268.f);
+            cable.cubicTo(225.f,251.f,245.f,318.f,254.f,357.f);
+            cable.quadraticTo(260.f,369.f,282.f,366.f);
             g.setColour(ink.withAlpha(.88f));
             g.strokePath(cable,juce::PathStrokeType(2.3f));
             g.setColour(stone.withAlpha(.28f));

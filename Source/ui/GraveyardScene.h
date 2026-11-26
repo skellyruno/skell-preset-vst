@@ -50,8 +50,8 @@ public:
             lastTheme=Theme::current;lastHorizon=skyline;
             juce::Graphics g(image);const float width=(float)w,height=(float)h;
             const float horizonY=skyline;
-            const auto sky=juce::Colour(0xff0a1218),stone=juce::Colour(0xff46564f);
-            const auto deep=juce::Colour(0xff05080b);
+            const auto sky=juce::Colour(0xff15222a),stone=juce::Colour(0xff52615b);
+            const auto deep=juce::Colour(0xff090e13);
             const auto fog=juce::Colour(0xff8aa6a6);
             const auto disc=moonDisc(width,horizonY);
             const float moonX=disc.getCentreX(),moonY=disc.getCentreY(),moonR=disc.getWidth()*.5f;
@@ -62,7 +62,7 @@ public:
             g.setGradientFill(juce::ColourGradient(sky,width*.5f,0.f,deep,width*.5f,height,false));
             g.fillAll();
             g.setGradientFill(juce::ColourGradient(
-                juce::Colour(0xff26504a).withAlpha(.50f),moonX,moonY-moonR,
+                juce::Colour(0xff375951).withAlpha(.56f),moonX,moonY-moonR,
                 juce::Colour(0xff0a1218).withAlpha(0.f),moonX,horizonY*1.10f,true));
             g.fillRect(0.f,0.f,width,horizonY);
 
@@ -132,6 +132,10 @@ public:
             g.setColour(fog.withAlpha(.25f));
             g.drawEllipse(moonX-moonR,moonY-moonR,moonR*2.f,moonR*2.f,.9f);
 
+            // Layered mist gives the dark ridge atmospheric perspective.
+            g.setGradientFill(juce::ColourGradient(fog.withAlpha(.22f),width*.30f,horizonY-65.f,
+                fog.withAlpha(0.f),width*.30f,horizonY-150.f,false));
+            g.fillRect(0.f,juce::jmax(0.f,horizonY-150.f),width,150.f);
             // Distant ridge, then a blacker treeline silhouette.
             juce::Path ridge;
             ridge.startNewSubPath(0.f,horizonY);
@@ -436,14 +440,41 @@ public:
                 g.strokePath(bird,juce::PathStrokeType(1.05f));
             }
 
+            // Two asymmetrical foreground gravestones flank the boards.
+            // Their chipped outlines, side faces and damp stone highlights
+            // establish scale between the distant cemetery and the singer.
+            for(int side:{-1,1}){
+                const float x=width*(side<0?.13f:.89f);
+                const float base=horizonY+juce::jmin(69.f,(height-horizonY)*.30f);
+                const float tall=juce::jmin(104.f,horizonY*.47f)*(side<0?1.f:.74f);
+                const float wide=tall*.38f;
+                if(tall<18.f)continue;
+                juce::Path slab;
+                slab.startNewSubPath(x-wide*.5f,base);
+                slab.lineTo(x-wide*.55f,base-tall*.65f);
+                slab.quadraticTo(x-wide*.38f,base-tall,x+wide*.06f,base-tall);
+                slab.quadraticTo(x+wide*.50f,base-tall*.94f,x+wide*.52f,base-tall*.66f);
+                slab.lineTo(x+wide*.52f,base);slab.closeSubPath();
+                g.setGradientFill(juce::ColourGradient(stone.withAlpha(.72f),x-wide*.55f,base-tall,
+                    deep,x+wide*.52f,base,false));g.fillPath(slab);
+                g.setColour(fog.withAlpha(.13f));g.strokePath(slab,juce::PathStrokeType(.9f));
+                g.setColour(deep.withAlpha(.67f));
+                g.fillRoundedRectangle(x-wide*.65f,base-4.f,wide*1.3f,8.f,1.3f);
+                for(int line=0;line<4;++line){
+                    const float y=base-tall*.61f+line*tall*.092f;
+                    g.setColour(deep.withAlpha(.45f));g.drawLine(x-wide*.30f,y,x+wide*.28f,y,.9f);
+                }
+                g.setColour(deep.withAlpha(.63f));g.fillRoundedRectangle(x-1.5f,base-tall*.87f,3.f,tall*.16f,.6f);
+                g.fillRoundedRectangle(x-wide*.20f,base-tall*.81f,wide*.4f,2.f,.6f);
+            }
             // Edge vignette draws the eye to the performer without crushing
             // the cemetery detail the way a heavy overlay would.
             g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(0.f),width*.5f,height*.44f,
-                                                   Theme::bg.withAlpha(.44f),0.f,height*.44f,true));
+                                                   Theme::bg.withAlpha(.28f),0.f,height*.44f,true));
             g.fillRect(0.f,0.f,width,height);
             // Re-lift the lower centre so the boards under the figure stay lit.
             g.setGradientFill(juce::ColourGradient(
-                Theme::bg.withAlpha(.30f),width*.5f,horizonY-30.f,
+                Theme::bg.withAlpha(.16f),width*.5f,horizonY-30.f,
                 Theme::bg.withAlpha(0.f),width*.5f,height,false));
             g.fillRect(0.f,horizonY-30.f,width,height-horizonY+30.f);
         }

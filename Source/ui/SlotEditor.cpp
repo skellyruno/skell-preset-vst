@@ -162,10 +162,11 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         externalBrowsePending=true;
         hideEmbeddedEditor();
         installedBrowser.open();
-        installedBrowser.toFront(true);
+        installedBrowser.toFront(true);syncEmptyActions();repaint();
     };
     addAndMakeVisible(modulePicker);
     modulePicker.setVisible(false);
+    modulePicker.onDismiss=[this]{syncEmptyActions();repaint();};
     addChildComponent(browseEffects);addChildComponent(browseExternal);
     browseEffects.setTooltip("Search the complete native effect library");
     browseEffects.onClick=[this]{openEffectCategory({});};
@@ -173,11 +174,12 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     browseExternal.onClick=[this]{
         if(processor.slotType(slot)!=SkellPresetAudioProcessor::Empty)return;
         modulePicker.hide();externalBrowsePending=true;hideEmbeddedEditor();
-        installedBrowser.open();installedBrowser.toFront(true);
+        installedBrowser.open();installedBrowser.toFront(true);syncEmptyActions();repaint();
     };
     for(size_t i=0;i<effectCategories.size();++i){
         auto& button=effectCategories[i];
-        button.setButtonText(juce::String(categoryNames[i]).toUpperCase());
+        button.index=(int)i;
+        button.setName(categoryNames[i]);button.setTitle(categoryNames[i]);
         button.setTooltip("Browse "+juce::String(categoryNames[i]).toLowerCase()+" effects");
         button.onClick=[this,i]{openEffectCategory(categoryNames[i]);};
         addChildComponent(button);
@@ -198,7 +200,7 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
         externalBrowsePending=false;
         loadVST3FromFile(path);
     };
-    installedBrowser.onDismiss=[this]{externalBrowsePending=false;};
+    installedBrowser.onDismiss=[this]{externalBrowsePending=false;syncEmptyActions();repaint();};
     installedBrowser.onBrowseFile=[this]{chooseVST3File();};
     loadExternal.onClick=[this] {
         if(installedBrowser.isVisible())installedBrowser.hide();
@@ -1511,16 +1513,24 @@ bool SlotEditor::testMatchFinishPages() {
         std::abs(knobs[0].getValue()-.20)<.002 &&
         std::abs(processor.getSlotParam(0,4)-.67f)<.002f;
 }
+void SlotEditor::syncEmptyActions(){
+    const bool visible=processor.slotType(slot)==SkellPresetAudioProcessor::Empty &&
+        !modulePicker.isVisible() && !installedBrowser.isVisible();
+    browseEffects.setVisible(visible);browseExternal.setVisible(visible);
+    for(auto& category:effectCategories)category.setVisible(visible);
+}
 void SlotEditor::openEffectCategory(const juce::String& category){
     if(processor.slotType(slot)!=SkellPresetAudioProcessor::Empty)return;
     installedBrowser.hide();hideEmbeddedEditor();
     modulePicker.open(processor.slotType(slot),category);
+    syncEmptyActions();repaint();
 }
 void SlotEditor::openModulePicker() {
     installedBrowser.hide();
     livePanel.setVisible(false);liveView.setButtonText("VISUAL");
     if(modulePicker.isVisible())modulePicker.hide();
     else {hideEmbeddedEditor();modulePicker.open(processor.slotType(slot));}
+    syncEmptyActions();repaint();
 }
 SlotEditor::~SlotEditor(){processor.requestSlotVisual(-1);endGraphGesture();releaseEmbeddedEditor();}
 void SlotEditor::select(int newSlot) {
@@ -1801,9 +1811,7 @@ void SlotEditor::refreshIfChanged() {
     applyKnobReadouts();
     lastType=type;lastControls=current;graphSnapshotValid=true;
     const bool external=type==SkellPresetAudioProcessor::ExternalVST3;
-    const bool empty=type==SkellPresetAudioProcessor::Empty;
-    browseEffects.setVisible(empty);browseExternal.setVisible(empty);
-    for(auto& category:effectCategories)category.setVisible(empty);
+    syncEmptyActions();
     if(!external && !externalBrowsePending && installedBrowser.isVisible())
         installedBrowser.hide();
     syncEmbeddedEditor();
@@ -1856,7 +1864,7 @@ void SlotEditor::resized() {
     browseExternal.setBounds(564,424,294,44);
     for(size_t i=0;i<effectCategories.size();++i){
         const int col=(int)i%3,row=(int)i/3;
-        effectCategories[i].setBounds(48+col*274,200+row*106,262,42);
+        effectCategories[i].setBounds(48+col*274,184+row*106,262,98);
     }
     eqQSlider.setBounds(672,114,186,26);
     eqCutSliders[0].setBounds(68,125,270,23);
@@ -1996,22 +2004,13 @@ void SlotEditor::paint(juce::Graphics&g) {
     if(type==SkellPresetAudioProcessor::Empty) {
         Theme::text(g,"SLOT "+juce::String(slot+1).paddedLeft('0',2),
             {21,10,200,18},10,Theme::muted,true);
-        Theme::text(g,"Add an effect",{21,29,690,38},26.f,Theme::white,true);
+        const bool browsing=modulePicker.isVisible() || installedBrowser.isVisible();
+        Theme::text(g,browsing?"Choose an effect":"Add an effect",{21,29,690,38},26.f,Theme::white,true);
+        if(browsing)return;
         Theme::panelBox(g,{24.f,90.f,858.f,414.f},9.f);
         Theme::text(g,"CHOOSE A CATEGORY",{48,109,740,24},15.f,Theme::muted,true);
         Theme::fittedText(g,"Find the right processor without leaving your rack.",
             {48,141,810,28},18.f,Theme::white);
-        constexpr const char* descriptions[]{
-            "Compression, gates, limiting","EQ, saturation, colour","Delay, reverb, doubling",
-            "Chorus, flanger, modulation","Pitch and formant","Complete vocal processing"
-        };
-        for(int i=0;i<6;++i){
-            const int x=48+(i%3)*274,y=184+(i/3)*106;
-            const auto colour=i==0?Theme::amber:i==2||i==4?Theme::blue:i==3?Theme::pink:Theme::green;
-            Theme::panelBox(g,{(float)x,(float)y,262.f,98.f},6.f);
-            g.setColour(colour.withAlpha(.78f));g.fillRoundedRectangle((float)x+12.f,(float)y+9.f,30.f,2.5f,1.2f);
-            Theme::fittedText(g,descriptions[i],{x+10,y+60,242,23},12.5f,Theme::muted,false,juce::Justification::centred);
-        }
         g.setColour(Theme::stroke);g.drawHorizontalLine(405,48.f,858.f);
         Theme::fittedText(g,"Only your selected slot changes. Existing effects stay untouched.",
             {48,476,810,22},12.f,Theme::muted);
@@ -4416,7 +4415,8 @@ bool SlotEditor::testIntegratedEffectLayout() const {
     for(const auto& button:matchPageButtons)
         if(button.isVisible() && categoryBounds.intersects(button.getBounds()))return false;
     if(slotPower.isVisible()!=(faceType!=SkellPresetAudioProcessor::Empty))return false;
-    const bool empty=faceType==SkellPresetAudioProcessor::Empty;
+    const bool empty=faceType==SkellPresetAudioProcessor::Empty &&
+        !modulePicker.isVisible() && !installedBrowser.isVisible();
     if(browseEffects.isVisible()!=empty || browseExternal.isVisible()!=empty)return false;
     const auto area=getLocalBounds();
     if(!area.contains(browseEffects.getBounds()) || !area.contains(browseExternal.getBounds()) ||

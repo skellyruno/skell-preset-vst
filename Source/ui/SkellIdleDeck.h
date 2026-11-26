@@ -155,13 +155,13 @@ public:
         // deep crowd pit. Reserving the pit keeps the audience cinematic
         // instead of a thin strip pressed under the figure's feet.
         const float stageBottom=out.scope.getY()-18.f;
-        const float headroom=h>=350.f?juce::jmin(34.f,h*.055f):0.f;
+        const float headroom=h>=350.f?juce::jmin(26.f,h*.040f):0.f;
         const float stageTop=12.f+headroom;
         const float available=juce::jmax(0.f,stageBottom-stageTop);
         // Keep enough room for the smallest supported figure before the pit
         // takes its share, so tiny frames still produce a valid layout.
         const float pitMax=juce::jmax(0.f,available-372.f*.30f);
-        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f?.18f:.24f)));
+        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f && h>=440.f?.225f:w>=580.f?.18f:.24f)));
         const float feet=stageBottom-pitHeight;
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
             // Let the performer read as the headliner, using the space recovered
@@ -354,7 +354,7 @@ public:
             juce::Graphics::ScopedSaveState saved(g);
             g.reduceClipRegion(stageBounds.toNearestInt());
             // Lit boards under the feet before the pit begins.
-            const float pitTop=feetY+juce::jmax(5.f,16.f*stage.scale);
+            const float pitTop=feetY+juce::jmax(4.f,8.f*stage.scale);
             const float pitBottom=stageBounds.getBottom();
             const float depth=juce::jmax(0.f,pitBottom-pitTop);
             if(depth>10.f){
@@ -362,8 +362,8 @@ public:
                 // a lit, slightly green-grey ramp that keeps the near rows
                 // readable without any figure being bright itself.
                 g.setGradientFill(juce::ColourGradient(
-                    juce::Colour(0xff1a2320),centreX,pitTop,
-                    juce::Colour(0xff05080a),centreX,pitBottom,false));
+                    juce::Colour(0xff222c29).withAlpha(.82f),centreX,pitTop,
+                    juce::Colour(0xff070b0e),centreX,pitBottom,false));
                 g.fillRect(stageBounds.getX(),pitTop,stageBounds.getWidth(),depth);
                 // Warm key spill from the performer's pool plus a cold balcony
                 // glow at the edges, both audio-tinted.
@@ -378,12 +378,12 @@ public:
                     // Far rows are small and high, near rows large and cropped
                     // by the bottom of the stage. The pit starts narrow so the
                     // cemetery keeps its own band of picture above the crowd.
-                    const float heightPix=depth*(.22f+.42f*t);
+                    const float heightPix=depth*(.30f+.76f*t*t);
                     if(heightPix<6.f)continue;
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.72f+.20f*t);
-                    const auto rimColour=porcelain.withAlpha(.075f+.24f*t);
+                    const auto rimColour=porcelain.withAlpha(.12f+.36f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
@@ -397,7 +397,7 @@ public:
                         const float x=stageBounds.getX()+stageBounds.getWidth()*figure.x
                             +wave*2.6f*unit;
                         // Vertical jitter inside the row prevents ruled lines.
-                        const float headY=pitTop+depth*(.03f+.62f*t)+figure.yJitter*depth*.10f
+                        const float headY=pitTop+depth*(.09f+.56f*t)+figure.yJitter*depth*.19f
                             -std::abs(bob)*2.0f*unit;
                         const float base=headY+hgt;
                         const float ry=hgt*figure.headRatio;
@@ -411,11 +411,23 @@ public:
                         if(ry<2.6f) {
                             g.setColour(bodyColour);
                             g.fillEllipse(x-rx,headY-ry,2.f*rx,2.f*ry);
-                            g.fillRoundedRectangle(x-shoulderW,shoulderY,
-                                2.f*shoulderW,juce::jmax(1.f,base-shoulderY),rx);
-                            g.setColour(rimColour);
-                            g.drawLine(x-shoulderW*.8f,shoulderY,x-rx,headY+ry,1.f);
-                            g.drawLine(x+rx,headY+ry,x+shoulderW*.8f,shoulderY,1.f);
+                            // Even distant figures have tapered shoulders,
+                            // a cervical stem and separate angled arms.
+                            juce::Path distant;
+                            distant.startNewSubPath(x-rx*.45f,headY+ry*.6f);
+                            distant.quadraticTo(x-shoulderW,shoulderY,x-shoulderW*.68f,base);
+                            distant.lineTo(x+shoulderW*.68f,base);
+                            distant.quadraticTo(x+shoulderW,shoulderY,x+rx*.45f,headY+ry*.6f);
+                            distant.closeSubPath();g.fillPath(distant);
+                            g.setColour(rimColour.withMultipliedAlpha(.82f));
+                            g.drawLine(x,headY+ry,x,shoulderY+ry*.8f,.65f);
+                            for(int side:{-1,1}){
+                                const float sign=(float)side;
+                                const bool up=figure.pose==0 || (figure.pose==1 && side==1);
+                                const float elbowX=x+sign*shoulderW*1.2f,elbowY=shoulderY+ry*.4f;
+                                g.drawLine(x+sign*rx*.65f,shoulderY,elbowX,elbowY,.8f);
+                                g.drawLine(elbowX,elbowY,elbowX+sign*rx*.6f,elbowY+(up?-ry*2.6f:ry*1.7f),.7f);
+                            }
                             continue;
                         }
                         const juce::Graphics::ScopedSaveState tilt(g);
@@ -549,8 +561,10 @@ public:
                     Theme::bg.withAlpha(0.f),centreX,pitTop+depth*.30f,false));
                 g.fillRect(stageBounds.getX(),pitTop+depth*.30f,
                            stageBounds.getWidth(),pitBottom-pitTop-depth*.30f);
-                g.setColour(accent.withAlpha(.14f+.10f*activity));
-                g.drawHorizontalLine(juce::roundToInt(pitTop),stageBounds.getX(),stageBounds.getRight());
+                // A diffuse stage edge replaces the artificial hard green seam.
+                g.setGradientFill(juce::ColourGradient(accent.withAlpha(.08f+.08f*activity),centreX,pitTop,
+                    accent.withAlpha(0.f),centreX,pitTop+12.f,false));
+                g.fillRect(stageBounds.getX(),pitTop,stageBounds.getWidth(),12.f);
             }
         }
         // The spectrum is part of the cemetery set: two banks of illuminated
@@ -699,7 +713,7 @@ private:
         // Slots per row, farthest (top) to nearest (bottom). Distant rows hold
         // more people at a tighter spacing; near rows are wider and sparser,
         // which is what sells the perspective.
-        constexpr int perRow[crowdLayers]{28,24,20,16};
+        constexpr int perRow[crowdLayers]{28,26,21,13};
         constexpr float spread[crowdLayers]{1.02f,1.08f,1.16f,1.28f};
         for(int layer=0;layer<crowdLayers && index<crowdCount;++layer) {
             const int people=perRow[layer];
@@ -710,7 +724,7 @@ private:
                 f.layer=layer;
                 // Staggered spacing with deterministic jitter avoids a grid,
                 // and the wider near rows bleed past the stage edges.
-                const float even=(i+.5f+(rnd(0)-.5f)*.66f)/people;
+                const float even=(i+.5f+(rnd(0)-.5f)*.90f)/people;
                 f.x=.5f+(even-.5f)*spread[layer];
                 // Height is a modest jitter around the row size; the skull is
                 // always a small fraction of the figure so nobody reads as a

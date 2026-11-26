@@ -96,6 +96,10 @@ public:
             searchRank("Chorus","delay")==3;
     }
     void positionWithin(juce::Rectangle<int> initial) {
+        if(inlineMode && getParentComponent()){
+            setBounds(24,86,getParentComponent()->getWidth()-48,getParentComponent()->getHeight()-110);
+            return;
+        }
         if(!movedByUser) {setBounds(initial);return;}
         if(auto* parent=getParentComponent()) {
             const int w=juce::jlimit(340,juce::jmin(800,parent->getWidth()-12),getWidth());
@@ -108,8 +112,11 @@ public:
     bool testResizeKeepsSizeForTest() {
         auto* parent=getParentComponent();
         if(!parent)return false;
+        const auto originalBounds=getBounds();
+        const bool oldMoved=movedByUser,oldInline=inlineMode;
+        if(inlineMode)setBounds(105,70,696,450);
         const auto oldBounds=getBounds();
-        const bool oldMoved=movedByUser;
+        inlineMode=false;
         movedByUser=true;
         setSize(juce::jmin(800,oldBounds.getWidth()+16),
                 juce::jmin(510,oldBounds.getHeight()+16));
@@ -117,8 +124,8 @@ public:
         const bool correct=getWidth()==oldBounds.getWidth()+16 &&
              getHeight()==oldBounds.getHeight()+16 &&
              parent->getLocalBounds().contains(getBounds());
-        movedByUser=oldMoved;
-        setBounds(oldBounds);
+        movedByUser=oldMoved;inlineMode=oldInline;
+        setBounds(originalBounds);
         return correct;
     }
 
@@ -161,6 +168,10 @@ public:
     }
     void open(int type,const juce::String& categoryFilter={}) {
         currentType=type;
+        const bool wasInline=inlineMode;
+        inlineMode=type==SkellPresetAudioProcessor::Empty;
+        if(inlineMode)positionWithin({});
+        else if(wasInline)setBounds(105,70,696,450);
         selectedCategory=categoryFilter;
         topItem=0;selectedRow=0;wheelCarry=0.f;
         hoveredClose=false;hoveredExternal=false;
@@ -223,7 +234,7 @@ public:
         g.setColour(Theme::green);
         g.fillRoundedRectangle(juce::Rectangle<float>(18.f,14.f,3.f,22.f),1.f);
         Theme::fittedText(g,"EFFECT LIBRARY",{31,9,150,30},16,Theme::white,true);
-        Theme::text(g,"DRAG / RESIZE",{200,15,getWidth()-243,16},9,Theme::muted,
+        Theme::text(g,inlineMode?"BACK TO CATEGORIES":"DRAG / RESIZE",{200,15,getWidth()-243,16},10.5f,Theme::muted,
                     false,juce::Justification::centredRight);
         const auto closeRect=juce::Rectangle<float>(W-42.f,8.f,32.f,30.f);
         g.setColour(hoveredClose?Theme::panelAlt.brighter(.21f):Theme::panelAlt);
@@ -292,7 +303,7 @@ public:
                     9,Theme::muted);
         g.setColour(Theme::green.withAlpha(.76f));
         const float right=W-5.f,bottom=H-5.f;
-        for(int k=0;k<3;++k)
+        if(!inlineMode)for(int k=0;k<3;++k)
             g.drawLine(right-9.f+4.f*k,bottom,right,bottom-9.f+4.f*k,1.1f);
         Theme::text(g,juce::String(results.size())+" EFFECTS",
                     {getWidth()-125,foot,105,17},9,Theme::green,false,
@@ -310,7 +321,7 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e) override {
         if(!e.mods.isLeftButtonDown())return;
-        if(e.x>=getWidth()-23 && e.y>=getHeight()-23) {
+        if(!inlineMode && e.x>=getWidth()-23 && e.y>=getHeight()-23) {
             resizing=true;
             resizeStart=getBounds();
             toFront(true);
@@ -318,7 +329,7 @@ public:
             return;
         }
         if(closeHitForTest(e.x,e.y,getWidth())){hide();return;}
-        if(e.y>=0 && e.y<42 && e.x>=0 && e.x<getWidth()-45) {
+        if(!inlineMode && e.y>=0 && e.y<42 && e.x>=0 && e.x<getWidth()-45) {
             dragHeader=true;
             dragOrigin=getPosition();
             toFront(true);
@@ -385,9 +396,9 @@ public:
             const int i=topItem+(e.y-rowY)/rowHeight;
             if(i!=selectedRow){selectedRow=i;repaint();}
         }
-        const auto shape=e.x>=getWidth()-23 && e.y>=getHeight()-23?
+        const auto shape=!inlineMode && e.x>=getWidth()-23 && e.y>=getHeight()-23?
             juce::MouseCursor::BottomRightCornerResizeCursor:
-            e.y>=0 && e.y<42 && e.x<getWidth()-45?
+            !inlineMode && e.y>=0 && e.y<42 && e.x<getWidth()-45?
             juce::MouseCursor::DraggingHandCursor:
             nextClose || nextExternal || onResult?
             juce::MouseCursor::PointingHandCursor:
@@ -498,7 +509,7 @@ private:
     juce::String selectedCategory;
     std::vector<int> results;
     int currentType=0,selectedRow=0,topItem=0;
-    bool movedByUser=false,dragHeader=false,resizing=false;
+    bool movedByUser=false,dragHeader=false,resizing=false,inlineMode=false;
     bool hoveredClose=false,hoveredExternal=false;
     juce::Rectangle<int> resizeStart{};
     float wheelCarry=0.f;

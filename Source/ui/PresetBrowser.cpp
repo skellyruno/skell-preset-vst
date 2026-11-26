@@ -1775,7 +1775,7 @@ std::vector<int> PresetBrowser::filtered() const {
     const bool genreActive=genreFilter.getSelectedId()>1;
     const auto selectedGenre=genreFilter.getText();
 
-    if((bank==0 && !mainAdlibs || bank==3) && (!genreActive || bank==0)) {
+    if(((bank==0 && !mainAdlibs) || bank==3) && (!genreActive || bank==0)) {
         // Only Alchemist and Deuce appear in the Main lead-vocal list.
         for(const int i:{alchemistIndex,deuceIndex}) {
             if(i<0 || i>=(int)skellpreset::factoryPresets.size())continue;

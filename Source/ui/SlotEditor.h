@@ -216,9 +216,51 @@ private:
     SkellSlotPowerDot slotPower;
     SkellModulePicker modulePicker;
     SkellActionButton browseEffects{"BROWSE ALL EFFECTS"},browseExternal{"LOAD A VST3"};
-    std::array<SkellActionButton,6> effectCategories;
+    class CategoryTile final:public juce::Button {
+    public:
+        CategoryTile():juce::Button("Effect category") {}
+        int index=0;
+        void paintButton(juce::Graphics& g,bool over,bool down) override {
+            constexpr const char* names[]{"DYNAMICS","TONE","SPACE","MOTION","PITCH","VOCAL"};
+            constexpr const char* detail[]{"Compression, gates, limiting","EQ, saturation, colour",
+                "Delay, reverb, doubling","Chorus, flanger, modulation","Pitch and formant","Complete vocal processing"};
+            const auto area=getLocalBounds().toFloat().reduced(.8f);
+            Theme::panelBox(g,area,7.f);
+            const auto colour=index==0?Theme::amber:index==2||index==4?Theme::blue:index==3?Theme::pink:Theme::green;
+            if(over || down || hasKeyboardFocus(true)){
+                g.setColour(colour.withAlpha(down?.16f:.075f));
+                g.fillRoundedRectangle(area,7.f);
+                g.setColour(colour.withAlpha(.74f));
+                g.drawRoundedRectangle(area,7.f,1.3f);
+            }
+            const float x=24.f,y=area.getCentreY();
+            g.setColour(colour.withAlpha(.11f));
+            g.fillRoundedRectangle(x-12.f,y-18.f,44.f,36.f,6.f);
+            g.setColour(colour.withAlpha(.95f));
+            juce::Path glyph;
+            switch(index){
+                case 0:glyph.startNewSubPath(x-5.f,y+10.f);glyph.lineTo(x+5.f,y-3.f);
+                    glyph.quadraticTo(x+12.f,y-11.f,x+24.f,y-11.f);break;
+                case 1:glyph.startNewSubPath(x-6.f,y+7.f);glyph.cubicTo(x+2.f,y+7.f,x+2.f,y-12.f,x+9.f,y-12.f);
+                    glyph.cubicTo(x+15.f,y-12.f,x+16.f,y+6.f,x+25.f,y+6.f);break;
+                case 2:for(int i=0;i<4;++i)g.drawEllipse(x+6.f*i-8.f,y-(11.f-2.f*i),22.f-4.f*i,22.f-4.f*i,1.2f);break;
+                case 3:for(int i=0;i<=30;++i){const float xx=x-6.f+(float)i;
+                    const float yy=y+8.f*std::sin((float)i*.42f);if(i==0)glyph.startNewSubPath(xx,yy);else glyph.lineTo(xx,yy);}break;
+                case 4:glyph.startNewSubPath(x-4.f,y+9.f);glyph.lineTo(x+5.f,y-8.f);
+                    glyph.lineTo(x+12.f,y+2.f);glyph.lineTo(x+23.f,y-11.f);break;
+                default:g.drawRoundedRectangle(x+3.f,y-13.f,9.f,17.f,4.f,1.6f);
+                    glyph.startNewSubPath(x-2.f,y-1.f);glyph.cubicTo(x-2.f,y+12.f,x+17.f,y+12.f,x+17.f,y-1.f);
+                    glyph.startNewSubPath(x+7.5f,y+8.f);glyph.lineTo(x+7.5f,y+15.f);break;
+            }
+            g.strokePath(glyph,juce::PathStrokeType(1.7f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            Theme::fittedText(g,names[index],{70,18,getWidth()-85,25},16.f,Theme::white,true);
+            Theme::fittedText(g,detail[index],{70,48,getWidth()-85,21},12.f,Theme::muted);
+        }
+    };
+    std::array<CategoryTile,6> effectCategories;
     static constexpr std::array<const char*,6> categoryNames{{"Dynamics","Tone","Space","Motion","Pitch","Vocal"}};
     void openEffectCategory(const juce::String& category);
+    void syncEmptyActions();
     SkellInstalledVST3Browser installedBrowser;
     juce::TextButton loadExternal{"LOAD VST3"},editExternal{"OPEN PLUGIN UI"};
     juce::TextButton upgradeEq{"UPGRADE TO PARAMETRIC EQ"};
