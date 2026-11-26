@@ -291,6 +291,33 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI interaction: %s\n", issue.toRawUTF8());
             ++failures;
         }
+        // Separate explicit custom-rack assistant edit; restore the factory
+        // after the test so screenshot baselines never include these changes.
+        {
+            using skellpreset::assistant::Control;
+            processor.clearRackToEmpty();
+            processor.setSlotType(0,SkellPresetAudioProcessor::VocalChorusFX);
+            processor.setSlotParam(0,3,.3f);
+            const auto edit=processor.proposeAssistantEdit(0,Control::ChorusSpread,.123456);
+            if(!edit||processor.applyAssistantEdit(*edit,false,false)||
+               !processor.applyAssistantEdit(*edit,false,true)||
+               std::abs(processor.getSlotParam(0,3)-.123f)>1e-6f||
+               !processor.applyAssistantEdit(*edit,true,true)||
+               std::abs(processor.getSlotParam(0,3)-.3f)>1e-6f){
+                std::fprintf(stderr,"Assistant custom rack apply/undo failed\n");++failures;
+            } else {
+                processor.setSlotParam(0,3,.4f);
+                if(processor.applyAssistantEdit(*edit,false,true)){
+                    std::fprintf(stderr,"Assistant stale edit accepted\n");++failures;
+                }
+                processor.loadFactoryPreset(0);
+                if(processor.applyAssistantEdit(*edit,false,true)||
+                   processor.proposeAssistantEdit(0,Control::ChorusSpread,.1)){
+                    std::fprintf(stderr,"Assistant factory edit accepted\n");++failures;
+                }
+            }
+            processor.loadFactoryPreset(0);
+        }
         skellcore::ui::headless::Options options;
         options.project = "Skell-Preset actual JUCE AudioProcessorEditor";
         for (int theme = 0; theme < static_cast<int>(themes.size()); ++theme)

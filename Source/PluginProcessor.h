@@ -28,6 +28,7 @@
 #include "chain/FactoryPresets.h"
 #include "chain/PresetPackage.h"
 #include "chain/VocalAssistant.h"
+#include "chain/VocalAssistantMapping.h"
 #include "host/HostedVST3.h"
 #include <array>
 #include <atomic>
@@ -86,6 +87,12 @@ public:
         skellpreset::assistant::Goal goal) noexcept {
         return skellpreset::assistant::recommend(features,goal);
     }
+    // Explicit, message-thread-only custom-rack parameter proposal. These
+    // APIs are not an automatic preset writer and are not connected to a UI.
+    std::optional<skellpreset::assistant::Edit> proposeAssistantEdit(
+        int physicalSlot,skellpreset::assistant::Control control,double physicalValue);
+    bool applyAssistantEdit(const skellpreset::assistant::Edit& edit,
+                            bool undo,bool userApproved);
     void loadFactoryPreset(int index);
     void clearRackToEmpty();
     // Message-thread only, validated native .skellpreset ZIP packages.

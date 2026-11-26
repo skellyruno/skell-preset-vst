@@ -523,6 +523,42 @@ void SkellPresetAudioProcessor::setReal(const juce::String& id,float v) {
     }
     if(auto* p=state.getParameter(id))p->setValueNotifyingHost(p->convertTo0to1(v));
 }
+static_assert(SkellPresetAudioProcessor::Delay==7 &&
+              SkellPresetAudioProcessor::VocalChorusFX==20 &&
+              SkellPresetAudioProcessor::VocalFlangerFX==21 &&
+              SkellPresetAudioProcessor::SkellDeEsserFX==46,
+              "Assistant mappings must match stable native module IDs");
+std::optional<skellpreset::assistant::Edit> SkellPresetAudioProcessor::proposeAssistantEdit(
+        int slot,skellpreset::assistant::Control control,double requested) {
+    auto* mm=juce::MessageManager::getInstanceWithoutCreating();
+    if(!mm||!mm->isThisTheMessageThread()||getCurrentProgram()!=customRackProgramIndex||
+       slot<0||slot>=slotCount)return {};
+    bool visible=false;
+    for(int i=0;i<activeSlotCount();++i)visible|=slotIdAt(i)==slot;
+    if(!visible)return {};
+    const auto m=skellpreset::assistant::mapControl(control,requested);
+    if(!m||m->type!=slotType(slot))return {};
+    return skellpreset::assistant::propose(slot,slotType(slot),getSlotParam(slot,m->parameter),control,requested);
+}
+bool SkellPresetAudioProcessor::applyAssistantEdit(
+        const skellpreset::assistant::Edit& edit,bool undo,bool userApproved) {
+    auto* mm=juce::MessageManager::getInstanceWithoutCreating();
+    if(!userApproved||!mm||!mm->isThisTheMessageThread()||
+       !skellpreset::assistant::validEdit(edit))return false;
+    bool visible=false;
+    for(int i=0;i<activeSlotCount();++i)visible|=slotIdAt(i)==edit.slot;
+    const auto id=slotPrefix(edit.slot)+"p"+juce::String(edit.parameter+1);
+    auto* param=state.getParameter(id);
+    if(!param||!skellpreset::assistant::canApply(edit,getCurrentProgram()==customRackProgramIndex,
+        visible,slotType(edit.slot),getSlotParam(edit.slot,edit.parameter),undo))return false;
+    // No insert/reorder, factory write, disk save, or audio-thread operation.
+    // Do not use while host automation is actively writing this parameter.
+    const float next=undo?edit.before:edit.after;
+    param->beginChangeGesture();
+    setSlotParam(edit.slot,edit.parameter,next);
+    param->endChangeGesture();
+    return std::abs(getSlotParam(edit.slot,edit.parameter)-next)<=1e-6f;
+}
 float SkellPresetAudioProcessor::getSlotParam(int slot,int param) const noexcept {
     return value(slotPrefix(slot)+"p"+juce::String(param+1));
 }

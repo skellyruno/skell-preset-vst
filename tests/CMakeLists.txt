@@ -200,3 +200,9 @@ add_test(NAME SkellPresetStereoSeparationTest COMMAND SkellPresetStereoSeparatio
 add_executable(SkellPresetVocalAssistantTest test_vocal_assistant.cpp)
 target_compile_features(SkellPresetVocalAssistantTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetVocalAssistantTest COMMAND SkellPresetVocalAssistantTest)
+
+# Exact assistant control mapping and stale-edit guard, portable C++ only.
+add_executable(SkellPresetAssistantMappingTest test_assistant_mapping.cpp)
+target_include_directories(SkellPresetAssistantMappingTest PRIVATE ../Source/chain)
+target_compile_features(SkellPresetAssistantMappingTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetAssistantMappingTest COMMAND SkellPresetAssistantMappingTest)
