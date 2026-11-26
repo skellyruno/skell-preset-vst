@@ -26,3 +26,5 @@ Browser QA scenes use explicit in-memory fixture metadata, never saved personal 
 build must pass separately. No fresh native screenshot is claimed by this
 documentation; render and inspect actual PNGs before claiming the current
 UI has been verified.
+
+For a release-scale local visual audit, run the actual renderer with `--output <folder> --release-audit`. This extends the full matrix to every enumerated effect scene at 70%, 85%, 100% and 125% in both supported themes. Quick4 remains four scenes by default. Keep the output separate from older captures; confirm the executable commit and inspect the actual PNGs before reporting success. The release matrix is not a substitute for DAW interaction or frame-time testing.

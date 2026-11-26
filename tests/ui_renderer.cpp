@@ -32,9 +32,10 @@ constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
 int main(int argc, char** argv) {
-    bool quick4=true,extras=false,factorySlots=false;
+    bool quick4=true,extras=false,factorySlots=false,releaseAudit=false;
     for(int i=1;i<argc;++i) {
         if(juce::String(argv[i])=="--full")quick4=false;
+        if(juce::String(argv[i])=="--release-audit"){releaseAudit=true;quick4=false;}
         if(juce::String(argv[i])=="--quick4")quick4=true; // compatibility with older launchers
         if(juce::String(argv[i])=="--extras")extras=true;
         if(juce::String(argv[i])=="--factory-slots"){factorySlots=true;quick4=false;}
@@ -381,6 +382,15 @@ int main(int argc, char** argv) {
         for(const auto& effect:effectScenes) {
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",818,482,0,1,false});
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-100",1168,688,0,1,false});
+            if(releaseAudit){
+                for(int theme=0;theme<(int)themes.size();++theme)
+                    for(float scale:scales){
+                        if(theme==0 && (scale==.70f || scale==1.f))continue;
+                        options.scenes.push_back({juce::String(themes[(size_t)theme])+"-effect-"+effect.first+"-"+
+                            juce::String(juce::roundToInt(scale*100.f)),juce::roundToInt(1168.f*scale),
+                            juce::roundToInt(688.f*scale),themeIds[(size_t)theme],1,false});
+                    }
+            }
         }
         options.scenes.push_back({"obsidian-external-100",1168,688,0,1,false});
         options.scenes.push_back({"obsidian-vocal-suite-voice-100",1168,688,0,1,false});
@@ -518,17 +528,21 @@ int main(int argc, char** argv) {
                     std::fprintf(stderr,"Alchemist factory stage 7 missing or unexpected latency in screenshot fixture\\n");
                     ++failures;
                 }
-            } else if(scene.id.startsWith("obsidian-effect-")) {
+            } else if(scene.id.startsWith("obsidian-effect-") || scene.id.startsWith("crimson-effect-")) {
                 processor.loadFactoryPreset(0);
+                const auto requested=scene.id.fromFirstOccurrenceOf("-effect-",false,false)
+                    .upToLastOccurrenceOf("-",false,false);
+                bool matched=false;
                 for(const auto& effect:effectScenes)
-                    if(scene.id==juce::String("obsidian-effect-")+effect.first+"-70" ||
-                       scene.id==juce::String("obsidian-effect-")+effect.first+"-100") {
+                    if(requested==effect.first) {
+                        matched=true;
                         processor.setSlotType(0,effect.second);
                         processor.setSlotOn(0,effect.second!=SkellPresetAudioProcessor::Empty);
                         processor.setSlotParam(0,0,.68f);
                         processor.setSlotParam(0,1,.42f);
                         break;
                     }
+                if(!matched){std::fprintf(stderr,"Unknown native effect scene %s\n",scene.id.toRawUTF8());++failures;}
             }
             editor.dismissGuidedTourForScreenshot();
             editor.configureForScreenshot(scene.theme, scene.mode, scene.browser);
@@ -556,7 +570,7 @@ int main(int argc, char** argv) {
                     || scene.id=="obsidian-effect-alchemist-calibration-70"
                     || scene.id=="obsidian-effect-alchemist-reference-70")
                 editor.selectRackSlotForScreenshot(6,0);
-            else if(scene.id.startsWith("obsidian-effect-")
+            else if(scene.id.startsWith("obsidian-effect-") || scene.id.startsWith("crimson-effect-")
                     || scene.id.startsWith("obsidian-vocal-suite-")
                     || scene.id=="obsidian-external-70" || scene.id=="obsidian-external-100"
                     || scene.id=="obsidian-installed-vst3-browser-70")

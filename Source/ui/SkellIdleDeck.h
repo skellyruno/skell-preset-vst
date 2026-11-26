@@ -175,9 +175,16 @@ public:
             out.scope.getRight()<=w && out.scope.getBottom()<=h;
         return out;
     }
+    static juce::Rectangle<float> sceneryBounds(const StageLayout& stage,float width) noexcept {
+        return {10.f,10.f,width-20.f,stage.scope.getY()-18.f};
+    }
+    static float stageHorizon(const StageLayout& stage) noexcept {
+        const float feet=stage.originY+372.f*stage.scale;
+        return juce::jmax(106.f,feet-juce::jlimit(70.f,190.f,feet*.34f));
+    }
     static bool testStageGeometryForTest() noexcept {
-        constexpr int sizes[6][2]{{320,240},{580,390},{906,535},
-                                  {1140,680},{2000,1000},{160,160}};
+        constexpr int sizes[8][2]{{320,240},{580,390},{906,349},{906,535},
+                                  {906,561},{1140,680},{2000,1000},{160,160}};
         for(const auto& dimensions:sizes) {
             const auto stage=layoutFor(dimensions[0],dimensions[1]);
             if(dimensions[0]==160) {
@@ -190,15 +197,18 @@ public:
                stage.scope.getBottom()>(float)dimensions[1] ||
                stage.originX<0.f || stage.originY<0.f)
                 return false;
+            const auto scenery=sceneryBounds(stage,(float)dimensions[0]);
+            const auto moon=skellpreset::stage::Backdrop::moonBounds(scenery,stageHorizon(stage));
+            if(!scenery.contains(moon) || moon.getY()<scenery.getY()+8.f ||
+               std::abs(moon.getWidth()-moon.getHeight())>.001f)return false;
         }
         return !layoutFor(0,0).valid;
     }
     juce::Rectangle<int> moonBounds() const noexcept {
         const auto stage=layoutFor(getWidth(),getHeight());
-        const float w=(float)getWidth()-20.f;
-        const float feet=stage.originY+372.f*stage.scale;
-        const float horizon=juce::jmax(106.f,feet-juce::jlimit(70.f,190.f,feet*.34f));
-        return skellpreset::stage::Backdrop::moonDisc(w,horizon).translated(10.f,10.f).toNearestInt();
+        if(!stage.valid)return {};
+        return skellpreset::stage::Backdrop::moonBounds(
+            sceneryBounds(stage,(float)getWidth()),stageHorizon(stage)).toNearestInt();
     }
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
@@ -216,16 +226,14 @@ public:
 
         // Minimal midnight performance stage. All lighting is drawn in the
         // native editor; reactive intensity is measured from actual audio.
-        const auto stageBounds=juce::Rectangle<float>(10.f,10.f,width-20.f,
-            stage.scope.getY()-18.f);
+        const auto stageBounds=sceneryBounds(stage,width);
         const float centreX=width*.5f;
         // Two separate ground lines. `feetY` is where the performer stands;
         // `horizon` is the cemetery skyline, lifted well above the feet so the
         // graves, fence and chapel get a real band of depth instead of being
         // crushed into a strip behind the crowd pit.
         const float feetY=stage.originY+372.f*stage.scale;
-        const float horizon=juce::jmax(stageBounds.getY()+96.f,
-            feetY-juce::jlimit(70.f,190.f,feetY*.34f));
+        const float horizon=stageHorizon(stage);
         const auto* mode=processor.state.getRawParameterValue("mode");
         const bool bypassed=mode && (int)mode->load()==3;
         backdrop.draw(g,stageBounds,horizon);
@@ -455,6 +463,28 @@ public:
                         body.closeSubPath();
                         g.setColour(bodyColour);
                         g.fillPath(body);
+                        // Near bodies show the rear skeleton rather than
+                        // featureless black coats. No detail on subpixel heads.
+                        if(ry>4.5f && row>=crowdLayers-2) {
+                            const float spineY=shoulderY+ry*.25f;
+                            for(int v=0;v<4;++v) {
+                                const float vy=spineY+v*ry*.48f;
+                                g.setColour(rimColour.withMultipliedAlpha(.62f-.08f*v));
+                                g.fillRoundedRectangle(x-rx*.20f,vy,rx*.40f,ry*.29f,ry*.10f);
+                            }
+                            for(int side:{-1,1}) {
+                                const float sign=(float)side;
+                                juce::Path blade;
+                                blade.startNewSubPath(x+sign*rx*.48f,spineY+ry*.12f);
+                                blade.quadraticTo(x+sign*shoulderW*.90f,spineY+ry*.15f,
+                                                  x+sign*rx*.87f,spineY+ry*1.36f);
+                                blade.quadraticTo(x+sign*rx*.40f,spineY+ry*.96f,
+                                                  x+sign*rx*.48f,spineY+ry*.12f);
+                                blade.closeSubPath();
+                                g.setColour(rimColour.withMultipliedAlpha(.32f));
+                                g.fillPath(blade);
+                            }
+                        }
                         // Rim: shoulder crest then the skull dome.
                         g.setColour(rimColour);
                         juce::Path shoulders;
@@ -566,10 +596,23 @@ public:
         const auto scope=stage.scope;
         g.setColour(Theme::bg.withAlpha(.72f));g.fillRoundedRectangle(scope.expanded(8.f,4.f),6.f);
         g.setColour(Theme::stroke.withAlpha(.55f));g.drawRoundedRectangle(scope.expanded(8.f,4.f),6.f,.8f);
-        // One uninterrupted audio trace floating over the black stage.
+        // A compact measured peak readout gives the trace a useful scale
+        // without shrinking the scene on the smallest supported editor.
+        const bool showPeak=scope.getWidth()>420.f;
+        const auto plot=showPeak?scope.withTrimmedLeft(106.f):scope;
+        if(showPeak){
+            Theme::fittedText(g,"OUT PEAK",scope.withWidth(100.f).withHeight(13.f).toNearestInt(),9.f,Theme::muted,true);
+            const auto peakText=audioFresh && outputMeter.level>.00003162f
+                ?juce::String(juce::Decibels::gainToDecibels(outputMeter.level,-90.f),1)+" dBFS"
+                :juce::String("-inf dBFS");
+            Theme::fittedText(g,peakText,scope.withWidth(100.f).withTrimmedTop(13.f).toNearestInt(),10.8f,
+                              outputMeter.level>1.f?Theme::amber:Theme::white,true);
+            g.setColour(Theme::stroke.withAlpha(.50f));
+            g.drawVerticalLine(juce::roundToInt(plot.getX()),scope.getY()+3.f,scope.getBottom()-3.f);
+        }
         g.setColour(accent.withAlpha(.10f));
-        g.drawLine(scope.getX()+9.f,scope.getCentreY(),
-                   scope.getRight()-9.f,scope.getCentreY(),.7f);
+        g.drawLine(plot.getX()+9.f,plot.getCentreY(),
+                   plot.getRight()-9.f,plot.getCentreY(),.7f);
         juce::Path trace;
         for(int index=0;index<128;++index){
             const float raw=cachedSignal[(size_t)index];
@@ -577,15 +620,15 @@ public:
             // instead of displaying a stale recorded vocal as LIVE.
             const float value=audioFresh && std::isfinite(raw)?
                 juce::jlimit(-1.f,1.f,raw):0.f;
-            const float x=scope.getX()+11.f+(scope.getWidth()-22.f)*index/127.f;
-            const float y=scope.getCentreY()-value*scope.getHeight()*.43f;
+            const float x=plot.getX()+11.f+(plot.getWidth()-22.f)*index/127.f;
+            const float y=plot.getCentreY()-value*plot.getHeight()*.43f;
             if(index==0)trace.startNewSubPath(x,y);
             else trace.lineTo(x,y);
         }
         if(live) {
             auto envelope=trace;
-            envelope.lineTo(scope.getRight()-11.f,scope.getCentreY());
-            envelope.lineTo(scope.getX()+11.f,scope.getCentreY());
+            envelope.lineTo(plot.getRight()-11.f,plot.getCentreY());
+            envelope.lineTo(plot.getX()+11.f,plot.getCentreY());
             envelope.closeSubPath();
             g.setColour(accent.withAlpha(.045f+.07f*activity));
             g.fillPath(envelope);

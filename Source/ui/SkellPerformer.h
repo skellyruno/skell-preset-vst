@@ -28,7 +28,7 @@ public:
         const float breath=juce::jlimit(0.f,1.f,vocal<0.f?react:vocal);
         // Mouth opening follows measured vocal energy rather than a timed
         // sine wave. Body sway remains theatrical set animation.
-        const float jawDrop=8.5f*std::sqrt(vocal<0.f?react:juce::jlimit(0.f,1.f,vocal));
+        const float jawDrop=6.5f*std::sqrt(vocal<0.f?react:juce::jlimit(0.f,1.f,vocal));
         const auto ink=Theme::bg;
         const auto ivory=juce::Colour(0xffe1dacc);
         const auto stone=juce::Colour(0xff737c7b);
@@ -489,8 +489,10 @@ public:
             skull.cubicTo(133.f,13.f,127.f,24.f,127.f,36.f);
             skull.cubicTo(127.f,46.f,130.f,53.f,134.f,57.f);
             skull.cubicTo(136.f,60.f,137.f,63.f,137.f,66.f);
-            skull.cubicTo(139.f,74.f,145.f,78.f,151.f,78.f);
-            skull.cubicTo(157.f,78.f,163.f,74.f,165.f,66.f);
+            // The fixed cranium stops at the maxilla; the lower jaw is
+            // a separate articulated shape rather than a line over bone.
+            skull.cubicTo(140.f,69.f,146.f,70.f,151.f,70.f);
+            skull.cubicTo(156.f,70.f,162.f,69.f,165.f,66.f);
             skull.cubicTo(165.f,63.f,166.f,60.f,168.f,57.f);
             skull.cubicTo(172.f,53.f,175.f,46.f,175.f,36.f);
             skull.cubicTo(175.f,24.f,169.f,13.f,151.f,13.f);
@@ -596,34 +598,48 @@ public:
             g.setColour(ink.withAlpha(.26f));
             g.drawLine(131.f,59.f,140.f,62.f,.8f);
             g.drawLine(171.f,58.f,163.f,62.f,.8f);
-            // Maxilla and the upper teeth.
-            g.setColour(ink.withAlpha(.90f));
-            g.fillRoundedRectangle(139.f,64.f,24.f,6.6f+jawDrop*.28f,2.f);
-            for(int tooth=0;tooth<7;++tooth){
-                const float x=140.f+3.4f*tooth;
-                g.setGradientFill(juce::ColourGradient(ivory,x,64.f,stone,x+2.9f,68.6f,false));
-                g.fillRoundedRectangle(x,64.f,2.9f,4.6f,.75f);
-                g.setColour(ink.withAlpha(.50f));
-                g.drawLine(x+2.9f,64.f,x+2.9f,68.f,.5f);
-            }
-            // Mandible follows the jaw opening.
+            // Fixed maxilla and the real dark oral cavity; upper teeth
+            // never stretch with vocal level.
+            juce::Path mouth;
+            mouth.startNewSubPath(137.f,65.f);
+            mouth.quadraticTo(151.f,63.f,165.f,65.f);
+            mouth.cubicTo(165.f,73.f+jawDrop,158.f,78.f+jawDrop,151.f,78.f+jawDrop);
+            mouth.cubicTo(144.f,78.f+jawDrop,137.f,73.f+jawDrop,137.f,65.f);
+            mouth.closeSubPath();
+            g.setColour(ink.withAlpha(.98f));
+            g.fillPath(mouth);
+            // Lower mandibular ramus, chin and dental ridge form one closed
+            // piece. Its lower teeth follow the same displacement.
             juce::Path jaw;
-            jaw.startNewSubPath(137.f,68.f);
-            jaw.cubicTo(139.f,76.f+jawDrop*.55f,146.f,81.f+jawDrop,
-                        151.f,81.f+jawDrop);
-            jaw.cubicTo(157.f,81.f+jawDrop,164.f,76.f+jawDrop*.6f,165.f,68.f);
-            g.setColour(ink.withAlpha(.58f));
-            g.strokePath(jaw,juce::PathStrokeType(3.8f));
-            g.setGradientFill(juce::ColourGradient(ivory.withAlpha(.92f),139.f,69.f,stone,164.f,82.f+jawDrop,false));
-            g.strokePath(jaw,juce::PathStrokeType(3.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-            for(int tooth=0;tooth<6;++tooth){
-                const float x=140.f+3.6f*tooth;
-                const float drop=jawDrop*.55f;
-                g.setColour(ivory.withAlpha(.64f));
-                g.fillRect(x,70.6f+drop,2.7f,3.2f);
+            jaw.startNewSubPath(136.f,61.f);
+            jaw.cubicTo(134.f,70.f,138.f,78.f+jawDrop,144.f,80.f+jawDrop);
+            jaw.quadraticTo(151.f,83.f+jawDrop,158.f,80.f+jawDrop);
+            jaw.cubicTo(164.f,78.f+jawDrop,168.f,70.f,166.f,61.f);
+            jaw.lineTo(163.f,65.f);
+            jaw.cubicTo(163.f,72.f,158.f,74.f+jawDrop,151.f,74.f+jawDrop);
+            jaw.cubicTo(144.f,74.f+jawDrop,139.f,72.f,139.f,65.f);
+            jaw.closeSubPath();
+            g.setGradientFill(juce::ColourGradient(ivory.withAlpha(.96f),138.f,65.f,
+                                                    stone,165.f,83.f+jawDrop,false));
+            g.fillPath(jaw);
+            g.setColour(ink.withAlpha(.64f));
+            g.strokePath(jaw,juce::PathStrokeType(.9f));
+            for(int tooth=0;tooth<8;++tooth) {
+                const float x=139.4f+3.f*tooth;
+                const float edge=std::abs((float)tooth-3.5f)/3.5f;
+                const float top=64.f+edge*.45f;
+                const float lower=70.1f+jawDrop-edge*1.35f;
+                g.setGradientFill(juce::ColourGradient(ivory,x,top,stone,x+2.65f,top+4.8f,false));
+                g.fillRoundedRectangle(x,top,2.65f,4.8f-edge*.8f,.65f);
+                g.setGradientFill(juce::ColourGradient(ivory.withAlpha(.84f),x,lower,
+                                                        stone,x+2.65f,lower+3.5f,false));
+                g.fillRoundedRectangle(x,lower,2.65f,3.5f,.60f);
             }
-            g.setColour(alive.withAlpha(.05f+.17f*react));
-            g.drawLine(140.f,70.f,163.f,70.f,1.f);
+            juce::Path chin;
+            chin.startNewSubPath(141.f,76.f+jawDrop*.8f);
+            chin.quadraticTo(151.f,81.f+jawDrop,161.f,76.f+jawDrop*.8f);
+            g.setColour(ivory.withAlpha(.28f));
+            g.strokePath(chin,juce::PathStrokeType(1.1f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             // Sutures and the cold rim on the shadow side.
             g.setColour(stone.withAlpha(.46f));
             g.drawLine(143.f,17.f,141.f,27.f,.9f);

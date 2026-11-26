@@ -33,9 +33,17 @@ public:
         const float x=width*.760f,y=juce::jmax(radius+9.f,horizon*.30f);
         return {x-radius,y-radius,2.f*radius,2.f*radius};
     }
+    // Paint the cached plate in local coordinates; callers use canvas-space
+    // skyline positions. One conversion is shared by art, moon and atmosphere.
+    static float localSkyline(juce::Rectangle<float> bounds,float horizon) noexcept {
+        return juce::jlimit(28.f,juce::jmax(28.f,bounds.getHeight()-24.f),horizon-bounds.getY());
+    }
+    static juce::Rectangle<float> moonBounds(juce::Rectangle<float> bounds,float horizon) noexcept {
+        return moonDisc(bounds.getWidth(),localSkyline(bounds,horizon)).translated(bounds.getX(),bounds.getY());
+    }
     void draw(juce::Graphics& target,juce::Rectangle<float> bounds,float horizon) {
         const int w=juce::jmax(1,(int)bounds.getWidth()),h=juce::jmax(1,(int)bounds.getHeight());
-        const float skyline=juce::jlimit(28.f,horizon-24.f,horizon);
+        const float skyline=localSkyline(bounds,horizon);
         if(image.getWidth()!=w || image.getHeight()!=h || lastTheme!=Theme::current
            || lastHorizon!=skyline) {
             image=juce::Image(juce::Image::ARGB,w,h,true);
@@ -442,7 +450,8 @@ public:
         const float react=juce::jlimit(0.f,1.f,activity);
         const auto lamp=juce::Colour(0xffe8b478);
         const float chapelX=bounds.getX()+width*.855f;
-        const float chapelBase=bounds.getY()+horizon-10.f;
+        const float worldSkyline=bounds.getY()+localSkyline(bounds,horizon);
+        const float chapelBase=worldSkyline-10.f;
         const float s=.62f;
         // Three guttering windows, each with its own slow irregular rhythm.
         for(int wx=0;wx<3;++wx) {
@@ -462,7 +471,7 @@ public:
         for(int band=0;band<3;++band) {
             const float speed=.055f+.028f*band;
             const float offset=std::fmod(phase*speed*width*.30f+band*width*.42f,width*1.5f);
-            const float y=bounds.getY()+horizon-70.f+band*26.f;
+            const float y=worldSkyline-70.f+band*26.f;
             const float a=.030f+.014f*band;
             g.setGradientFill(juce::ColourGradient(
                 mist.withAlpha(0.f),bounds.getX()+offset-width*.7f,y,
@@ -473,7 +482,7 @@ public:
         for(int i=0;i<14;++i) {
             const float seed=hash01(i*613);
             const float x=bounds.getX()+width*(.06f+.88f*hash01(i*271));
-            const float y=bounds.getY()+horizon-58.f+34.f*hash01(i*443);
+            const float y=worldSkyline-58.f+34.f*hash01(i*443);
             const float pulse=.5f+.5f*std::sin(phase*(.5f+.6f*seed)+i*1.7f);
             const float a=pulse*pulse*(.16f+.30f*react);
             if(a<.01f)continue;
