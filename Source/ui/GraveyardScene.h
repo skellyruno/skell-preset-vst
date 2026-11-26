@@ -27,6 +27,12 @@ inline float hash01(int n) noexcept {
 // real depth instead of squeezing them into a strip under the crowd pit.
 class Backdrop {
 public:
+    // One shared moon rectangle drives both the cached artwork and live hit target.
+    static juce::Rectangle<float> moonDisc(float width,float horizon) noexcept {
+        const float radius=juce::jmax(18.f,juce::jmin(58.f,width*.046f));
+        const float x=width*.760f,y=juce::jmax(radius+9.f,horizon*.30f);
+        return {x-radius,y-radius,2.f*radius,2.f*radius};
+    }
     void draw(juce::Graphics& target,juce::Rectangle<float> bounds,float horizon) {
         const int w=juce::jmax(1,(int)bounds.getWidth()),h=juce::jmax(1,(int)bounds.getHeight());
         const float skyline=juce::jlimit(28.f,horizon-24.f,horizon);
@@ -39,8 +45,8 @@ public:
             const auto sky=juce::Colour(0xff0a1218),stone=juce::Colour(0xff46564f);
             const auto deep=juce::Colour(0xff05080b);
             const auto fog=juce::Colour(0xff8aa6a6);
-            const float moonX=width*.760f,moonY=horizonY*.30f;
-            const float moonR=juce::jmax(18.f,juce::jmin(58.f,width*.046f));
+            const auto disc=moonDisc(width,horizonY);
+            const float moonX=disc.getCentreX(),moonY=disc.getCentreY(),moonR=disc.getWidth()*.5f;
 
             // --- Sky: midnight gradient with a sickly green bloom behind the
             // moon, which is what makes the scene feel diseased rather than

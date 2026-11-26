@@ -98,6 +98,7 @@ public:
         Theme::panelBox(g,{12.f,89.f,242.f,420.f},8.f,true);
         Theme::text(g,"KEY SOURCE",{22,102,222,24},13.f,Theme::white,true);
         Theme::text(g,"EFFECT TARGETS",{300,91,getWidth()-320,24},13.f,Theme::white,true);
+        Theme::text(g,"SELECT A SLOT TO PREVIEW ITS LINK",{300,112,getWidth()-320,17},10.f,Theme::muted);
         g.setColour(Theme::stroke);g.drawHorizontalLine(77,18.f,(float)getWidth()-18.f);
         if(valid(target)){
             int position=0;for(int i=0;i<processor.activeSlotCount();++i)if(processor.slotIdAt(i)==target)position=i;
@@ -107,7 +108,7 @@ public:
             const bool secondColumn=card.getX()>300;
             const float rail=secondColumn?574.f:276.f;
             cable.lineTo(276.f,153.f);
-            if(secondColumn){cable.lineTo(276.f,120.f);cable.lineTo(rail,120.f);}
+            if(secondColumn){cable.lineTo(276.f,129.f);cable.lineTo(rail,129.f);}
             cable.lineTo(rail,y);cable.lineTo(x,y);
             const bool linked=isConnected(target) && source.getSelectedId()==committedSource(target);
             const auto ink=linked?Theme::green:Theme::muted;
@@ -118,6 +119,10 @@ public:
             const float reduction=processor.getSlotDuckReductionDb(target);
             Theme::text(g,"MEASURED REDUCTION",{22,359,222,18},10.5f,Theme::muted,true);
             Theme::text(g,juce::String(reduction,1)+" dB",{22,382,222,30},20.f,Theme::green,true);
+            const juce::Rectangle<float> meter(22.f,411.f,222.f,5.f);
+            g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,2.5f);
+            const float fill=meter.getWidth()*juce::jlimit(0.f,1.f,std::abs(reduction)/24.f);
+            if(fill>0.f){g.setColour(Theme::green);g.fillRoundedRectangle(meter.withWidth(fill),2.5f);}
             if(processor.slotType(target)==P::Limiter || processor.slotType(target)==P::StudioLimiterFX)
                 Theme::fittedText(g,"Ducking this effect reduces limiting.",{22,424,222,62},11.5f,Theme::amber);
             else Theme::fittedText(g,"Key controls wet contribution, not the audio input.",{22,424,222,62},11.5f,Theme::muted);
@@ -155,8 +160,15 @@ private:
         }
     }
     juce::Rectangle<int> targetBounds(int position) const{
-        const int rows=juce::jlimit(1,8,(processor.activeSlotCount()+1)/2);
-        const int col=position/rows,row=position%rows;return {300+col*284,132+row*45,266,36};
+        int count=0,displayIndex=0;
+        for(int i=0;i<processor.activeSlotCount();++i){
+            if(processor.slotType(processor.slotIdAt(i))==P::Empty)continue;
+            if(i<position)++displayIndex;
+            ++count;
+        }
+        const int rows=juce::jlimit(1,8,(count+1)/2);
+        const int col=displayIndex/rows,row=displayIndex%rows;
+        return {300+col*284,132+row*45,266,36};
     }
     int committedSource(int id) const {
         const auto prefix=slotPrefix(id);
