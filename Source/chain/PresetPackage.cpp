@@ -403,11 +403,7 @@ juce::Result write(const juce::File& target,const Document& document) {
     return juce::Result::ok();
 }
 
-juce::Result read(const juce::File& source,Document& result) {
-    if (! source.existsAsFile() || source.getSize()>maxArchiveBytes
-        || ! source.hasFileExtension(".skellpreset"))
-        return juce::Result::fail("Not a valid .skellpreset file");
-    juce::ZipFile archive(source);
+static juce::Result readArchive(juce::ZipFile& archive,Document& result) {
     if (archive.getNumEntries()!=1)return juce::Result::fail("Only preset.json is supported");
     const auto* entry=archive.getEntry(0);
     if (! entry || entry->filename!="preset.json" || entry->isSymbolicLink
@@ -421,5 +417,19 @@ juce::Result read(const juce::File& source,Document& result) {
         return juce::Result::fail("Truncated or oversized preset JSON");
     const auto document=juce::JSON::parse(juce::String::fromUTF8((const char*)data.getData(),(int)data.getSize()));
     return fromJson(document,result);
+}
+juce::Result read(const juce::File& source,Document& result) {
+    if (! source.existsAsFile() || source.getSize()>maxArchiveBytes
+        || ! source.hasFileExtension(".skellpreset"))
+        return juce::Result::fail("Not a valid .skellpreset file");
+    juce::ZipFile archive(source);
+    return readArchive(archive,result);
+}
+juce::Result readMemory(const juce::MemoryBlock& source,Document& result) {
+    if(source.getSize()==0 || source.getSize()>(size_t)maxArchiveBytes)
+        return juce::Result::fail("Invalid preset byte count");
+    juce::MemoryInputStream input(source,false);
+    juce::ZipFile archive(input);
+    return readArchive(archive,result);
 }
 } // namespace skellpreset::package

@@ -335,6 +335,7 @@ PresetBrowser::LibrarySnapshot PresetBrowser::collectLibrary(
 void PresetBrowser::applyLibrarySnapshot(LibrarySnapshot snapshot) {
     if(!snapshot.ok)return; // keep the prior view if enumeration cannot start
     categoryCountsDirty=true;
+    if(snapshot.bankScanned)embeddedArtistMetadata=std::move(snapshot.bankMetadata);
     userPresets=std::move(snapshot.files);
     userArtwork=std::move(snapshot.thumbnails);
     coverCache=std::move(snapshot.covers);
@@ -356,7 +357,17 @@ void PresetBrowser::requestLibraryScan() {
     const auto previous=coverCache;
     juce::Component::SafePointer<PresetBrowser> safe(this);
     juce::Thread::launch([safe,revision,folder,previous] {
+        // Worker only: populate the private bundled artist presets before the
+        // ordinary snapshot. Existing personal metadata remains authoritative.
+        skellpreset::artistbank::SyncResult bank;
+        {
+            std::lock_guard<std::mutex> lock(libraryWriteMutex);
+            bank=skellpreset::artistbank::syncEmbedded(folder.getParentDirectory());
+        }
         auto snapshot=collectLibrary(folder,previous);
+        snapshot.bankScanned=bank.error.isEmpty();
+        if(bank.error.isNotEmpty())juce::Logger::writeToLog("Skell artist bank: "+bank.error);
+        snapshot.bankMetadata=std::move(bank.metadata);
         juce::MessageManager::callAsync([safe,revision,snapshot=std::move(snapshot)]() mutable {
             if(!safe)return;
             safe->libraryScanInFlight=false;
@@ -431,6 +442,17 @@ bool PresetBrowser::configureDirectoryForScreenshot(int page,int width,int heigh
     // Called only by the local renderer. Fixture labels are explicit; never
     // write fake artists, presets or pairing metadata into the user's library.
     preferencesReadOnly=true;open();
+    // The local screenshot harness uses an isolated application-data root.
+    // Production opening uses only the background scan above.
+    const auto fixtureRoot=libraryDirectory().getParentDirectory();
+    if(juce::SystemStats::getEnvironmentVariable("SKELL_ARTIST_BANK_QA",{})=="1" &&
+       fixtureRoot.isAChildOf(juce::File::getSpecialLocation(juce::File::tempDirectory))){
+        auto fixtureBank=skellpreset::artistbank::syncEmbedded(fixtureRoot);
+        if(fixtureBank.error.isEmpty()){
+            embeddedArtistMetadata=std::move(fixtureBank.metadata);
+            scanLibrary();refreshArtistChoices();
+        }
+    }
     if(page>=1){
         const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
             .getChildFile("Skell UI fixture "+juce::Uuid().toString());
@@ -989,14 +1011,25 @@ juce::String PresetBrowser::artistForUser(int index) const {
     if(index<0 || index>=(int)userPresets.size())return {};
     const auto key=favoriteKey(-index-1);
     const int found=artistKeys.indexOf(key,true);
-    return found>=0 && found<artistNames.size()?artistNames[found]:juce::String{};
+    if(found>=0 && found<artistNames.size())return artistNames[found];
+    const auto builtIn=embeddedArtistMetadata.find(key);
+    return builtIn==embeddedArtistMetadata.end()?juce::String{}:builtIn->second.artist;
 }
 juce::File PresetBrowser::organizationFile() const {
     return libraryDirectory().getParentDirectory().getChildFile("LibraryOrganization.txt");
 }
 juce::String PresetBrowser::organizationValue(const juce::String& key) const {
     const int pos=organizationKeys.indexOf(key,true);
-    return pos>=0 && pos<organizationValues.size()?organizationValues[pos]:juce::String{};
+    if(pos>=0 && pos<organizationValues.size())return organizationValues[pos];
+    const auto separator=key.indexOfChar(':');
+    if(separator<0)return {};
+    const auto builtIn=embeddedArtistMetadata.find(key.substring(separator+1));
+    if(builtIn==embeddedArtistMetadata.end())return {};
+    const auto field=key.substring(0,separator);
+    if(field=="title")return builtIn->second.title;
+    if(field=="type")return builtIn->second.type;
+    if(field=="pair")return builtIn->second.pair;
+    return {};
 }
 void PresetBrowser::setOrganizationValue(const juce::String& key,const juce::String& value){
     const int pos=organizationKeys.indexOf(key,true);

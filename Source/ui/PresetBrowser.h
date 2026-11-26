@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
+#include "../chain/ArtistBank.h"
 #include <array>
 #include <functional>
 #include <map>
@@ -223,6 +224,8 @@ private:
         std::vector<juce::Image> thumbnails;
         CoverCache covers;
         juce::Image alchemist;
+        bool bankScanned=false;
+        skellpreset::artistbank::MetadataMap bankMetadata;
     };
     struct BackdropSnapshot {
         juce::File source;
@@ -237,6 +240,7 @@ private:
     void completePresetWrite(const juce::File& libraryCopy,bool ok,const juce::String& error,
                              LibrarySnapshot snapshot,BackdropSnapshot backdrop);
     CoverCache coverCache;
+    skellpreset::artistbank::MetadataMap embeddedArtistMetadata;
     juce::File backdropSource;
     juce::int64 backdropModified=-1;
     bool backdropLoaded=false;

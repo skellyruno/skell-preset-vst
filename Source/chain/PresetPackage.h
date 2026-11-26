@@ -76,4 +76,5 @@ struct Document {
 // rejects symlinks and unsupported members, and NEVER extracts archive paths.
 juce::Result write(const juce::File& target, const Document& document);
 juce::Result read(const juce::File& source, Document& result);
+juce::Result readMemory(const juce::MemoryBlock& source, Document& result);
 } // namespace skellpreset::package
