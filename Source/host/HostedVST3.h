@@ -275,7 +275,7 @@ public:
         std::lock_guard<std::mutex> lock(lifecycle);
         active[(size_t)slot].store(nullptr,std::memory_order_seq_cst);
         latencies[(size_t)slot].store(0,std::memory_order_release);
-        names[(size_t)slot].clear();identifiers[(size_t)slot].clear();locations[(size_t)slot]={};
+        names[(size_t)slot].clear();identifiers[(size_t)slot].clear();locations[(size_t)slot]=juce::File{};
         reclaimRetiredLocked();
     }
     juce::File getFile(int slot) const {
