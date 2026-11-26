@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "chain/VocalStarterChains.h"
 #include "PluginEditor.h"
 #include "chain/EffectRegistry.h"
 #include "chain/AlchemistNativePreset.h"
@@ -1901,6 +1902,13 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
 juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     skellpreset::package::Document doc;
     if(const auto result=skellpreset::package::read(file,doc);result.failed())return result;
+    return applyValidatedPresetDocument(doc);
+}
+juce::Result SkellPresetAudioProcessor::loadVocalStarter(int profile) {
+    if(profile<0 || profile>=skellpreset::starter::count)return juce::Result::fail("Invalid vocal starter");
+    auto doc=skellpreset::starter::make<SkellPresetAudioProcessor>(profile);
+    const int mode=(int)state.getRawParameterValue("mode")->load();
+    if(mode==0 || mode==3)doc.mode=mode;
     return applyValidatedPresetDocument(doc);
 }
 juce::Result SkellPresetAudioProcessor::applyValidatedPresetDocument(

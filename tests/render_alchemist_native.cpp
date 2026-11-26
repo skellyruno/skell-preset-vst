@@ -917,6 +917,33 @@ int limiterStateSmoke() {
     return 0;
 }
 int studioSmoke() {
+    // All original starter chains must use native effects, retain zero
+    // reported latency, round-trip through host state and render finite audio.
+    {
+        using P=SkellPresetAudioProcessor;
+        auto p=std::make_unique<P>();
+        for(int profile=0;profile<5;++profile){
+            if(p->loadVocalStarter(profile).failed() || p->loadedFactoryPresetIndex()!=-1 ||
+               p->slotType(0)!=P::AdaptiveNoiseFX || p->slotType(7)!=P::StudioDelayFX ||
+               p->state.getRawParameterValue("micGateOn")->load()<.5f)return 172;
+            p->prepareToPlay(48000.,256);
+            if(p->getLatencySamples()!=0)return 173;
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;double energy=0.;
+            for(int block=0;block<100;++block){
+                for(int ch=0;ch<2;++ch)for(int n=0;n<256;++n)audio.setSample(ch,n,.2f*std::sin((block*256+n)*.031f));
+                p->processBlock(audio,midi);
+                for(int n=0;n<256;++n){const float x=audio.getSample(0,n);if(!std::isfinite(x) || std::abs(x)>8.f)return 174;energy+=x*x;}
+            }
+            if(energy<.001)return 175;
+            const auto name=p->presetName();juce::MemoryBlock state;p->getStateInformation(state);
+            auto restored=std::make_unique<P>();restored->setStateInformation(state.getData(),(int)state.getSize());
+            if(restored->presetName()!=name || restored->slotType(7)!=P::StudioDelayFX ||
+                restored->state.getRawParameterValue("s8_duckOn")->load()<.5f)return 176;
+            p->releaseResources();
+        }
+        if(p->loadVocalStarter(-1).wasOk())return 177;
+        std::puts("PASS: five original vocal starters, native rack, finite output, zero reported latency and host-state recall");
+    }
     {
         using P=SkellPresetAudioProcessor;
         auto a=std::make_unique<P>();auto b=std::make_unique<P>();

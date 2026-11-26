@@ -1,4 +1,5 @@
 #include "PresetBrowser.h"
+#include "../chain/VocalStarterChains.h"
 #include "Theme.h"
 #include "../chain/AlchemistNativePreset.h"
 #include "../chain/NativeSoundMatchTrials.h"
@@ -191,7 +192,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     addAndMakeVisible(categoryEditor);
     for(auto* button:{&importButton,&exportButton,&saveAsButton,&artworkButton,
                       &artistButton,&genreButton,&detailsButton,&addCategoryButton,
-                      &clearSearchButton})
+                      &clearSearchButton,&starterButton})
         addAndMakeVisible(*button);
     detailsButton.setTooltip("Manage import, save, artist, genre, pairing and cover artwork.");
     importButton.setTooltip("Open a validated native .skellpreset ZIP archive");
@@ -219,6 +220,8 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     refreshGenreChoices();
     loadGenres();loadOrganization();refreshArtistChoices();
     refreshArtwork();
+    starterButton.setTooltip("Build an original native vocal chain; save a copy to keep it. Does not overwrite factory or personal presets.");
+    starterButton.onClick=[this]{showVocalStarters();};
     detailsButton.onClick=[this]{showDetails(!detailsOpen);};
     importButton.onClick=[this] {chooseImport();};
     exportButton.onClick=[this] {saveActivePreset(false);};
@@ -319,7 +322,7 @@ void PresetBrowser::applyTheme() {
     categoryEditor.setColour(juce::TextEditor::outlineColourId,Theme::stroke);
     for(auto* button:{&importButton,&exportButton,&saveAsButton,&artworkButton,
                        &artistButton,&genreButton,&detailsButton,&addCategoryButton,
-                       &clearSearchButton}) {
+                       &clearSearchButton,&starterButton}) {
         button->setColour(juce::TextButton::buttonColourId,Theme::panel);
         button->setColour(juce::TextButton::textColourOffId,Theme::white);
     }
@@ -590,6 +593,8 @@ void PresetBrowser::resized(){
     directoryBack.setVisible(!detailsOpen && hasDirectoryParent());
     directoryBack.setBounds(207,69,64,29);
     detailsButton.setBounds(18,detailsOpen?112:getHeight()-38,166,28);
+    starterButton.setVisible(detailsOpen);
+    starterButton.setBounds(207,412,std::max(0,std::min(310,getWidth()-234)),32);
     importButton.setVisible(detailsOpen);exportButton.setVisible(detailsOpen);
     saveAsButton.setVisible(detailsOpen);
     for(auto* control:{static_cast<juce::Component*>(&artistEditor),
@@ -882,6 +887,7 @@ void PresetBrowser::setSaveStatus(const juce::String& text) {
 void PresetBrowser::refreshSaveControls() {
     const bool idle=!chooserActive && !saveInFlight && !loadInFlight && !coverWriteInFlight;
     importButton.setEnabled(idle);
+    starterButton.setEnabled(idle);
     exportButton.setEnabled(idle);
     saveAsButton.setEnabled(idle);
     artworkButton.setEnabled(idle && canEditCover());
@@ -1551,11 +1557,11 @@ bool PresetBrowser::testBrowserLayoutForTest() {
            addCategoryButton.isVisible()!=expanded ||
            genreFilter.isVisible() || artistTierFilter.isVisible() || artistFilter.isVisible() || typeFilter.isVisible())return false;
         for(const auto& tab:vocalTabs)if(tab.isVisible()!=showVocalTabs() || (tab.isVisible() && !bounds.contains(tab.getBounds())))return false;
-        const std::array<const juce::Component*,21> widgets{{
+        const std::array<const juce::Component*,22> widgets{{
             &detailsButton,&genrePicker,&genreButton,&artistEditor,
             &artistButton,&importButton,&exportButton,&saveAsButton,&artworkButton,
             &categoryEditor,&addCategoryButton,&genreFilter,&artistTierFilter,&artistFilter,&typeFilter,
-             &tierEditor,&typeEditor,&pairEditor,&metadataButton,&relatedButton,&directoryBack}};
+             &tierEditor,&typeEditor,&pairEditor,&metadataButton,&relatedButton,&directoryBack,&starterButton}};
         for(size_t i=0;i<widgets.size();++i){
             if(!widgets[i]->isVisible())continue;
             if(!bounds.contains(widgets[i]->getBounds()))return false;
@@ -2399,6 +2405,23 @@ void PresetBrowser::paint(juce::Graphics&g) {
             " OF "+juce::String((int)entries.size())+"  /  WHEEL TO SCROLL",
             {207,getHeight()-24,getWidth()-230,16},10.f,Theme::muted);
     }
+}
+void PresetBrowser::showVocalStarters() {
+    if(chooserActive || saveInFlight || loadInFlight || coverWriteInFlight)return;
+    juce::PopupMenu menu;menu.addSectionHeader("BUILD AN ORIGINAL SKELL VOCAL CHAIN");
+    for(int i=0;i<skellpreset::starter::count;++i)menu.addItem(i+1,skellpreset::starter::names[i]);
+    juce::Component::SafePointer<PresetBrowser> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&starterButton),[safe](int id){
+        if(!safe || id<1 || id>skellpreset::starter::count || safe->chooserActive || safe->saveInFlight || safe->loadInFlight || safe->coverWriteInFlight)return;
+        if(safe->onBeforeLoad)safe->onBeforeLoad();
+        const auto result=safe->processor.loadVocalStarter(id-1);
+        if(result.failed()){if(safe->onLoadFailed)safe->onLoadFailed();return;}
+        ++safe->selectionRevision;safe->activeUserPreset=juce::File{};
+        safe->refreshArtwork();
+        safe->setSaveStatus("STARTER LOADED / SAVE COPY TO KEEP");
+        if(safe->onLoaded)safe->onLoaded();
+        safe->repaint();
+    });
 }
 void PresetBrowser::loadFactoryFromBrowser(int index) {
     if(index<0 || index>=(int)skellpreset::factoryPresets.size())return;
