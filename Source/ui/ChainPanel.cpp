@@ -4,7 +4,7 @@
 #include <memory>
 namespace {void drawIcon(juce::Graphics&g,int type,int pixelX,int pixelY) {
     const float x=static_cast<float>(pixelX),y=static_cast<float>(pixelY);
-    g.setColour(Theme::green.withAlpha(.77f));
+    g.setColour(Theme::muted.interpolatedWith(Theme::green,.46f).withAlpha(.90f));
     juce::Path p;
     if(type==SkellPresetAudioProcessor::EQ) {p.startNewSubPath((float)x,(float)y+10);p.cubicTo((float)x+6,(float)y+10,(float)x+7,(float)y-1,(float)x+13,(float)y+2);p.cubicTo((float)x+19,(float)y+3,(float)x+18,(float)y+10,(float)x+23,(float)y+10);}
     else if(type==SkellPresetAudioProcessor::Compressor) {p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+13);p.lineTo((float)x+14,(float)y+4);p.lineTo((float)x+23,(float)y+4);}
@@ -346,7 +346,8 @@ void ChainPanel::paint(juce::Graphics& g) {
             Theme::fittedText(g,"Add effect",{61,top+8,110,19},
                 11.6f,Theme::muted,true);
             const float px=193.f,py=(float)top+19.f;
-            g.setColour(Theme::green.withAlpha(focused?.95f:.62f));
+            g.setColour(Theme::muted.withAlpha(focused?.95f:.62f));
+            g.drawEllipse(px-9.f,py-9.f,18.f,18.f,1.f);
             g.drawLine(px-5.f,py,px+5.f,py,1.5f);
             g.drawLine(px,py-5.f,px,py+5.f,1.5f);
             continue;
@@ -362,11 +363,20 @@ void ChainPanel::paint(juce::Graphics& g) {
             // Cable endpoint is the indicator; leave room for direct remove.
         }
         // Thin bone engraving on each module face; no generic FL clone art.
-        drawIcon(g,type,51,top+10);
+        {
+            juce::Graphics::ScopedSaveState icon(g);
+            g.addTransform(juce::AffineTransform::translation(-51.f,-(float)(top+10))
+                .scaled(.78f,.86f).translated(53.f,(float)(top+12)));
+            drawIcon(g,type,51,top+10);
+        }
         // Always-visible direct removal target, separate from drag, wet and power.
-        g.setColour(hovering?Theme::red:Theme::muted.withAlpha(.66f));
-        g.drawLine(35.f,(float)top+31.f,43.f,(float)top+39.f,1.4f);
-        g.drawLine(43.f,(float)top+31.f,35.f,(float)top+39.f,1.4f);
+        g.setColour(hovering?Theme::red:Theme::muted.withAlpha(.70f));
+        const float binY=(float)top+29.f;
+        g.drawRoundedRectangle(35.f,binY+3.f,8.f,8.f,1.2f,1.f);
+        g.drawLine(33.5f,binY+2.f,44.5f,binY+2.f,1.2f);
+        g.drawLine(37.f,binY,41.f,binY,1.f);
+        g.drawLine(38.f,binY+5.f,38.f,binY+9.f,.8f);
+        g.drawLine(40.f,binY+5.f,40.f,binY+9.f,.8f);
         // Narrow, hardware-like row: effect / FL-style wet trim / power dot.
         // Wet is the existing 0..1 automatable APVTS slot parameter.
         juce::String compact=processor.moduleDisplayName(type);
@@ -378,16 +388,15 @@ void ChainPanel::paint(juce::Graphics& g) {
             (enabled?Theme::white:Theme::muted);
         // Two short fitted lines keep long native and third-party product
         // names legible in the hardware rack without colliding with wet.
-        const int wrapAt=compact.substring(0,17).lastIndexOfChar(' ');
+        const int wrapAt=compact.substring(0,13).lastIndexOfChar(' ');
         if(compact.length()>12 && wrapAt>2 && wrapAt<compact.length()-2) {
             Theme::fittedText(g,compact.substring(0,wrapAt),
-                              {76,top+4,76,15},11.1f,labelColour,selected==slot);
+                              {77,top+3,74,16},12.3f,labelColour,selected==slot);
             Theme::fittedText(g,compact.substring(wrapAt+1),
-                              {76,top+20,76,14},11.0f,labelColour,false);
+                              {77,top+19,74,17},12.1f,labelColour,false);
         } else {
-            const float nameSize=compact.length()>10?10.1f:
-                                 compact.length()>8?10.7f:11.6f;
-            Theme::fittedText(g,compact,{76,top+8,76,19},nameSize,
+            const float nameSize=compact.length()>10?11.5f:12.4f;
+            Theme::fittedText(g,compact,{77,top+7,74,23},nameSize,
                               labelColour,selected==slot);
         }
         const float cx=165.f, cy=(float)top+19.f;
@@ -447,12 +456,12 @@ void ChainPanel::paint(juce::Graphics& g) {
         g.setColour((railHovered || railDragging ? Theme::green : Theme::stroke)
             .withAlpha(.62f));
         g.drawRoundedRectangle(208.f,railY,4.f,railH,2.f,.65f);
-        g.setColour(Theme::green.withAlpha(railDragging?.95f:railHovered?.75f:.40f));
+        g.setColour(Theme::muted.withAlpha(railDragging?.85f:railHovered?.60f:.30f));
         g.fillRoundedRectangle(208.f,y,4.f,thumbH,2.f);
     }
     const auto add=juce::Rectangle<float>(10.f,(float)addTop,196.f,(float)addHeight);
-    g.setColour(active==16?Theme::panelAlt.withAlpha(.35f):Theme::green.withAlpha(.09f));g.fillRoundedRectangle(add,6.f);
-    g.setColour(active==16?Theme::stroke:Theme::green.withAlpha(.55f));g.drawRoundedRectangle(add,6.f,1.f);
+    g.setColour(Theme::panelAlt.withAlpha(.78f));g.fillRoundedRectangle(add,6.f);
+    g.setColour(Theme::stroke.withAlpha(.90f));g.drawRoundedRectangle(add,6.f,1.f);
     Theme::fittedText(g,active==16?juce::String("16/16 SLOTS ALLOCATED"):"+ ADD SLOT  ("+juce::String(active)+"/16)",
         {18,addTop+5,180,23},11.6f,active==16?Theme::muted:Theme::green,true,juce::Justification::centred);
     // The dock fits the unused footer without shrinking the eight-row viewport.
@@ -476,9 +485,9 @@ void ChainPanel::paint(juce::Graphics& g) {
     g.drawRoundedRectangle(dock,5.f,.85f);
     Theme::text(g,"SIDECHAIN",{18,dockTop+3,116,17},11.f,Theme::white,true);
     const auto linkButton=juce::Rectangle<float>(137.f,(float)dockTop+3.f,62.f,19.f);
-    g.setColour(Theme::green.withAlpha(.12f));g.fillRoundedRectangle(linkButton,4.f);
-    Theme::text(g,"ROUTE",{137,dockTop+3,62,19},10.f,Theme::green,true,juce::Justification::centred);
-    Theme::fittedText(g,juce::String(links)+" CONNECTED  >",{18,dockTop+23,181,18},10.f,links?Theme::green:Theme::muted,true);
+    g.setColour(Theme::stroke.withAlpha(.58f));g.fillRoundedRectangle(linkButton,4.f);
+    Theme::text(g,"LINKS",{137,dockTop+3,62,19},10.f,Theme::green,true,juce::Justification::centred);
+    Theme::fittedText(g,juce::String(links)+(links==1?" LINKED EFFECT":" LINKED EFFECTS"),{18,dockTop+23,181,18},10.f,links?Theme::green:Theme::muted,true);
     // Reordering remains available through gestures and the context menu.
     // The visible FX movement/status strip is intentionally removed.
     if(contextOpen) {

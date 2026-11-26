@@ -14,7 +14,7 @@ public:
     void paintButton(juce::Graphics& g,bool over,bool down) override {
         skellcore::ui::drawHardwareIconButton(
             g,getLocalBounds().toFloat(),skellcore::ui::HardwareGlyph::Settings,
-            true,over,down,Theme::green,Theme::panelAlt,Theme::bg,
+            false,over,down,Theme::muted,Theme::panelAlt,Theme::bg,
             hasKeyboardFocus(true));
     }
 };

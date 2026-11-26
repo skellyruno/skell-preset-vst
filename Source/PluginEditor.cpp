@@ -54,8 +54,8 @@ public:
         addAndMakeVisible(moonButton);
         moonButton.setTooltip("Show / hide master controls");
         moonButton.onClick=[this]{toggleView();};
-        stageButton.setButtonText("LIVE STAGE");
-        stageButton.setTooltip("Return to the live performer");
+        stageButton.setButtonText("STAGE_HOME");
+        stageButton.setTooltip("Click SKELLPRESET to return to the stage");
         style(stageButton);addAndMakeVisible(stageButton);
         stageButton.onClick=[this]{if(chain.onClearSelection)chain.onClearSelection();};
         chain.setSelectedSlot(-1);
@@ -361,8 +361,8 @@ public:
         std::vector<skellcore::ui::GuidedTourStep> steps;
         steps.emplace_back(&preset,"PRESET BROWSER",
             "Choose a starting sound from the preset browser. You can always make your own changes.");
-        steps.emplace_back(&stageButton,"LIVE STAGE",
-            "Return to the performer. Click the moon to reveal or hide the macro and master controls; the rack stays available.");
+        steps.emplace_back(&stageButton,"BACK TO THE STAGE",
+            "Click the SKELLPRESET wordmark to return to the performer. Click the moon to show or hide sound controls.");
         if(chain.isVisible()) {
             steps.emplace_back(&chain,"YOUR EFFECT CHAIN",
                 "Scroll the rack, drag to reorder, double-click to replace or use + to add a processor. Studio Compressor, Studio Limiter and Studio Delay have dedicated effect controls.");
@@ -838,15 +838,17 @@ public:
         if(!powerButton.isBypassed() || !chain.isVisible())
             issues.add("Simple mode power button changed the view or failed");
         if(powerButton.getButtonText().isNotEmpty() ||
-           powerButton.getX()<preset.getRight() ||
-           stageButton.getX()-powerButton.getRight()<0 ||
-           stageButton.getX()-powerButton.getRight()>12 ||
-           undo.getX()-stageButton.getRight()<0 ||
-           undo.getX()-stageButton.getRight()>12 ||
+           stageButton.getRight()>preset.getX() ||
+           stageButton.getButtonText()!="STAGE_HOME" ||
+           undo.getX()-preset.getRight()<0 ||
+           undo.getX()-preset.getRight()>12 ||
            redo.getX()-undo.getRight()>12 ||
            settings.getX()<=redo.getRight() ||
-           settings.getWidth()>37 || powerButton.getWidth()>37)
-            issues.add("Header order must be preset / power / stage / undo / redo / settings with compact gaps");
+           powerButton.getX()-settings.getRight()<0 ||
+           powerButton.getX()-settings.getRight()>12 ||
+           Theme::width-powerButton.getRight()>22 ||
+           settings.getWidth()>37 || powerButton.getWidth()>40)
+            issues.add("Header must have no Stage button and use preset / undo / redo / settings / rightmost power");
         powerButton.onClick();
         settings.onClick();
         if(!settingsPanel.isVisible())
@@ -1253,20 +1255,21 @@ public:
         brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,340.f);
-        const float titleX=75.f,titleY=26.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
+        const float titleX=75.f,titleY=18.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
         wordmark.draw(g,{titleX,titleY,titleW,titleH});
-        const int subY=56;
+        const int subY=49;
         juce::AttributedString edition;edition.append("v.01",Theme::font(9.5f,true),Theme::green);
         juce::TextLayout editionLayout;editionLayout.createLayout(edition,60.f);
-        const int editionX=juce::roundToInt(titleX+titleW-editionLayout.getWidth());
+        const int editionX=286-juce::roundToInt(editionLayout.getWidth());
         Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{75,subY,editionX-83,16},
-                          10.5f,Theme::muted,true,juce::Justification::centredLeft);
+                          11.f,Theme::muted,true,juce::Justification::centredLeft);
         editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
-        Theme::text(g,"PRESET",{366,12,420,14},10,Theme::muted,true);
+        Theme::text(g,"PRESET",{316,8,350,15},11.f,Theme::muted,true);
         const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
         const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
-        Theme::text(g,"PDC "+juce::String(latencyMs,1)+" ms",
-                    {844,12,172,14},9,Theme::muted,true);
+        Theme::text(g,"LATENCY",{780,18,142,17},10.5f,Theme::muted,true);
+        Theme::text(g,juce::String(latencyMs,1)+" ms",{780,35,142,24},15.f,Theme::white,true);
+        g.setColour(Theme::stroke.withAlpha(.55f));g.drawVerticalLine(766,19.f,60.f);
         g.setColour(Theme::stroke);g.drawHorizontalLine(661,0.f,(float)Theme::width);
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withMultipliedBrightness(.88f),0.f,662.f,
@@ -1274,26 +1277,25 @@ public:
         g.fillRect(0,662,Theme::width,26);
         g.setColour(Theme::white.withAlpha(.055f));
         g.drawHorizontalLine(663,12.f,(float)Theme::width-12.f);
-        {
-            g.setColour(Theme::stroke.withAlpha(.50f));
-            g.drawVerticalLine(801,667.f,683.f);
-        }
-        Theme::text(g,"IN",{26,665,42,18},11,Theme::muted,true);
-        Theme::text(g,"OUT",{214,665,48,18},11,Theme::muted,true);
+        // Equal-width full-footer meters. The bar law and overload telemetry
+        // remain exactly those used by the previous 12-segment meter.
+        g.setColour(Theme::stroke.withAlpha(.55f));g.drawVerticalLine(584,667.f,683.f);
+        Theme::text(g,"INPUT",{24,665,66,18},11.5f,Theme::white,true);
+        Theme::text(g,"OUTPUT",{606,665,70,18},11.5f,Theme::white,true);
         const int inputBars=meterBars(displayedInputPeak);
         const int outputBars=meterBars(displayedOutputPeak);
         for(int ix=0;ix<12;++ix){
             const auto lit=ix>=9?Theme::amber:Theme::green;
             const bool inActive=ix<inputBars,outActive=ix<outputBars;
             g.setColour(inActive?(ix==11&&isMeterOverloaded(displayedInputPeak)
-                ?Theme::red:lit).withAlpha(.88f):
-                Theme::stroke.withAlpha(.39f));
-            g.fillRoundedRectangle((float)(68+ix*10),670.f,7.f,9.f,1.4f);
+                ?Theme::red:lit).withAlpha(.88f):Theme::stroke.withAlpha(.39f));
+            g.fillRoundedRectangle((float)(94+ix*36),669.f,32.f,11.f,2.f);
             g.setColour(outActive?(ix==11&&isMeterOverloaded(displayedOutputPeak)
-                ?Theme::red:lit).withAlpha(.88f):
-                Theme::stroke.withAlpha(.39f));
-            g.fillRoundedRectangle((float)(263+ix*10),670.f,7.f,9.f,1.4f);
+                ?Theme::red:lit).withAlpha(.88f):Theme::stroke.withAlpha(.39f));
+            g.fillRoundedRectangle((float)(681+ix*36),669.f,32.f,11.f,2.f);
         }
+        Theme::text(g,"0",{530,665,30,18},10.f,Theme::muted,false,juce::Justification::centredRight);
+        Theme::text(g,"0",{1117,665,25,18},10.f,Theme::muted,false,juce::Justification::centredRight);
         // One shallow control drawer below the resized live performer.
         if(drawerVisible()) {
             const auto deck=slot.getBounds();
@@ -1354,16 +1356,14 @@ public:
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
-        preset.setBounds(366,27,420,37);
-        stageButton.setBounds(844,28,172,36);
-        // Bounded message-thread preset history in the top bar.
-        // The two small actions never obscure the Power / Settings group.
-        undo.setBounds(1026,30,30,30);
-        redo.setBounds(1064,30,30,30);
+        preset.setBounds(316,24,350,38);
+        // No dedicated Live Stage button: the wordmark is the return target.
+        stageButton.setBounds(73,15,225,52);
+        undo.setBounds(676,27,32,32);
+        redo.setBounds(716,27,32,32);
         micButton.setBounds(chain.getX()+174,chain.getY()+6,34,34);
-        // Power belongs before Live Stage, not next to Settings.
-        // Compact 36px controls on one baseline, visually grouped.
-        powerButton.setBounds(798,28,36,36);
+        // Owner correction: power is the rightmost header control.
+        powerButton.setBounds(1112,25,38,38);
         const bool drawer=drawerVisible();
         const auto deck=slot.getBounds();
         const int y=deck.getBottom()-206;
@@ -1388,7 +1388,7 @@ public:
         micButton.toFront(false);stereoSeparation.toFront(false);
         syncMasterReadouts();
         sizeSelect.setBounds(1094,664,69,22);
-        settings.setBounds(1110,28,36,36);
+        settings.setBounds(1068,26,36,36);
         settingsPanel.setBounds(916,78,230,98);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
@@ -1495,11 +1495,11 @@ public:
         const bool outputOverloaded=isMeterOverloaded(displayedOutputPeak);
         if(inputBars!=lastInputMeter || inputOverloaded!=lastInputOverload){
             lastInputMeter=inputBars;lastInputOverload=inputOverloaded;
-            repaint(juce::Rectangle<int>(68,649,125,20));
+            repaint(juce::Rectangle<int>(90,665,436,19));
         }
         if(outputBars!=lastOutputMeter || outputOverloaded!=lastOutputOverload){
             lastOutputMeter=outputBars;lastOutputOverload=outputOverloaded;
-            repaint(juce::Rectangle<int>(263,649,125,20));
+            repaint(juce::Rectangle<int>(677,665,436,19));
         }
         const bool armed=processor.isCapturing();
         // Avoid invalidating the capture button 30 times per second when its

@@ -254,7 +254,7 @@ public:
             }
         }
         // Restrained moving key light leaves the static environment cached.
-        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.055f+.05f*activity),
+        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.105f+.07f*activity),
             centreX-65.f,feetY-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,feetY-70.f,true));
         g.fillEllipse(centreX-175.f*stage.scale,feetY-365.f*stage.scale,350.f*stage.scale,365.f*stage.scale);
         // Volumetric stage beams from the rig above the performer. These are
@@ -272,12 +272,12 @@ public:
                 juce::Path wedge;
                 wedge.startNewSubPath(rigX-3.f,rigY);
                 wedge.lineTo(rigX+3.f,rigY);
-                wedge.lineTo(targetX+44.f*stage.scale,targetY);
-                wedge.lineTo(targetX-44.f*stage.scale,targetY);
+                wedge.lineTo(targetX+70.f*stage.scale,targetY);
+                wedge.lineTo(targetX-70.f*stage.scale,targetY);
                 wedge.closeSubPath();
                 const auto tint=(beam==1?accent:Theme::blue);
                 g.setGradientFill(juce::ColourGradient(
-                    tint.withAlpha(.025f+.12f*rigEnergy[(size_t)beam]),rigX,rigY,
+                    tint.withAlpha(.095f+.16f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));
                 g.fillPath(wedge);
             }
@@ -383,7 +383,7 @@ public:
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.72f+.20f*t);
-                    const auto rimColour=porcelain.withAlpha(.045f+.15f*t);
+                    const auto rimColour=porcelain.withAlpha(.075f+.24f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
@@ -572,8 +572,10 @@ public:
                     const float height=maxH*(.70f+.30f*(1.f-depth));
                     const float value=juce::jlimit(0.f,1.f,stageBands[(size_t)(side*18+band)]);
                     const float w=juce::jmax(1.2f,spacing*.38f);
-                    g.setColour(Theme::bg.withAlpha(.55f));g.drawLine(x,floor-height,x,floor,w+2.f);
-                    g.setColour(tint.withAlpha(.045f));g.drawLine(x,floor-height,x,floor,w*.55f);
+                    // Short stone-like footlights when idle, spectrum rises only
+                    // with measured audio. No duplicate fence of dead bars.
+                    g.setColour(Theme::bg.withAlpha(.62f));g.fillRoundedRectangle(x-w,floor-6.f,2.f*w,6.f,1.5f);
+                    g.setColour(tint.withAlpha(.12f));g.drawLine(x-w*.65f,floor-5.f,x+w*.65f,floor-5.f,1.f);
                     if(value>.002f){
                         const float top=floor-height*value;
                         g.setGradientFill(juce::ColourGradient(tint.withAlpha(.10f),x,top,tint.withAlpha(.02f),x,floor,false));
@@ -584,9 +586,11 @@ public:
                         g.setColour(tint.withAlpha(.13f*value));
                         g.drawLine(x,floor+2.f,x+(x-centreX)*.055f,floor+height*value*.20f,w);
                     }
-                    juce::Path spear;spear.startNewSubPath(x,floor-height-4.f);
-                    spear.lineTo(x-w*.8f,floor-height+1.f);spear.lineTo(x+w*.8f,floor-height+1.f);spear.closeSubPath();
-                    g.setColour(tint.withAlpha(.05f+.30f*value));g.fillPath(spear);
+                    if(value>.002f){
+                        const float top=floor-height*value;
+                        g.setColour(tint.withAlpha(.38f*value));
+                        g.fillEllipse(x-w*.65f,top-w*.65f,1.3f*w,1.3f*w);
+                    }
                 }
                 g.setColour(tint.withAlpha(.09f));g.drawLine(start,base+12.f,start+bankW,base,1.f);
             }
@@ -599,13 +603,13 @@ public:
         // A compact measured peak readout gives the trace a useful scale
         // without shrinking the scene on the smallest supported editor.
         const bool showPeak=scope.getWidth()>420.f;
-        const auto plot=showPeak?scope.withTrimmedLeft(106.f):scope;
+        const auto plot=showPeak?scope.withTrimmedLeft(142.f):scope;
         if(showPeak){
-            Theme::fittedText(g,"OUT PEAK",scope.withWidth(100.f).withHeight(13.f).toNearestInt(),9.f,Theme::muted,true);
+            Theme::fittedText(g,"OUT PEAK",scope.withWidth(135.f).withHeight(14.f).toNearestInt(),11.f,Theme::muted,true);
             const auto peakText=audioFresh && outputMeter.level>.00003162f
                 ?juce::String(juce::Decibels::gainToDecibels(outputMeter.level,-90.f),1)+" dBFS"
                 :juce::String("-inf dBFS");
-            Theme::fittedText(g,peakText,scope.withWidth(100.f).withTrimmedTop(13.f).toNearestInt(),10.8f,
+            Theme::fittedText(g,peakText,scope.withWidth(135.f).withTrimmedTop(14.f).toNearestInt(),13.f,
                               outputMeter.level>1.f?Theme::amber:Theme::white,true);
             g.setColour(Theme::stroke.withAlpha(.50f));
             g.drawVerticalLine(juce::roundToInt(plot.getX()),scope.getY()+3.f,scope.getBottom()-3.f);
@@ -613,6 +617,10 @@ public:
         g.setColour(accent.withAlpha(.10f));
         g.drawLine(plot.getX()+9.f,plot.getCentreY(),
                    plot.getRight()-9.f,plot.getCentreY(),.7f);
+        if(!live){
+            Theme::fittedText(g,audioFresh?"WAITING FOR SIGNAL":"NO AUDIO / READY",
+                plot.withHeight(14.f).toNearestInt(),10.f,Theme::muted,false,juce::Justification::centred);
+        }
         juce::Path trace;
         for(int index=0;index<128;++index){
             const float raw=cachedSignal[(size_t)index];
@@ -708,13 +716,13 @@ private:
                 // always a small fraction of the figure so nobody reads as a
                 // giant balloon head.
                 f.height=24.f+rnd(7)*12.f;
-                f.headRatio=.098f+rnd(17)*.026f;
-                f.sizeJitter=.94f+rnd(27)*.12f;
+                f.headRatio=.085f+rnd(17)*.048f;
+                f.sizeJitter=.77f+rnd(27)*.48f;
                 f.phase=rnd(37)*6.2831f;
                 f.rate=.86f+rnd(47)*.34f;
                 f.pose=(int)(rnd(57)*4.f)%4;
                 f.yJitter=rnd(91)-.5f;
-                f.tilt=rnd(63)-.5f;
+                f.tilt=(rnd(63)-.5f)*1.8f;
                 // Phone lights thin out with distance so the pit glitters
                 // toward the front rather than uniformly.
                 const float chance=layer==3?.30f:layer==2?.21f:layer==1?.13f:.08f;

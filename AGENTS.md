@@ -18,4 +18,4 @@
 - Maintain Windows VST3, real DSP, low-latency, CPU and FL Studio gates
   independently from visual capture. Keep PRs draft until verified.
 
-- Owner correction: header must not place global Power next to Settings. Keep preset / power / Live Stage / undo / redo / settings in that order, with no large gap from Stage to Undo. The current chosen position is between preset and Stage. Verify visually at all scales; do not enforce the obsolete Power/Settings adjacency.
+- Latest owner correction (supersedes prior layout): Power is the rightmost header control, after Settings. Remove the dedicated Live Stage button. The wordmark returns to the stage; presets sit immediately beside undo/redo. Keep the logo theme switch separate. Verify the exact order at all UI scales.

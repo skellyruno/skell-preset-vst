@@ -10,15 +10,19 @@ class SkellRoutingPage final:public juce::Component {
     using P=SkellPresetAudioProcessor;
 public:
     explicit SkellRoutingPage(P& p):processor(p){
-        source.addItem("POST MIC",1);source.addItem("PRE MIC",2);
-        source.addItem("SLOT INPUT",3);source.addItem("EXTERNAL HOST KEY",4);
+        source.addItem("VOCAL - AFTER MIC",1);source.addItem("VOCAL - BEFORE MIC",2);
+        source.addItem("EFFECT INPUT",3);source.addItem("DAW SIDECHAIN",4);
         source.setSelectedId(1,juce::dontSendNotification);
-        source.setTooltip("Choose a key; routing changes only when you press Connect");
+        source.setTooltip("Choose the signal that ducks the effect. Link or update to apply.");
         addAndMakeVisible(source);source.onChange=[this]{refresh();};
         connect.setButtonText("CONNECT");disconnect.setButtonText("DISCONNECT");
-        edit.setButtonText("EDIT TARGET");back.setButtonText("BACK TO STAGE");
+        edit.setButtonText("DUCKING SETTINGS");back.setButtonText("CLOSE");
         for(auto* b:{&connect,&disconnect,&edit,&back})addAndMakeVisible(*b);
-        connect.onClick=[this]{apply(true);};disconnect.onClick=[this]{apply(false);};
+        connect.onClick=[this]{
+            const bool same=valid(target) && isConnected(target) && source.getSelectedId()==committedSource(target);
+            apply(!same);
+        };disconnect.onClick=[this]{apply(false);};
+        disconnect.setVisible(false);
         edit.onClick=[this]{if(valid(target) && onEdit)onEdit(target);};
         back.onClick=[this]{if(onClose)onClose();};
         for(int i=0;i<P::slotCount;++i){
@@ -74,7 +78,7 @@ public:
             if(!show)continue;
             const auto name=processor.moduleDisplayName(type);
             const juce::String label=juce::String(position+1).paddedLeft('0',2)+"  "+name+
-                (valid(id)?(isConnected(id)?"  / LINKED":""):(type==P::ExternalVST3?"  / HOSTED":"  / UNAVAILABLE"));
+                (valid(id)?(isConnected(id)?"  [LINKED]":""):"  [N/A]");
             if(b.getButtonText()!=label)b.setButtonText(label);
             b.setEnabled(valid(id));b.setToggleState(id==target,juce::dontSendNotification);
             b.setBounds(targetBounds(position));
@@ -82,59 +86,43 @@ public:
         const bool available=valid(target);
         const bool linked=available && isConnected(target);
         const bool pending=available && (!linked || source.getSelectedId()!=committedSource(target));
-        connect.setEnabled(pending);disconnect.setEnabled(linked);edit.setEnabled(available);
-        const auto label=linked?(pending?"UPDATE LINK":"CONNECTED"):"CONNECT";
+        connect.setEnabled(available);disconnect.setVisible(false);edit.setEnabled(available);
+        const auto label=linked?(pending?"UPDATE SOURCE":"UNLINK EFFECT"):"LINK EFFECT";
         if(connect.getButtonText()!=label)connect.setButtonText(label);
         source.setEnabled(available);repaint();
     }
     void resized() override{
-        back.setBounds(getWidth()-168,16,148,32);source.setBounds(22,135,222,36);
-        connect.setBounds(22,208,222,36);disconnect.setBounds(22,251,222,32);edit.setBounds(22,302,222,32);
+        back.setBounds(getWidth()-122,18,102,32);source.setBounds(30,139,244,42);
+        connect.setBounds(30,235,244,44);disconnect.setBounds({});edit.setBounds(30,288,244,34);
         refresh();
     }
     void paint(juce::Graphics& g) override{
         Theme::selectFor(processor.state);
         Theme::panelBox(g,getLocalBounds().toFloat(),9.f);
-        Theme::fittedText(g,"SIDECHAIN ROUTING",{22,15,getWidth()-218,33},25.f,Theme::white,true);
-        Theme::fittedText(g,"CHOOSE SOURCE  /  SELECT EFFECT  /  CONNECT",{22,51,getWidth()-44,21},12.f,Theme::muted,true);
-        Theme::panelBox(g,{12.f,89.f,242.f,420.f},8.f,true);
-        Theme::text(g,"KEY SOURCE",{22,102,222,24},13.f,Theme::white,true);
-        Theme::text(g,"EFFECT TARGETS",{300,91,getWidth()-320,24},13.f,Theme::white,true);
-        Theme::text(g,"SELECT A SLOT TO PREVIEW ITS LINK",{300,112,getWidth()-320,17},10.f,Theme::muted);
-        g.setColour(Theme::stroke);g.drawHorizontalLine(77,18.f,(float)getWidth()-18.f);
+        Theme::fittedText(g,"SIDECHAIN",{24,18,530,36},26.f,Theme::white,true);
+        Theme::fittedText(g,"Use one signal to lower an effect while it plays.",{24,57,getWidth()-48,23},13.f,Theme::muted);
+        g.setColour(Theme::stroke);g.drawHorizontalLine(88,24.f,(float)getWidth()-24.f);
+        Theme::panelBox(g,{18.f,103.f,268.f,408.f},8.f);
+        Theme::text(g,"1   SIGNAL",{30,111,244,25},14.f,Theme::white,true);
+        Theme::text(g,"2   EFFECT",{318,106,getWidth()-342,24},14.f,Theme::white,true);
         if(valid(target)){
-            int position=0;for(int i=0;i<processor.activeSlotCount();++i)if(processor.slotIdAt(i)==target)position=i;
-            const auto card=targetBounds(position);
-            const float x=(float)card.getX(),y=(float)card.getCentreY();
-            juce::Path cable;cable.startNewSubPath(254.f,153.f);
-            const bool secondColumn=card.getX()>300;
-            const float rail=secondColumn?574.f:276.f;
-            cable.lineTo(276.f,153.f);
-            if(secondColumn){cable.lineTo(276.f,129.f);cable.lineTo(rail,129.f);}
-            cable.lineTo(rail,y);cable.lineTo(x,y);
-            const bool linked=isConnected(target) && source.getSelectedId()==committedSource(target);
-            const auto ink=linked?Theme::green:Theme::muted;
-            g.setColour(ink.withAlpha(.16f));g.strokePath(cable,juce::PathStrokeType(6.f));
-            g.setColour(ink);g.strokePath(cable,juce::PathStrokeType(1.8f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-            g.fillEllipse(x-4.f,y-3.f,6.f,6.f);
-            Theme::fittedText(g,linked?"CONNECTED":isConnected(target)?"READY TO UPDATE":"READY TO CONNECT",{22,181,222,20},11.f,ink,true);
-            const float reduction=processor.getSlotDuckReductionDb(target);
-            Theme::text(g,"MEASURED REDUCTION",{22,359,222,18},10.5f,Theme::muted,true);
-            Theme::text(g,juce::String(reduction,1)+" dB",{22,382,222,30},20.f,Theme::green,true);
-            const juce::Rectangle<float> meter(22.f,411.f,222.f,5.f);
-            g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,2.5f);
+            const bool linked=isConnected(target);
+            const bool same=linked && source.getSelectedId()==committedSource(target);
+            Theme::fittedText(g,processor.moduleDisplayName(processor.slotType(target)),
+                {30,187,244,23},15.f,Theme::white,true);
+            Theme::text(g,same?"LINKED":linked?"SOURCE CHANGED":"NOT LINKED",{30,211,244,19},11.5f,same?Theme::green:Theme::muted,true);
+            Theme::text(g,"DUCKING",{30,347,244,20},11.f,Theme::muted,true);
+            const float reduction=linked?processor.getSlotDuckReductionDb(target):0.f;
+            Theme::text(g,juce::String(reduction,1)+" dB",{30,369,244,30},22.f,Theme::white,true);
+            const juce::Rectangle<float> meter(30.f,405.f,244.f,8.f);
+            g.setColour(Theme::stroke);g.fillRoundedRectangle(meter,4.f);
             const float fill=meter.getWidth()*juce::jlimit(0.f,1.f,std::abs(reduction)/24.f);
-            if(fill>0.f){g.setColour(Theme::green);g.fillRoundedRectangle(meter.withWidth(fill),2.5f);}
-            if(processor.slotType(target)==P::Limiter || processor.slotType(target)==P::StudioLimiterFX)
-                Theme::fittedText(g,"Ducking this effect reduces limiting.",{22,424,222,62},11.5f,Theme::amber);
-            else Theme::fittedText(g,"Key controls wet contribution, not the audio input.",{22,424,222,62},11.5f,Theme::muted);
+            if(fill>0.f){g.setColour(Theme::green);g.fillRoundedRectangle(meter.withWidth(fill),4.f);}
+            Theme::fittedText(g,"Linked effects reduce their wet signal.",{30,430,244,24},12.f,Theme::muted);
         }else{
-            Theme::fittedText(g,"Select a rack effect first.",{22,180,222,40},12.f,Theme::muted);
-            Theme::fittedText(g,"Add an effect in the rack if no target is available.",{22,424,222,62},11.5f,Theme::muted);
+            Theme::fittedText(g,"Choose an effect on the right.",{30,190,244,35},13.f,Theme::muted);
         }
-        // Use the available lower half as a real routing summary, not a fake
-        // signal graphic. Never cover cards on a full 16-slot rack.
-        int occupied=0,eligible=0,linkedCount=0;
+        int linkedCount=0,eligible=0,occupied=0;
         for(int i=0;i<processor.activeSlotCount();++i){
             const int id=processor.slotIdAt(i);
             if(processor.slotType(id)==P::Empty)continue;
@@ -142,18 +130,14 @@ public:
             if(valid(id)){++eligible;if(isConnected(id))++linkedCount;}
         }
         const int rows=juce::jlimit(1,8,(occupied+1)/2);
-        const int summaryY=132+(rows-1)*45+54;
-        const int summaryH=getHeight()-summaryY-48;
-        if(summaryH>=92){
-            const juce::Rectangle<float> summary(300.f,(float)summaryY,(float)getWidth()-320.f,(float)summaryH);
-            Theme::panelBox(g,summary,7.f);
-            const int left=312,top=summaryY+9,width=getWidth()-344;
-            Theme::fittedText(g,"ROUTING SUMMARY",{left,top,width,19},11.5f,Theme::muted,true);
-            Theme::fittedText(g,juce::String(linkedCount)+" LINKED    /    "+juce::String(eligible)+" AVAILABLE    /    "+juce::String(occupied-eligible)+" UNAVAILABLE",{left,top+23,width,23},14.f,linkedCount?Theme::green:Theme::white,true);
-            Theme::fittedText(g,eligible==0?"Add a native effect to create a link.":"Choose a key and target. Connect applies the change; Disconnect removes only that target's link.",{left,top+48,width,24},11.f,Theme::muted);
+        const int summaryY=140+rows*43+10;
+        if(summaryY+56<getHeight()-22){
+            Theme::fittedText(g,juce::String(linkedCount)+" of "+juce::String(eligible)+" effects linked",
+                {318,summaryY,getWidth()-344,25},14.f,Theme::white,true);
+            Theme::fittedText(g,"Select any effect to see or change its link.",{318,summaryY+27,getWidth()-344,21},12.f,Theme::muted);
         }
-        Theme::fittedText(g,"Native effect and return ducking. Hosted VST3 key buses are not yet routed.",
-            {18,getHeight()-37,getWidth()-36,24},11.f,Theme::muted);
+        Theme::fittedText(g,"DAW sidechain needs a host input. External plugins are not supported here.",
+            {24,getHeight()-37,getWidth()-48,22},11.f,Theme::muted);
     }
     bool testConnectionForTest(int id){
         if(!valid(id))return false;
@@ -171,7 +155,7 @@ private:
     P& processor;int target=-1;
     juce::ComboBox source;
     SkellActionButton connect,disconnect,edit,back;
-    std::array<juce::TextButton,P::slotCount> targets;
+    std::array<SkellActionButton,P::slotCount> targets;
     static juce::String slotPrefix(int id){return "s"+juce::String(id+1)+"_";}
     float read(const juce::String& id) const{if(auto* p=processor.state.getRawParameterValue(id))return p->load();return 0.f;}
     void set(const juce::String& id,float v){
@@ -190,7 +174,7 @@ private:
         }
         const int rows=juce::jlimit(1,8,(count+1)/2);
         const int col=displayIndex/rows,row=displayIndex%rows;
-        return {300+col*284,132+row*45,266,36};
+        return {318+col*284,140+row*43,266,37};
     }
     int committedSource(int id) const {
         const auto prefix=slotPrefix(id);

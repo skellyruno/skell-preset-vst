@@ -111,25 +111,25 @@ public:
                 juce::Colour(0xfff2f7ee).withAlpha(.94f),moonX-moonR*.45f,moonY-moonR*.55f,
                 juce::Colour(0xff93a89f).withAlpha(.62f),moonX+moonR*.6f,moonY+moonR*.75f,false));
             g.fillEllipse(moonX-moonR,moonY-moonR,moonR*2.f,moonR*2.f);
-            // Mare and craters.
-            for(int c=0;c<8;++c) {
+            // Real relief is clipped to the disc. No horizontal stripes.
+            {
+            juce::Graphics::ScopedSaveState lunar(g);
+            juce::Path discClip;discClip.addEllipse(moonX-moonR,moonY-moonR,2.f*moonR,2.f*moonR);
+            g.reduceClipRegion(discClip);
+            for(int c=0;c<22;++c) {
                 const float a=hash01(c*211)*6.2831f,r=moonR*.70f*std::sqrt(hash01(c*97));
                 const float cx=moonX+std::cos(a)*r,cy=moonY+std::sin(a)*r;
                 const float cr=moonR*(.07f+.20f*hash01(c*43));
-                g.setColour(juce::Colour(0xff4d5c58).withAlpha(.10f+.10f*hash01(c*13)));
+                g.setGradientFill(juce::ColourGradient(juce::Colour(0xff303b3b).withAlpha(.12f+.15f*hash01(c*13)),cx-cr*.35f,cy-cr*.3f,
+                    juce::Colour(0xff7a8884).withAlpha(0.f),cx+cr,cy+cr,true));
                 g.fillEllipse(cx-cr,cy-cr,cr*2.f,cr*2.f);
-                g.setColour(juce::Colours::white.withAlpha(.09f));
-                g.drawEllipse(cx-cr,cy-cr,cr*2.f,cr*2.f,.6f);
+                if(cr>2.f){
+                    juce::Path rim;rim.addCentredArc(cx,cy,cr,cr,0.f,3.1f,5.0f,true);
+                    g.setColour(juce::Colours::white.withAlpha(.10f));g.strokePath(rim,juce::PathStrokeType(.7f));
+                }
             }
-            // Ragged wisps crossing the disc so the moon is not a clean coin.
-            for(int wisp=0;wisp<2;++wisp) {
-                const float wy=moonY-moonR+ (wisp+.5f)*moonR*.55f;
-                g.setGradientFill(juce::ColourGradient(
-                    juce::Colour(0xff2b3b3d).withAlpha(.34f),moonX-moonR*1.4f,wy,
-                    juce::Colour(0xff2b3b3d).withAlpha(0.f),moonX+moonR*1.3f,wy+6.f,false));
-                g.fillEllipse(moonX-moonR*1.4f,wy,moonR*2.7f,moonR*.42f);
             }
-            g.setColour(juce::Colours::white.withAlpha(.26f));
+            g.setColour(fog.withAlpha(.25f));
             g.drawEllipse(moonX-moonR,moonY-moonR,moonR*2.f,moonR*2.f,.9f);
 
             // Distant ridge, then a blacker treeline silhouette.
@@ -251,9 +251,9 @@ public:
             for(int i=0;i<52;++i) {
                 const float x=width*i/51.f;
                 const bool gate=std::abs(x-width*.5f)<width*.060f;
-                const float barTop=gate?fenceY-40.f:fenceY-26.f;
+                const float barTop=gate?fenceY-40.f:fenceY-25.f-hash01(i*61)*8.f;
                 g.setColour(juce::Colour(0xff101a1c).withAlpha(.60f));
-                g.drawLine(x,barTop,x,fenceY+10.f,1.f);
+                g.drawLine(x,barTop,x+(hash01(i*41)-.5f)*2.0f,fenceY+10.f,i%8==0?2.4f:1.f);
                 juce::Path spear;
                 spear.addTriangle(x-2.2f,barTop+1.f,x,barTop-7.f,x+2.2f,barTop+1.f);
                 g.fillPath(spear);
@@ -387,12 +387,25 @@ public:
             g.setGradientFill(juce::ColourGradient(juce::Colour(0xff1e2724),width*.5f,horizonY-4.f,
                                                    Theme::bg,width*.5f,height,false));
             g.fillRect(0.f,horizonY,width,height-horizonY);
-            g.setColour(Theme::muted.withAlpha(.085f));
-            for(int i=0;i<27;++i)
-                g.drawLine(width*.5f+(i-13)*12.f,horizonY,width*.5f+(i-13)*64.f,height,.8f);
-            for(int i=0;i<9;++i) {
-                g.setColour(Theme::muted.withAlpha(.065f));
-                g.drawHorizontalLine((int)(horizonY+i*i*1.45f),0.f,width);
+            // Broken slate seams and irregular, fine-grain mottling replace
+            // the uniform wire grid. This plate is cached, not redrawn per frame.
+            for(int tile=0;tile<11;++tile){
+                const float t=(float)(tile+1)/12.f;
+                const float y=horizonY+(height-horizonY)*t*t;
+                const float next=horizonY+(height-horizonY)*std::pow((float)(tile+2)/12.f,2.f);
+                g.setColour(stone.withAlpha(.040f+.025f*t));
+                g.drawLine(0.f,y,width,y+hash01(tile*91)*2.f,.7f);
+                const float span=40.f+130.f*t;
+                for(float x=-span+hash01(tile*72)*span;x<width;x+=span){
+                    g.setColour(Theme::bg.withAlpha(.14f));
+                    g.drawLine(x,y,x+(x-width*.5f)*.055f,next,.7f);
+                }
+            }
+            for(int grain=0;grain<420;++grain){
+                const float t=hash01(grain*137+3),y=horizonY+t*(height-horizonY);
+                const float x=hash01(grain*571+9)*width;
+                g.setColour((grain%3==0?fog:Theme::bg).withAlpha(.025f+.045f*t));
+                g.fillEllipse(x,y,1.f+4.f*t, .6f+1.1f*t);
             }
             // Damp reflection of the moon on the boards.
             g.setGradientFill(juce::ColourGradient(

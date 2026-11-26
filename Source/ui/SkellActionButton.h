@@ -11,6 +11,14 @@ public:
     void paintButton(juce::Graphics& g,bool over,bool down) override {
         auto bounds=getLocalBounds().toFloat().reduced(.65f);
         if(bounds.isEmpty())return;
+        if(getButtonText()=="STAGE_HOME") {
+            // Transparent accessible wordmark hit area; no Stage button face.
+            if(over || hasKeyboardFocus(true)){
+                g.setColour(Theme::muted.withAlpha(.48f));
+                g.drawLine(2.f,bounds.getBottom()-1.f,bounds.getRight()-2.f,bounds.getBottom()-1.f,1.f);
+            }
+            return;
+        }
         const bool enabled=isEnabled();
         const bool active=getToggleState();
         const auto accent=getButtonText().startsWithIgnoreCase("STOP")?Theme::red:Theme::green;
@@ -19,8 +27,8 @@ public:
             face.brighter(down?.04f:over?.18f:.10f),bounds.getTopLeft(),
             face.darker(down?.04f:.18f),bounds.getBottomLeft(),false));
         g.fillRoundedRectangle(bounds,5.6f);
-        g.setColour((over || active?accent:Theme::stroke).withAlpha(
-            enabled?(over?.80f:.75f):.28f));
+        g.setColour((over?accent:Theme::stroke).withAlpha(
+            enabled?(over?.66f:.75f):.28f));
         g.drawRoundedRectangle(bounds.reduced(.5f),5.6f,1.05f);
         // Narrow inset glint and lower shadow give metal switch depth.
         g.setColour(Theme::white.withAlpha(over?.19f:.10f));
@@ -62,15 +70,15 @@ public:
                 .scaled(reverse?-iconScale:iconScale,iconScale)
                 .translated(cx,cy));
             juce::Path arc;
-            arc.startNewSubPath(cx-9.f,cy-3.f);
-            arc.lineTo(cx+2.f,cy-3.f);
-            arc.cubicTo(cx+13.f,cy-3.f,cx+13.f,cy+8.f,cx+2.f,cy+8.f);
+            arc.startNewSubPath(cx-8.f,cy-3.f);
+            arc.cubicTo(cx-2.f,cy-9.f,cx+10.f,cy-6.f,cx+10.f,cy+2.f);
+            arc.cubicTo(cx+10.f,cy+8.f,cx+4.f,cy+10.f,cx-3.f,cy+8.f);
             g.setColour(enabled?(over?accent:Theme::white):Theme::muted.withAlpha(.5f));
-            g.strokePath(arc,juce::PathStrokeType(2.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            g.strokePath(arc,juce::PathStrokeType(2.0f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             juce::Path arrow;
-            arrow.startNewSubPath(cx-3.f,cy-10.f);
-            arrow.lineTo(cx-10.f,cy-3.f);
-            arrow.lineTo(cx-3.f,cy+4.f);
+            arrow.startNewSubPath(cx-7.f,cy-10.f);
+            arrow.lineTo(cx-9.f,cy-3.f);
+            arrow.lineTo(cx-1.f,cy-1.f);
             g.strokePath(arrow,juce::PathStrokeType(2.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             if(hasKeyboardFocus(true)){
                 g.setColour(accent.withAlpha(.85f));

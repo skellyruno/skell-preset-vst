@@ -30,8 +30,8 @@ public:
         // sine wave. Body sway remains theatrical set animation.
         const float jawDrop=6.5f*std::sqrt(vocal<0.f?react:juce::jlimit(0.f,1.f,vocal));
         const auto ink=Theme::bg;
-        const auto ivory=juce::Colour(0xffe1dacc);
-        const auto stone=juce::Colour(0xff737c7b);
+        const auto ivory=juce::Colour(0xffd9cbb7);
+        const auto stone=juce::Colour(0xff5c625c);
         const auto alive=Theme::green;
         const auto cool=Theme::blue;
 
@@ -57,25 +57,39 @@ public:
             constexpr float halfCircle=4.f/3.f;
             juce::Path p;
             p.startNewSubPath(x0+nx*r0,y0+ny*r0);
-            p.quadraticTo(mx+nx*mr*.87f,my+ny*mr*.87f,x1+nx*r1,y1+ny*r1);
+            p.cubicTo(x0+tx*len*.30f+nx*mr*.63f,y0+ty*len*.30f+ny*mr*.63f,
+                      x1-tx*len*.25f+nx*mr*.63f,y1-ty*len*.25f+ny*mr*.63f,x1+nx*r1,y1+ny*r1);
             p.cubicTo(x1+nx*r1+tx*r1*halfCircle,y1+ny*r1+ty*r1*halfCircle,
                       x1-nx*r1+tx*r1*halfCircle,y1-ny*r1+ty*r1*halfCircle,
                       x1-nx*r1,y1-ny*r1);
-            p.quadraticTo(mx-nx*mr*.87f,my-ny*mr*.87f,x0-nx*r0,y0-ny*r0);
+            p.cubicTo(x1-tx*len*.25f-nx*mr*.63f,y1-ty*len*.25f-ny*mr*.63f,
+                      x0+tx*len*.30f-nx*mr*.63f,y0+ty*len*.30f-ny*mr*.63f,x0-nx*r0,y0-ny*r0);
             p.cubicTo(x0-nx*r0-tx*r0*halfCircle,y0-ny*r0-ty*r0*halfCircle,
                       x0+nx*r0-tx*r0*halfCircle,y0+ny*r0-ty*r0*halfCircle,
                       x0+nx*r0,y0+ny*r0);
             p.closeSubPath();
-            g.setGradientFill(juce::ColourGradient(
-                ivory.withAlpha(gloss*.98f),mx-nx*mr*1.05f,my-ny*mr*1.05f,
-                stone.interpolatedWith(cool,.18f+.15f*react).withAlpha(gloss*.84f),mx+nx*mr*1.20f,my+ny*mr*1.20f,false));
-            g.fillPath(p);
+            juce::ColourGradient marrow(stone.brighter(.18f).withAlpha(gloss),mx-nx*mr,my-ny*mr,
+                stone.interpolatedWith(cool,.12f).withAlpha(gloss),mx+nx*mr,my+ny*mr,false);
+            marrow.addColour(.26,ivory.withAlpha(gloss));
+            marrow.addColour(.56,ivory.interpolatedWith(stone,.34f).withAlpha(gloss));
+            g.setGradientFill(marrow);g.fillPath(p);
+            if(len>18.f && r0>2.8f){
+                juce::Graphics::ScopedSaveState texture(g);g.reduceClipRegion(p);
+                // Sparse deterministic cortical pitting and irregular end
+                // shadows: no new image allocation or random state per frame.
+                for(int mark=0;mark<14;++mark){
+                    const float u=.10f+.80f*(float)((mark*37)%101)/100.f;
+                    const float v=((float)((mark*19)%29)/28.f-.5f)*mr*1.5f;
+                    g.setColour((mark%4==0?ivory:ink).withAlpha(.06f+.025f*(mark%3)));
+                    g.fillEllipse(x0+dx*u+nx*v,y0+dy*u+ny*v,.65f+mr*.10f,.65f+mr*.13f);
+                }
+            }
             g.setColour(ink.withAlpha(.58f));
             g.strokePath(p,juce::PathStrokeType(juce::jmax(.45f,r1*.16f)));
             if(r1>1.2f){
-                g.setColour(alive.withAlpha(.06f+.16f*react));
+                g.setColour(alive.withAlpha(.025f+.07f*react));
                 g.drawLine(x0+nx*r0*.72f,y0+ny*r0*.72f,x1+nx*r1*.72f,y1+ny*r1*.72f,juce::jmax(.5f,r1*.20f));
-                g.setColour(ivory.withAlpha(.22f*gloss+.04f));
+                g.setColour(ivory.withAlpha(.09f*gloss+.02f));
                 g.drawLine(x0-nx*r0*.40f,y0-ny*r0*.40f,
                            x1-nx*r1*.40f,y1-ny*r1*.40f,
                            juce::jmax(.45f,juce::jmin(r0,r1)*.32f));
@@ -107,7 +121,7 @@ public:
         // ---- Legs. Weight carried on the left leg, right leg planted a little
         // wider, which gives the pose a working stance instead of a mannequin.
         // Shafts first, then small caps at the actual articulations.
-        limb(134.f,214.f,7.2f,118.f,286.f,5.4f,.96f);
+        limb(134.f,214.f,7.2f,124.f,287.f,5.4f,.96f);
         limb(168.f,214.f,7.1f,194.f,284.f,5.3f,.94f);
         joint(133.f,213.f,6.0f,.90f);
         joint(169.f,213.f,5.9f,.88f);
@@ -124,11 +138,11 @@ public:
             g.setColour(ink.withAlpha(.34f));
             g.drawLine(x-w*.26f,y+h*.12f,x+w*.26f,y+h*.12f,.9f);
         };
-        condyle(119.f,288.f,13.5f,11.f,.90f);
+        condyle(124.f,289.f,13.5f,11.f,.90f);
         condyle(195.f,286.f,13.f,10.5f,.90f);
-        limb(118.f,293.f,6.2f,114.f,348.f,4.4f,.96f);
+        limb(124.f,294.f,6.2f,114.f,348.f,4.4f,.96f);
         limb(194.f,291.f,6.1f,200.f,346.f,4.3f,.94f);
-        limb(126.f,296.f,1.9f,121.f,344.f,1.5f,.80f);   // fibulae
+        limb(131.f,297.f,1.9f,121.f,344.f,1.5f,.80f);   // fibulae
         limb(188.f,294.f,1.8f,194.f,342.f,1.4f,.78f);
         // Ankles are a single malleolus knob either side of the talus.
         condyle(112.f,350.f,9.5f,8.f,.88f);
@@ -221,9 +235,9 @@ public:
         }
 
         // ---- Lumbar vertebrae, narrower than the thoracic stack above them.
-        for(int v=0;v<3;++v){
-            const float y=166.f+v*6.6f;
-            const float w=14.f+v*.8f;
+        for(int v=0;v<5;++v){
+            const float y=151.f+v*6.7f;
+            const float w=11.f+v*.9f;
             g.setColour(ink.withAlpha(.84f));
             g.fillRoundedRectangle(151.f-w*.5f,y-1.f,w+1.f,8.f,2.f);
             g.setGradientFill(juce::ColourGradient(
@@ -273,10 +287,10 @@ public:
                 juce::Colour(0xff020405),151.f,156.f,false));
             g.fillPath(cavity);
         }
-        const float ribReach[6]{36.f,38.f,37.f,34.f,30.f,26.f};
-        const float ribDrop[6]{4.6f,6.2f,8.0f,9.8f,11.4f,12.8f};
-        for(int r=0;r<6;++r){
-            const float ys=102.f+r*8.2f;
+        const float ribReach[7]{30.f,35.f,38.f,38.f,34.f,29.f,24.f};
+        const float ribDrop[7]{6.1f,7.5f,9.2f,11.1f,12.5f,13.8f,15.1f};
+        for(int r=0;r<7;++r){
+            const float ys=101.f+r*7.3f;
             const float reach=ribReach[r]*(1.f+.020f*react);
             const float drop=ribDrop[r];
             for(int side:{-1,1}){
@@ -284,8 +298,9 @@ public:
                 // Bony rib: spine -> lateral margin -> forward, ending in open
                 // space well short of the sternum.
                 juce::Path p;
-                p.startNewSubPath(151.f+s*4.f,ys);
-                p.cubicTo(151.f+s*reach*.50f,ys+drop*.10f,
+                const float sideY=ys+(side==1?1.1f:0.f);
+                p.startNewSubPath(151.f+s*4.f,sideY);
+                p.cubicTo(151.f+s*reach*.50f,sideY+drop*.10f,
                           151.f+s*reach*.98f,ys+drop*.48f,
                           151.f+s*reach,ys+drop*.74f);
                 p.cubicTo(151.f+s*reach*.84f,ys+drop*1.04f,
@@ -407,7 +422,7 @@ public:
         {
             juce::Graphics::ScopedSaveState mic(g);
             g.addTransform(juce::AffineTransform::rotation(
-                .22f,205.f,124.f));
+                -.14f,205.f,124.f));
             // Barrel along the local -y axis from the wrist.
             juce::Path barrel;
             barrel.addRoundedRectangle(196.f,80.f,18.f,48.f,8.f);
@@ -483,7 +498,8 @@ public:
         {
             juce::Graphics::ScopedSaveState head(g);
             g.addTransform(juce::AffineTransform::rotation(
-                std::sin(phase*1.7f)*react*.045f,151.f,70.f));
+                std::sin(phase*1.7f)*react*.045f,151.f,70.f)
+                .followedBy(juce::AffineTransform::scale(.91f,.94f,151.f,79.f)));
             juce::Path skull;
             skull.startNewSubPath(151.f,13.f);
             skull.cubicTo(133.f,13.f,127.f,24.f,127.f,36.f);
