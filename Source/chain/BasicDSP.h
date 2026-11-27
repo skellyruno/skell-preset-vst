@@ -290,9 +290,10 @@ struct StereoSampleDelay {
         const auto d=(size_t)std::clamp(delay,0,(int)capacity-2);
         channel[0][head]=std::isfinite(l)?l:0.f;
         channel[1][head]=std::isfinite(r)?r:0.f;
-        const size_t read=(head+capacity-d)%capacity;
+        // Both head and d are below capacity: one conditional wrap is exact.
+        const size_t read=head>=d?head-d:capacity-(d-head);
         const std::array<float,2> output{channel[0][read],channel[1][read]};
-        head=(head+1)%capacity;
+        if(++head==capacity)head=0;
         return output;
     }
 };
