@@ -1718,6 +1718,10 @@ void SlotEditor::refreshIfChanged() {
                                std::abs(vOn-lastEqControls[(size_t)(34+k)])>1.e-5f;
             lastEqControls[(size_t)(26+k)]=vKind;
             lastEqControls[(size_t)(34+k)]=vOn;
+            const auto* dyn=processor.state.getRawParameterValue(prefix+"studioEqDynamic"+juce::String(k+1));
+            const float depth=dyn?dyn->load():0.f;
+            changed=changed||std::abs(depth-lastEqControls[(size_t)(42+k)])>1.e-5f;
+            lastEqControls[(size_t)(42+k)]=depth;
         }
     }
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
@@ -3795,6 +3799,11 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::text(g,"BAND "+juce::String(activeEqBand+1)+
                     (type==SkellPresetAudioProcessor::StudioEQFX?" WIDTH":" Q"),
                     {680,96,172,17},10.5f,Theme::green,true);
+        if(type==SkellPresetAudioProcessor::StudioEQFX){
+            const auto* dynamic=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_studioEqDynamic"+juce::String(activeEqBand+1));
+            const float depth=dynamic?dynamic->load():0.f;
+            if(studioEqBandType(activeEqBand)==0)Theme::fittedText(g,depth>.001f?"DYN  /  MAX -"+juce::String(depth*12.f,1)+" dB":"DYN OFF  /  ALT-CLICK NODE",{35,124,290,18},10.5f,depth>.001f?Theme::blue:Theme::muted,true);
+        }
         if(type==SkellPresetAudioProcessor::EightBandToneFX) {
             Theme::text(g,"LOW CUT",{20,127,55,16},10.5f,Theme::amber,true);
             Theme::text(g,"HIGH CUT",{342,127,80,16},10.5f,Theme::amber,true);
@@ -4232,7 +4241,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         || (type==SkellPresetAudioProcessor::StudioDelayFX && delayPage!=0)
         || (type==SkellPresetAudioProcessor::AlchemistMatchFinishFX && matchPage!=0)
         || !juce::Rectangle<int>(33,151,835,206).contains(e.getPosition()))return;
-    if(type==SkellPresetAudioProcessor::StudioEQFX && e.mods.isPopupMenu()){
+    if(type==SkellPresetAudioProcessor::StudioEQFX && (e.mods.isPopupMenu() || e.mods.isAltDown())){
         int best=-1;
         float distance=std::numeric_limits<float>::max();
         for(int band=0;band<8;++band){
@@ -4256,7 +4265,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
             if(auto* param=processor.state.getParameter(id)){param->beginChangeGesture();param->setValueNotifyingHost(param->getValue()>.001f?0.f:.5f);param->endChangeGesture();}
             repaint();return;
         }
-        eqNodeMenu.open(studioEqBandType(best));
+        if(e.mods.isPopupMenu())eqNodeMenu.open(studioEqBandType(best));
         return;
     }
     if(e.mods.isPopupMenu() || !e.mods.isLeftButtonDown())return;

@@ -2360,6 +2360,12 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
                     loaded.appendChild(node,nullptr);
                 }
             }
+        // Projects predating dynamic EQ must always recall the original static sound.
+        for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band){
+            const auto id="s"+juce::String(slot)+"_studioEqDynamic"+juce::String(band);
+            bool present=false;for(int i=0;i<loaded.getNumChildren();++i)present=present||loaded.getChild(i).getProperty("id").toString()==id;
+            if(!present){juce::ValueTree node(juce::Identifier("PARAM"));node.setProperty("id",id,nullptr);node.setProperty("value",0.f,nullptr);loaded.appendChild(node,nullptr);}
+        }
         // Repair untrusted host XML before JUCE copies it into APVTS atomics.
         sanitizeParameterStateValues(loaded, state);
         setPresentation(skellcore::ui::presentationFromString(loaded.getProperty("effectPresentation").toString().toStdString()));

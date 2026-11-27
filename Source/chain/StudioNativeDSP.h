@@ -123,12 +123,14 @@ public:
             auto& d=dynamic[k];
             const float amount=lastEnabled[k] && lastKinds[k]==0?detail::unit(amounts[k]):0.f;
             if(amount==0.f){if(d.amount>0.f){d.cut.aim(skellpreset::dsp::Biquad{});d.env=0.;d.applied=0.f;d.detector.reset();}d.amount=0.f;continue;}
-            const double f=std::clamp(20.*std::pow(1000.,(double)detail::unit(lastP[k*2])),20.,sr*.46);
+            const float frequencyControl=detail::unit(lastP[k*2]),widthControl=detail::unit(lastWidths[k]);
+            if(d.amount==amount && d.frequencyControl==frequencyControl && d.widthControl==widthControl)continue;
+            const double f=std::clamp(20.*std::pow(1000.,(double)frequencyControl),20.,sr*.46);
             // Match the existing bell's octave bandwidth approximately.
             const double bw=.1+4.9*detail::unit(lastWidths[k]);
             const double q=std::clamp(1./(2.*std::sinh(std::log(2.)*.5*bw)),.2,12.);
             if(d.amount==amount && d.freq==f && d.q==q)continue;
-            d.amount=amount;d.freq=f;d.q=q;
+            d.amount=amount;d.freq=f;d.q=q;d.frequencyControl=frequencyControl;d.widthControl=widthControl;
             const double w=2.*skellpreset::dsp::pi*f/sr,alpha=std::sin(w)/(2.*q),n=1./(1.+alpha);
             d.detector.b0=alpha*n;d.detector.b1=0.;d.detector.b2=-alpha*n;
             d.detector.a1=-2.*std::cos(w)*n;d.detector.a2=(1.-alpha)*n;
@@ -173,7 +175,7 @@ private:
     std::array<int,8> lastKinds=defaultKinds;
     std::array<bool,8> lastEnabled=defaultEnabled;
     std::array<skellpreset::dsp::SmoothedBiquad,8> filters{};
-    struct DynamicBand {skellpreset::dsp::Biquad detector;skellpreset::dsp::SmoothedBiquad cut;double env=0.,freq=0.,q=1.;float amount=0.f,applied=0.f;int counter=0;};
+    struct DynamicBand {skellpreset::dsp::Biquad detector;skellpreset::dsp::SmoothedBiquad cut;double env=0.,freq=0.,q=1.;float amount=0.f,applied=0.f,frequencyControl=-1.f,widthControl=-1.f;int counter=0;};
     std::array<DynamicBand,8> dynamic{};
     double attackPole=0.,releasePole=0.;int cadence=96;
 };

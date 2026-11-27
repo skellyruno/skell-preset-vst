@@ -77,6 +77,7 @@ int main(){
             restored.micTubeOn && restored.micTubeGain==3.f && restored.micTubeDrive==.4f && restored.micTubeAir==2.f && restored.micTubeTrim==-3.f,"Mic Preamp package recall");
         tube.micTubeAir=7.f;check(skellpreset::package::write(file,tube).failed(),"Reject invalid Mic Preamp field");
     }
+    {skellpreset::package::Document eq;eq.slots[0].studioEqDynamic[2]=.65f;const auto path=testFile(dir,"dynamic-eq");skellpreset::package::Document restored;check(skellpreset::package::write(path,eq).wasOk()&&skellpreset::package::read(path,restored).wasOk()&&restored.slots[0].studioEqDynamic[2]==.65f&&restored.slots[0].studioEqDynamic[1]==0.f,"Dynamic EQ package roundtrip");eq.slots[0].studioEqDynamic[2]=1.1f;check(skellpreset::package::write(path,eq).failed(),"Reject invalid dynamic EQ depth");}
     skellpreset::package::Document first;
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
