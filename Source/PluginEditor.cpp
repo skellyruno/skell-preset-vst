@@ -143,8 +143,8 @@ public:
         addChildComponent(focusVisual);focusVisual.setInterceptsMouseClicks(false,false);
         for(auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})addAndMakeVisible(*edge);
         rackOuterEdge.onAction=rackInnerEdge.onAction=[this]{toggleRackVisibility();};
-        visualLeftEdge.onAction=visualRightEdge.onAction=[this]{toggleRoutingEdge();};
-        drawerEdge.onAction=[this]{toggleDrawerEdge();};
+        visualLeftEdge.onAction=visualRightEdge.onAction=[this]{if(matchPanel.isVisible())closeMatch();toggleRoutingEdge();};
+        drawerEdge.onAction=[this]{if(matchPanel.isVisible())closeMatch();toggleDrawerEdge();};
         addAndMakeVisible(moonButton);
         moonButton.setTooltip("Show / hide master controls");
         moonButton.onClick=[this]{if(matchPanel.isVisible())closeMatch();toggleView();};
@@ -213,7 +213,7 @@ public:
         matchButton.setButtonText("MATCH");matchButton.setTooltip("Analyze isolated dry vocals and create an undoable native rack preset");
         style(matchButton);addAndMakeVisible(matchButton);
         for(auto* b:std::array<juce::Component*,6>{{&preset,&matchButton,&undo,&redo,&settings,&powerButton}})b->setComponentID("header-control");
-        addChildComponent(matchPanel);
+        addChildComponent(matchPanel);matchPanel.setThemeSource(processor.state);
         matchButton.onClick=[this]{if(matchPanel.isVisible())closeMatch();else beginMatch();};
         idle.onMicrophoneMatch=[this]{if(!matchPanel.isVisible())beginMatch();};
         matchPanel.onClose=[this]{closeMatch();};
@@ -582,7 +582,7 @@ public:
         const auto original=processor.presetName();
         if(scene==0){if(!idle.testMicrophoneMatchTarget())return false;}else if(matchButton.onClick)matchButton.onClick();
         if(!matchPanel.isVisible()||!editingIdle||processor.presetName()!=original)return false;
-        if(scene==0)return matchPanel.testPlacement();
+        if(scene==0)return matchPanel.hasOriginalArtwork()&&matchPanel.testPlacement();
         processor.prepareToPlay(48000.,512);
         juce::MidiBuffer midi;juce::AudioBuffer<float> b(2,512);
         const int blocks=scene==1?1900:660;

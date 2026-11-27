@@ -9,6 +9,7 @@ class SkellHubRadar {
 public:
     SkellHubRadar(){
 #if defined(SKELL_MATCH_HUB_ART)
+        skull=juce::ImageFileFormat::loadFrom(SkellHubMatchArtData::skellyskull_png,SkellHubMatchArtData::skellyskull_pngSize);
         const auto original=juce::ImageFileFormat::loadFrom(SkellHubMatchArtData::skellyradar_png,SkellHubMatchArtData::skellyradar_pngSize);
         if(original.isValid()){
             // Same source artwork and split as SkellyMotion: original rings
@@ -32,7 +33,10 @@ public:
         }
 #endif
     }
-    bool usesOriginalArt() const noexcept {return ring.isValid()&&centre.isValid();}
+    bool usesOriginalArt() const noexcept {return ring.isValid()&&centre.isValid()&&skull.isValid();}
+    void drawBrand(juce::Graphics& g,juce::Rectangle<int> b)const{
+        if(skull.isValid())g.drawImageWithin(skull,b.getX(),b.getY(),b.getWidth(),b.getHeight(),juce::RectanglePlacement::centred);
+    }
     void draw(juce::Graphics& g,juce::Rectangle<float> b,float angle,bool active)const{
         const auto tint=juce::Colour(0xffaaff1a);
         const auto c=b.getCentre();const float r=b.getWidth()*.5f;
@@ -56,5 +60,5 @@ public:
         g.setColour(tint);g.setFont(Theme::font(13.f,true));g.drawText("S",b.toNearestInt(),juce::Justification::centred);
     }
 private:
-    juce::Image ring,centre;
+    juce::Image ring,centre,skull;
 };

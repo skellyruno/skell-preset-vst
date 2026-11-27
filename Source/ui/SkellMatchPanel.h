@@ -21,6 +21,7 @@ public:
     ~SkellMatchPanel()override{stopTimer();}
     std::function<void()> onClose,onRetry,onListen,onReference,onUpload;
     bool hasOriginalArtwork()const noexcept{return radar.usesOriginalArt();}
+    void setThemeSource(const juce::AudioProcessorValueTreeState& s) noexcept {themeSource=&s;}
     void placeWithin(juce::Rectangle<int> available,bool left){
         limits=available.reduced(12);
         const int w=juce::jmin(340,limits.getWidth()),h=juce::jmin(332,limits.getHeight());
@@ -36,16 +37,20 @@ public:
         const bool bottom=limits.contains(getBounds())&&getRight()==limits.getRight()&&getBottom()==limits.getBottom();
         clampPosition({limits.getX()-100,limits.getY()-100});
         const bool top=limits.contains(getBounds())&&getX()==limits.getX()&&getY()==limits.getY();
-        clampPosition(previous);moved=wasMoved;return bottom&&top;
+        moved=true;const auto atCorner=getPosition();
+        placeWithin(limits.expanded(12),false);const bool preserved=getPosition()==atCorner;
+        clampPosition(previous);moved=wasMoved;return bottom&&top&&preserved;
     }
     void mouseMove(const juce::MouseEvent& ev)override{setMouseCursor(ev.y<38?juce::MouseCursor::DraggingHandCursor:juce::MouseCursor::NormalCursor);}
     void mouseDown(const juce::MouseEvent& ev)override{
-        dragging=ev.y<38;if(dragging){dragOrigin=getPosition();toFront(false);}
+        dragging=ev.y<38&&getParentComponent()!=nullptr;
+        if(dragging){dragOrigin=getPosition();dragStart=getParentComponent()->getLocalPoint(nullptr,ev.getScreenPosition());toFront(false);}
     }
     void mouseDrag(const juce::MouseEvent& ev)override{
-        if(!dragging)return;
-        // Both positions are in parent coordinates; JUCE handles host scale.
-        const auto delta=ev.getEventRelativeTo(getParentComponent()).getOffsetFromDragStart();
+        if(!dragging||!getParentComponent())return;
+        // Parent-space pointer positions are stable even as this component
+        // moves underneath the mouse; avoid a drag delta relative to self.
+        const auto delta=getParentComponent()->getLocalPoint(nullptr,ev.getScreenPosition())-dragStart;
         moved=true;clampPosition(dragOrigin+delta);
     }
     void mouseUp(const juce::MouseEvent&)override{dragging=false;}
@@ -76,13 +81,15 @@ public:
         }
     }
     void paint(juce::Graphics& g)override{
+        if(themeSource)Theme::selectFor(*themeSource);
         const auto r=getLocalBounds().toFloat().reduced(1.f);const float cx=r.getCentreX();
         const auto tint=phase==Problem?Theme::amber:juce::Colour(0xffaaff1a);
         g.setColour(Theme::bg);g.fillRoundedRectangle(r,10.f);
         g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.07f),r.getTopLeft(),Theme::bg,r.getBottomLeft(),false));g.fillRoundedRectangle(r,10.f);
         g.setColour(Theme::stroke);g.drawRoundedRectangle(r,10.f,1.f);
         g.setColour(tint.withAlpha(.62f));g.drawLine(13.f,2.f,r.getRight()-13.f,2.f,1.f);
-        Theme::fittedText(g,"SKELL MATCH",{16,9,106,24},12.f,tint,true);
+        radar.drawBrand(g,{12,9,20,22});
+        Theme::fittedText(g,"SKELL MATCH",{38,9,106,24},12.f,tint,true);
         // Grip is decoration only; entire title strip is draggable.
         g.setColour(Theme::muted.withAlpha(.7f));
         for(int i=0;i<3;++i)for(int j=0;j<2;++j)g.fillEllipse(cx-5+i*5,17.f+j*5,2.f,2.f);
@@ -124,7 +131,8 @@ private:
     }
     Phase phase=Listening;juce::String message;float fraction=0,energy=0,rotation=0;
     bool initialised=false,dryAvailable=false,moved=false,dragging=false;
-    double lastTime=0.;juce::Point<int> dragOrigin;juce::Rectangle<int> limits;
+    double lastTime=0.;juce::Point<int> dragOrigin,dragStart;juce::Rectangle<int> limits;
+    const juce::AudioProcessorValueTreeState* themeSource=nullptr;
     SkellHubRadar radar;
     SkellActionButton close,retry,listen,reference,upload;
 };
