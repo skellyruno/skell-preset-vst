@@ -255,3 +255,7 @@ target_compile_features(SkellPresetStateInspect PRIVATE cxx_std_17)
 add_executable(SkellPresetDetectorHistoryTest test_detector_history.cpp)
 target_compile_features(SkellPresetDetectorHistoryTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetDetectorHistoryTest COMMAND SkellPresetDetectorHistoryTest)
+
+add_executable(SkellPresetPhaseRotationTest test_phase_rotation.cpp)
+target_compile_features(SkellPresetPhaseRotationTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetPhaseRotationTest COMMAND SkellPresetPhaseRotationTest)

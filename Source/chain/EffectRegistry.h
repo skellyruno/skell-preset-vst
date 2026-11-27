@@ -15,7 +15,7 @@ struct Effect {
     const char* terms;
     const char* reference322; // provenance/equivalent only, no Web Audio import
 };
-inline constexpr std::array<Effect,45> effects{{
+inline constexpr std::array<Effect,46> effects{{
     {0,"Empty","Utility","none clear empty bypass",""},
     {1,"EQ (Classic)","Tone","frequency bands low high shelf bell filter","322.EQ"},
     {2,"Compressor","Dynamics","compression level loud voice threshold knee","322.COMP"},
@@ -60,19 +60,20 @@ inline constexpr std::array<Effect,45> effects{{
     {41,"Adlib FILTER","Tone","adlib filter lowpass highpass tone sweep",""},
     {42,"Adlib SATURATE","Tone","adlib saturate drive warmth grit",""},
     {43,"Vocal Feel Opto","Dynamics","vocal feel opto compressor flat warm tube voice profiles parallel blend","Vocal Feel (user-supplied)"},
-    {44,"Vocal Feel Suite","Vocal","full signature vocal five chain magic space attack attitude presence EQ deess opto voice styles","Vocal Feel (user-supplied)"}
+    {44,"Vocal Feel Suite","Vocal","full signature vocal five chain magic space attack attitude presence EQ deess opto voice styles","Vocal Feel (user-supplied)"},
+    {45,"Phase Rotation","Tone","allpass phase alignment polarity rotation frequency q trim",""}
 }};
-static_assert(effects.size()==45,"Keep registry in sync with ModuleType");
+static_assert(effects.size()==46,"Keep registry in sync with ModuleType");
 constexpr const Effect& at(int id) noexcept {
     return effects[static_cast<std::size_t>(id<0||id>=(int)effects.size()?0:id)];
 }
-inline constexpr std::array<const char*,45> displayNames{{"Empty","Skelly EQ Classic","Skelly Comp Classic","Skelly Limiter Classic","Skelly Gate","Skelly Drive","Skelly Reverb Classic","Skelly Echo Classic","Skelly Exciter","Skelly Throw","Skelly Doubler","Skelly De-Esser","External VST3","Skelly Radio","Skelly Crush","Skelly Tremolo","Skelly Width","Skelly Multiband","Skelly Room","Skelly Smooth","Skelly Chorus","Skelly Flanger","Skelly Ring","Skelly Rider","Skelly Duck Echo","Skelly Vibrato","Skelly EQ 8","Skelly FET/Opto","Skelly Harshness","Skelly Noise","Skelly Pitch","Skelly Match","Skelly Mic","Skelldizer","Skelly EQ","Skelly Limiter","Skelly Comp","Skelly Dist","Skelly Delay","Skelly Chop","Skelly Motion","Skelly Filter","Skelly Adlib Drive","Skelly Opto","Skelly Vocal Suite"}};
+inline constexpr std::array<const char*,46> displayNames{{"Empty","Skelly EQ Classic","Skelly Comp Classic","Skelly Limiter Classic","Skelly Gate","Skelly Drive","Skelly Reverb Classic","Skelly Echo Classic","Skelly Exciter","Skelly Throw","Skelly Doubler","Skelly De-Esser","External VST3","Skelly Radio","Skelly Crush","Skelly Tremolo","Skelly Width","Skelly Multiband","Skelly Room","Skelly Smooth","Skelly Chorus","Skelly Flanger","Skelly Ring","Skelly Rider","Skelly Duck Echo","Skelly Vibrato","Skelly EQ 8","Skelly FET/Opto","Skelly Harshness","Skelly Noise","Skelly Pitch","Skelly Match","Skelly Mic","Skelldizer","Skelly EQ","Skelly Limiter","Skelly Comp","Skelly Dist","Skelly Delay","Skelly Chop","Skelly Motion","Skelly Filter","Skelly Adlib Drive","Skelly Opto","Skelly Vocal Suite","Skelly Phase"}};
 constexpr const char* displayName(int id) noexcept {
-    return displayNames[static_cast<std::size_t>(id<0 || id>=45?0:id)];
+    return displayNames[static_cast<std::size_t>(id<0 || id>=46?0:id)];
 }
 // Curated insertion list. Legacy DSP stays addressable by its original ID.
 constexpr bool recommended(int id) noexcept {
-    switch(id){case 1:case 2:case 3:case 6:case 7:case 19:case 26:case 31:case 32:return false;default:return id>=0&&id<45&&id!=12;}
+    switch(id){case 1:case 2:case 3:case 6:case 7:case 19:case 26:case 31:case 32:return false;default:return id>=0&&id<46&&id!=12;}
 }
 constexpr int count() noexcept {return static_cast<int>(effects.size());}
 // Useful for automated tests and documentation. The 322 processors all have

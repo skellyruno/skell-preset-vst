@@ -188,7 +188,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         const juce::String caption=type==10?"DOUBLE":type==13?"RADIO":type==14?"CRUSH":
             type==15?"PULSE":type==16?"WIDTH":type==20?"ENSEMBLE":type==21?"FLANGE":
             type==22?"CARRIER":type==25?"VIBRATO":type==39?"CHOP":type==41?"FILTER":
-            type==8?"AIR":type==33?"ENHANCE":"CHARACTER";
+            type==8?"AIR":type==33?"ENHANCE":type==45?"PHASE":"CHARACTER";
         livePanel.paintSignalOrb(g,{cx,cy-10.f},76.f);
         Theme::fittedText(g,caption,{337,192,232,25},15.f,Theme::white,true,juce::Justification::centred);
         Theme::fittedText(g,output,{352,382,202,26},13.f,Theme::green,true,juce::Justification::centred);

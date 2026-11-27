@@ -94,6 +94,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         r.extension9=state.getRawParameterValue(prefix+"fxExt9");
         r.extension10=state.getRawParameterValue(prefix+"fxExt10");
         r.extension11=state.getRawParameterValue(prefix+"fxExt11");
+        r.extension12=state.getRawParameterValue(prefix+"fxExt12");
         r.on=state.getRawParameterValue(prefix+"on");
         r.wet=state.getRawParameterValue(prefix+"wet");
         r.duckOn=state.getRawParameterValue(prefix+"duckOn");
@@ -389,9 +390,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         bl("s"+juce::String(slot)+"_duckExternal","Slot "+juce::String(slot)+" external sidechain key",false);
     for(int slot=1;slot<=slotCount;++slot)
         bl("s"+juce::String(slot)+"_duckEffect","Slot "+juce::String(slot)+" effect contribution sidechain",false);
+    // Append a new independent type flag: all earlier host indices and choice ranges remain unchanged.
+    for(int slot=1;slot<=slotCount;++slot)
+        p.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{"s"+juce::String(slot)+"_fxExt12",1},
+            "Slot "+juce::String(slot)+" phase rotation effect",
+            juce::StringArray{"None","Phase Rotation"},0));
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
+    phaseRotation.prepare(sampleRate);
     peak.prepare(sampleRate);highpass.prepare(sampleRate);comp.prepare(sampleRate);gate.prepare(sampleRate);
     deesser.prepare(sampleRate);
     radio.prepare(sampleRate);crusher.prepare(sampleRate);tremolo.prepare(sampleRate);
@@ -582,6 +590,7 @@ int SkellPresetAudioProcessor::slotType(int slot) const noexcept {
     const int vocalFeel=raw.extension10?juce::jlimit(0,1,(int)raw.extension10->load()):0;
     const int vocalSuite=raw.extension11?juce::jlimit(0,1,(int)raw.extension11->load()):0;
     if(oldType!=Empty)return oldType;
+    if(raw.extension12 && raw.extension12->load()>.5f)return PhaseRotationFX;
     if(vocalSuite>0)return VocalFeelSuiteFX;
     if(vocalFeel>0)return VocalFeelOptoFX;
     if(adlib>0)return (int)StudioDelayFX+adlib;
@@ -606,13 +615,19 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     const bool newMic=chosen==MicModelFX && slotType(slot)!=MicModelFX;
     const bool newDizer=chosen==SkelldizerFX && slotType(slot)!=SkelldizerFX;
     const bool newStudio=chosen>SkelldizerFX && slotType(slot)!=chosen;
+    if(chosen!=PhaseRotationFX)setReal(id+"fxExt12",0.f);
     if(chosen!=VocalFeelSuiteFX)setReal(id+"fxExt11",0.f);
     if(chosen!=VocalFeelOptoFX)setReal(id+"fxExt10",0.f);
     if(chosen<=StudioDelayFX)setReal(id+"fxExt9",0.f);
     if(chosen<=StudioFastDistFX)setReal(id+"fxExt8",0.f);
     if(chosen<=SkelldizerFX)setReal(id+"fxExt7",0.f);
     if(chosen<=MicModelFX)setReal(id+"fxExt6",0.f);
-    if(chosen==VocalFeelSuiteFX) {
+    if(chosen==PhaseRotationFX) {
+        setReal(id+"type",(float)Empty);
+        for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5","fxExt6","fxExt7","fxExt8","fxExt9","fxExt10","fxExt11"})
+            setReal(id+choice,0.f);
+        setReal(id+"fxExt12",1.f);
+    } else if(chosen==VocalFeelSuiteFX) {
         setReal(id+"type",(float)Empty);
         for(const auto* choice:{"fxExt","fxExt2","fxExt3","fxExt4","fxExt5",
                                 "fxExt6","fxExt7","fxExt8","fxExt9","fxExt10"})
@@ -699,6 +714,12 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
     if(newStudio) {
         // First selection only; imported preset parameters restore afterward.
         for(int k=0;k<16;++k)setSlotParam(slot,k,.5f);
+        if(chosen==PhaseRotationFX) {
+            setSlotParam(slot,0,.5495f); // approximately 1 kHz
+            setSlotParam(slot,1,.300f);  // approximately 0.707 Q
+            setSlotParam(slot,2,0.f);    // normal polarity
+            setSlotParam(slot,3,.5f);    // 0 dB trim
+        }
         if(chosen==VocalFeelSuiteFX) {
             for(int k=0;k<16;++k)
                 setSlotParam(slot,k,skellpreset::dsp::vocalFeelNeutral[(size_t)k]);
@@ -948,6 +969,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         }
         auto& e=engines[(size_t)s];
         if(previousType!=c.type) {
+            if(c.type==PhaseRotationFX || previousType==PhaseRotationFX)e.phaseRotation.reset();
             if(supportsEffectSidechain(previousType) || supportsEffectSidechain(c.type))e.voiceDuck.prepare(rate);
             slotInputScope[(size_t)s].reset();slotOutputScope[(size_t)s].reset();
             if(s==visualSlot)slotVisual.invalidate();
@@ -1022,6 +1044,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 break;
             case VocalVibratoFX:
                 e.vibrato.set(c.p[0],c.p[1],c.p[2],c.p[3]);
+                break;
+            case PhaseRotationFX:
+                e.phaseRotation.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case StudioEQFX:
                 e.studioEq.set(c.p,c.q,c.studioEqKinds,c.studioEqEnabled);
@@ -1303,6 +1328,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case VocalFeelSuiteFX: {
                         const auto y=e.vocalSuite.process(l,r);
+                        wetL=y[0];wetR=y[1];break;
+                    }
+                    case PhaseRotationFX: {
+                        const auto y=e.phaseRotation.process(l,r);
                         wetL=y[0];wetR=y[1];break;
                     }
                     case StudioEQFX: {
@@ -2214,6 +2243,14 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             }
             if(validProgram)selectedProgram=parsedProgram;
         }
+        // Restore missing phase-type flags to OFF before replacing state.
+        for(int slot=1;slot<=slotCount;++slot) {
+            const auto id="s"+juce::String(slot)+"_fxExt12";
+            bool present=false;
+            for(int i=0;i<loaded.getNumChildren();++i)
+                if(loaded.getChild(i).getProperty("id").toString()==id){present=true;break;}
+            if(!present){juce::ValueTree node(juce::Identifier("PARAM"));node.setProperty("id",id,nullptr);node.setProperty("value",0.f,nullptr);loaded.appendChild(node,nullptr);}
+        }
         // Old host snapshots may lack this generation; avoid retaining a
         // previous Suite insert when recalling an older project.
         for(int slot=1;slot<=slotCount;++slot) {
@@ -2361,7 +2398,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
         const auto prefix=slotPrefix(slot);
         for(const auto* suffix:{"type","on","wet","lane","fxExt","fxExt2",
                                 "fxExt3","fxExt4","fxExt5","fxExt6","fxExt7",
-                                "fxExt8","fxExt9","fxExt10","fxExt11","eqLowCut","eqHighCut",
+                                "fxExt8","fxExt9","fxExt10","fxExt11","fxExt12","eqLowCut","eqHighCut",
                                 "rightFirst","dubDuckOn","duckSource","parallelReturn","duckExternal","duckEffect"})add(prefix+suffix);
         for(int parameter=1;parameter<=16;++parameter)
             add(prefix+"p"+juce::String(parameter));

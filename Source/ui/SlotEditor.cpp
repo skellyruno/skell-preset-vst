@@ -117,6 +117,7 @@ std::array<juce::String,4> titles(int type) {
         case 42:return {"Drive","Unused","Colour","Mix"};
         case 43:return {"Amount","Colour","Voice","Parallel"};
         case 44:return {"Voice","Sens","Low","Mid"};
+        case 45:return {"Frequency","Q","Polarity","Trim"};
         default:return {"Level","Tone","Time","Blend"};
     }
 }
@@ -547,6 +548,7 @@ void SlotEditor::applyKnobReadouts() {
                 return juce::String(juce::roundToInt(20.+250.*v))+"Hz";
             }
             const int module=selectedType;
+            if(module==SkellPresetAudioProcessor::PhaseRotationFX && i==2)return v>=.5?juce::String("INVERT"):juce::String("NORMAL");
             if(skellpreset::face::limiter(module)) {
                 if(i==0)return juce::String(20.*std::log10(.12+.87*v),1)+" dBFS";
                 return juce::String(v,i==2?2:0)+" ms";
@@ -765,6 +767,7 @@ void SlotEditor::applyKnobReadouts() {
                 return juce::jlimit(0.,1.,(value-20.)/250.);
             }
             const int module=selectedType;
+            if(module==SkellPresetAudioProcessor::PhaseRotationFX && i==2)return text.contains("invert") || value>0?1.:0.;
             if(skellpreset::face::limiter(module)) {
                 if(i==0)return juce::jlimit(0.,1.,(std::pow(10.,value/20.)-.12)/.87);
                 return i==1?juce::jlimit(5.,500.,value):juce::jlimit(0.,3.,value);

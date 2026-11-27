@@ -338,7 +338,7 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-factory-noise-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,43> effectScenes {{
+        const std::array<std::pair<const char*,int>,44> effectScenes {{
             {"empty",SkellPresetAudioProcessor::Empty},
             {"eq",SkellPresetAudioProcessor::EQ},
             {"studio-eq",SkellPresetAudioProcessor::StudioEQFX},
@@ -381,7 +381,8 @@ int main(int argc, char** argv) {
             {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX},
             {"alchemist-match-finish",SkellPresetAudioProcessor::AlchemistMatchFinishFX},
             {"mic-modeling",SkellPresetAudioProcessor::MicModelFX},
-            {"skelldizer",SkellPresetAudioProcessor::SkelldizerFX}
+            {"skelldizer",SkellPresetAudioProcessor::SkelldizerFX},
+            {"phase-rotation",SkellPresetAudioProcessor::PhaseRotationFX}
         }};
         for(const auto& effect:effectScenes) {
             options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",818,482,0,1,false});

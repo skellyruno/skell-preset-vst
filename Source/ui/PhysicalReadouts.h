@@ -81,6 +81,11 @@ inline Mapping forParameter(int type,int index,double sampleRate) {
             if(index==2)return linear(-82.,164.,"%",0);
             break;
         case 22:if(index==0)return exponential(15.,70.,"Hz",1);break;
+        case 45:
+            if(index==0)return exponential(40.,350.,"Hz",0);
+            if(index==1)return exponential(.25,32.,"Q",2);
+            if(index==3)return linear(-6.,12.,"dB",1);
+            break;
     }
     return {};
 }

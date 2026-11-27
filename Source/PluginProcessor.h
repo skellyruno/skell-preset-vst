@@ -15,6 +15,7 @@
 #include "chain/StudioNativeDSP.h"
 #include "chain/StudioDelayDSP.h"
 #include "chain/MixerStereoSeparation.h"
+#include "chain/PhaseRotation.h"
 #include "chain/VocalFeelOptoDSP.h"
 #include "chain/VocalFeelSuiteDSP.h"
 #include "chain/WetDuckerDSP.h"
@@ -35,7 +36,7 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, VocalFeelOptoFX, VocalFeelSuiteFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, VocalFeelOptoFX, VocalFeelSuiteFX, PhaseRotationFX, NumberOfModules };
     static constexpr int slotCount=16;
     juce::String moduleDisplayName(int type) const;
     static bool supportsWetSidechain(int type) noexcept {
@@ -195,6 +196,7 @@ private:
     juce::Result applyValidatedPresetDocument(const skellpreset::package::Document& doc);
     struct EngineSlot {
         skellpreset::dsp::SmoothedBiquad peak, highpass;
+        skellpreset::dsp::PhaseRotation phaseRotation;
         skellpreset::dsp::Compressor comp;
         skellpreset::dsp::Gate gate;
         skellpreset::dsp::SplitDeEsser deesser;
@@ -275,6 +277,7 @@ private:
         std::atomic<float>* extension9=nullptr;
         std::atomic<float>* extension10=nullptr;
         std::atomic<float>* extension11=nullptr;
+        std::atomic<float>* extension12=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
