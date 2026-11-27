@@ -131,17 +131,26 @@ public:
     }
     bool hasSignal() const noexcept {return fresh && inputRms>1.e-6f;}
     float measuredInputRms() const noexcept {return fresh?inputRms:0.f;}
+    // Round the display-bin contour without overshooting measured values.
+    template<class Points> static juce::Path smoothContour(const Points& points) {
+        juce::Path line;
+        if(points.empty())return line;
+        line.startNewSubPath(points.front());
+        for(size_t i=1;i+1<points.size();++i)line.quadraticTo(points[i],points[i]+(points[i+1]-points[i])*.5f);
+        if(points.size()>1)line.lineTo(points.back());
+        return line;
+    }
     void paintEqSpectrum(juce::Graphics& g,juce::Rectangle<float> plot) const {
         if(!fresh)return;
         juce::Graphics::ScopedSaveState clipped(g);
         g.reduceClipRegion(plot.toNearestInt());
         const auto draw=[&](const auto& values,juce::Colour colour,bool filled){
-            juce::Path line;
+            std::array<juce::Point<float>,Analyzer::bands> points{};
             for(size_t i=0;i<values.size();++i){
                 const float x=plot.getX()+plot.getWidth()*std::log(Analyzer::frequency(static_cast<int>(i))/20.f)/std::log(1000.f);
-                const float y=plot.getBottom()-values[i]*plot.getHeight();
-                if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);
+                points[i]={x,plot.getBottom()-values[i]*plot.getHeight()};
             }
+            auto line=smoothContour(points);
             if(filled){auto area=line;const float left=plot.getX()+plot.getWidth()*std::log(80.f/20.f)/std::log(1000.f);
                 const float right=plot.getX()+plot.getWidth()*std::log(9000.f/20.f)/std::log(1000.f);
                 area.lineTo(right,plot.getBottom());area.lineTo(left,plot.getBottom());area.closeSubPath();
@@ -185,6 +194,14 @@ public:
         const float x=plot.getX()+plot.getWidth()*juce::jlimit(0.f,1.f,(threshold+60.f)/60.f);
         g.setColour(Theme::amber.withAlpha(.7f));
         for(float y=plot.getY();y<plot.getBottom()-2.f;y+=5.f)g.drawLine(x,y,x,y+2.5f,.9f);
+        if(fresh && inputRms>1.e-6f && outputRms>1.e-6f){
+            // Actual slot RMS point, independent of the model curve.
+            const auto norm=[](float rms){return juce::jlimit(0.f,1.f,(20.f*std::log10(rms)+60.f)/60.f);};
+            const float px=plot.getX()+plot.getWidth()*norm(inputRms),py=plot.getBottom()-plot.getHeight()*norm(outputRms);
+            g.setColour(Theme::blue.withAlpha(.22f));g.fillEllipse(px-5.f,py-5.f,10.f,10.f);
+            g.setColour(Theme::blue);g.fillEllipse(px-2.f,py-2.f,4.f,4.f);
+            g.setColour(Theme::white.withAlpha(.8f));g.drawEllipse(px-2.f,py-2.f,4.f,4.f,.7f);
+        }
     }
     void paintHistory(juce::Graphics& g,juce::Rectangle<float> area,bool reduction) const {
         Theme::panelBox(g,area,6.f,true);
@@ -240,12 +257,17 @@ public:
             const int x=juce::roundToInt(plot.getX()+plot.getWidth()*(.04f+.86f*f));
             Theme::fittedText(g,ticksHz[i],{x-20,juce::roundToInt(legend.getY()),40,13},8.5f,Theme::muted,false,juce::Justification::centred);}
 
-        juce::Graphics::ScopedSaveState clipped(g);g.reduceClipRegion(plot.toNearestInt());
         const float h=plot.getHeight(),w=plot.getWidth();
+        // Labels are outside the mesh clip, in the reserved right gutter.
+        for(int age=0;age<=4;++age){
+            const float d=(float)age/4.f,base=plot.getY()+h*(.30f+.64f*d);
+            Theme::fittedText(g,juce::String((1.f-d)*1.033f,2)+"s",
+                {(int)plot.getRight()+3,(int)(base-h*.10f)-5,29,10},8.f,Theme::muted);
+        }
+        juce::Graphics::ScopedSaveState clipped(g);g.reduceClipRegion(plot.toNearestInt());
         for(int age=0;age<=4;++age){
             const float d=(float)age/4.f,base=plot.getY()+h*(.30f+.64f*d),left=plot.getX()+w*(.32f-.28f*d),span=w*(.60f+.26f*d);
             g.setColour(Theme::stroke.withAlpha(.55f));g.drawLine(left,base,left+span,base-h*.10f,.65f);
-            Theme::fittedText(g,juce::String((1.f-d)*1.033f,2)+"s",juce::Rectangle<int>((int)(left+span+4.f),(int)(base-h*.10f)-5,27,10),8.f,Theme::muted);
         }
         for(int grid=0;grid<5;++grid){
             const float f=(float)grid/4.f;
@@ -257,14 +279,15 @@ public:
             const float depth=(float)(spectrumHistory.size()-historyCount+row+1)/(float)spectrumHistory.size();
             const float width=w*(.60f+.26f*depth),left=plot.getX()+w*(.32f-.28f*depth);
             const float base=plot.getY()+h*(.30f+.64f*depth);
-            juce::Path ridge;
             const auto& values=spectrumHistory[index];
+            std::array<juce::Point<float>,Analyzer::bands> points{};
             for(size_t band=0;band<values.size();++band){
                 const float f=(float)band/(float)(values.size()-1);
-                const float x=left+width*f;
-                const float y=base-values[band]*h*(.22f+.40f*depth)-h*.10f*f;
-                if(band==0)ridge.startNewSubPath(x,y);else ridge.lineTo(x,y);
+                points[band]={left+width*f,base-values[band]*h*(.22f+.40f*depth)-h*.10f*f};
             }
+            juce::Path ridge;
+            if(row+3>=historyCount)ridge=smoothContour(points);
+            else{ridge.startNewSubPath(points.front());for(size_t i=1;i<points.size();++i)ridge.lineTo(points[i]);}
             auto fill=ridge;fill.lineTo(left+width,base-h*.10f);fill.lineTo(left,base);fill.closeSubPath();
             const auto ink=Theme::blue.interpolatedWith(Theme::green,.18f*depth);
             g.setGradientFill(juce::ColourGradient(Theme::bg.interpolatedWith(ink,.13f+.23f*depth).withAlpha(.81f),left,base-h*.55f,Theme::bg.withAlpha(.68f),left,base,false));g.fillPath(fill);
@@ -306,8 +329,9 @@ public:
         g.setColour(Theme::stroke);g.drawLine(inner.getX(),inner.getCentreY(),inner.getRight(),inner.getCentreY(),.6f);
         if(!fresh){Theme::fittedText(g,"WAITING FOR AUDIO",upper.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);return;}
         auto draw=[&](const auto& values,juce::Rectangle<float> r,juce::Colour tint,bool centred){
-            juce::Path line;
-            for(size_t i=0;i<values.size();++i){const float x=r.getX()+r.getWidth()*(float)i/(float)(values.size()-1);const float y=centred?r.getCentreY()-values[i]*r.getHeight()*.5f:r.getBottom()-values[i]*r.getHeight();if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);}
+            std::array<juce::Point<float>,Analyzer::bands> points{};
+            for(size_t i=0;i<values.size();++i){const float x=r.getX()+r.getWidth()*(float)i/(float)(values.size()-1);const float y=centred?r.getCentreY()-values[i]*r.getHeight()*.5f:r.getBottom()-values[i]*r.getHeight();points[i]={x,y};}
+            auto line=smoothContour(points);
             auto fill=line;const float base=centred?r.getCentreY():r.getBottom();fill.lineTo(r.getRight(),base);fill.lineTo(r.getX(),base);fill.closeSubPath();g.setColour(tint.withAlpha(.24f));g.fillPath(fill);g.setColour(tint.withAlpha(.88f));g.strokePath(line,juce::PathStrokeType(1.25f));
         };
         draw(inBands,upper,Theme::muted,false);draw(outBands,upper,rose,false);

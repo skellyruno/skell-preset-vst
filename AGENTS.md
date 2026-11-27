@@ -23,3 +23,5 @@
 - Empty effect slots use the native category chooser and existing searchable library; browsing must never change the selected slot until a real effect is chosen. Do not restore the single floating plus on an empty face. Sidechain must remain a direct signal/target/link workflow; no decorative cable maze.
 
 - Owner correction: clean header with preset, undo, redo, Settings and Power aligned to the right. No header latency/signal-path readouts. Wordmark sits close to tagline; version under the final ET. Rack removal is an X, not a bin. No separate stage output peak/readout or waveform rail; actual audio can light the stage. Keep the moon arrow. Use the owner-provided comp-live, eq-live, sat-live and reverb-live references for measured effect visual layouts, not prerecorded graph animations.
+
+- Owner correction: move the live input/output peak meters into the header gap between branding and presets, with a shared dBFS scale. Remove the footer meters and their rail. Keep header latency/signal-path readouts removed.

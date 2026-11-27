@@ -422,6 +422,13 @@ public:
         // ---- Right arm: shoulder, elbow dropped and pushed out, forearm
         // rising back in to the wrist so the fist can close on the mic barrel.
         // The wrist is placed at the exact anchor the microphone block uses.
+        const float armGesture=(.016f+.048f*breath)*std::sin(phase*.57f+.8f)+
+            .016f*react*std::sin(phase*1.21f);
+        const auto rightArmFrame=juce::AffineTransform::rotation(armGesture,190.f,101.f);
+        constexpr float micAngle=-.46f;
+        const auto micFrame=juce::AffineTransform::rotation(micAngle,205.f,124.f);
+        {
+        juce::Graphics::ScopedSaveState rightArm(g);g.addTransform(rightArmFrame);
         joint(190.f,101.f,5.0f,.92f);
         limb(191.f,102.f,6.8f,222.f,164.f,5.0f,.96f);
         joint(222.f,164.f,4.4f,.90f);
@@ -429,8 +436,6 @@ public:
         limb(224.f,160.f,4.8f,208.f,123.f,3.6f,.92f);
         joint(205.f,124.f,3.6f,.88f);
 
-        constexpr float micAngle=-.46f;
-        const auto micFrame=juce::AffineTransform::rotation(micAngle,205.f,124.f);
         // ---- Microphone: capsule beside the jaw, barrel angled down-right to
         // meet the fist at the wrist anchor (205,124). The whole assembly is
         // rotated about the wrist so the grip and the arm share one pivot.
@@ -496,10 +501,11 @@ public:
             // Thumb crossing the front of the sleeve on the near side.
             limb(204.f,124.f,1.9f,196.f,117.f,1.5f,.84f);
         }
-        // Slack cable falling from the mic base, past the ribs and away.
+        } // the wrist, grip, mic and arm share the shoulder gesture
+        // Slack cable falling from the moving mic base, past the ribs and away.
         {
             juce::Path cable;
-            const auto anchor=juce::Point<float>(205.f,133.f).transformedBy(micFrame);
+            const auto anchor=juce::Point<float>(205.f,133.f).transformedBy(micFrame).transformedBy(rightArmFrame);
             cable.startNewSubPath(anchor);
             cable.cubicTo(224.f,150.f,232.f,176.f,228.f,206.f);
             cable.cubicTo(225.f,251.f,245.f,318.f,254.f,357.f);
@@ -588,11 +594,23 @@ public:
             cheek.closeSubPath();
             g.setColour(ink.withAlpha(.20f));
             g.fillPath(cheek);
+            // Temple and cheekbone planes distinguish the skull from a mask.
+            for(int side:{-1,1}){
+                const float d=(float)side;
+                juce::Path temple;temple.startNewSubPath(151.f+d*20.f,32.f);
+                temple.cubicTo(151.f+d*24.f,41.f,151.f+d*24.f,53.f,151.f+d*17.f,57.f);
+                temple.quadraticTo(151.f+d*13.f,47.f,151.f+d*20.f,32.f);temple.closeSubPath();
+                g.setGradientFill(juce::ColourGradient(stone.withAlpha(.44f),151.f+d*23.f,39.f,
+                    ink.withAlpha(.04f),151.f+d*13.f,49.f,false));g.fillPath(temple);
+                juce::Path arch;arch.startNewSubPath(151.f+d*21.f,52.f);
+                arch.quadraticTo(151.f+d*17.f,59.f,151.f+d*10.f,61.f);
+                g.setColour(ivory.withAlpha(.30f));g.strokePath(arch,juce::PathStrokeType(1.4f));
+            }
             // Brow ridge.
             juce::Path brow;
             brow.startNewSubPath(128.f,42.f);
-            brow.cubicTo(135.f,38.f,146.f,39.f,151.f,41.f);
-            brow.cubicTo(157.f,39.f,169.f,38.f,174.f,41.f);
+            brow.cubicTo(135.f,36.5f,145.f,38.2f,151.f,41.5f);
+            brow.cubicTo(157.f,37.7f,168.f,38.8f,174.f,41.8f);
             g.setColour(ink.withAlpha(.54f));
             g.strokePath(brow,juce::PathStrokeType(2.8f));
             g.setColour(ivory.withAlpha(.38f));
@@ -619,6 +637,10 @@ public:
             g.fillPath(sockets);
             g.setColour(stone.withAlpha(.55f));
             g.strokePath(sockets,juce::PathStrokeType(.65f));
+            for(float cx:{139.f,163.f}){
+                g.setGradientFill(juce::ColourGradient(stone.withAlpha(.43f),cx,55.f,ink.withAlpha(0.f),cx,47.f,false));
+                g.fillEllipse(cx-5.f,48.f,10.f,7.f);
+            }
             g.setColour(ivory.withAlpha(.30f));
             g.drawLine(133.f,44.f,145.f,42.f,1.f);
             g.drawLine(158.f,43.f,170.f,45.f,1.f);

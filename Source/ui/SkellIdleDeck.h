@@ -281,6 +281,11 @@ public:
                     tint.withAlpha(.115f+.18f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));
                 g.fillPath(wedge);
+                juce::Path core;
+                core.startNewSubPath(rigX-1.4f,rigY);core.lineTo(rigX+1.4f,rigY);
+                core.lineTo(targetX+24.f*stage.scale,targetY);core.lineTo(targetX-24.f*stage.scale,targetY);core.closeSubPath();
+                g.setGradientFill(juce::ColourGradient(tint.withAlpha(.045f+.055f*rigEnergy[(size_t)beam]),rigX,rigY,
+                    tint.withAlpha(0.f),targetX,targetY,false));g.fillPath(core);
             }
             // Rig housing and three lens lamps.
             g.setColour(juce::Colour(0xff121719));
@@ -408,7 +413,7 @@ public:
                         // Feet stay at the ground depth while the knees absorb the body bob.
                         const float base=pitTop+depth*(.09f+.56f*t)+figure.yJitter*depth*.19f+hgt;
                         const float ry=hgt*figure.headRatio;
-                        const float rx=ry*(.70f+.12f*figure.turn);
+                        const float rx=ry*(.67f+.19f*figure.turn);
                         const auto rimColour=rowRim.withMultipliedAlpha(.72f+.38f*figure.turn);
                         const float armW=juce::jmax(1.1f,hgt*.045f);
                         const float shoulderY=headY+ry*1.35f;
@@ -587,9 +592,10 @@ public:
                         // Near skulls use shaped craniums; distant ones remain cheap silhouettes.
                         juce::Path backSkull;
                         backSkull.startNewSubPath(localX,localHeadY-ry);
-                        backSkull.cubicTo(localX-rx*1.2f,localHeadY-ry,localX-rx*1.15f,localHeadY+ry*.20f,localX-rx*.66f,localHeadY+ry*.62f);
-                        backSkull.quadraticTo(localX,localHeadY+ry*1.06f,localX+rx*.66f,localHeadY+ry*.62f);
-                        backSkull.cubicTo(localX+rx*1.15f,localHeadY+ry*.20f,localX+rx*1.2f,localHeadY-ry,localX,localHeadY-ry);
+                        const float asym=(figure.turn-.5f)*rx*.30f;
+                        backSkull.cubicTo(localX-rx*1.13f+asym,localHeadY-ry*1.08f,localX-rx*1.16f,localHeadY+ry*.12f,localX-rx*.70f,localHeadY+ry*.61f);
+                        backSkull.quadraticTo(localX+asym,localHeadY+ry*.98f,localX+rx*.62f,localHeadY+ry*.66f);
+                        backSkull.cubicTo(localX+rx*1.18f,localHeadY+ry*.15f,localX+rx*1.12f+asym,localHeadY-ry*.94f,localX,localHeadY-ry);
                         backSkull.closeSubPath();
                         art.setGradientFill(juce::ColourGradient(rimColour.withMultipliedAlpha(.62f),localX-rx,localHeadY-ry,bodyColour,localX+rx,localHeadY+ry,false));
                         art.fillPath(backSkull);

@@ -500,8 +500,9 @@ public:
         slot.setModOrbForScreenshot(enabled);
     }
     void showRoutingForScreenshot(){openRouting(processor.slotIdAt(0));}
-    bool updateLiveVisualForScreenshot(){return slot.updateLiveVisualForScreenshot();}
+    bool updateLiveVisualForScreenshot(){updateHeaderMeters(true);return slot.updateLiveVisualForScreenshot();}
     void updateStageForScreenshot(double nowMs){
+        updateHeaderMeters(true);
         idle.setAudioFresh(processor.liveScopeSampleCount()>0);
         idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());
         idle.tickAnimation(nowMs,true);
@@ -580,6 +581,9 @@ public:
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
                     issues.add("Overlapping top-bar controls " + juce::String((int)i)
                                + " / " + juce::String((int)j));
+        if(headerMeterBounds().getX()<stageButton.getRight() || headerMeterBounds().getRight()>preset.getX() ||
+           headerMeterBounds().getBottom()>75 || headerMeterBounds().getWidth()<meterWidth)
+            issues.add("Header meters overlap controls or leave the header");
         if(powerButton.getX()<=settings.getRight() ||
            Theme::width-powerButton.getRight()>22 ||
            undo.getX()-preset.getRight()>12 || stageButton.getRight()>preset.getX())
@@ -673,10 +677,60 @@ public:
         return juce::jlimit(0,12,
             (int)std::ceil((20.f*std::log10(safe)+60.f)/5.f));
     }
+    static juce::Rectangle<int> headerMeterBounds() noexcept {return {315,10,292,57};}
+    static constexpr int meterWidth=238;
+    static int meterPixels(float amplitude) noexcept {
+        if(!std::isfinite(amplitude) || amplitude<=.001f)return 0;
+        const float normal=(20.f*std::log10(juce::jlimit(.001f,1.f,amplitude))+60.f)/60.f;
+        return juce::jlimit(0,meterWidth,juce::roundToInt(normal*meterWidth));
+    }
+    void updateHeaderMeters(bool recent){
+        displayedInputPeak=followMeter(displayedInputPeak,recent?processor.getInputPeak():0.f);
+        displayedOutputPeak=followMeter(displayedOutputPeak,recent?processor.getOutputPeak():0.f);
+        const int in=meterPixels(displayedInputPeak),out=meterPixels(displayedOutputPeak);
+        const bool inClip=isMeterOverloaded(displayedInputPeak),outClip=isMeterOverloaded(displayedOutputPeak);
+        if(in!=lastInputMeter || out!=lastOutputMeter || inClip!=lastInputOverload || outClip!=lastOutputOverload){
+            lastInputMeter=in;lastOutputMeter=out;lastInputOverload=inClip;lastOutputOverload=outClip;
+            repaint(headerMeterBounds());
+        }
+    }
+    void paintHeaderMeters(juce::Graphics& g) const {
+        const auto region=headerMeterBounds();
+        const float x=(float)region.getX()+38.f;
+        const auto draw=[&](const char* label,float y,float value){
+            Theme::fittedText(g,label,{region.getX(),(int)y-3,34,14},10.5f,Theme::white.withAlpha(.78f),true);
+            const juce::Rectangle<float> track(x,y,(float)meterWidth,8.f);
+            g.setColour(Theme::panelAlt);g.fillRoundedRectangle(track,2.f);
+            g.setColour(Theme::stroke.withAlpha(.70f));g.drawRoundedRectangle(track,2.f,.75f);
+            const int pixels=meterPixels(value);
+            if(pixels>0){
+                juce::Graphics::ScopedSaveState clip(g);
+                g.reduceClipRegion(track.withWidth((float)pixels).toNearestInt());
+                juce::ColourGradient scale(Theme::green.withAlpha(.83f),x,y,Theme::red,x+meterWidth,y,false);
+                scale.addColour(.74,Theme::green);scale.addColour(.90,Theme::amber);
+                g.setGradientFill(scale);g.fillRoundedRectangle(track,1.5f);
+                g.setColour(Theme::white.withAlpha(.20f));g.drawHorizontalLine((int)y+1,x+1.f,x+meterWidth-1.f);
+            }
+            for(int db=-55;db<0;db+=5){const float tx=x+meterWidth*(db+60)/60.f;
+                g.setColour(Theme::bg.withAlpha(.50f));g.drawLine(tx,y,tx,y+8.f,.65f);}
+            g.setColour(isMeterOverloaded(value)?Theme::red:Theme::stroke.withAlpha(.55f));
+            g.fillRoundedRectangle(x+meterWidth+4.f,y,5.f,8.f,1.5f);
+        };
+        Theme::fittedText(g,"dBFS",{region.getX(),region.getY(),26,12},8.5f,Theme::muted,true);
+        for(int db:{-60,-48,-36,-24,-12,0}){
+            const int tx=juce::roundToInt(x+meterWidth*(db+60)/60.f);
+            Theme::fittedText(g,juce::String(db),{tx-13,region.getY(),26,12},9.5f,Theme::muted,false,juce::Justification::centred);
+        }
+        draw("IN",(float)region.getY()+19.f,displayedInputPeak);
+        draw("OUT",(float)region.getY()+36.f,displayedOutputPeak);
+    }
     static bool isMeterOverloaded(float amplitude) noexcept {
         return std::isfinite(amplitude) && amplitude>=1.f;
     }
     static bool testMeterBallistics() noexcept {
+        if(meterPixels(0.f)!=0 || meterPixels(.001f)!=0 || meterPixels(1.f)!=meterWidth ||
+           meterPixels(std::numeric_limits<float>::infinity())!=0 ||
+           std::abs(meterPixels(.1f)-meterWidth*2/3)>1)return false;
         if(meterBars(0.f)!=0 || meterBars(.001f)!=0 ||
            meterBars(.01f)!=4 || meterBars(.1f)!=8 ||
            meterBars(1.f)!=12 || meterBars(2.f)!=12 ||
@@ -1286,32 +1340,8 @@ public:
                           11.f,Theme::muted,true,juce::Justification::centredLeft);
         editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
         Theme::text(g,"PRESET",{623,8,350,15},11.f,Theme::muted,true);
-        g.setColour(Theme::stroke);g.drawHorizontalLine(661,0.f,(float)Theme::width);
-        g.setGradientFill(juce::ColourGradient(
-            Theme::panelAlt.withMultipliedBrightness(.88f),0.f,662.f,
-            Theme::panel.darker(.07f),0.f,688.f,false));
-        g.fillRect(0,662,Theme::width,26);
-        g.setColour(Theme::white.withAlpha(.055f));
-        g.drawHorizontalLine(663,12.f,(float)Theme::width-12.f);
-        // Equal-width full-footer meters. The bar law and overload telemetry
-        // remain exactly those used by the previous 12-segment meter.
-        g.setColour(Theme::stroke.withAlpha(.55f));g.drawVerticalLine(584,667.f,683.f);
-        Theme::text(g,"INPUT",{24,665,66,18},11.5f,Theme::white,true);
-        Theme::text(g,"OUTPUT",{606,665,70,18},11.5f,Theme::white,true);
-        const int inputBars=meterBars(displayedInputPeak);
-        const int outputBars=meterBars(displayedOutputPeak);
-        for(int ix=0;ix<12;++ix){
-            const auto lit=ix>=9?Theme::amber:Theme::green;
-            const bool inActive=ix<inputBars,outActive=ix<outputBars;
-            g.setColour(inActive?(ix==11&&isMeterOverloaded(displayedInputPeak)
-                ?Theme::red:lit).withAlpha(.88f):Theme::stroke.withAlpha(.39f));
-            g.fillRoundedRectangle((float)(94+ix*36),669.f,32.f,11.f,2.f);
-            g.setColour(outActive?(ix==11&&isMeterOverloaded(displayedOutputPeak)
-                ?Theme::red:lit).withAlpha(.88f):Theme::stroke.withAlpha(.39f));
-            g.fillRoundedRectangle((float)(681+ix*36),669.f,32.f,11.f,2.f);
-        }
-        Theme::text(g,"0",{530,665,30,18},10.f,Theme::muted,false,juce::Justification::centredRight);
-        Theme::text(g,"0",{1117,665,25,18},10.f,Theme::muted,false,juce::Justification::centredRight);
+        paintHeaderMeters(g);
+        // No footer meter rail; leave the resize grip and window geometry unchanged.
         // One shallow control drawer below the resized live performer.
         if(drawerVisible()) {
             const auto deck=slot.getBounds();
@@ -1503,20 +1533,7 @@ public:
         const bool recent=advancing || (lastScopeFrameTimeMs!=0u &&
             (unsigned)(now-lastScopeFrameTimeMs)<400u);
         // Never retain a frozen peak when the host stops calling processBlock.
-        displayedInputPeak=followMeter(displayedInputPeak,recent?processor.getInputPeak():0.f);
-        displayedOutputPeak=followMeter(displayedOutputPeak,recent?processor.getOutputPeak():0.f);
-        const int inputBars=meterBars(displayedInputPeak);
-        const int outputBars=meterBars(displayedOutputPeak);
-        const bool inputOverloaded=isMeterOverloaded(displayedInputPeak);
-        const bool outputOverloaded=isMeterOverloaded(displayedOutputPeak);
-        if(inputBars!=lastInputMeter || inputOverloaded!=lastInputOverload){
-            lastInputMeter=inputBars;lastInputOverload=inputOverloaded;
-            repaint(juce::Rectangle<int>(90,665,436,19));
-        }
-        if(outputBars!=lastOutputMeter || outputOverloaded!=lastOutputOverload){
-            lastOutputMeter=outputBars;lastOutputOverload=outputOverloaded;
-            repaint(juce::Rectangle<int>(677,665,436,19));
-        }
+        updateHeaderMeters(recent);
         const bool armed=processor.isCapturing();
         // Avoid invalidating the capture button 30 times per second when its
         // state has not changed; scope and meters still repaint as needed.
