@@ -146,7 +146,7 @@ public:
         drawerEdge.onAction=[this]{toggleDrawerEdge();};
         addAndMakeVisible(moonButton);
         moonButton.setTooltip("Show / hide master controls");
-        moonButton.onClick=[this]{toggleView();};
+        moonButton.onClick=[this]{if(matchPanel.isVisible())closeMatch();toggleView();};
         stageButton.setButtonText("STAGE_HOME");
         stageButton.setTooltip("Click SKELLPRESET to return to the stage");
         stageButton.setTitle("Return to the stage");
@@ -173,6 +173,7 @@ public:
             slot.openSidechainControls();
         };
         chain.onClearSelection=[this]{
+            if(matchPanel.isVisible())closeMatch();
             routing.setVisible(false);editingIdle=true;
             slot.setHostedEditorPresentation(false);
             micPanel.setVisible(false); // show complete Home deck, not stale MIC
@@ -222,6 +223,7 @@ public:
         micButton.setTooltip("Open dedicated input microphone modeling panel");
         style(micButton);addAndMakeVisible(micButton);
         micButton.onClick=[this] {
+            if(matchPanel.isVisible())closeMatch();
             if(browser.isVisible())browser.setVisible(false);
             if(!micPanel.isVisible()){slot.setHostedEditorPresentation(false);slot.dismissTransientOverlays();}
             micPanel.refresh();
@@ -368,6 +370,7 @@ public:
         style(settings);
         addAndMakeVisible(settings);
         settings.onClick=[this] {
+            if(matchPanel.isVisible())closeMatch();
             browser.setVisible(false);
             micPanel.setVisible(false);
             if(settingsPanel.isVisible())settingsPanel.close();
@@ -422,9 +425,9 @@ public:
                     }
                 });
         };
-        chain.onBeforeRemove=[this]{prepareHistory();};
+        chain.onBeforeRemove=[this]{if(matchPanel.isVisible())closeMatch();prepareHistory();};
         chain.onAfterRemove=[this]{commitHistory();};
-        browser.onBeforeLoad=[this]{prepareHistory();};
+        browser.onBeforeLoad=[this]{if(matchPanel.isVisible())closeMatch();prepareHistory();};
         browser.onLoadFailed=[this]{pendingHistory.reset();updateHistoryButtons();};
         browser.onLoaded=[this]{
             routing.setVisible(false);commitHistory();
@@ -494,7 +497,7 @@ public:
         return {Theme::green,Theme::panel,Theme::white,Theme::muted,
                 juce::Colour(0xd9000000)};
     }
-    ~Canvas()override {stopTimer();closeMatch();processor.closeHostedVST3Editors();setLookAndFeel(nullptr);}
+    ~Canvas()override {stopTimer();closeMatch();matchPool.removeAllJobs(true,-1);processor.closeHostedVST3Editors();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
             g.setColour(Theme::bg.withAlpha(.57f));g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
@@ -545,6 +548,7 @@ public:
     }
     void dockRackForScreenshot(bool right) {dockRack(right);refresh();}
     void configureForScreenshot(int variant,int workspaceMode,bool showBrowser) {
+        closeMatch();
         routing.setVisible(false);rackHidden=false;dockRack(false);
         variant=Theme::clampVariant(variant);
         processor.state.state.setProperty("uiTheme",variant,nullptr);
@@ -565,6 +569,36 @@ public:
     bool configureBrowserForScreenshot(int page,int width,int height,bool list) {
         const bool result=browser.configureDirectoryForScreenshot(page,width,height);
         browser.setListViewForScreenshot(list);return result;
+    }
+    // Actual button, input callback and preset application; only the input
+    // stimulus is synthetic. This is not a separate mock component.
+    bool smartMatchForScreenshot(int scene){
+        processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
+        configureForScreenshot(0,1,false);
+        const auto original=processor.presetName();if(matchButton.onClick)matchButton.onClick();
+        if(!matchPanel.isVisible()||!editingIdle||processor.presetName()!=original)return false;
+        if(scene==0)return true;
+        processor.prepareToPlay(48000.,512);
+        juce::MidiBuffer midi;juce::AudioBuffer<float> b(2,512);
+        const int blocks=scene==1?1900:660;
+        for(int k=0;k<blocks;++k){
+            for(int n=0;n<512;++n){
+                const double time=(k*512+n)/48000.;
+                const float x=scene==1?0.f:(float)((.09+.025*std::sin(8.*time))*std::sin(1382.3*time)+.014*std::sin(25132.7*time));
+                b.setSample(0,n,x);b.setSample(1,n,x);
+            }
+            processor.processBlock(b,midi);
+        }
+        tickMatch();
+        if(scene==1)return matchPanel.isVisible()&&processor.presetName()==original;
+        const bool applied=matchPanel.isVisible()&&processor.presetName()=="Match / My Vocal"&&processor.slotType(0)==SkellPresetAudioProcessor::StudioEQFX&&processor.getLatencySamples()==0;
+        if(scene==2)return applied;
+        if(undo.onClick)undo.onClick();
+        const bool undone=processor.presetName()==original;
+        if(redo.onClick)redo.onClick();
+        const bool redone=processor.presetName()=="Match / My Vocal";
+        closeMatch();processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);refresh();
+        return applied&&undone&&redone;
     }
     void setMatchPageForScreenshot(int page) {
         editingIdle=false;idle.setVisible(false);refresh();
@@ -1744,6 +1778,7 @@ public:
         const auto n=processor.presetName().toUpperCase()+"  ▼";
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
+        if(m==3&&matchPanel.isVisible())closeMatch();
         if(bypassShade.isVisible()!=(m==3))refresh();
         if(focusVisual.isVisible()!=focusVisible()){refresh();return;}
         // Do not request -1 then immediately request the selected slot every
@@ -1906,6 +1941,7 @@ public:
         // Never steal Ctrl+Z from the browser's active search/editor field.
         if(!browser.isVisible() && !settingsPanel.isVisible() &&
            !micPanel.isVisible() && key.getModifiers().isCommandDown()) {
+            if(matchPanel.isVisible())closeMatch();
             const auto character=juce::CharacterFunctions::toLowerCase(key.getKeyCode());
             if(character=='z') {
                 if(key.getModifiers().isShiftDown())
@@ -1957,7 +1993,8 @@ private:
     }
     void closeMatch(){
         processor.cancelLiveMatch();matchListening=false;
-        if(matchFileCancel)matchFileCancel->store(true,std::memory_order_relaxed);
+        if(matchFile)matchFile->cancel.store(true,std::memory_order_relaxed);
+        matchFile.reset();
         matchPanel.setVisible(false);matchButton.setToggleState(false,juce::dontSendNotification);
     }
     void beginMatch(){
@@ -1990,7 +2027,9 @@ private:
         matchPanel.toFront(true);
     }
     void tickMatch(){
-        if(!matchListening||!matchPanel.isVisible())return;
+        if(!matchPanel.isVisible())return;
+        if(matchFile&&matchFile->done.load(std::memory_order_acquire)){auto completed=std::move(matchFile);if(!completed->cancel.load(std::memory_order_relaxed))finishMatch(completed->profile,completed->reference);return;}
+        if(!matchListening)return;
         skellpreset::liveMatch::Profile profile;bool done=false;
         processor.readLiveMatch(profile,done);
         if(done){finishMatch(profile,false);return;}
@@ -2011,26 +2050,24 @@ private:
     }
     void analyzeMatchFile(juce::File file,bool reference){
         processor.cancelLiveMatch();matchListening=false;
-        if(matchFileCancel)matchFileCancel->store(true,std::memory_order_relaxed);
-        auto cancel=std::make_shared<std::atomic<bool>>(false);matchFileCancel=cancel;
+        if(matchFile)matchFile->cancel.store(true,std::memory_order_relaxed);
+        auto task=std::make_shared<MatchFileResult>();task->reference=reference;matchFile=task;
         matchPanel.update(SkellMatchPanel::Reading,"Reading up to 20 seconds locally. No audio is uploaded.",0.f,0.f,matchDry.valid());
-        const auto safe=juce::Component::SafePointer<Canvas>(this);
-        const bool launched=juce::Thread::launch([file,reference,cancel,safe]{
+        matchPool.addJob(std::function<void()>([file,task]{
             skellpreset::liveMatch::Profile profile;juce::AudioFormatManager formats;formats.registerBasicFormats();
             if(file.getSize()>0&&file.getSize()<=128*1024*1024){
                 std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
                 if(reader&&reader->numChannels>=1&&reader->numChannels<=2&&reader->sampleRate>=8000.&&reader->sampleRate<=192000.){
                     skellpreset::liveMatch::Analyzer analyzer;analyzer.prepare(reader->sampleRate);juce::AudioBuffer<float> chunk((int)reader->numChannels,4096);
-                    for(juce::int64 offset=0;offset<reader->lengthInSamples&&!analyzer.finished()&&!cancel->load(std::memory_order_relaxed);){
+                    for(juce::int64 offset=0;offset<reader->lengthInSamples&&!analyzer.finished()&&!task->cancel.load(std::memory_order_relaxed);){
                         const int n=(int)std::min<juce::int64>(4096,reader->lengthInSamples-offset);
                         if(!reader->read(&chunk,0,n,offset,true,reader->numChannels>1)){profile={};break;}
                         analyzer.push(chunk.getReadPointer(0),reader->numChannels>1?chunk.getReadPointer(1):nullptr,n);profile=analyzer.result();offset+=n;
                     }
                 }
             }
-            if(!cancel->load(std::memory_order_relaxed))juce::MessageManager::callAsync([safe,cancel,profile,reference]{if(!cancel->load(std::memory_order_relaxed))if(auto* self=safe.getComponent())if(self->matchPanel.isVisible())self->finishMatch(profile,reference);});
-        });
-        if(!launched)matchPanel.update(SkellMatchPanel::Problem,"Could not start file analysis. Retry or play a vocal.",0.f,0.f,matchDry.valid());
+            task->profile=profile;task->done.store(true,std::memory_order_release);
+        }));
     }
     void updateHistoryButtons() {
         undo.setEnabled(!undoStates.empty());
@@ -2096,7 +2133,9 @@ private:
     SkellActionButton preset,matchButton,undo,redo,record,micButton;
     SkellMatchPanel matchPanel;
     std::unique_ptr<juce::FileChooser> matchChooser;
-    std::shared_ptr<std::atomic<bool>> matchFileCancel;
+    struct MatchFileResult {std::atomic<bool> cancel{false},done{false};skellpreset::liveMatch::Profile profile;bool reference=false;};
+    std::shared_ptr<MatchFileResult> matchFile;
+    juce::ThreadPool matchPool{1};
     skellpreset::liveMatch::Profile matchDry;
     bool matchListening=false;
     double matchStarted=0.;
@@ -2174,6 +2213,7 @@ void SkellPresetAudioProcessorEditor::selectRackSlotForScreenshot(int physicalSl
 bool SkellPresetAudioProcessorEditor::configureBrowserForScreenshot(int page,int width,int height,bool list) {
     return canvas->configureBrowserForScreenshot(page,width,height,list);
 }
+bool SkellPresetAudioProcessorEditor::smartMatchForScreenshot(int scene){return canvas->smartMatchForScreenshot(scene);}
 void SkellPresetAudioProcessorEditor::setMatchPageForScreenshot(int page) {
     canvas->setMatchPageForScreenshot(page);
 }

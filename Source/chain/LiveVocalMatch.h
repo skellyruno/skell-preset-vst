@@ -11,7 +11,7 @@ namespace skellpreset::liveMatch {
 struct Profile {
     float elapsed=0,active=0,rmsDb=-120,peak=0,lowDb=-120,highDb=-120,crest=0,clipped=0;
     bool valid() const noexcept {
-        return elapsed>=5.99f&&active>=3.99f&&rmsDb>=-50.f&&rmsDb<=-.5f&&peak>0.f&&clipped<.005f;
+        return std::isfinite(elapsed)&&std::isfinite(active)&&std::isfinite(rmsDb)&&std::isfinite(peak)&&std::isfinite(lowDb)&&std::isfinite(highDb)&&std::isfinite(crest)&&std::isfinite(clipped)&&elapsed>=5.99f&&active>=3.99f&&rmsDb>=-50.f&&rmsDb<=-.5f&&peak>0.f&&clipped>=0.f&&clipped<.005f;
     }
 };
 class Analyzer {
@@ -31,6 +31,7 @@ public:
         }
     }
     bool finished() const noexcept {return (frames>=6.*sr&&activeFrames>=4.*sr)||frames>=20.*sr;}
+    unsigned windowCount() const noexcept {return (unsigned)(frames/(std::uint64_t)window);}
     Profile result() const noexcept {
         Profile p;p.elapsed=(float)(frames/sr);p.active=(float)(activeFrames/sr);
         if(activeFrames){
@@ -85,9 +86,11 @@ public:
     void push(const float* l,const float* r,int count,double rate) noexcept {
         const auto n=command.load(std::memory_order_acquire);
         if(!(n&1u))return;
-        if(n!=seen||rate!=lastRate){seen=n;lastRate=rate;analyzer.prepare(rate);finished.store(0,std::memory_order_release);published.store(0,std::memory_order_release);}
+        if(n!=seen||rate!=lastRate){seen=n;lastRate=rate;lastWindow=0;analyzer.prepare(rate);finished.store(0,std::memory_order_release);published.store(0,std::memory_order_release);}
         if(analyzer.finished())return;
-        analyzer.push(l,r,count);const auto p=analyzer.result();
+        analyzer.push(l,r,count);const auto win=analyzer.windowCount();
+        if(win==lastWindow&&!analyzer.finished())return;
+        lastWindow=win;const auto p=analyzer.result();
         const std::array<float,8> data{{p.elapsed,p.active,p.rmsDb,p.peak,p.lowDb,p.highDb,p.crest,p.clipped}};
         for(size_t k=0;k<data.size();++k)values[k].store(data[k],std::memory_order_relaxed);
         published.store(n,std::memory_order_release);
@@ -101,7 +104,8 @@ public:
         p={v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7]};return true;
     }
 private:
-    Analyzer analyzer;unsigned seen=0;double lastRate=0;
+    static_assert(std::atomic<float>::is_always_lock_free,"Match snapshots require lock-free float atomics");
+    Analyzer analyzer;unsigned seen=0,lastWindow=0;double lastRate=0;
     std::atomic<unsigned> command{0},published{0},finished{0};
     std::array<std::atomic<float>,8> values{};
 };

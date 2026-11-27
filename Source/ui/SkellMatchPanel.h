@@ -41,7 +41,7 @@ public:
         g.setColour(tint.withAlpha(.8f));g.drawEllipse(cx-radius,cy-radius,radius*2,radius*2,1.3f);
         juce::Path trace;for(int i=0;i<=48;++i){const float x=(float)i/48.f;const float amp=(phase==Done?3.f:energy*13.f)*std::sin(juce::MathConstants<float>::pi*x);const float y=cy+amp*std::sin(x*20.f);if(i==0)trace.startNewSubPath(cx-radius+5,y);else trace.lineTo(cx-radius+5+x*(2*radius-10),y);}
         g.setColour(tint);g.strokePath(trace,juce::PathStrokeType(2.f));
-        Theme::fittedText(g,message,{22,156,getWidth()-44,43},12.5f,Theme::white,false,juce::Justification::centred,2);
+        g.setColour(Theme::white);g.setFont(Theme::font(12.5f));g.drawFittedText(message,{22,156,getWidth()-44,43},juce::Justification::centred,2,.85f);
         const auto bar=juce::Rectangle<float>(24.f,204.f,getWidth()-48.f,4.f);
         g.setColour(Theme::stroke);g.fillRoundedRectangle(bar,2.f);g.setColour(tint);g.fillRoundedRectangle(bar.withWidth(bar.getWidth()*fraction),2.f);
         Theme::fittedText(g,phase==Done?"Native rack applied  •  Undo available":"Isolated vocals only  •  Local analysis",{20,214,getWidth()-40,18},10.5f,Theme::muted,true,juce::Justification::centred);
