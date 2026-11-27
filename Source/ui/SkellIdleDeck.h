@@ -156,13 +156,13 @@ public:
         // deep crowd pit. Reserving the pit keeps the audience cinematic
         // instead of a thin strip pressed under the figure's feet.
         const float stageBottom=out.scope.getY()-6.f;
-        const float headroom=h>=350.f?juce::jmin(26.f,h*.040f):0.f;
+        const float headroom=h>=350.f?juce::jmin(16.f,h*.025f):0.f;
         const float stageTop=12.f+headroom;
         const float available=juce::jmax(0.f,stageBottom-stageTop);
         // Keep enough room for the smallest supported figure before the pit
         // takes its share, so tiny frames still produce a valid layout.
         const float pitMax=juce::jmax(0.f,available-372.f*.30f);
-        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f && h>=440.f?.18f:w>=580.f?.19f:.21f)));
+        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f && h>=440.f?.16f:w>=580.f?.17f:.21f)));
         const float feet=stageBottom-pitHeight;
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
             // Let the performer read as the headliner, using the space recovered
@@ -256,7 +256,7 @@ public:
             }
         }
         // Restrained moving key light leaves the static environment cached.
-        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.19f+.12f*activity),
+        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.28f+.18f*activity),
             centreX-65.f,feetY-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,feetY-70.f,true));
         g.fillEllipse(centreX-175.f*stage.scale,feetY-365.f*stage.scale,350.f*stage.scale,365.f*stage.scale);
         // Concert architecture: low-profile truss, line arrays and a segmented
@@ -330,7 +330,7 @@ public:
                 wedge.closeSubPath();
                 const auto tint=(beam==1?accent:Theme::blue);
                 g.setGradientFill(juce::ColourGradient(
-                    tint.withAlpha(.21f+.25f*rigEnergy[(size_t)beam]),rigX,rigY,
+                    tint.withAlpha(.25f+.32f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));
                 g.fillPath(wedge);
                 juce::Path core;
@@ -456,12 +456,12 @@ public:
                     // Far rows are small and high, near rows large and cropped
                     // by the bottom of the stage. The pit starts narrow so the
                     // cemetery keeps its own band of picture above the crowd.
-                    const float heightPix=depth*(.39f+.88f*t*t);
+                    const float heightPix=depth*(.48f+1.05f*t*t);
                     if(heightPix<6.f)continue;
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.78f+.16f*t);
-                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.26f).withAlpha(.14f+.42f*t);
+                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.22f).withAlpha(.20f+.48f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
@@ -827,7 +827,7 @@ private:
         bool phoneSide=false;
     };
     static constexpr int crowdLayers=4;
-    static constexpr int crowdCount=88;
+    static constexpr int crowdCount=136;
     std::array<CrowdFigure,crowdCount> crowd{};
     bool crowdBuilt=false;
     std::array<juce::Image,crowdCount> crowdSprites{};
@@ -840,7 +840,7 @@ private:
         // Slots per row, farthest (top) to nearest (bottom). Distant rows hold
         // more people at a tighter spacing; near rows are wider and sparser,
         // which is what sells the perspective.
-        constexpr int perRow[crowdLayers]{28,26,21,13};
+        constexpr int perRow[crowdLayers]{44,38,31,23};
         constexpr float spread[crowdLayers]{1.02f,1.08f,1.16f,1.28f};
         for(int layer=0;layer<crowdLayers && index<crowdCount;++layer) {
             const int people=perRow[layer];
@@ -867,7 +867,7 @@ private:
                 f.tilt=(rnd(63)-.5f)*1.8f;
                 // Phone lights thin out with distance so the pit glitters
                 // toward the front rather than uniformly.
-                const float chance=layer==3?.30f:layer==2?.21f:layer==1?.13f:.08f;
+                const float chance=layer==3?.44f:layer==2?.32f:layer==1?.21f:.12f;
                 if(rnd(67)<chance)f.phone=.5f+rnd(77)*.5f;
                 f.phoneSide=rnd(87)>.5f;
             }

@@ -117,6 +117,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
             r.q[(size_t)k]=state.getRawParameterValue(prefix+"eqQ"+juce::String(k+1));
             r.studioEqKind[(size_t)k]=state.getRawParameterValue(prefix+"studioEqKind"+juce::String(k+1));
             r.studioEqOn[(size_t)k]=state.getRawParameterValue(prefix+"studioEqOn"+juce::String(k+1));
+            r.studioEqDynamic[(size_t)k]=state.getRawParameterValue(prefix+"studioEqDynamic"+juce::String(k+1));
         }
     }
     packedOrder.store(initialOrder);
@@ -396,6 +397,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::ParameterID{"s"+juce::String(slot)+"_fxExt12",1},
             "Slot "+juce::String(slot)+" phase rotation effect",
             juce::StringArray{"None","Phase Rotation"},0));
+    for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band)
+        fl("s"+juce::String(slot)+"_studioEqDynamic"+juce::String(band),"Slot "+juce::String(slot)+" EQ band "+juce::String(band)+" dynamic depth",0.f,1.f,0.f);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -742,6 +745,7 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
             for(int k=0;k<8;++k){
                 setSlotParam(slot,k*2,frequencies[k]);
                 setReal(id+"studioEqOn"+juce::String(k+1),k<7?1.f:0.f);
+                setReal(id+"studioEqDynamic"+juce::String(k+1),0.f);
                 setReal(id+"studioEqKind"+juce::String(k+1),
                         (float)(k==0?3:(k==6?4:0)));
             }
@@ -964,6 +968,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             c.studioEqKinds[(size_t)k]=juce::jlimit(0,4,
                 (int)raw.studioEqKind[(size_t)k]->load());
             c.studioEqEnabled[(size_t)k]=raw.studioEqOn[(size_t)k]->load()>.5f;
+            c.studioEqDynamic[(size_t)k]=raw.studioEqDynamic[(size_t)k]->load();
         }
         auto& e=engines[(size_t)s];
         if(previousType!=c.type) {
@@ -1048,6 +1053,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 break;
             case StudioEQFX:
                 e.studioEq.set(c.p,c.q,c.studioEqKinds,c.studioEqEnabled);
+                e.studioEq.setDynamics(c.studioEqDynamic);
                 break;
             case StudioCompressorFX:
                 e.studioComp.set(c.p[0],c.p[1],c.p[2],c.p[3],c.p[4]);
@@ -1680,6 +1686,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
             setReal(slotPrefix(s)+"studioEqKind"+juce::String(band),
                     (float)(band==1?3:(band==7?4:0)));
             setReal(slotPrefix(s)+"studioEqOn"+juce::String(band),band<=7?1.f:0.f);
+            setReal(slotPrefix(s)+"studioEqDynamic"+juce::String(band),0.f);
         }
         setReal(slotPrefix(s)+"eqLowCut",0.f);
         setReal(slotPrefix(s)+"eqHighCut",0.f);
@@ -1869,6 +1876,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
                 setReal(prefix+"studioEqKind"+suffix,
                         (float)(band==1?3:(band==7?4:0)));
                 setReal(prefix+"studioEqOn"+suffix,band<=7?1.f:0.f);
+                setReal(prefix+"studioEqDynamic"+suffix,0.f);
             }
             setReal(prefix+"eqLowCut",0.f);
             setReal(prefix+"eqHighCut",0.f);
@@ -2000,6 +2008,7 @@ juce::Result SkellPresetAudioProcessor::makePresetDocument(
             dst.eqQ[(size_t)band]=value(prefix+"eqQ"+n);
             dst.studioEqKind[(size_t)band]=juce::jlimit(0,4,(int)value(prefix+"studioEqKind"+n));
             dst.studioEqOn[(size_t)band]=value(prefix+"studioEqOn"+n)>.5f;
+            dst.studioEqDynamic[(size_t)band]=value(prefix+"studioEqDynamic"+n);
         }
         dst.eqLowCut=value(prefix+"eqLowCut");
         dst.eqHighCut=value(prefix+"eqHighCut");
@@ -2052,6 +2061,7 @@ juce::Result SkellPresetAudioProcessor::applyValidatedPresetDocument(
             setReal(prefix+"eqQ"+n,slot.eqQ[(size_t)band]);
             setReal(prefix+"studioEqKind"+n,(float)slot.studioEqKind[(size_t)band]);
             setReal(prefix+"studioEqOn"+n,slot.studioEqOn[(size_t)band]?1.f:0.f);
+            setReal(prefix+"studioEqDynamic"+n,slot.studioEqDynamic[(size_t)band]);
         }
         setReal(prefix+"eqLowCut",slot.eqLowCut);
         setReal(prefix+"eqHighCut",slot.eqHighCut);
@@ -2408,6 +2418,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
             add(prefix+"eqQ"+suffix);
             add(prefix+"studioEqKind"+suffix);
             add(prefix+"studioEqOn"+suffix);
+            add(prefix+"studioEqDynamic"+suffix);
         }
     }
 }

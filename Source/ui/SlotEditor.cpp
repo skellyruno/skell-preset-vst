@@ -2790,6 +2790,13 @@ void SlotEditor::paint(juce::Graphics&g) {
                 enabled[(size_t)i]=studioEqBandEnabled(i);
             }
             eq.set(p,q,kinds,enabled);
+            const std::array<juce::Colour,8> colours{{juce::Colour(0xffe77b91),juce::Colour(0xffe7ac6a),juce::Colour(0xffe5d66c),juce::Colour(0xff92d789),juce::Colour(0xff60c6ce),juce::Colour(0xff739fec),juce::Colour(0xffab8ce5),juce::Colour(0xffe78bc6)}};
+            for(int band=0;band<8;++band){
+                if(!enabled[(size_t)band])continue;
+                juce::Path shape;for(int px=0;px<=835;px+=5){const double f=20.*std::pow(1000.,(double)px/835.);const float y=juce::jlimit(plot.getY(),plot.getBottom(),plot.getCentreY()-(float)eq.bandMagnitudeDb((size_t)band,f)*plot.getHeight()/72.f);if(px==0)shape.startNewSubPath(plot.getX(),y);else shape.lineTo(plot.getX()+px,y);}
+                auto area=shape;area.lineTo(plot.getRight(),plot.getCentreY());area.lineTo(plot.getX(),plot.getCentreY());area.closeSubPath();
+                const auto colour=colours[(size_t)band];g.setColour(colour.withAlpha(band==activeEqBand?.24f:.10f));g.fillPath(area);g.setColour(colour.withAlpha(band==activeEqBand?.92f:.46f));g.strokePath(shape,juce::PathStrokeType(band==activeEqBand?1.6f:.9f));
+            }
             juce::Path response;
             for(int px=0;px<=835;px+=5) {
                 const double f=20.*std::pow(1000.,(double)px/835.);
@@ -2818,7 +2825,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                 const float yy=plot.getCentreY()-db*(plot.getHeight()/72.f);
                 const bool active=band==activeEqBand;
                 const float size=active?19.f:15.f;
-                const auto bandColour=active?Theme::green:Theme::blue.withAlpha(.83f);
+                const auto bandColour=colours[(size_t)band];
                 g.setColour(bandColour.withAlpha(.13f));
                 g.fillEllipse(xx-size*.7f,yy-size*.7f,size*1.4f,size*1.4f);
                 g.setColour(Theme::bg);
@@ -2828,6 +2835,8 @@ void SlotEditor::paint(juce::Graphics&g) {
                 Theme::text(g,juce::String(band+1),
                     {juce::roundToInt(xx)-9,juce::roundToInt(yy)-9,18,18},
                     9.f,bandColour,true,juce::Justification::centred);
+                const auto* dyn=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_studioEqDynamic"+juce::String(band+1));
+                if(shape==0 && dyn && dyn->load()>.001f){g.setColour(bandColour);g.drawEllipse(xx-size*.78f,yy-size*.78f,size*1.56f,size*1.56f,1.2f);}
                 if(shape==1||shape==2)
                     Theme::text(g,shape==1?"HP":"LP",
                         {(int)(xx-15),(int)(yy-21),30,14},9,
@@ -3700,7 +3709,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         effectDetail="768 SAMPLES REPORTED HOST PDC  /  NOT LOW-LATENCY AUTOTUNE";
     } else if(type==SkellPresetAudioProcessor::StudioEQFX) {
         effectTitle="STUDIO PARAMETRIC EQ  /  EIGHT FILTER SLOTS";
-        effectDetail="RIGHT-CLICK A NODE FOR HP / LP / SHELF / REMOVE";
+        effectDetail="RIGHT-CLICK: SHAPE / REMOVE   |   ALT-CLICK BELL: DYNAMIC CUT";
     } else if(type==SkellPresetAudioProcessor::EightBandToneFX) {
         effectTitle="8-BAND EQ  /  EIGHT INDEPENDENT FREQUENCY + GAIN NODES";
         effectDetail="SELECT ANY DOT TO EDIT FREQUENCY / GAIN / Q / ZERO ADDED PDC";
@@ -4242,6 +4251,11 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         showEqBank(best);
         eqNodeMenu.setTopLeftPosition(juce::jlimit(12,688,e.x-60),
                                       juce::jlimit(150,286,e.y-18));
+        if(e.mods.isAltDown() && studioEqBandType(best)==0){
+            const auto id="s"+juce::String(slot+1)+"_studioEqDynamic"+juce::String(best+1);
+            if(auto* param=processor.state.getParameter(id)){param->beginChangeGesture();param->setValueNotifyingHost(param->getValue()>.001f?0.f:.5f);param->endChangeGesture();}
+            repaint();return;
+        }
         eqNodeMenu.open(studioEqBandType(best));
         return;
     }

@@ -45,9 +45,12 @@ public:
     void prepare(double sampleRate) noexcept {
         sr=std::clamp(std::isfinite(sampleRate)?sampleRate:48000.,8000.,192000.);
         for(auto& f:filters)f.prepare(sr);
+        for(auto& d:dynamic){d={};d.cut.prepare(sr);}
+        attackPole=std::exp(-1./(.012*sr));releasePole=std::exp(-1./(.110*sr));
+        cadence=std::max(8,(int)(sr*.002));
         initialized=false;
     }
-    void reset() noexcept {for(auto& f:filters)f.reset();}
+    void reset() noexcept {for(auto& f:filters)f.reset();for(auto& d:dynamic){d.detector.reset();d.cut.reset();d.env=0.;d.applied=0.f;d.counter=0;d.cut.aim(skellpreset::dsp::Biquad{});}}
     static constexpr std::array<int,8> defaultKinds{{3,0,0,0,0,0,4,0}};
     static constexpr std::array<bool,8> defaultEnabled{{true,true,true,true,true,true,true,false}};
     void set(const std::array<float,16>& p,const std::array<float,8>& widths) noexcept {
@@ -113,11 +116,50 @@ public:
             filters[(size_t)k].aim(c);
         }
     }
+    // Opt-in linked stereo dynamic bell cut: depth 0..12 dB, fixed
+    // -24 dBFS threshold, 12/110 ms detector. No lookahead or allocations.
+    void setDynamics(const std::array<float,8>& amounts) noexcept {
+        for(size_t k=0;k<dynamic.size();++k){
+            auto& d=dynamic[k];
+            const float amount=lastEnabled[k] && lastKinds[k]==0?detail::unit(amounts[k]):0.f;
+            if(amount==0.f){if(d.amount>0.f){d.cut.aim(skellpreset::dsp::Biquad{});d.env=0.;d.applied=0.f;d.detector.reset();}d.amount=0.f;continue;}
+            const double f=std::clamp(20.*std::pow(1000.,(double)detail::unit(lastP[k*2])),20.,sr*.46);
+            // Match the existing bell's octave bandwidth approximately.
+            const double bw=.1+4.9*detail::unit(lastWidths[k]);
+            const double q=std::clamp(1./(2.*std::sinh(std::log(2.)*.5*bw)),.2,12.);
+            if(d.amount==amount && d.freq==f && d.q==q)continue;
+            d.amount=amount;d.freq=f;d.q=q;
+            const double w=2.*skellpreset::dsp::pi*f/sr,alpha=std::sin(w)/(2.*q),n=1./(1.+alpha);
+            d.detector.b0=alpha*n;d.detector.b1=0.;d.detector.b2=-alpha*n;
+            d.detector.a1=-2.*std::cos(w)*n;d.detector.a2=(1.-alpha)*n;
+            d.counter=0;
+        }
+    }
     std::array<float,2> process(float l,float r) noexcept {
-        for(auto& filter:filters){const auto y=filter.process(l,r);l=y[0];r=y[1];}
+        const float dryL=l,dryR=r;
+        for(size_t k=0;k<filters.size();++k){
+            const auto y=filters[k].process(l,r);l=y[0];r=y[1];
+            auto& d=dynamic[k];
+            if(d.amount>0.f){
+                const double a=d.detector.process(dryL,0),b=d.detector.process(dryR,1);
+                const double power=.5*(a*a+b*b),pole=power>d.env?attackPole:releasePole;
+                d.env=power+(d.env-power)*pole;
+                if(--d.counter<=0){
+                    d.counter=cadence;
+                    const float over=(float)(10.*std::log10(std::max(1.e-12,d.env))+24.);
+                    const float target=-12.f*d.amount*std::clamp(over/18.f,0.f,1.f);
+                    if(std::abs(target-d.applied)>.045f || (target==0.f && d.applied!=0.f)){
+                        d.applied=target;
+                        d.cut.setPeak(sr,d.freq,target,d.q);
+                    }
+                }
+            }
+            if(d.amount>0.f || d.cut.remaining>0){const auto wet=d.cut.process(l,r);l=wet[0];r=wet[1];}
+        }
         return {detail::safe(l),detail::safe(r)};
     }
     // Separate, immutable target coefficients for the UI frequency response.
+    double bandMagnitudeDb(size_t band,double frequency) const noexcept {return band<filters.size()?filters[band].target.magnitudeDb(frequency,sr):0.;}
     double magnitudeDb(double frequency) const noexcept {
         double total=0.;
         for(const auto& filter:filters)
@@ -131,6 +173,9 @@ private:
     std::array<int,8> lastKinds=defaultKinds;
     std::array<bool,8> lastEnabled=defaultEnabled;
     std::array<skellpreset::dsp::SmoothedBiquad,8> filters{};
+    struct DynamicBand {skellpreset::dsp::Biquad detector;skellpreset::dsp::SmoothedBiquad cut;double env=0.,freq=0.,q=1.;float amount=0.f,applied=0.f;int counter=0;};
+    std::array<DynamicBand,8> dynamic{};
+    double attackPole=0.,releasePole=0.;int cadence=96;
 };
 
 // Studio Dynamics transfers the original threshold/ratio/knee laws, a stereo

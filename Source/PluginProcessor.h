@@ -261,6 +261,7 @@ private:
         std::array<float,16> p{};std::array<float,8> q{};
         std::array<int,8> studioEqKinds{{3,0,0,0,0,0,4,0}};
         std::array<bool,8> studioEqEnabled{{true,true,true,true,true,true,true,false}};
+        std::array<float,8> studioEqDynamic{};
     };
     std::array<Controls,slotCount> controlCache;
     std::atomic<std::uint64_t> packedOrder{0};
@@ -289,7 +290,7 @@ private:
         std::array<std::atomic<float>*,16> p{};
         std::array<std::atomic<float>*,8> q{};
         std::array<std::atomic<float>*,8> studioEqKind{};
-        std::array<std::atomic<float>*,8> studioEqOn{};
+        std::array<std::atomic<float>*,8> studioEqOn{},studioEqDynamic{};
     };
     struct RawMic {
         std::atomic<float>* on=nullptr;

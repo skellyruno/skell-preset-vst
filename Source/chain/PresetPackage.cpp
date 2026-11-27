@@ -72,6 +72,7 @@ juce::Result validate(const Document& d) {
         for(int k=0;k<8;++k)
             if(slot.studioEqKind[(size_t)k]<0 || slot.studioEqKind[(size_t)k]>4)
                 return juce::Result::fail("Invalid Studio EQ filter type");
+        for(float depth:slot.studioEqDynamic)if(!finiteRange(depth,0.f,1.f))return juce::Result::fail("Invalid EQ dynamic depth");
         if(slot.duckSource<0 || slot.duckSource>2)return juce::Result::fail("Invalid duck source");
         if(!finiteRange(slot.duckDepth,0.f,1.f) ||
            !finiteRange(slot.duckThreshold,-60.f,-12.f) ||
@@ -137,6 +138,8 @@ juce::var toJson(const Document& d) {
         }
         item->setProperty("studioEqKind",juce::var(kinds));
         item->setProperty("studioEqOn",juce::var(enabled));
+        juce::Array<juce::var> dynamics;for(float depth:slot.studioEqDynamic)dynamics.add(depth);
+        item->setProperty("studioEqDynamic",juce::var(dynamics));
         item->setProperty("eqLowCut",slot.eqLowCut);
         item->setProperty("eqHighCut",slot.eqHighCut);
         item->setProperty("duckOn",slot.duckOn);
@@ -318,6 +321,11 @@ juce::Result fromJson(const juce::var& root, Document& out) {
                     return juce::Result::fail("Invalid Studio EQ enable value");
                 slot.studioEqOn[(size_t)k]=(bool)(*active.getArray())[k];
             }
+        }
+        if(hasJsonProperty(item,"studioEqDynamic")){
+            const auto values=item.getProperty("studioEqDynamic",{});
+            if(!values.isArray()||values.getArray()->size()!=8)return juce::Result::fail("Invalid EQ dynamic array");
+            for(int k=0;k<8;++k)if(!decodeFloat((*values.getArray())[k],0.f,1.f,slot.studioEqDynamic[(size_t)k]))return juce::Result::fail("Invalid EQ dynamic depth");
         }
         // If absent, old presets remain dry/FX identical. Bad values are
         // rejected before ANY live destination parameters are changed.
