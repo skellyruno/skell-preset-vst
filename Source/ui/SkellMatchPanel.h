@@ -96,7 +96,7 @@ public:
             const int cell=153,gap=10,col=i%2,row=i/2;
             const bool single=count==1||(count==3&&i==2);
             const int x=single?343:263+col*(cell+gap);
-            const int y=count<=2?256:222+row*34;
+            const int y=count<=2?236:222+row*34;
             b->setBounds(scaled({x,y,cell,29}));++i;
         }
     }
@@ -142,6 +142,7 @@ public:
             g.setColour(tint);g.fillRect(meter.withWidth(meter.getWidth()*energy));
             Theme::fittedText(g,"VOCALS ONLY",{464,195,112,18},10.f,Theme::muted,true,juce::Justification::centredRight);
         }else Theme::fittedText(g,phase==Done?"RACK APPLIED / UNDO AVAILABLE":"LOCAL ANALYSIS / VOCALS ONLY",{263,195,313,18},10.5f,Theme::muted,true);
+        if(active&&phase!=Refining&&phase!=Reading)Theme::fittedText(g,"LOCAL ANALYSIS  /  NOTHING UPLOADED",{263,270,313,17},9.5f,Theme::muted,true,juce::Justification::centred);
     }
 private:
     // Shift the full-canvas opening point toward the visual workspace.

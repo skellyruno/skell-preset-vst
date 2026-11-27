@@ -349,16 +349,24 @@ public:
             juce::Path deck;deck.startNewSubPath(centreX-half*.74f,back);deck.lineTo(centreX+half*.74f,back);
             deck.lineTo(centreX+half,front);deck.lineTo(centreX-half,front);deck.closeSubPath();
             g.setGradientFill(juce::ColourGradient(juce::Colour(0xff283339),centreX,back,juce::Colour(0xff0b1114),centreX,front,false));g.fillPath(deck);
-            g.setColour(juce::Colour(0xff526361).withAlpha(.78f));g.strokePath(deck,juce::PathStrokeType(1.05f*u));
+            g.setColour(juce::Colour(0xff526361).withAlpha(.43f));g.strokePath(deck,juce::PathStrokeType(.85f*u));
+            // Broken damp stone joints, visible only inside the raised deck.
+            {juce::Graphics::ScopedSaveState texture(g);g.reduceClipRegion(deck);
+                for(int n=0;n<70;++n){const float fx=(float)((n*37+11)%101)/101.f,fy=(float)((n*53+7)%97)/97.f;
+                    const float y=back+(front-back)*fy,x=centreX-half+2.f*half*fx;
+                    g.setColour((n%4?juce::Colour(0xff77857f):juce::Colour(0xff060b0d)).withAlpha(.045f+.07f*fy));
+                    g.drawLine(x,y,x+(3.f+(n%7)*1.7f)*u,y+((n%3)-1)*.6f*u,.65f*u);
+                }
+            }
             // Thin stage apron and inset bolts make the floor a physical deck.
             g.setGradientFill(juce::ColourGradient(juce::Colour(0xff344047),centreX,front,juce::Colour(0xff080e12),centreX,front+9.f*u,false));
             g.fillRect(centreX-half,front,half*2.f,8.f*u);
             for(int i=0;i<9;++i){const float x=centreX-half+(i+.5f)*half*2.f/9.f;g.setColour(juce::Colour(0xff74847e).withAlpha(.47f));g.fillEllipse(x-1.1f*u,front+2.9f*u,2.2f*u,2.2f*u);}
-            for(int k=-4;k<=4;++k){g.setColour(Theme::white.withAlpha(.055f));g.drawLine(centreX+k*half*.16f,back,centreX+k*half*.22f,front,.8f*u);}
+            for(int k=-4;k<=4;++k){g.setColour(Theme::white.withAlpha(.025f));g.drawLine(centreX+k*half*.16f,back,centreX+k*half*.22f,front,.8f*u);}
             for(int i=0;i<18;++i){
                 const float x=centreX-half+(i+.5f)*2.f*half/18.f;
                 const float v=live?stageBands[(size_t)(i*2)]:0.f;
-                g.setColour(accent.withAlpha(.18f+.72f*v));g.fillRoundedRectangle(x-4.f*u,front-2.f*u,8.f*u,2.f*u,1.f*u);
+                g.setColour(accent.withAlpha(.025f+.35f*v*lightEnergy));g.fillEllipse(x-1.7f*u,front-2.f*u,3.4f*u,1.8f*u);
             }
         }
         // Low mist is a soft gradient, not a large animated texture.
@@ -384,11 +392,11 @@ public:
             for(int side:{-1,1}){
                 const float x=centreX+side*stageBounds.getWidth()*.31f,y=feetY-8.f*stage.scale;
                 const float r=15.f*stage.scale;const auto tint=side<0?Theme::blue:accent;
-                const float power=.09f+.20f*rigEnergy[(size_t)(side<0?0:2)];
+                const float power=.025f+lightEnergy*(.12f+.22f*rigEnergy[(size_t)(side<0?0:2)]);
                 g.setGradientFill(juce::ColourGradient(tint.withAlpha(power),x,y,tint.withAlpha(0.f),x,y-104.f*stage.scale,true));
                 juce::Path light;light.startNewSubPath(x-r,y);light.lineTo(x+r,y);light.lineTo(x+49.f*stage.scale,y-118.f*stage.scale);light.lineTo(x-49.f*stage.scale,y-118.f*stage.scale);light.closeSubPath();g.fillPath(light);
                 g.setColour(juce::Colour(0xff182124));g.fillRoundedRectangle(x-r,y-4.f*stage.scale,r*2.f,7.f*stage.scale,2.f*stage.scale);
-                g.setColour(tint.withAlpha(.52f+power));g.drawLine(x-r*.6f,y-2.f*stage.scale,x+r*.6f,y-2.f*stage.scale,1.2f);
+                g.setColour(tint.withAlpha(.20f+power));g.drawLine(x-r*.6f,y-2.f*stage.scale,x+r*.6f,y-2.f*stage.scale,1.2f);
             }
         }
         // Soft spotlight pool on the boards beneath the performer. It is the
@@ -729,68 +737,30 @@ public:
                 g.fillRect(stageBounds.getX(),pitTop+depth*.30f,
                            stageBounds.getWidth(),pitBottom-pitTop-depth*.30f);
                 // A diffuse stage edge replaces the artificial hard green seam.
-                g.setGradientFill(juce::ColourGradient(accent.withAlpha(.08f+.08f*activity),centreX,pitTop,
+                g.setGradientFill(juce::ColourGradient(accent.withAlpha(.025f+.055f*lightEnergy),centreX,pitTop,
                     accent.withAlpha(0.f),centreX,pitTop+12.f,false));
                 g.fillRect(stageBounds.getX(),pitTop,stageBounds.getWidth(),12.f);
             }
         }
-        // The spectrum is part of the cemetery set: two banks of illuminated
-        // fence spires, with ground reflections instead of floating meter cards.
-        if(width>=580.f && stageBounds.getHeight()>270.f){
-            juce::Graphics::ScopedSaveState scene(g);g.reduceClipRegion(stageBounds.toNearestInt());
-            const float bankW=juce::jlimit(108.f,205.f,width*.235f);
-            const float base=horizon+juce::jmin(20.f,stage.scale*22.f);
-            const float maxH=juce::jlimit(62.f,128.f,(base-stageBounds.getY())*.66f);
-            for(int side=0;side<2;++side){
-                const float start=side==0?stageBounds.getX()+22.f:stageBounds.getRight()-bankW-22.f;
-                const auto tint=side==0?accent:Theme::blue;
-                const float spacing=bankW/18.f;
-                for(int band=0;band<18;++band){
-                    const int index=side==0?band:17-band;
-                    const float depth=(float)index/17.f;
-                    const float x=start+spacing*(band+.5f);
-                    const float floor=base+12.f*(1.f-depth);
-                    const float height=maxH*(.70f+.30f*(1.f-depth));
-                    const float value=juce::jlimit(0.f,1.f,stageBands[(size_t)(side*18+band)]);
-                    const float w=juce::jmax(1.2f,spacing*.38f);
-                    // Short stone-like footlights when idle, spectrum rises only
-                    // with measured audio. No duplicate fence of dead bars.
-                    g.setColour(Theme::bg.withAlpha(.62f));g.fillRoundedRectangle(x-w,floor-6.f,2.f*w,6.f,1.5f);
-                    g.setColour(tint.withAlpha(.12f));g.drawLine(x-w*.65f,floor-5.f,x+w*.65f,floor-5.f,1.f);
-                    if(value>.002f){
-                        const float top=floor-height*value;
-                        g.setGradientFill(juce::ColourGradient(tint.withAlpha(.10f),x,top,tint.withAlpha(.02f),x,floor,false));
-                        g.fillRect(x-w*2.f,top,w*4.f,floor-top);
-                        g.setGradientFill(juce::ColourGradient(tint.interpolatedWith(Theme::white,.30f).withAlpha(.90f),x,top,
-                            tint.withAlpha(.12f),x,floor,false));
-                        g.fillRoundedRectangle(x-w*.5f,top,w,floor-top,1.f);
-                        g.setColour(tint.withAlpha(.13f*value));
-                        g.drawLine(x,floor+2.f,x+(x-centreX)*.055f,floor+height*value*.20f,w);
-                    }
-                    if(value>.002f){
-                        const float top=floor-height*value;
-                        g.setColour(tint.withAlpha(.38f*value));
-                        g.fillEllipse(x-w*.65f,top-w*.65f,1.3f*w,1.3f*w);
-                    }
-                }
-                g.setColour(tint.withAlpha(.09f));g.drawLine(start,base+12.f,start+bankW,base,1.f);
-            }
-        }
-        // The trace and bone illumination are directly audio-reactive;
-        // nothing is a fake spectrum or prerecorded animation.
-        // The stage is the display. Live waveform light belongs to the boards.
+        // The cemetery itself is the live display. Earlier vertical spectrum
+        // meters and the continuous waveform rail obscured the graves and
+        // divided the audience from the stage. Ground-level lanterns above
+        // already represent measured spectrum bands; here the stage edge
+        // reflects measured amplitude as isolated pools of light.
         if(live){
-            const juce::Rectangle<float> plot(stageBounds.getX()+28.f,feetY-8.f,stageBounds.getWidth()-56.f,14.f);
-            juce::Path trace;
-            for(int index=0;index<128;++index){
-                const float raw=cachedSignal[(size_t)index];
-                const float value=std::isfinite(raw)?juce::jlimit(-1.f,1.f,raw):0.f;
-                const float x=plot.getX()+plot.getWidth()*index/127.f;
-                const float y=plot.getCentreY()-value*plot.getHeight()*.43f;
-                if(index==0)trace.startNewSubPath(x,y);else trace.lineTo(x,y);
+            juce::Graphics::ScopedSaveState reflections(g);
+            g.reduceClipRegion(stageBounds.toNearestInt());
+            const float u=stage.scale;
+            for(int i=0;i<12;++i){
+                const float x=centreX+(i-5.5f)*stageBounds.getWidth()*.057f;
+                const float y=feetY+3.f*u;
+                const float value=juce::jlimit(0.f,1.f,stageBands[(size_t)(i*3)]);
+                const float power=.12f*lightEnergy*value;
+                if(power<.004f)continue;
+                const float r=(12.f+14.f*value)*u;
+                g.setGradientFill(juce::ColourGradient(accent.withAlpha(power),x,y,accent.withAlpha(0.f),x+r,y,true));
+                g.fillEllipse(x-r,y-3.f*u,2.f*r,7.f*u);
             }
-            g.setColour(accent.withAlpha(.16f));g.strokePath(trace,juce::PathStrokeType(3.f));
-            g.setColour(accent.withAlpha(.62f));g.strokePath(trace,juce::PathStrokeType(1.f));
         }
         const auto status=juce::Rectangle<float>(stageBounds.getX()+15.f,
             stageBounds.getY()+13.f,118.f,24.f);

@@ -413,19 +413,21 @@ public:
 
             // --- Ground fog: several soft horizontal banks of pale mist that
             // make the cemetery feel damp and cold.
-            for(int bank=0;bank<13;++bank) {
-                const float y=horizonY-64.f+bank*11.f;
-                g.setGradientFill(juce::ColourGradient(
-                    fog.withAlpha(.048f+(bank%3)*.016f),width*.20f,y,
-                    juce::Colour(0xff0a1218).withAlpha(0.f),width*.96f,y,true));
-                g.fillEllipse(-width*.18f,y,width*1.36f,24.f+bank*2.f);
+            for(int bank=0;bank<10;++bank) {
+                const float y=horizonY-63.f+bank*8.f;
+                const float x=width*(.15f+.72f*hash01(bank*79+13));
+                const float radius=width*(.24f+.22f*hash01(bank*113+7)),ry=15.f+(bank%4)*4.f;
+                juce::Graphics::ScopedSaveState haze(g);
+                g.addTransform(juce::AffineTransform::scale(1.f,ry/radius,x,y));
+                g.setGradientFill(juce::ColourGradient(fog.withAlpha(.055f+(bank%3)*.012f),x,y,fog.withAlpha(0.f),x+radius,y,true));
+                g.fillEllipse(x-radius,y-radius,2.f*radius,2.f*radius);
             }
             // Cold moonlight wash across the near graves so the stones are
             // readable instead of sinking into the black.
             g.setGradientFill(juce::ColourGradient(
                 juce::Colour(0xff9fc4c0).withAlpha(.16f),moonX,horizonY-40.f,
                 juce::Colour(0xff9fc4c0).withAlpha(0.f),moonX,horizonY+14.f,false));
-            g.fillRect(0.f,horizonY-52.f,width,72.f);
+            g.fillRect(0.f,horizonY-40.f,width,54.f);
 
             // --- Raised boards in perspective with plank seams and lip light.
             g.setGradientFill(juce::ColourGradient(juce::Colour(0xff24312e),width*.5f,horizonY-4.f,
@@ -467,6 +469,22 @@ public:
                     g.setColour((n%4?stone:deep).withAlpha(.10f+.08f*t));g.fillEllipse(x,y,scale*3.f,scale);
                     if(n%5==0){g.setColour(juce::Colour(0xff435348).withAlpha(.45f));for(int blade=0;blade<3;++blade)g.drawLine(x,y,x+(blade-1)*scale*2.f,y-scale*(3.f+hash01(n*31+blade)*3.f),.6f);}
                 }
+            }
+            // Additional foreground markers, deliberately outside the
+            // central performance deck. Static cached geometry.
+            for(int side:{-1,1})for(int n=0;n<3;++n){
+                const float x=width*(side<0?.055f+n*.065f:.945f-n*.065f);
+                const float base=horizonY+28.f+12.f*hash01(n*67+side*113+400);
+                const float tall=18.f+14.f*hash01(n*137+side*59+230);
+                const float half=6.f+4.f*hash01(n*47+side*19+140);
+                juce::Graphics::ScopedSaveState marker(g);
+                g.addTransform(juce::AffineTransform::rotation((hash01(n*71+side*43+220)-.5f)*.24f,x,base));
+                g.setColour(deep.withAlpha(.75f));g.fillEllipse(x-half*1.7f,base-2.f,half*3.4f,5.f);
+                juce::Path slab;slab.startNewSubPath(x-half,base);slab.lineTo(x-half,base-tall+half);
+                slab.quadraticTo(x,base-tall-half*.5f,x+half,base-tall+half);slab.lineTo(x+half,base);slab.closeSubPath();
+                g.setGradientFill(juce::ColourGradient(stone.darker(.45f),x-half,base-tall,deep,x+half,base,false));g.fillPath(slab);
+                g.setColour(fog.withAlpha(.22f));g.strokePath(slab,juce::PathStrokeType(.7f));
+                g.setColour(deep.withAlpha(.64f));g.drawLine(x,base-tall*.75f,x,base-tall*.36f,1.2f);g.drawLine(x-half*.44f,base-tall*.60f,x+half*.44f,base-tall*.60f,1.2f);
             }
             // Damp reflection of the moon on the boards.
             g.setGradientFill(juce::ColourGradient(
