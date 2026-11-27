@@ -39,6 +39,43 @@ jobs:
       - name: Test offline reference WAV diagnostics
         run: python3 -m unittest discover -s tests -p test_reference_wav_inspect.py -v
 
+  artwork-cache:
+    # Only public, owner-requested artwork. Never upload the private preset bank.
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'Pillow==12.2.0'
+      - run: python tests/test_artist_artwork.py
+      - name: Prepare owner-authorized public artist photo for offline private build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools')
+          from artist_artwork import prepare_artwork
+          root = Path(os.environ['RUNNER_TEMP'])/'public-artist-artwork'
+          root.mkdir(parents=True, exist_ok=True)
+          rows = prepare_artwork(root, {'artists': {'skellyruno': {'name': 'skellyruno'}}}, required=True)
+          # Include source and normalized hash, not the redundant inline bytes.
+          (root/'provenance.json').write_text(json.dumps([{k:v for k,v in row.items() if k!='payload'} for row in rows], indent=2))
+          print('Verified public artist image cached:', rows[0]['sha256'], rows[0]['source']['kind'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skellyruno-public-artist-artwork-cache
+          path: ${{ runner.temp }}/public-artist-artwork
+          if-no-files-found: error
+          retention-days: 1
+
   quick4-source-cache:
     if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
     runs-on: ubuntu-latest

@@ -143,11 +143,11 @@ bool PresetBrowser::testViewSwitchForTest() {
     juce::PNGImageFormat format;
     const bool written=format.writeImageToStream(source,png);
     const auto digest=juce::SHA256(png.getMemoryBlock()).toHexString();
-    auto* row=new juce::DynamicObject;
-    row->setProperty("artist","QA Texture");
-    row->setProperty("sha256",digest);
-    row->setProperty("payload",juce::Base64::toBase64(png.getData(),png.getDataSize()));
-    juce::var rowVar(row);
+    auto* artRow=new juce::DynamicObject;
+    artRow->setProperty("artist","QA Texture");
+    artRow->setProperty("sha256",digest);
+    artRow->setProperty("payload",juce::Base64::toBase64(png.getData(),png.getDataSize()));
+    juce::var rowVar(artRow);
     auto* bank=new juce::DynamicObject;
     juce::var bankVar(bank);
     bank->setProperty("artwork",juce::Array<juce::var>{rowVar});
@@ -168,7 +168,7 @@ bool PresetBrowser::testViewSwitchForTest() {
                 dark.getBrightness()<.35f && bright.getBrightness()>dark.getBrightness()+.2f;
         }
     }
-    row->setProperty("sha256",juce::String::repeatedString("0",64));
+    artRow->setProperty("sha256",juce::String::repeatedString("0",64));
     ok=ok && skellpreset::artistart::decode(bankVar,cache).empty();
     setListView(savedMode,false);keyboardCard=oldFocus;scroll=oldScroll;resized();
     preferencesReadOnly=savedReadOnly;
