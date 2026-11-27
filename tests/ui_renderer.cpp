@@ -734,6 +734,26 @@ int main(int argc, char** argv) {
                 }
                 const auto shot=skellcore::ui::headless::capture(editor,1168,688);
                 if(!fresh || !shot.image.isValid() || !skellcore::ui::headless::writePng(shot.image,folder.getChildFile(juce::String("measured-effect-")+effect.first+"-100.png"))){std::fprintf(stderr,"Measured effect capture failed: %s\n",effect.first);++failures;}
+                // Capture the full-width real telemetry, including the drawer,
+                // after feeding fresh audio with no forced capture override.
+                editor.configureEdgesForScreenshot(false,true,false,false);
+                bool focusFresh=false;
+                for(int block=0;block<96;++block){
+                    const float env=.04f+.48f*(.5f+.5f*std::sin(block*.21f));
+                    for(int n=0;n<512;++n){
+                        const double time=(block*512+n)/48000.;
+                        const float x=env*(.7f*(float)std::sin(time*690.)+.3f*(float)std::sin(time*2349.));
+                        probe.setSample(0,n,x);probe.setSample(1,n,x*.82f);
+                    }
+                    processor.processBlock(probe,midi);focusFresh=editor.updateLiveVisualForScreenshot();
+                }
+                auto full=skellcore::ui::headless::capture(editor,1168,688);
+                if(!focusFresh||!full.image.isValid()||!skellcore::ui::headless::writePng(full.image,folder.getChildFile(juce::String("focus-measured-")+effect.first+"-100.png"))){
+                    std::fprintf(stderr,"Full focus capture failed: %s\n",effect.first);++failures;
+                }
+                editor.configureEdgesForScreenshot(false,true,true,false);
+                auto drawer=skellcore::ui::headless::capture(editor,1168,688);
+                if(!drawer.image.isValid()||!skellcore::ui::headless::writePng(drawer.image,folder.getChildFile(juce::String("focus-controls-")+effect.first+"-100.png")))++failures;
             }
             processor.requestSlotVisual(-1);processor.loadFactoryPreset(0);
         }

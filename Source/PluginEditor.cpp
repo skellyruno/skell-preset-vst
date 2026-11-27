@@ -721,6 +721,11 @@ public:
             if(control.isVisible()!=drawer)issues.add("Stage macro visibility differs from drawer");
         if(chain.isVisible()==rackHidden || slot.isVisible()!=(!editingIdle && !routing.isVisible() && !focusVisible()) || idle.isVisible()!=editingIdle || focusVisual.isVisible()!=focusVisible())
             issues.add("Unified rack/stage visibility regressed");
+        for(const auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})
+            if(edge->isVisible()&&!canvasBounds.contains(edge->getBounds()))
+                issues.add("Workspace edge outside canvas");
+        if(focusVisible() && !workspaceBounds().contains(focusVisual.getBounds()))
+            issues.add("Focus visualization escapes workspace");
         for(const auto* master:{&input,&mix,&output})
             if(master->isVisible()!=drawer)issues.add("Master knob visibility differs from drawer");
         const std::array<const juce::Slider*,3> masterSliders{{&input,&mix,&output}};
@@ -1441,6 +1446,14 @@ public:
         editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
         Theme::text(g,"PRESET",{623,8,378,15},11.f,Theme::muted,true);
         paintHeaderMeters(g);
+        if(focusVisible()){
+            const auto deck=workspaceBounds();
+            Theme::panelBox(g,(drawerVisible()?deck.withTrimmedBottom(212):deck).toFloat(),9.f);
+            Theme::fittedText(g,"SLOT "+juce::String(slot.selectedSlot()+1).paddedLeft('0',2),
+                {deck.getX()+23,deck.getY()+12,92,22},11.f,Theme::muted,true);
+            Theme::fittedText(g,processor.moduleDisplayName(processor.slotType(slot.selectedSlot())),
+                {deck.getX()+115,deck.getY()+8,deck.getWidth()-150,30},20.f,Theme::white,true);
+        }
         // No footer meter rail; leave the resize grip and window geometry unchanged.
         // One shallow control drawer below the resized live performer.
         if(drawerVisible()) {
@@ -1486,7 +1499,7 @@ public:
         slot.setBounds(workspace.withSizeKeepingCentre(906,561));
         routing.setBounds(workspace);
         const auto visuals=drawerVisible()?workspace.withTrimmedBottom(212):workspace;
-        idle.setBounds(visuals);focusVisual.setBounds(visuals.reduced(18,12));
+        idle.setBounds(visuals);focusVisual.setBounds(visuals.reduced(18,12).withTrimmedTop(34));
         rackOuterEdge.setBounds(rackOnRight?1155:0,workspace.getCentreY()-26,13,52);
         rackInnerEdge.setBounds(rackOnRight?921:230,workspace.getCentreY()-26,16,52);
         rackOuterEdge.configure(rackHidden?(rackOnRight?WorkspaceEdge::Left:WorkspaceEdge::Right):
@@ -1642,7 +1655,10 @@ public:
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         if(bypassShade.isVisible()!=(m==3))refresh();
-        slot.setHostedEditorPresentation(m!=3 && !editingIdle && !routing.isVisible() && !focusVisible() &&
+        if(focusVisual.isVisible()!=focusVisible()){refresh();return;}
+        // Do not request -1 then immediately request the selected slot every
+        // timer tick: that would reset the audio capture generation at 30 Hz.
+        if(!focusVisible())slot.setHostedEditorPresentation(m!=3 && !editingIdle && !routing.isVisible() &&
             !browser.isVisible() && !settingsPanel.isVisible() && !micPanel.isVisible());
         if(m!=3){if(!rackHidden)chain.refreshIfChanged();if(!focusVisible())slot.refreshIfChanged();if(routing.isVisible())routing.refresh();}
         if(focusVisible())updateFocusVisual();
@@ -1719,6 +1735,11 @@ public:
     bool testWorkspaceEdges(){
         const int selected=slot.selectedSlot(),program=processor.getCurrentProgram();
         const bool savedIdle=editingIdle,savedMacro=macroOpen,savedDock=rackOnRight;
+        const bool savedBrowser=browser.isVisible();
+        browser.setVisible(false);
+        const auto parameters=processor.getParameters();
+        std::vector<float> before;before.reserve((size_t)parameters.size());
+        for(auto* parameter:parameters)before.push_back(parameter->getValue());
         editingIdle=true;macroOpen=false;refresh();bool ok=true;
         for(bool right:{false,true}){
             dockRack(right);
@@ -1731,7 +1752,16 @@ public:
             ok &= drawerEdge.releaseGesture(0,-26)&&drawerVisible();
             ok &= drawerEdge.releaseGesture(0,26)&&!drawerVisible();
         }
+        editingIdle=false;macroOpen=false;refresh();
+        if(nativeVisualAvailable()){
+            ok &= rackOuterEdge.releaseGesture(0,0)&&focusVisual.isVisible()&&!slot.isVisible();
+            ok &= drawerEdge.releaseGesture(0,-26)&&focusVisual.isVisible()&&drawerVisible();
+            ok &= drawerEdge.releaseGesture(0,26)&&focusVisual.isVisible()&&!drawerVisible();
+            ok &= rackOuterEdge.releaseGesture(0,0)&&slot.isVisible()&&!focusVisual.isVisible();
+        }
         dockRack(savedDock);editingIdle=savedIdle;macroOpen=savedMacro;refresh();
+        browser.setVisible(savedBrowser);if(savedBrowser)browser.toFront(false);
+        for(int i=0;i<parameters.size();++i)ok &= parameters[i]->getValue()==before[(size_t)i];
         return ok&&slot.selectedSlot()==selected&&processor.getCurrentProgram()==program;
     }
     void mouseDown(const juce::MouseEvent& e)override {
