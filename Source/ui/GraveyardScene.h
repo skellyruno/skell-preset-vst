@@ -132,9 +132,9 @@ public:
                 for(int n=0;n<6;++n){
                     const float x=width*(hash01(layer*321+n*27)*1.1f-.10f);
                     const float span=width*(.12f+.15f*hash01(layer*513+n*41));
-                    const float h=10.f+12.f*hash01(layer*112+n*17);
-                    g.setGradientFill(juce::ColourGradient(fog.withAlpha(.085f),x+span*.45f,y, fog.withAlpha(0.f),x+span*.9f,y+h,true));
-                    g.fillEllipse(x,y,span,h);
+                    const float cloudHeight=10.f+12.f*hash01(layer*112+n*17);
+                    g.setGradientFill(juce::ColourGradient(fog.withAlpha(.085f),x+span*.45f,y, fog.withAlpha(0.f),x+span*.9f,y+cloudHeight,true));
+                    g.fillEllipse(x,y,span,cloudHeight);
                 }
             }
             // --- Moon: heavy silver disc with layered halo, craters and a
@@ -550,9 +550,9 @@ public:
             const float u=std::fmod(.12f*i+.14f*hash01(i*81)+phase*(.007f+.001f*(i%3)),1.12f);
             const float x=bounds.getX()+width*u-width*.06f;
             const float y=bounds.getY()+(worldSkyline-bounds.getY())*(.20f+.09f*(i%4)) + 3.f*std::sin(phase*.63f+i);
-            const float s=1.1f+.9f*hash01(i*97);
-            const float flap=(.75f+1.1f*std::sin(phase*2.1f+i*1.7f))*s;
-            juce::Path bird;bird.startNewSubPath(x-4.f*s,y-flap);bird.quadraticTo(x-1.7f*s,y-2.f*s,x,y);bird.quadraticTo(x+1.7f*s,y-2.f*s,x+4.f*s,y-flap);
+            const float birdScale=1.1f+.9f*hash01(i*97);
+            const float flap=(.75f+1.1f*std::sin(phase*2.1f+i*1.7f))*birdScale;
+            juce::Path bird;bird.startNewSubPath(x-4.f*birdScale,y-flap);bird.quadraticTo(x-1.7f*birdScale,y-2.f*birdScale,x,y);bird.quadraticTo(x+1.7f*birdScale,y-2.f*birdScale,x+4.f*birdScale,y-flap);
             g.setColour(juce::Colour(0xff070b0e).withAlpha(.74f));g.strokePath(bird,juce::PathStrokeType(.9f));
         }
         // Drifting mist: three soft bands moving at different speeds.

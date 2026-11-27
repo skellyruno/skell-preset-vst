@@ -31,7 +31,8 @@ public:
         // 25% larger in both dimensions; center on the entire plugin canvas.
         // Retain manual drag and fit compact bounds.
         const float s=std::min({1.25f,limits.getWidth()/536.f,limits.getHeight()/330.f});
-        const int w=juce::roundToInt(536.f*s),h=juce::roundToInt(330.f*s);
+        // Explicit half-up rounding: JUCE roundToInt rounds 412.5 to 412 on some targets.
+        const int w=juce::jmin(limits.getWidth(),(int)std::round(536.f*s)),h=juce::jmin(limits.getHeight(),(int)std::round(330.f*s));
         if(w<=0||h<=0)return;
         if(!moved)setBounds(limits.withSizeKeepingCentre(w,h));
         else setSize(w,h);
