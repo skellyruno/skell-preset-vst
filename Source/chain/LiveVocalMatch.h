@@ -4,6 +4,9 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <memory>
+#include <new>
+#include <vector>
 
 namespace skellpreset::liveMatch {
 // Streaming bounded statistics only. No recording, allocation, network or
@@ -31,6 +34,7 @@ public:
         }
     }
     bool finished() const noexcept {return (frames>=6.*sr&&activeFrames>=4.*sr)||frames>=20.*sr;}
+    std::uint64_t frameCount() const noexcept {return frames;}
     unsigned windowCount() const noexcept {return (unsigned)(frames/(std::uint64_t)window);}
     Profile result() const noexcept {
         Profile p;p.elapsed=(float)(frames/sr);p.active=(float)(activeFrames/sr);
@@ -60,7 +64,8 @@ private:
     std::array<double,2> low{},high{};
     double winEnergy=0,winLow=0,winHigh=0,winPeak=0,activeEnergy=0,lowEnergy=0,highEnergy=0,peak=0;
 };
-struct Recipe {float low=0,high=0,threshold=-24,ratio=2,makeup=0;bool deess=false;};
+struct Recipe {float low=0,high=0,threshold=-24,ratio=2,makeup=0;bool deess=false;float output=-3;};
+struct Audio {double rate=48000.;std::vector<float> stereo;size_t frames() const noexcept {return stereo.size()/2;}};
 inline bool comparable(const Profile& dry,const Profile& ref) noexcept {
     return dry.valid()&&ref.valid()&&(std::abs(dry.lowDb-ref.lowDb)>1.5f||std::abs(dry.highDb-ref.highDb)>1.5f||std::abs(dry.crest-ref.crest)>2.f);
 }
@@ -78,23 +83,36 @@ inline Recipe fit(const Profile& dry,const Profile* ref=nullptr) noexcept {
     return r;
 }
 // Audio thread owns analyzer, GUI owns command. Odd commands capture, even
-// commands cancel. Only atomic snapshots cross threads, no raw PCM retained.
+// commands cancel. PCM is allocated on the message thread only, never saved.
+// Completed generations are immutable until the next message-thread start.
 class Capture {
 public:
-    void start() noexcept {const auto n=(command.load(std::memory_order_relaxed)|1u)+2u;command.store(n,std::memory_order_release);}
+    bool start() noexcept {
+        if(!pcm){pcm.reset(new(std::nothrow) float[maxFrames*2]);if(!pcm)return false;}
+        const auto n=(command.load(std::memory_order_relaxed)|1u)+2u;command.store(n,std::memory_order_release);return true;
+    }
+    bool copyCompleted(Audio& out) const {
+        const auto n=command.load(std::memory_order_acquire);
+        if(!(n&1u)||finished.load(std::memory_order_acquire)!=n||!pcm)return false;
+        out.rate=completedRate;out.stereo.assign(pcm.get(),pcm.get()+completedFrames*2);return true;
+    }
     void cancel() noexcept {const auto n=command.load(std::memory_order_relaxed);if(n&1u)command.store(n+1u,std::memory_order_release);}
     void push(const float* l,const float* r,int count,double rate) noexcept {
         const auto n=command.load(std::memory_order_acquire);
-        if(!(n&1u))return;
+        if(!(n&1u)||finished.load(std::memory_order_acquire)==n||!std::isfinite(rate)||rate<8000.||rate>192000.)return;
         if(n!=seen||rate!=lastRate){seen=n;lastRate=rate;lastWindow=0;analyzer.prepare(rate);finished.store(0,std::memory_order_release);published.store(0,std::memory_order_release);}
         if(analyzer.finished())return;
-        analyzer.push(l,r,count);const auto win=analyzer.windowCount();
+        const auto before=analyzer.frameCount();
+        analyzer.push(l,r,count);
+        const auto after=std::min<std::uint64_t>(analyzer.frameCount(),maxFrames);
+        for(auto frame=before;frame<after;++frame){const auto i=(size_t)(frame-before);pcm[(size_t)frame*2]=l[i];pcm[(size_t)frame*2+1]=r?r[i]:l[i];}
+        const auto win=analyzer.windowCount();
         if(win==lastWindow&&!analyzer.finished())return;
         lastWindow=win;const auto p=analyzer.result();
         const std::array<float,8> data{{p.elapsed,p.active,p.rmsDb,p.peak,p.lowDb,p.highDb,p.crest,p.clipped}};
         for(size_t k=0;k<data.size();++k)values[k].store(data[k],std::memory_order_relaxed);
         published.store(n,std::memory_order_release);
-        if(analyzer.finished())finished.store(n,std::memory_order_release);
+        if(analyzer.finished()){completedRate=rate;completedFrames=(size_t)after;finished.store(n,std::memory_order_release);}
     }
     bool read(Profile& p,bool& done) const noexcept {
         const auto n=command.load(std::memory_order_acquire);
@@ -105,6 +123,8 @@ public:
     }
 private:
     static_assert(std::atomic<float>::is_always_lock_free,"Match snapshots require lock-free float atomics");
+    static constexpr size_t maxFrames=192000u*20u;
+    std::unique_ptr<float[]> pcm;size_t completedFrames=0;double completedRate=48000.;
     Analyzer analyzer;unsigned seen=0,lastWindow=0;double lastRate=0;
     std::atomic<unsigned> command{0},published{0},finished{0};
     std::array<std::atomic<float>,8> values{};

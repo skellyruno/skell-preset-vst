@@ -1,4 +1,5 @@
 #include "../Source/chain/LiveVocalMatch.h"
+#include "../Source/chain/LiveMatchOptimizer.h"
 #include <iostream>
 #include <limits>
 #include <vector>
@@ -15,6 +16,7 @@ int main(){
         for(int n=0;n<rate*7/257+1;++n){for(auto& x:b)x=.12f*std::sin(6.283185307179586*220.*frame++/rate);c.push(b.data(),nullptr,257,rate);}
         if(!c.read(p,done)||!done||!p.valid()||p.lowDb<-4.f)return 4;
         const auto r=fit(p);if(r.low>=0||r.ratio<1.5f||r.ratio>4.f)return 5;
+        Audio sample;if(!c.copyCompleted(sample)||sample.frames()<rate*5.99||sample.rate!=rate)return 10;
         if(comparable(p,p))return 6;
         Profile ref=p;ref.highDb+=8;if(!comparable(p,ref)||fit(p,&ref).high<=0)return 7;
         c.cancel();c.start();std::fill(b.begin(),b.end(),1.f);
@@ -24,5 +26,11 @@ int main(){
         for(int n=0;n<rate*20/257+1;++n)c.push(b.data(),nullptr,257,rate);
         if(!c.read(p,done)||!done||p.valid())return 9;
     }
+    Audio audio;audio.rate=48000;Analyzer analyzer;analyzer.prepare(audio.rate);
+    for(int i=0;i<288000;++i){const double time=i/audio.rate;const float x=(float)((.09+.025*std::sin(8.*time))*std::sin(1382.3*time)+.014*std::sin(25132.7*time));audio.stereo.push_back(x);audio.stereo.push_back(x);analyzer.push(&x,&x,1);}
+    auto dry=analyzer.result();auto result=optimize(audio,dry);
+    std::cout<<"Candidates "<<result.tested<<" accepted "<<result.accepted<<" train "<<result.dryScore<<" -> "<<result.final<<" holdout "<<result.dryHoldout<<" -> "<<result.holdoutFinal<<"\n";
+    if(!result.valid||result.tested!=25||result.final>result.initial||result.holdoutFinal>result.holdoutInitial+.025f)return 11;
+    std::atomic<bool> canceled{true};if(optimize(audio,dry,nullptr,&canceled).valid)return 12;
     std::cout<<"Live vocal match capture and bounded profile decisions passed at four sample rates\n";
 }

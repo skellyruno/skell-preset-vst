@@ -85,10 +85,11 @@ public:
     juce::AudioProcessorValueTreeState state;
     void loadFactoryPreset(int index);
     void clearRackToEmpty();
-    void startLiveMatch() noexcept {liveMatchCapture.start();}
+    bool startLiveMatch() noexcept {return liveMatchCapture.start();}
+    bool copyLiveMatchAudio(skellpreset::liveMatch::Audio& audio) const {return liveMatchCapture.copyCompleted(audio);}
     void cancelLiveMatch() noexcept {liveMatchCapture.cancel();}
     bool readLiveMatch(skellpreset::liveMatch::Profile& profile,bool& done) const noexcept {return liveMatchCapture.read(profile,done);}
-    juce::Result applyLiveMatch(const skellpreset::liveMatch::Profile& dry,const skellpreset::liveMatch::Profile* reference=nullptr);
+    juce::Result applyLiveMatch(const skellpreset::liveMatch::Profile& dry,const skellpreset::liveMatch::Profile* reference=nullptr,const skellpreset::liveMatch::Recipe* optimized=nullptr);
     // Original opt-in chain templates, not new host program IDs.
     juce::Result loadVocalStarter(int profile,int variant=0);
     // Message-thread only, validated native .skellpreset ZIP packages.
