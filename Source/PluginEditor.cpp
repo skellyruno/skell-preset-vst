@@ -585,7 +585,7 @@ public:
         if(scene==0)return matchPanel.hasOriginalArtwork()&&matchPanel.testPlacement();
         processor.prepareToPlay(48000.,512);
         juce::MidiBuffer midi;juce::AudioBuffer<float> b(2,512);
-        const int blocks=scene==1?1900:660;
+        const int blocks=scene==1?1900:scene==4?150:660;
         for(int k=0;k<blocks;++k){
             for(int n=0;n<512;++n){
                 const double time=(k*512+n)/48000.;
@@ -596,6 +596,7 @@ public:
         }
         tickMatch();
         if(scene==1)return matchPanel.isVisible()&&processor.presetName()==original;
+        if(scene==4){matchPanel.advanceAnimationForScreenshot(1.8f);return matchListening&&matchPanel.isVisible()&&processor.presetName()==original;}
         // Only the headless test waits for the owned optimizer. Normal UI
         // polls asynchronously and never blocks the message thread.
         for(int i=0;matchOptimization&&i<3000;++i){juce::Thread::sleep(10);tickMatch();}
@@ -2012,7 +2013,7 @@ private:
         if((int)processor.state.getRawParameterValue("mode")->load()==3)return;
         browser.setVisible(false);settingsPanel.close();micPanel.setVisible(false);
         if(chain.onClearSelection)chain.onClearSelection();
-        macroOpen=false;rackHidden=false;refresh();
+        macroOpen=false;rackHidden=false;matchPanel.resetPosition();refresh();
         matchPanel.setVisible(true);matchPanel.toFront(true);
         matchButton.setToggleState(true,juce::dontSendNotification);
         matchListening=true;matchStarted=juce::Time::getMillisecondCounterHiRes();

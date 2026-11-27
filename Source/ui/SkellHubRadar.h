@@ -9,7 +9,11 @@ class SkellHubRadar {
 public:
     SkellHubRadar(){
 #if defined(SKELL_MATCH_HUB_ART)
-        skull=juce::ImageFileFormat::loadFrom(SkellHubMatchArtData::skellyskull_png,SkellHubMatchArtData::skellyskull_pngSize);
+        const auto logo=juce::ImageFileFormat::loadFrom(SkellHubMatchArtData::skellyskull_png,SkellHubMatchArtData::skellyskull_pngSize);
+        if(logo.isValid()){
+            skull=juce::Image(juce::Image::ARGB,logo.getWidth(),logo.getHeight(),true);
+            for(int y=0;y<logo.getHeight();++y)for(int x=0;x<logo.getWidth();++x){const auto c=logo.getPixelAt(x,y);const float light=std::max({c.getFloatRed(),c.getFloatGreen(),c.getFloatBlue()});skull.setPixelAt(x,y,juce::Colours::white.withAlpha(light*c.getFloatAlpha()));}
+        }
         const auto original=juce::ImageFileFormat::loadFrom(SkellHubMatchArtData::skellyradar_png,SkellHubMatchArtData::skellyradar_pngSize);
         if(original.isValid()){
             // Same source artwork and split as SkellyMotion: original rings
@@ -35,10 +39,10 @@ public:
     }
     bool usesOriginalArt() const noexcept {return ring.isValid()&&centre.isValid()&&skull.isValid();}
     void drawBrand(juce::Graphics& g,juce::Rectangle<int> b)const{
-        if(skull.isValid())g.drawImageWithin(skull,b.getX(),b.getY(),b.getWidth(),b.getHeight(),juce::RectanglePlacement::centred);
+        if(skull.isValid()){g.setColour(Theme::green);g.drawImageWithin(skull,b.getX(),b.getY(),b.getWidth(),b.getHeight(),juce::RectanglePlacement::centred,true);}
     }
     void draw(juce::Graphics& g,juce::Rectangle<float> b,float angle,bool active)const{
-        const auto tint=juce::Colour(0xffaaff1a);
+        const auto tint=Theme::green;
         const auto c=b.getCentre();const float r=b.getWidth()*.5f;
         g.setGradientFill(juce::ColourGradient(tint.withAlpha(active?.11f:.05f),c.x,c.y,tint.withAlpha(0.f),c.x+r,c.y,true));
         g.fillEllipse(b);
@@ -46,8 +50,8 @@ public:
             const float scale=std::min(b.getWidth()/ring.getWidth(),b.getHeight()/ring.getHeight());
             const float x=c.x-ring.getWidth()*.4897f*scale,y=c.y-ring.getHeight()*.495f*scale;
             const auto t=juce::AffineTransform::scale(scale).translated(x,y);
-            g.drawImageTransformed(ring,t.followedBy(juce::AffineTransform::rotation(angle,c.x,c.y)));
-            g.drawImageTransformed(centre,t);
+            g.setColour(tint);g.drawImageTransformed(ring,t.followedBy(juce::AffineTransform::rotation(angle,c.x,c.y)),true);
+            g.drawImageTransformed(centre,t,true);
             return;
         }
         // Clean-build fallback: visibly a native ring indicator, not a

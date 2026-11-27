@@ -901,9 +901,9 @@ int main(int argc, char** argv) {
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
         if(quick4 && extras) {
-            for(int scene=0;scene<4;++scene){
+            for(int scene=0;scene<5;++scene){
                 if(!editor.smartMatchForScreenshot(scene)){std::fprintf(stderr,"Live Match interaction %d failed\n",scene);++failures;}
-                if(scene<3){const auto shot=skellcore::ui::headless::capture(editor,1168,688);const char* names[]{"match-listening-100.png","match-insufficient-100.png","match-done-100.png"};if(!shot.image.isValid()||!skellcore::ui::headless::writePng(shot.image,folder.getChildFile(names[scene])))++failures;}
+                if(scene<3||scene==4){const auto shot=skellcore::ui::headless::capture(editor,1168,688);const char* names[]{"match-listening-100.png","match-insufficient-100.png","match-done-100.png","","match-listening-active-100.png"};if(!shot.image.isValid()||!skellcore::ui::headless::writePng(shot.image,folder.getChildFile(names[scene])))++failures;}
             }
             // Two EXTRA real-editor scene PNGs. Quick4 remains four primary
             // screenshots and the contact sheet is unchanged.

@@ -37,3 +37,5 @@
 - Owner 2026-11-27: unified header faces and alignment; order preset / Match / undo / redo / settings / power. Match runs as a compact overlay on the actual live stage. Analyze dry input locally, preserve rack until sufficient audio, add an undo snapshot before applying, support isolated dry/reference files and retry. Do not claim voice/stem classification or exact vendor/artist matching from coarse measured statistics.
 
 - Owner 2026-11-27: Match must be draggable, use the same original Hub radar/artwork as SkellyMotion, retain a visible stage performer and compact actions. Align IN/OUT meters with the header switches and unify rack MIC/stereo hardware. Preserve approved audience composition and keep all stage animation on the UI thread; no generated mockups.
+
+- Owner 2026-11-27 follow-up: Match opens centered, 25% larger in each dimension, remains draggable, uses the Skell Preset theme accent, and animates a breathing particle sphere during analysis. Preserve original Hub artwork for completed/attention states. No generated images or new DSP workload.
