@@ -1585,7 +1585,70 @@ int studioSmoke() {
 // End-to-end native processor workload: not a simulated individual effect.
 // Measures serialized callbacks for several plugin instances sharing one audio
 // device thread. Hosted CI machine timings are NOT FL Studio CPU results.
+// Worst-case populated rack; actual processor calls, not kernel estimates.
+// Keep high-rate instance counts bounded to avoid CI memory exhaustion.
+static int populatedRackStress() {
+    using P=SkellPresetAudioProcessor;
+    constexpr int types[]{P::Gate,P::EQ,P::Compressor,P::DeEsser,
+        P::SkelldizerFX,P::StudioEQFX,P::StudioCompressorFX,P::StudioFastDistFX,
+        P::VocalChorusFX,P::VocalFlangerFX,P::StudioDelayFX,P::VoxRackRoom,
+        P::AdlibDoubler,P::PhaseRotationFX,P::StereoWidth,P::Limiter};
+    static_assert(sizeof(types)/sizeof(types[0])==P::slotCount);
+    struct Load {double rate;int block,count;};
+    constexpr Load loads[]{{44100.,64,1},{48000.,64,5},{48000.,128,10},
+        {96000.,64,10},{96000.,256,20},{192000.,17,1},{192000.,128,5}};
+    for(const auto& c:loads){
+        std::vector<std::unique_ptr<P>> racks;
+        std::vector<std::unique_ptr<juce::AudioBuffer<float>>> buffers;
+        int expectedLatency=-1;
+        for(int k=0;k<c.count;++k){
+            auto p=std::make_unique<P>();p->clearRackToEmpty();
+            while(p->activeSlotCount()<P::slotCount)
+                if(p->appendRackSlot()<0)return 51;
+            for(int n=0;n<P::slotCount;++n){
+                p->setSlotType(n,types[n]);p->setSlotOn(n,true);
+                if(p->slotType(n)!=types[n])return 52;
+            }
+            p->prepareToPlay(c.rate,c.block);
+            if(expectedLatency<0)expectedLatency=p->getLatencySamples();
+            if(p->getLatencySamples()!=expectedLatency)return 53;
+            racks.push_back(std::move(p));
+            buffers.push_back(std::make_unique<juce::AudioBuffer<float>>(2,c.block));
+        }
+        juce::MidiBuffer midi;
+        const int blocks=std::max(16,(int)(c.rate*.20/c.block));
+        double elapsed=0.,worst=0.,peak=0.;int misses=0;
+        const double budget=c.block/c.rate;
+        for(int b=0;b<blocks;++b){
+            for(auto& buffer:buffers)for(int n=0;n<c.block;++n){
+                const auto sample=(std::int64_t)b*c.block+n;
+                const double sec=sample/c.rate;
+                const float x=(float)(.065*std::sin(1300.*sec)+.018*std::sin(39000.*sec)+
+                    (sample%997==0?.16:0.));
+                buffer->setSample(0,n,x);buffer->setSample(1,n,.8f*x);
+            }
+            // Change an actual rack parameter periodically outside measured time.
+            if(b%13==0)for(auto& p:racks)p->setSlotParam(1,0,(float)(b%39)/39.f);
+            const auto begin=std::chrono::steady_clock::now();
+            for(int k=0;k<c.count;++k)racks[(size_t)k]->processBlock(*buffers[(size_t)k],midi);
+            const double dt=std::chrono::duration<double>(std::chrono::steady_clock::now()-begin).count();
+            elapsed+=dt;worst=std::max(worst,dt);if(dt>budget)++misses;
+            for(const auto& buffer:buffers)for(int ch=0;ch<2;++ch)for(int n=0;n<c.block;++n){
+                const double x=buffer->getSample(ch,n);
+                if(!std::isfinite(x)||std::abs(x)>32.)return 54;
+                peak=std::max(peak,std::abs(x));
+            }
+        }
+        if(peak<=0.)return 55;
+        std::printf("FULL-16-RACK instances=%d rate=%.0f block=%d latency=%d avg_ratio=%.4f max_ratio=%.4f misses=%d/%d peak=%.6f\n",
+            c.count,c.rate,c.block,expectedLatency,elapsed/(blocks*budget),worst/budget,misses,blocks,peak);
+        for(auto& p:racks)p->releaseResources();
+    }
+    return 0;
+}
+
 int stress() {
+    if(const int result=populatedRackStress())return result;
     const int instances[]{5,10,20};
     const int buffers[]{64,128,256};
     const double rates[]{44100.,48000.,96000.};

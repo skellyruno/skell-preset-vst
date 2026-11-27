@@ -151,17 +151,20 @@ public:
                 points[i]={x,plot.getBottom()-values[i]*plot.getHeight()};
             }
             auto line=smoothContour(points);
-            if(filled){auto area=line;const float left=plot.getX()+plot.getWidth()*std::log(80.f/20.f)/std::log(1000.f);
-                const float right=plot.getX()+plot.getWidth()*std::log(9000.f/20.f)/std::log(1000.f);
-                area.lineTo(right,plot.getBottom());area.lineTo(left,plot.getBottom());area.closeSubPath();
+            if(filled){auto area=line;
+                area.lineTo(points.back().x,plot.getBottom());
+                area.lineTo(points.front().x,plot.getBottom());area.closeSubPath();
                 g.setGradientFill(juce::ColourGradient(colour.withAlpha(.29f),plot.getCentreX(),plot.getY(),colour.withAlpha(.06f),plot.getCentreX(),plot.getBottom(),false));
                 g.fillPath(area);}
             g.setColour(colour.withAlpha(.10f));g.strokePath(line,juce::PathStrokeType(4.f));
             g.setColour(colour.withAlpha(.86f));g.strokePath(line,juce::PathStrokeType(1.4f));
         };
         draw(inBands,Theme::muted,true);draw(outBands,Theme::blue,true);
-        Theme::fittedText(g,"IN / OUT   -72..0 dBFS",{juce::roundToInt(plot.getX()+12.f),juce::roundToInt(plot.getY()+6.f),164,13},9.f,Theme::muted,true);
-        g.setColour(Theme::blue);g.drawLine(plot.getX()+172.f,plot.getY()+12.f,plot.getX()+188.f,plot.getY()+12.f,1.2f);
+        const int legendX=juce::roundToInt(plot.getX()+12.f),legendY=juce::roundToInt(plot.getY()+6.f);
+        g.setColour(Theme::muted);g.drawLine((float)legendX,(float)legendY+6.f,(float)legendX+12.f,(float)legendY+6.f,1.4f);
+        Theme::fittedText(g,"IN",{legendX+16,legendY,24,13},9.f,Theme::muted,true);
+        g.setColour(Theme::blue);g.drawLine((float)legendX+46.f,(float)legendY+6.f,(float)legendX+58.f,(float)legendY+6.f,1.4f);
+        Theme::fittedText(g,"OUT",{legendX+62,legendY,36,13},9.f,Theme::blue,true);
     }
     void paintCompressorTransfer(juce::Graphics& g,juce::Rectangle<float> area,P& p,int slot,int type) const {
         Theme::panelBox(g,area,6.f);

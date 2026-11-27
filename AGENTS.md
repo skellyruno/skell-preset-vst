@@ -25,3 +25,5 @@
 - Owner correction: clean header with preset, undo, redo, Settings and Power aligned to the right. No header latency/signal-path readouts. Wordmark sits close to tagline; version under the final ET. Rack removal is an X, not a bin. No separate stage output peak/readout or waveform rail; actual audio can light the stage. Keep the moon arrow. Use the owner-provided comp-live, eq-live, sat-live and reverb-live references for measured effect visual layouts, not prerecorded graph animations.
 
 - Owner correction: move the live input/output peak meters into the header gap between branding and presets, with a shared dBFS scale. Remove the footer meters and their rail. Keep header latency/signal-path readouts removed.
+
+- Owner correction: header peak meters have no numeric labels or dBFS text; keep measured IN/OUT bars, with a tight four-pixel gap between preset, undo, redo, Settings and Power. Default browser opens aligned under preset controls, clear of the rack; retain manual browser positioning and either rack dock. Anatomical reference: OpenStax Anatomy & Physiology 2e, sections 7.1 and 8.1; original procedural contours, no downloaded art.

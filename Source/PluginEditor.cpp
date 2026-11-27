@@ -586,7 +586,9 @@ public:
             issues.add("Header meters overlap controls or leave the header");
         if(powerButton.getX()<=settings.getRight() ||
            Theme::width-powerButton.getRight()>22 ||
-           undo.getX()-preset.getRight()>12 || stageButton.getRight()>preset.getX())
+           undo.getX()-preset.getRight()!=4 || redo.getX()-undo.getRight()!=4 ||
+           settings.getX()-redo.getRight()!=4 || powerButton.getX()-settings.getRight()!=4 ||
+           stageButton.getRight()>preset.getX())
             issues.add("Owner header order changed");
         if(undo.getWidth()>34 || redo.getWidth()>34 ||
            undo.getHeight()>32 || redo.getHeight()>32 ||
@@ -677,7 +679,7 @@ public:
         return juce::jlimit(0,12,
             (int)std::ceil((20.f*std::log10(safe)+60.f)/5.f));
     }
-    static juce::Rectangle<int> headerMeterBounds() noexcept {return {315,10,292,57};}
+    static juce::Rectangle<int> headerMeterBounds() noexcept {return {315,16,292,48};}
     static constexpr int meterWidth=238;
     static int meterPixels(float amplitude) noexcept {
         if(!std::isfinite(amplitude) || amplitude<=.001f)return 0;
@@ -716,13 +718,9 @@ public:
             g.setColour(isMeterOverloaded(value)?Theme::red:Theme::stroke.withAlpha(.55f));
             g.fillRoundedRectangle(x+meterWidth+4.f,y,5.f,8.f,1.5f);
         };
-        Theme::fittedText(g,"dBFS",{region.getX(),region.getY(),26,12},8.5f,Theme::muted,true);
-        for(int db:{-60,-48,-36,-24,-12,0}){
-            const int tx=juce::roundToInt(x+meterWidth*(db+60)/60.f);
-            Theme::fittedText(g,juce::String(db),{tx-13,region.getY(),26,12},9.5f,Theme::muted,false,juce::Justification::centred);
-        }
-        draw("IN",(float)region.getY()+19.f,displayedInputPeak);
-        draw("OUT",(float)region.getY()+36.f,displayedOutputPeak);
+        // Keep true logarithmic ballistics but no printed units or numeric scale.
+        draw("IN",(float)region.getY()+8.f,displayedInputPeak);
+        draw("OUT",(float)region.getY()+26.f,displayedOutputPeak);
     }
     static bool isMeterOverloaded(float amplitude) noexcept {
         return std::isfinite(amplitude) && amplitude>=1.f;
@@ -1339,7 +1337,7 @@ public:
         Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{75,subY,editionX-83,16},
                           11.f,Theme::muted,true,juce::Justification::centredLeft);
         editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
-        Theme::text(g,"PRESET",{623,8,350,15},11.f,Theme::muted,true);
+        Theme::text(g,"PRESET",{623,8,378,15},11.f,Theme::muted,true);
         paintHeaderMeters(g);
         // No footer meter rail; leave the resize grip and window geometry unchanged.
         // One shallow control drawer below the resized live performer.
@@ -1402,14 +1400,14 @@ public:
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
-        preset.setBounds(623,24,350,38);
+        preset.setBounds(623,24,378,38);
         // No dedicated Live Stage button: the wordmark is the return target.
         stageButton.setBounds(73,15,225,52);
-        undo.setBounds(981,27,32,32);
-        redo.setBounds(1021,27,32,32);
+        undo.setBounds(1005,29,28,28);
+        redo.setBounds(1037,29,28,28);
         micButton.setBounds(chain.getX()+174,chain.getY()+6,34,34);
         // Owner correction: power is the rightmost header control.
-        powerButton.setBounds(1112,25,38,38);
+        powerButton.setBounds(1109,25,38,38);
         const bool drawer=drawerVisible();
         const auto deck=slot.getBounds();
         const int y=deck.getBottom()-206;
@@ -1434,13 +1432,13 @@ public:
         micButton.toFront(false);stereoSeparation.toFront(false);
         syncMasterReadouts();
         sizeSelect.setBounds(1094,664,69,22);
-        settings.setBounds(1068,26,36,36);
-        settingsPanel.setBounds(916,78,230,98);
+        settings.setBounds(1069,25,36,36);
+        settingsPanel.setBounds(settings.getRight()-230,78,230,98);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.placeWithin(juce::Rectangle<int>(8,76,Theme::width-16,Theme::height-84),
-                            {rackOnRight?76:445,77,650,538});
+                            {rackOnRight?slot.getRight()-650:preset.getRight()-650,77,650,538});
         bypassShade.setBounds(slot.getBounds().withTrimmedBottom(26));
         if(bypassShade.isVisible())bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);

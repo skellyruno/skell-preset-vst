@@ -339,11 +339,41 @@ public:
                     juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             }
         }
+        // Lower false and floating ribs. The upper seven pairs have their
+        // own anterior cartilage; pairs 8-10 converge into the costal arch,
+        // while 11-12 end laterally and never attach to the sternum.
+        for(int side:{-1,1}){
+            const float sign=(float)side;
+            for(int r=0;r<5;++r){
+                const float y=151.f+r*4.3f;
+                const float reach=24.f-r*2.4f;
+                const float end=r<3?12.f+r*2.f:reach*.87f;
+                juce::Path rib;
+                rib.startNewSubPath(151.f+sign*4.f,y);
+                rib.cubicTo(151.f+sign*reach*.55f,y+.7f,
+                    151.f+sign*reach,y+4.1f,151.f+sign*reach,y+6.4f);
+                rib.quadraticTo(151.f+sign*reach*.95f,y+9.1f,151.f+sign*end,y+10.f);
+                g.setColour(ink.withAlpha(.85f));
+                g.strokePath(rib,juce::PathStrokeType(2.9f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+                g.setGradientFill(juce::ColourGradient(stone.withAlpha(.74f),151.f,y,
+                    ivory.withAlpha(.74f-r*.07f),151.f+sign*reach,y+7.f,false));
+                g.strokePath(rib,juce::PathStrokeType(1.9f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+                if(r<3){
+                    juce::Path cartilage;
+                    cartilage.startNewSubPath(151.f+sign*end,y+10.f);
+                    cartilage.quadraticTo(151.f+sign*9.f,y+7.f,151.f+sign*4.f,153.f+r*1.6f);
+                    g.setColour(stone.withAlpha(.38f));
+                    g.strokePath(cartilage,juce::PathStrokeType(1.1f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+                }
+            }
+        }
         // Sternum: manubrium, body and a short xiphoid.
         {
             juce::Path st;
-            st.startNewSubPath(146.f,98.f);
-            st.lineTo(156.f,98.f);
+            st.startNewSubPath(145.f,99.f);
+            st.quadraticTo(148.f,97.f,149.f,99.5f);
+            st.quadraticTo(151.f,102.f,153.f,99.5f);
+            st.quadraticTo(154.f,97.f,157.f,99.f);
             st.lineTo(157.f,108.f);
             st.lineTo(154.f,146.f);
             st.lineTo(151.f,156.f);
