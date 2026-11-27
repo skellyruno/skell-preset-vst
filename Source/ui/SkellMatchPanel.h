@@ -61,7 +61,7 @@ public:
         juce::Image image(juce::Image::ARGB,675,342,true);juce::Graphics g(image);
         g.addTransform(juce::AffineTransform::scale(675.f/600.f,342.f/304.f));
         std::array<double,120> times{};
-        for(size_t i=0;i<times.size();++i){image.clear(image.getBounds());const auto start=juce::Time::getMillisecondCounterHiRes();orb.draw(g,{20,50,210,210},(float)i*.035f,.25f,.5f,false);times[i]=juce::Time::getMillisecondCounterHiRes()-start;}
+        for(size_t i=0;i<times.size();++i){image.clear(image.getBounds());const auto paintStarted=juce::Time::getMillisecondCounterHiRes();orb.draw(g,{20,50,210,210},(float)i*.035f,.25f,.5f,false);times[i]=juce::Time::getMillisecondCounterHiRes()-paintStarted;}
         std::sort(times.begin(),times.end());
         const double p95=times[113];std::fprintf(stderr,"Match orb software paint: median %.3f ms, p95 %.3f ms (120 frames)\n",times[60],p95);return p95;
     }
