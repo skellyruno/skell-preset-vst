@@ -40,10 +40,32 @@ public:
         setMouseCursor(vertical?juce::MouseCursor::UpDownResizeCursor:juce::MouseCursor::LeftRightResizeCursor);
     }
     std::function<void()> onAction;
-    void configure(Direction d,bool persistent,const juce::String& title){
-        direction=d;always=persistent;setTitle(title);setTooltip(title);repaint();
+    void configure(Direction d,const juce::String& title){
+        direction=d;setTitle(title);setTooltip(title);repaint();
     }
-    void setPreview(bool show){preview=show;repaint();}
+    void setContextHover(bool show){if(contextHover!=show){contextHover=show;repaint();}}
+    void visibilityChanged()override{
+        if(!isVisible()){hover=false;pressed=false;contextHover=false;}
+    }
+    bool testHoverPaint() {
+        // Exercise the real mouse callbacks and check software pixels, not
+        // merely the logical hover flag. No native cursor warp needed.
+        const auto source=juce::Desktop::getInstance().getMainMouseSource();
+        const auto pos=getLocalBounds().getCentre().toFloat();
+        const auto now=juce::Time::getCurrentTime();
+        const juce::MouseEvent ev(source,pos,juce::ModifierKeys(),0.f,0.f,0.f,0.f,0.f,
+            this,this,now,pos,now,0,false);
+        const auto painted=[this](){
+            juce::Image image(juce::Image::ARGB,getWidth(),getHeight(),true,juce::SoftwareImageType{});
+            {juce::Graphics g(image);paint(g);}
+            for(int y=0;y<image.getHeight();++y)for(int x=0;x<image.getWidth();++x)
+                if(image.getPixelAt(x,y).getAlpha()!=0)return true;
+            return false;
+        };
+        setContextHover(false);mouseExit(ev);const bool resting=!painted();
+        mouseEnter(ev);const bool shown=painted();mouseExit(ev);
+        return resting&&shown&&!painted();
+    }
     bool releaseGesture(int dx,int dy){
         const int along=std::abs(verticalDrag?dy:dx),across=std::abs(verticalDrag?dx:dy);
         const bool correctDirection=!verticalDrag || (direction==Up?dy<0:dy>0);
@@ -69,14 +91,14 @@ public:
     void focusGained(FocusChangeType)override{repaint();}
     void focusLost(FocusChangeType)override{pressed=false;repaint();}
     void paint(juce::Graphics& g)override{
-        if(!(hover||pressed||always||preview||hasKeyboardFocus(false)))return;
+        if(!(hover||pressed||contextHover))return;
         const auto area=getLocalBounds().toFloat();
         const float w=verticalDrag?juce::jmin(54.f,area.getWidth()):area.getWidth();
         const float h=verticalDrag?area.getHeight():juce::jmin(44.f,area.getHeight());
         const float cx=hover&&verticalDrag?juce::jlimit(w*.5f,area.getWidth()-w*.5f,(float)pointer.x):area.getCentreX();
         const float cy=hover&&!verticalDrag?juce::jlimit(h*.5f,area.getHeight()-h*.5f,(float)pointer.y):area.getCentreY();
         auto r=juce::Rectangle<float>(cx-w*.5f,cy-h*.5f,w,h).reduced(1.f);
-        const bool active=hover||pressed||hasKeyboardFocus(false);
+        const bool active=hover||pressed;
         // Bare chevrons: no enclosure or background.
         const auto c=r.getCentre();juce::Path arrow;
         if(direction==Left||direction==Right){
@@ -93,7 +115,7 @@ public:
     }
 private:
     juce::Point<int> pointer;
-    Direction direction=Left;bool verticalDrag=false,always=false,preview=false,hover=false,pressed=false;
+    Direction direction=Left;bool verticalDrag=false,contextHover=false,hover=false,pressed=false;
 };
 void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical) {
     if(auto* v=p.state.getParameter(id))v->setValueNotifyingHost(v->convertTo0to1(physical));
@@ -508,7 +530,7 @@ public:
     }
     void dockRackForScreenshot(bool right) {dockRack(right);refresh();}
     void configureForScreenshot(int variant,int workspaceMode,bool showBrowser) {
-        routing.setVisible(false);rackHidden=false;edgePreview=false;dockRack(false);
+        routing.setVisible(false);rackHidden=false;dockRack(false);
         variant=Theme::clampVariant(variant);
         processor.state.state.setProperty("uiTheme",variant,nullptr);
         setTheme(variant,false);
@@ -575,7 +597,7 @@ public:
         return slot.updateLiveVisualForScreenshot();
     }
     void configureEdgesForScreenshot(bool right,bool hide,bool controls,bool sidechain){
-        dockRack(right);edgePreview=false;
+        dockRack(right);
         if(hide!=rackHidden)toggleRackVisibility();
         if(controls!=macroOpen)toggleDrawerEdge();
         if(sidechain!=routing.isVisible())toggleRoutingEdge();
@@ -646,6 +668,17 @@ public:
         return !editingIdle&&!routing.isVisible()&&nativeVisualAvailable()&&(rackHidden||macroOpen);
     }
     bool drawerVisible()const noexcept{return !routing.isVisible()&&macroOpen&&(editingIdle||nativeVisualAvailable());}
+    bool visualNavigationVisible()const noexcept{
+        return !routing.isVisible()&&(editingIdle||focusVisible());
+    }
+    juce::Rectangle<int> liveNavigationBounds()const noexcept{
+        return focusVisible()?focusVisual.getBounds():idle.getBounds();
+    }
+    void updateVisualHover(){
+        const bool inside=visualNavigationVisible()&&!browser.isVisible()&&!settingsPanel.isVisible()&&!micPanel.isVisible()
+            && isMouseOver(true)&&liveNavigationBounds().contains(getMouseXYRelative());
+        for(auto* edge:{&visualLeftEdge,&visualRightEdge,&drawerEdge})edge->setContextHover(inside);
+    }
     juce::Rectangle<int> workspaceBounds()const noexcept{
         return rackHidden?juce::Rectangle<int>(14,90,1140,561):juce::Rectangle<int>(rackOnRight?14:247,90,906,561);
     }
@@ -736,6 +769,12 @@ public:
         for(const auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})
             if(edge->isVisible()&&!canvasBounds.contains(edge->getBounds()))
                 issues.add("Workspace edge outside canvas");
+        for(const auto* edge:{&visualLeftEdge,&visualRightEdge,&drawerEdge}){
+            if(edge->isVisible()!=visualNavigationVisible())
+                issues.add("Visual arrow leaked onto a non-live editor");
+            if(edge->isVisible()&&!liveNavigationBounds().contains(edge->getBounds()))
+                issues.add("Visual arrow outside live visualization");
+        }
         if(focusVisible() && !workspaceBounds().contains(focusVisual.getBounds()))
             issues.add("Focus visualization escapes workspace");
         for(const auto* master:{&input,&mix,&output})
@@ -1512,20 +1551,32 @@ public:
         routing.setBounds(workspace);
         const auto visuals=drawerVisible()?workspace.withTrimmedBottom(212):workspace;
         idle.setBounds(visuals);focusVisual.setBounds(visuals.reduced(18,12).withTrimmedTop(34));
-        rackOuterEdge.setBounds(rackOnRight?1155:0,workspace.getY(),13,workspace.getHeight());
-        rackInnerEdge.setBounds(rackOnRight?923:231,workspace.getY(),12,workspace.getHeight());
+        // Cover the actual visible rack border, not just the empty lane.
+        // Four pixels inside the right border leaves the 208..212 scrollbar
+        // intact; the remaining hit area extends out into the adjacent gap.
+        const auto rack=chain.getBounds();
+        const int outsideBorder=rackOnRight?(rackHidden?workspace.getRight():rack.getRight()):
+            (rackHidden?workspace.getX():rack.getX());
+        rackOuterEdge.setBounds(juce::jlimit(0,Theme::width-16,outsideBorder-8),
+            rack.getY(),16,rack.getHeight());
+        rackInnerEdge.setBounds(rackOnRight?rack.getX()-12:rack.getRight()-4,
+            rack.getY(),16,rack.getHeight());
         rackOuterEdge.configure(rackHidden?(rackOnRight?WorkspaceEdge::Left:WorkspaceEdge::Right):
-            (rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left),false,rackHidden?"Show effect rack":"Hide effect rack");
-        rackInnerEdge.configure(rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left,false,"Hide effect rack");
-        rackInnerEdge.setVisible(!rackHidden);
-        visualLeftEdge.setBounds(workspace.getX()+2,visuals.getY()+36,15,juce::jmax(44,visuals.getHeight()-52));
-        visualRightEdge.setBounds(workspace.getRight()-17,visuals.getY()+36,15,juce::jmax(44,visuals.getHeight()-52));
-        visualLeftEdge.configure(routing.isVisible()?WorkspaceEdge::Left:WorkspaceEdge::Right,focusVisible(),"Click or drag: sidechain");
-        visualRightEdge.configure(routing.isVisible()?WorkspaceEdge::Right:WorkspaceEdge::Left,focusVisible(),"Click or drag: sidechain");
-        drawerEdge.setBounds(workspace.getX()+18,drawerVisible()?visuals.getBottom()-6:workspace.getBottom()-13,workspace.getWidth()-36,14);
-        drawerEdge.configure(drawerVisible()?WorkspaceEdge::Down:WorkspaceEdge::Up,focusVisible(),"Click or drag vertically: sound controls");
-        drawerEdge.setVisible(!routing.isVisible()&&(editingIdle||nativeVisualAvailable()));
-        for(auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})edge->setPreview(edgePreview);
+            (rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left),rackHidden?"Show effect rack":"Hide effect rack");
+        rackInnerEdge.configure(rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left,"Hide effect rack");
+        rackOuterEdge.setVisible(true);rackInnerEdge.setVisible(!rackHidden);
+        // No visual handles over effect knobs, empty slots or routing pages.
+        const bool visualNav=visualNavigationVisible();
+        const auto live=liveNavigationBounds();
+        visualLeftEdge.setBounds(live.getX()+2,live.getY()+20,15,juce::jmax(44,live.getHeight()-36));
+        visualRightEdge.setBounds(live.getRight()-17,live.getY()+20,15,juce::jmax(44,live.getHeight()-36));
+        visualLeftEdge.configure(WorkspaceEdge::Right,"Click or drag: sidechain");
+        visualRightEdge.configure(WorkspaceEdge::Left,"Click or drag: sidechain");
+        drawerEdge.setBounds(live.getX()+18,live.getBottom()-14,live.getWidth()-36,14);
+        drawerEdge.configure(drawerVisible()?WorkspaceEdge::Down:WorkspaceEdge::Up,"Click or drag vertically: sound controls");
+        for(auto* edge:{&visualLeftEdge,&visualRightEdge,&drawerEdge}){
+            edge->setVisible(visualNav);edge->setContextHover(false);
+        }
         moonButton.setBounds(idle.moonBounds().translated(idle.getX(),idle.getY()));
         moonButton.setVisible(editingIdle);moonButton.expanded=drawerVisible();
         if(editingIdle){idle.toFront(false);moonButton.toFront(false);}
@@ -1584,8 +1635,9 @@ public:
         browser.placeWithin(juce::Rectangle<int>(8,76,Theme::width-16,Theme::height-84),
                             {rackOnRight&&!rackHidden?workspace.getRight()-650:preset.getRight()-650,77,650,538});
         bypassShade.setBounds(workspace.withTrimmedBottom(26));
-        for(auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})edge->toFront(false);
         if(bypassShade.isVisible())bypassShade.toFront(false);
+        // Rack presentation stays reachable even with a bypassed effect.
+        for(auto* edge:{&visualLeftEdge,&visualRightEdge,&drawerEdge,&rackOuterEdge,&rackInnerEdge})edge->toFront(false);
         if(browser.isVisible())browser.toFront(false);
         if(settingsPanel.isVisible())settingsPanel.toFront(false);
         if(micPanel.isVisible())micPanel.toFront(false);
@@ -1648,6 +1700,7 @@ public:
         resized();updateFocusVisual();repaint();
     }
     void timerCallback() override{
+        updateVisualHover();
         processor.refreshHostedLatency();
         if(micPanel.isVisible())micPanel.refreshIfChanged();
         const bool micActive=micPanel.anyActive();
@@ -1760,17 +1813,33 @@ public:
             ok &= !rackOuterEdge.releaseGesture(2,25)&&rackHidden;
             ok &= rackOuterEdge.releaseGesture(0,0)&&!rackHidden&&chain.isVisible();
             ok &= visualLeftEdge.releaseGesture(22,0)&&routing.isVisible();
-            ok &= visualRightEdge.releaseGesture(-22,0)&&!routing.isVisible();
+            ok &= !visualLeftEdge.isVisible()&&!visualRightEdge.isVisible()&&!drawerEdge.isVisible();
+            closeRouting();ok &= !routing.isVisible();
             ok &= !drawerEdge.releaseGesture(0,26)&&!drawerVisible();
             ok &= drawerEdge.releaseGesture(0,-26)&&drawerVisible();
             ok &= !drawerEdge.releaseGesture(0,-26)&&drawerVisible();
             ok &= drawerEdge.releaseGesture(0,26)&&!drawerVisible();
         }
         editingIdle=false;macroOpen=false;refresh();
-        if(nativeVisualAvailable()){
-            ok &= rackOuterEdge.releaseGesture(0,0)&&focusVisual.isVisible()&&!slot.isVisible();
-            ok &= drawerEdge.releaseGesture(0,-26)&&focusVisual.isVisible()&&drawerVisible();
-            ok &= drawerEdge.releaseGesture(0,26)&&focusVisual.isVisible()&&!drawerVisible();
+        // Check hit testing on the physical rack borders while an ordinary
+        // effect is selected, rather than only calling a hidden handler.
+        for(bool right:{false,true}){
+            dockRack(right);
+            ok &= !visualLeftEdge.isVisible()&&!visualRightEdge.isVisible()&&!drawerEdge.isVisible();
+            const auto rack=chain.getBounds();
+            for(int y:{rack.getY()+70,rack.getCentreY(),rack.getBottom()-30}){
+                ok &= getComponentAt(right?rack.getX():rack.getRight()-1,y)==&rackInnerEdge;
+                ok &= getComponentAt(right?rack.getRight()-1:rack.getX(),y)==&rackOuterEdge;
+            }
+            ok &= rackInnerEdge.testHoverPaint()&&rackOuterEdge.testHoverPaint();
+            ok &= rackInnerEdge.releaseGesture(0,0)&&rackHidden&&!chain.isVisible();
+            ok &= rackOuterEdge.testHoverPaint();
+            if(nativeVisualAvailable()){
+                ok &= focusVisual.isVisible()&&!slot.isVisible()&&drawerEdge.isVisible();
+                ok &= drawerEdge.testHoverPaint()&&visualLeftEdge.testHoverPaint()&&visualRightEdge.testHoverPaint();
+                ok &= drawerEdge.releaseGesture(0,-26)&&focusVisual.isVisible()&&drawerVisible();
+                ok &= drawerEdge.releaseGesture(0,26)&&focusVisual.isVisible()&&!drawerVisible();
+            }
             ok &= rackOuterEdge.releaseGesture(0,0)&&slot.isVisible()&&!focusVisual.isVisible();
         }
         dockRack(savedDock);editingIdle=savedIdle;macroOpen=savedMacro;refresh();
@@ -1910,7 +1979,7 @@ private:
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
     int selectedTheme=Theme::Obsidian,previousMode=1;
-    bool rackOnRight=false,editingIdle=true,macroOpen=false,rackHidden=false,edgePreview=false,routingReturnIdle=true;
+    bool rackOnRight=false,editingIdle=true,macroOpen=false,rackHidden=false,routingReturnIdle=true;
     int lastInputMeter=-1,lastOutputMeter=-1;
     float displayedInputPeak=0.f,displayedOutputPeak=0.f;
     bool lastInputOverload=false,lastOutputOverload=false;
