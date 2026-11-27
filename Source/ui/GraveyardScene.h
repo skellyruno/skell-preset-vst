@@ -2,6 +2,7 @@
 #include "Theme.h"
 #include <cmath>
 #include <cstdint>
+#include <array>
 
 namespace skellpreset::stage {
 // Deterministic 0..1 hash so static scenery never shimmers between frames and
@@ -540,7 +541,7 @@ public:
     // are cheap gradients and dots, so they can move every frame while the
     // cemetery itself stays a cached bitmap.
     void atmosphere(juce::Graphics& g,juce::Rectangle<float> bounds,float horizon,
-                    float phase,float activity) const {
+                    float phase,float activity) {
         const float width=bounds.getWidth(),height=bounds.getHeight();
         if(width<40.f || height<40.f)return;
         juce::Graphics::ScopedSaveState saved(g);
@@ -566,12 +567,16 @@ public:
         }
         // Distant storm: a soft, slowly breathing fork in the far sky, not a strobe.
         if(width>450.f && worldSkyline-bounds.getY()>115.f){
-            const float pulse=.10f+.20f*std::pow(juce::jmax(0.f,std::sin(phase*.36f+1.2f)),6.f)+.08f*react;
-            const float x=bounds.getX()+width*.22f,y=bounds.getY()+8.f,h=juce::jmin(112.f,(worldSkyline-y)*.62f);
-            juce::Path bolt;bolt.startNewSubPath(x,y);bolt.lineTo(x+13.f,y+h*.24f);bolt.lineTo(x+2.f,y+h*.37f);bolt.lineTo(x+20.f,y+h*.57f);bolt.lineTo(x+9.f,y+h*.70f);bolt.lineTo(x+27.f,y+h);
-            bolt.startNewSubPath(x+20.f,y+h*.57f);bolt.lineTo(x+42.f,y+h*.70f);bolt.lineTo(x+35.f,y+h*.89f);
-            g.setColour(Theme::blue.withAlpha(pulse*.19f));g.strokePath(bolt,juce::PathStrokeType(3.1f));
-            g.setColour(Theme::blue.withAlpha(pulse*.62f));g.strokePath(bolt,juce::PathStrokeType(.75f));
+            const float pulse=.24f*std::pow(juce::jmax(0.f,std::sin(phase*.36f+1.2f)),12.f);
+            if(pulse>.012f){
+                const float x=bounds.getX()+width*.22f,y=bounds.getY()+8.f,h=juce::jmin(112.f,(worldSkyline-y)*.62f);
+                juce::Path bolt;bolt.startNewSubPath(x,y);
+                const std::array<float,9> shifts{{5.f,1.f,12.f,8.f,21.f,15.f,26.f,20.f,30.f}};
+                for(size_t i=0;i<shifts.size();++i)bolt.lineTo(x+shifts[i],y+h*(float)(i+1)/9.f);
+                bolt.startNewSubPath(x+12.f,y+h/3.f);bolt.lineTo(x+27.f,y+h*.47f);bolt.lineTo(x+24.f,y+h*.59f);bolt.lineTo(x+36.f,y+h*.77f);
+                g.setColour(Theme::blue.withAlpha(pulse*.12f));g.strokePath(bolt,juce::PathStrokeType(2.1f));
+                g.setColour(Theme::blue.withAlpha(pulse*.44f));g.strokePath(bolt,juce::PathStrokeType(.65f));
+            }
         }
         // Small distant birds traverse the sky with a slow wingbeat; no
         // static repeated glyphs. Screen-space placement stays outside audio.
@@ -592,7 +597,18 @@ public:
             const float y=worldSkyline-70.f+band*26.f+4.f*std::sin(phase*.31f+band);
             const float a=.045f+.021f*band+.10f*react;
             const float mx=bounds.getX()+offset-width*.45f,my=y+15.f;
-            softMist(g,mx,my,width*.45f,20.f+band*4.f,mist,a);
+            // At native pixel size, translate a cached ARGB mist plate
+            // instead of transforming a large radial ellipse every frame.
+            const int mw=juce::jmax(1,juce::roundToInt(width*.90f)),mh=40+band*8;
+            auto& cloud=liveMist[(size_t)band];
+            if(cloud.getWidth()!=mw||cloud.getHeight()!=mh){
+                cloud=juce::Image(juce::Image::ARGB,mw,mh,true);
+                juce::Graphics art(cloud);
+                softMist(art,mw*.5f,mh*.5f,mw*.5f,mh*.5f,mist,1.f);
+            }
+            g.setOpacity(a);
+            g.drawImageAt(cloud,juce::roundToInt(mx-mw*.5f),juce::roundToInt(my-mh*.5f));
+            g.setOpacity(1.f);
         }
         // Green spectral moonlight on the low mist, not the whole sky.
         if(react>.001f){
@@ -617,6 +633,7 @@ public:
     }
 private:
     juce::Image image;
+    std::array<juce::Image,3> liveMist;
     int lastTheme=-1;float lastHorizon=-1.f;
 };
 }

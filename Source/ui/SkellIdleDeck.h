@@ -390,8 +390,9 @@ public:
                 const float x=centreX+side*stageBounds.getWidth()*.31f,y=feetY-8.f*stage.scale;
                 const float r=15.f*stage.scale;const auto tint=side<0?Theme::blue:accent;
                 const float power=.025f+lightEnergy*(.12f+.22f*rigEnergy[(size_t)(side<0?0:2)]);
-                g.setGradientFill(juce::ColourGradient(tint.withAlpha(power),x,y,tint.withAlpha(0.f),x,y-104.f*stage.scale,true));
-                juce::Path light;light.startNewSubPath(x-r,y);light.lineTo(x+r,y);light.lineTo(x+49.f*stage.scale,y-118.f*stage.scale);light.lineTo(x-49.f*stage.scale,y-118.f*stage.scale);light.closeSubPath();g.fillPath(light);
+                // Ground fixtures use the same feathered lighting as the
+                // overhead shafts, not a hard triangular slab over the graves.
+                softBeam.draw(g,x,y,x+(float)side*9.f*stage.scale,y-118.f*stage.scale,49.f*stage.scale,tint,power);
                 g.setColour(juce::Colour(0xff182124));g.fillRoundedRectangle(x-r,y-4.f*stage.scale,r*2.f,7.f*stage.scale,2.f*stage.scale);
                 g.setColour(tint.withAlpha(.20f+power));g.drawLine(x-r*.6f,y-2.f*stage.scale,x+r*.6f,y-2.f*stage.scale,1.2f);
             }
@@ -400,14 +401,8 @@ public:
         // brightest floor element and gives the figure real stage presence.
         {
             const float poolW=195.f*stage.scale,poolH=(.28f+.10f*activity)*poolW;
-            for(int ring=3;ring>=1;--ring) {
-                const float f=(float)ring/3.f;
-                g.setGradientFill(juce::ColourGradient(
-                    Theme::blue.interpolatedWith(accent,.3f).withAlpha(.16f*lightEnergy+.026f),centreX,feetY,
-                    Theme::bg.withAlpha(0.f),centreX+poolW*f*.55f,feetY,true));
-                g.fillEllipse(centreX-poolW*f,feetY-poolH*f*.42f,
-                              poolW*2.f*f,poolH*2.f*f);
-            }
+            skellpreset::stage::Backdrop::softMist(g,centreX,feetY+poolH*.16f,
+                poolW,poolH*.68f,Theme::blue.interpolatedWith(accent,.3f),.055f+.25f*lightEnergy);
             // Mirrored figure glint, kept subtle and tied to measured peak.
             g.setGradientFill(juce::ColourGradient(
                 Theme::white.withAlpha(.035f+.17f*lightEnergy),centreX,feetY,
