@@ -148,15 +148,13 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         g.setColour(Theme::muted.withAlpha(.26f));
         g.drawLine(plot.getX(),plot.getBottom(),plot.getRight(),plot.getY(),.9f);
         // Drawn transfer function matching tanh(x*drive*blend)/denom. The
-        // vertical axis is normalized to this setting's own full-scale output
-        // so the plot fills the screen while the curvature and the amount of
-        // compression remain exactly what the DSP applies.
-        const float fullScale=std::tanh(1.1f*drive*blend)/denom;
-        const float yScale=fullScale>.0001f?plot.getHeight()*.46f/fullScale:0.f;
+        // Both axes are fixed to +/-1 full scale; the model and measured
+        // slot I/O now share the same physical scale.
+        const float yScale=plot.getHeight()*.5f;
         juce::Path curve;
         for(int i=0;i<=96;++i) {
             const float t=(float)i/96.f;
-            const float inLevel=(t*2.f-1.f)*1.1f;
+            const float inLevel=t*2.f-1.f;
             const float outLevel=std::tanh(inLevel*drive*blend)/denom;
             const float x=plot.getX()+plot.getWidth()*t;
             const float y=juce::jlimit(plot.getY(),plot.getBottom(),
@@ -169,19 +167,10 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         g.setColour(juce::Colour(0xffc77996).withAlpha(.90f));
         g.strokePath(curve,juce::PathStrokeType(2.f,
             juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-        // Live operating point: where the current slot output sits on the curve.
-        if(livePanel.hasSignal()) {
-            const float inLevel=juce::jlimit(0.f,1.1f,livePanel.measuredInputRms());
-            const float outLevel=std::tanh(inLevel*drive*blend)/denom;
-            const float px=plot.getCentreX()+plot.getWidth()*.5f*(inLevel/1.1f);
-            const float py=juce::jlimit(plot.getY(),plot.getBottom(),
-                                        plot.getCentreY()-outLevel*(yScale>0.f?yScale:1.f));
-            g.setColour(Theme::white.withAlpha(.22f));
-            g.fillEllipse(px-7.f,py-7.f,14.f,14.f);
-            g.setColour(Theme::white);
-            g.fillEllipse(px-2.4f,py-2.4f,4.8f,4.8f);
-        }
-        Theme::text(g,"CORE TRANSFER / NORMALIZED",{54,159,246,16},10.f,Theme::muted,true);
+        // Overlay actual paired samples with a fixed full-scale axis. Keep the
+        // normalized core model in its own legend so users can distinguish it.
+        livePanel.paintDriveTransferTrace(g,plot);
+        Theme::text(g,"CORE SHAPE / LIVE I/O +/-1",{54,159,246,16},10.f,Theme::muted,true);
         livePanel.paintDriveSpectrum(g,{326.f,154.f,534.f,182.f});
     } else {
         // Dedicated central hardware instrument, with a live level ring and

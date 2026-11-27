@@ -73,13 +73,14 @@ public:
             if(sharedValid && grValid && frame.slowCount>0 && (type==P::Compressor || type==P::StudioCompressorFX)){
                 // Input/output peak and GR share the same DSP-clock 20ms buckets.
                 inputHistory.fill(0.f);outputHistory.fill(0.f);grHistory.fill(0.f);
+                compressorHistoryCount=std::min(frame.slowCount,(size_t)historySize);
                 for(size_t k=0;k<frame.slowCount;++k){
                     const auto& b=frame.slow[k];const size_t index=historySize-frame.slowCount+k;
                     inputHistory[index]=level(std::max(std::abs(b.inMin),std::abs(b.inMax)));
                     outputHistory[index]=level(std::max(std::abs(b.outMin),std::abs(b.outMax)));
                     grHistory[index]=std::clamp(b.grDbMax/24.f,0.f,1.f);
                 }
-            }else shift(grHistory,std::clamp(gr/24.f,0.f,1.f));
+            }else {compressorHistoryCount=0;shift(grHistory,std::clamp(gr/24.f,0.f,1.f));}
             shift(duckHistory,std::clamp(duck/24.f,0.f,1.f));
             // Bounded analysis clocked by captured audio, not paint rate.
             ++ticks;
@@ -112,6 +113,10 @@ public:
                 wave[i]=frame.output[frame.output.size()-wave.size()+i];
                 inputWave[i]=frame.input[frame.input.size()-inputWave.size()+i];
             }
+            if(isDrive(type)){
+                auto& trace=driveTraces[driveHead];trace.input=inputWave;trace.output=wave;
+                driveHead=(driveHead+1)%driveTraces.size();driveCount=std::min(driveCount+1,driveTraces.size());
+            }
             shift(leftHistory,level(wetAvailable?wetRms[0]:leftRms));shift(rightHistory,level(wetAvailable?wetRms[1]:rightRms));
             shift(wetHistory,wetAvailable?level(std::sqrt(.5f*(wetRms[0]*wetRms[0]+wetRms[1]*wetRms[1]))):0.f);
         }else if((unsigned)(now-lastFrame)>=400u){
@@ -134,7 +139,7 @@ public:
             juce::Path line;
             for(size_t i=0;i<values.size();++i){
                 const float x=plot.getX()+plot.getWidth()*std::log(Analyzer::frequency(static_cast<int>(i))/20.f)/std::log(1000.f);
-                const float y=plot.getBottom()-values[i]*plot.getHeight()*.82f;
+                const float y=plot.getBottom()-values[i]*plot.getHeight();
                 if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);
             }
             if(filled){auto area=line;const float left=plot.getX()+plot.getWidth()*std::log(80.f/20.f)/std::log(1000.f);
@@ -146,11 +151,19 @@ public:
             g.setColour(colour.withAlpha(.86f));g.strokePath(line,juce::PathStrokeType(1.4f));
         };
         draw(inBands,Theme::muted,true);draw(outBands,Theme::blue,true);
+        Theme::fittedText(g,"IN / OUT   -72..0 dBFS",{juce::roundToInt(plot.getX()+12.f),juce::roundToInt(plot.getY()+6.f),164,13},9.f,Theme::muted,true);
+        g.setColour(Theme::blue);g.drawLine(plot.getX()+172.f,plot.getY()+12.f,plot.getX()+188.f,plot.getY()+12.f,1.2f);
     }
     void paintCompressorTransfer(juce::Graphics& g,juce::Rectangle<float> area,P& p,int slot,int type) const {
         Theme::panelBox(g,area,6.f);
         auto plot=area.reduced(10.f,8.f);const auto title=plot.removeFromTop(18.f);
-        Theme::fittedText(g,"DETECTOR TRANSFER",title.toNearestInt(),10.f,Theme::muted,true);
+        Theme::fittedText(g,"DETECTOR TRANSFER / dB",title.toNearestInt(),10.f,Theme::muted,true);
+        const auto bottom=plot.removeFromBottom(12.f);
+        plot.removeFromLeft(16.f);plot.removeFromRight(8.f);
+        for(int i=0;i<=3;++i){const int x=juce::roundToInt(plot.getX()+plot.getWidth()*i/3.f);
+            Theme::fittedText(g,juce::String(-60+20*i),{x-12,juce::roundToInt(bottom.getY()),24,12},8.f,Theme::muted,false,juce::Justification::centred);}
+
+        for(int i=0;i<=3;++i)Theme::fittedText(g,juce::String(-20*i),juce::Rectangle<int>((int)plot.getX()-20,(int)(plot.getY()+plot.getHeight()*i/3.f)-5,18,10),8.f,Theme::muted,false,juce::Justification::centredRight);
         const float a=p.getSlotParam(slot,0),b=p.getSlotParam(slot,1),k=p.getSlotParam(slot,4);
         const bool studio=type==P::StudioCompressorFX;
         const auto* punch=p.state.getRawParameterValue("macro2");
@@ -158,7 +171,7 @@ public:
         const float ratio=studio?1.f+.38f*(std::pow(51.f,b)-1.f):1.f+b*11.f;
         const float knee=(std::pow(201.f,k)-1.f)*.005f;
         const float kneeNorm=knee>1.e-6f?1.f/std::log1p(knee):0.f;
-        for(int i=1;i<4;++i){const float f=(float)i/4.f;g.setColour(Theme::stroke.withAlpha(.45f));g.drawLine(plot.getX()+plot.getWidth()*f,plot.getY(),plot.getX()+plot.getWidth()*f,plot.getBottom(),.6f);g.drawLine(plot.getX(),plot.getY()+plot.getHeight()*f,plot.getRight(),plot.getY()+plot.getHeight()*f,.6f);}
+        for(int i=1;i<3;++i){const float f=(float)i/3.f;g.setColour(Theme::stroke.withAlpha(.45f));g.drawLine(plot.getX()+plot.getWidth()*f,plot.getY(),plot.getX()+plot.getWidth()*f,plot.getBottom(),.6f);g.drawLine(plot.getX(),plot.getY()+plot.getHeight()*f,plot.getRight(),plot.getY()+plot.getHeight()*f,.6f);}
         g.setColour(Theme::muted.withAlpha(.45f));g.drawLine(plot.getX(),plot.getBottom(),plot.getRight(),plot.getY(),.8f);
         juce::Path curve;
         for(int i=0;i<=96;++i){const float f=(float)i/96.f,in=-60.f+60.f*f,over=std::max(0.f,in-threshold);
@@ -179,14 +192,15 @@ public:
         auto title=plot.removeFromTop(15.f);
         // ASCII range labels are portable across the Linux and Windows fonts.
         // Distinguish the measured gain-reduction and sidechain traces.
-        const auto titleText=reduction?juce::String("REDUCTION / 0-24 dB"):juce::String("INPUT / OUTPUT / -72 TO 0 dBFS");
+        const bool measuredCompressor=lastType==P::Compressor || lastType==P::StudioCompressorFX;
+        const auto titleText=reduction?juce::String(measuredCompressor?"GAIN REDUCTION / 1.8 s / 0-24 dB":"REDUCTION / 0-24 dB"):juce::String("INPUT / OUTPUT / -72 TO 0 dBFS");
         Theme::fittedText(g,titleText,title.toNearestInt(),10.f,Theme::muted,true);
         const auto legend=plot.removeFromBottom(13.f);
         const auto left=legend.withWidth(legend.getWidth()*.5f);
         const auto right=legend.withTrimmedLeft(legend.getWidth()*.5f);
         if(reduction) {
             Theme::fittedText(g,"GR "+juce::String(grHistory.back()*24.f,1)+" dB / OUTPUT",left.toNearestInt(),9.5f,Theme::red,true);
-            Theme::fittedText(g,"KEY "+juce::String(duckHistory.back()*24.f,1)+" dB",right.toNearestInt(),9.5f,Theme::blue,true,juce::Justification::centredRight);
+            Theme::fittedText(g,"OUT "+db(outputRms),right.toNearestInt(),9.5f,Theme::blue,true,juce::Justification::centredRight);
         } else {
             Theme::fittedText(g,"INPUT",left.toNearestInt(),9.5f,Theme::muted,true);
             Theme::fittedText(g,"OUTPUT",right.toNearestInt(),9.5f,Theme::green,true,juce::Justification::centredRight);
@@ -196,12 +210,13 @@ public:
         for(int i=0;i<=3;++i)g.drawHorizontalLine(static_cast<int>(plot.getY()+i*plot.getHeight()/3.f),plot.getX(),plot.getRight());
         for(int i=1;i<8;++i)g.drawVerticalLine((int)(plot.getX()+i*plot.getWidth()/8.f),plot.getY(),plot.getBottom());
         auto draw=[&](const auto& values,juce::Colour colour,bool down){
-            juce::Path line;for(size_t i=0;i<values.size();++i){
+            const size_t first=measuredCompressor && compressorHistoryCount>0?values.size()-compressorHistoryCount:0;
+            juce::Path line;for(size_t i=first;i<values.size();++i){
                 const float x=plot.getX()+plot.getWidth()*static_cast<float>(i)/static_cast<float>(values.size()-1);
                 const float y=down?plot.getY()+values[i]*plot.getHeight():plot.getBottom()-values[i]*plot.getHeight();
-                if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);}
+                if(i==first)line.startNewSubPath(x,y);else line.lineTo(x,y);}
             auto fill=line;const float base=down?plot.getY():plot.getBottom();
-            fill.lineTo(plot.getRight(),base);fill.lineTo(plot.getX(),base);fill.closeSubPath();
+            fill.lineTo(plot.getRight(),base);fill.lineTo(plot.getX()+plot.getWidth()*(float)first/(float)(values.size()-1),base);fill.closeSubPath();
             g.setGradientFill(juce::ColourGradient(colour.withAlpha(down?.40f:.25f),plot.getCentreX(),plot.getY(),colour.withAlpha(.035f),plot.getCentreX(),plot.getBottom(),false));g.fillPath(fill);
             g.setColour(colour.withAlpha(.10f));g.strokePath(line,juce::PathStrokeType(3.7f));
             g.setColour(colour);g.strokePath(line,juce::PathStrokeType(1.35f));
@@ -217,10 +232,21 @@ public:
         auto plot=area.reduced(10.f,7.f);
         auto title=plot.removeFromTop(15.f);
         Theme::fittedText(g,isolatedHistory?"WET RETURN WATERFALL  /  80 Hz - 9 kHz":"OUTPUT WATERFALL  /  80 Hz - 9 kHz",title.toNearestInt(),10.f,Theme::muted,true);
-        const auto legend=plot.removeFromBottom(12.f);
-        Theme::fittedText(g,"LOW TO HIGH FREQUENCY / NEWEST IN FRONT",legend.toNearestInt(),8.f,Theme::muted);
+        const auto legend=plot.removeFromBottom(13.f);
+        plot.removeFromRight(32.f);
+        constexpr float tickHz[]{80.f,200.f,500.f,1000.f,3000.f,9000.f};
+        constexpr const char* ticksHz[]{"80 Hz","200","500","1k","3k","9k"};
+        for(size_t i=0;i<6;++i){const float f=std::log(tickHz[i]/80.f)/std::log(112.5f);
+            const int x=juce::roundToInt(plot.getX()+plot.getWidth()*(.04f+.86f*f));
+            Theme::fittedText(g,ticksHz[i],{x-20,juce::roundToInt(legend.getY()),40,13},8.5f,Theme::muted,false,juce::Justification::centred);}
+
         juce::Graphics::ScopedSaveState clipped(g);g.reduceClipRegion(plot.toNearestInt());
         const float h=plot.getHeight(),w=plot.getWidth();
+        for(int age=0;age<=4;++age){
+            const float d=(float)age/4.f,base=plot.getY()+h*(.30f+.64f*d),left=plot.getX()+w*(.32f-.28f*d),span=w*(.60f+.26f*d);
+            g.setColour(Theme::stroke.withAlpha(.55f));g.drawLine(left,base,left+span,base-h*.10f,.65f);
+            Theme::fittedText(g,juce::String((1.f-d)*1.033f,2)+"s",juce::Rectangle<int>((int)(left+span+4.f),(int)(base-h*.10f)-5,27,10),8.f,Theme::muted);
+        }
         for(int grid=0;grid<5;++grid){
             const float f=(float)grid/4.f;
             g.setColour(Theme::stroke.withAlpha(.50f));
@@ -241,11 +267,32 @@ public:
             }
             auto fill=ridge;fill.lineTo(left+width,base-h*.10f);fill.lineTo(left,base);fill.closeSubPath();
             const auto ink=Theme::blue.interpolatedWith(Theme::green,.18f*depth);
-            g.setColour(Theme::bg.withAlpha(.56f));g.fillPath(fill);
-            g.setGradientFill(juce::ColourGradient(ink.withAlpha(.19f+.26f*depth),left,base-h*.55f,ink.withAlpha(.025f),left,base,false));g.fillPath(fill);
+            g.setGradientFill(juce::ColourGradient(Theme::bg.interpolatedWith(ink,.13f+.23f*depth).withAlpha(.81f),left,base-h*.55f,Theme::bg.withAlpha(.68f),left,base,false));g.fillPath(fill);
             g.setColour(ink.withAlpha(.20f+.65f*depth));g.strokePath(ridge,juce::PathStrokeType(row+1==historyCount?1.7f:.75f));
         }
         if(!fresh)Theme::fittedText(g,"WAITING FOR AUDIO",plot.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);
+    }
+    // Paired slot input/output samples, not the theoretical core curve. A fixed
+    // full-scale axis avoids misleading amplitude changes when drive is adjusted.
+    void paintDriveTransferTrace(juce::Graphics& g,juce::Rectangle<float> plot) const {
+        if(!fresh || driveCount==0)return;
+        juce::Graphics::ScopedSaveState clipped(g);g.reduceClipRegion(plot.toNearestInt());
+        const auto rose=juce::Colour(0xffc77996);
+        for(size_t age=0;age<driveCount;++age){
+            const auto& trace=driveTraces[(driveHead+driveTraces.size()-driveCount+age)%driveTraces.size()];
+            juce::Path path;
+            for(size_t i=0;i<trace.input.size();++i){
+                const float x=plot.getCentreX()+plot.getWidth()*.5f*std::clamp(trace.input[i],-1.f,1.f);
+                const float y=plot.getCentreY()-plot.getHeight()*.5f*std::clamp(trace.output[i],-1.f,1.f);
+                if(i==0)path.startNewSubPath(x,y);else path.lineTo(x,y);
+            }
+            const float alpha=.10f+.42f*(float)(age+1)/(float)driveCount;
+            g.setColour(rose.withAlpha(alpha));g.strokePath(path,juce::PathStrokeType(age+1==driveCount?1.15f:.65f));
+        }
+        const auto& latest=driveTraces[(driveHead+driveTraces.size()-1)%driveTraces.size()];
+        const float x=plot.getCentreX()+plot.getWidth()*.5f*std::clamp(latest.input.back(),-1.f,1.f);
+        const float y=plot.getCentreY()-plot.getHeight()*.5f*std::clamp(latest.output.back(),-1.f,1.f);
+        g.setColour(Theme::white.withAlpha(.90f));g.fillEllipse(x-1.8f,y-1.8f,3.6f,3.6f);
     }
     void paintDriveSpectrum(juce::Graphics& g,juce::Rectangle<float> area) const {
         Theme::panelBox(g,area,6.f);
@@ -562,7 +609,7 @@ private:
     }
     void reset() noexcept {
         inBands.fill(0);outBands.fill(0);deltaBands.fill(0);spectrumElapsed=spectrumClock=0.f;inputHistory.fill(0);outputHistory.fill(0);
-        grHistory.fill(0);duckHistory.fill(0);wave.fill(0);inputWave.fill(0);
+        grHistory.fill(0);duckHistory.fill(0);wave.fill(0);inputWave.fill(0);driveHead=driveCount=compressorHistoryCount=0;
         leftHistory.fill(0);rightHistory.fill(0);mid.fill(0);side.fill(0);previousMid.fill(0);previousSide.fill(0);
         correlation=leftRms=rightRms=0.f;
         pitchIn={};pitchOut={};pitchInHistory.fill(-1.f);pitchOutHistory.fill(-1.f);
@@ -586,6 +633,9 @@ private:
     size_t historyHead=0,historyCount=0;
     bool isolatedHistory=false;
     std::array<float,historySize> inputHistory{},outputHistory{},grHistory{},duckHistory{};
+    struct DriveTrace{std::array<float,128> input{},output{};};
+    std::array<DriveTrace,5> driveTraces{};
+    size_t driveHead=0,driveCount=0,compressorHistoryCount=0;
     std::array<float,128> wave{},inputWave{},mid{},side{},previousMid{},previousSide{};
     std::array<float,historySize> leftHistory{},rightHistory{};
     float correlation=0.f,leftRms=0.f,rightRms=0.f,deessHz=7500.f,gateDb=-40.f,gateCloseDb=-44.f;

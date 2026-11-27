@@ -23,7 +23,7 @@ public:
     void setAudioFresh(bool fresh) {
         if(audioFresh==fresh)return;
         audioFresh=fresh;
-        if(!fresh){inputMeter={};outputMeter={};activityLevel=0.f;vocalActivity=0.f;cachedSignal.fill(0.f);stageBands.fill(0.f);}
+        if(!fresh){inputMeter={};outputMeter={};activityLevel=0.f;vocalActivity=0.f;cachedSignal.fill(0.f);stageBands.fill(0.f);lastAnalyzedScope=0;}
         if(isShowing())repaint();
     }
     struct MeterEnvelope {
@@ -72,7 +72,9 @@ public:
         repaint();
     }
     void updateSpectrum() {
-        if(audioFresh && (++spectrumTick%3u)==1u){
+        const auto count=processor.liveScopeSampleCount();
+        if(audioFresh && count!=lastAnalyzedScope && (++spectrumTick%3u)==1u){
+            lastAnalyzedScope=count;
             std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity> samples{};
             processor.getLiveSpectrumOutput(samples);
             const auto values=stageAnalyzer.analyze(samples,processor.preparedAudioRate());
@@ -371,6 +373,10 @@ public:
                     Theme::bg.withAlpha(0.f),centreX,pitTop+depth*.55f,true));
                 g.fillRect(stageBounds.getX(),pitTop,stageBounds.getWidth(),depth*.6f);
                 ensureCrowd();
+                if(crowdCacheTheme!=Theme::current || std::abs(crowdCacheDepth-depth)>.05f){
+                    for(auto& sprite:crowdSprites)sprite=juce::Image{};
+                    crowdCacheTheme=Theme::current;crowdCacheDepth=depth;
+                }
                 const float idleSway=.16f+.84f*activity;
                 for(int row=0;row<crowdLayers;++row) {
                     const float t=crowdLayers>1?(float)row/(float)(crowdLayers-1):0.f;
@@ -382,15 +388,16 @@ public:
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.78f+.16f*t);
-                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.26f).withAlpha(.07f+.31f*t);
+                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.26f).withAlpha(.09f+.34f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
                         if(figure.layer!=row)continue;
-                        const float wave=(.35f*std::sin(crowdPhase*.62f+figure.phase)
-                            +.65f*std::sin(crowdPhase*(.78f+.05f*figure.rate)+figure.phase))
-                            *idleSway;
-                        const float bob=std::sin(crowdPhase*1.28f+figure.phase*1.7f)*idleSway;
+                        // Individual timing, irregular emphasis and smaller idle gestures.
+                        const float motion=crowdPhase*figure.rate+figure.phase;
+                        const float wave=(.50f*std::sin(motion*.62f)+.32f*std::sin(motion*1.17f+figure.phase)
+                            +.18f*std::sin(motion*1.91f))*idleSway;
+                        const float bob=std::sin(motion*.93f+figure.phase*1.7f)*idleSway;
                         const float hgt=heightPix*figure.sizeJitter;
                         const float unit=hgt/figure.height;
                         const float x=stageBounds.getX()+stageBounds.getWidth()*figure.x
@@ -398,57 +405,69 @@ public:
                         // Vertical jitter inside the row prevents ruled lines.
                         const float headY=pitTop+depth*(.09f+.56f*t)+figure.yJitter*depth*.19f
                             -std::abs(bob)*2.0f*unit;
-                        const float base=headY+hgt;
+                        // Feet stay at the ground depth while the knees absorb the body bob.
+                        const float base=pitTop+depth*(.09f+.56f*t)+figure.yJitter*depth*.19f+hgt;
                         const float ry=hgt*figure.headRatio;
                         const float rx=ry*(.70f+.12f*figure.turn);
                         const auto rimColour=rowRim.withMultipliedAlpha(.72f+.38f*figure.turn);
                         const float armW=juce::jmax(1.1f,hgt*.045f);
                         const float shoulderY=headY+ry*1.35f;
                         const float shoulderW=rx*(1.75f+.35f*figure.turn);
+                        if(x+ry*6.f<stageBounds.getX() || x-ry*6.f>stageBounds.getRight() || headY-ry*5.f>pitBottom)continue;
                         // Distant silhouettes do not need sub-pixel anatomy,
                         // multiple stroked paths or a rotated graphics context.
                         // Near rows retain the full articulated skeleton art.
                         if(ry<2.6f) {
-                            g.setColour(bodyColour);
-                            g.fillEllipse(x-rx,headY-ry,2.f*rx,2.f*ry);
+                            auto& sprite=crowdSprites[(size_t)i];
+                            const int sw=juce::jmax(8,(int)std::ceil(ry*10.f+8.f));
+                            const int sh=juce::jmax(8,(int)std::ceil(hgt+ry*5.f+8.f));
+                            if(!sprite.isValid()){
+                                sprite=juce::Image(juce::Image::ARGB,sw,sh,true);
+                                juce::Graphics art(sprite);
+                                const float localX=sw*.5f,localHeadY=ry*3.f+3.f,localBase=localHeadY+hgt;
+                                const float localShoulderY=localHeadY+ry*1.35f;
+                                
+                            art.setColour(bodyColour);
+                            art.fillEllipse(localX-rx,localHeadY-ry,2.f*rx,2.f*ry);
                             // Even distant figures have tapered shoulders,
                             // a cervical stem and separate angled arms.
                             juce::Path distant;
-                            distant.startNewSubPath(x-rx*.45f,headY+ry*.6f);
-                            distant.quadraticTo(x-shoulderW,shoulderY,x-rx*.30f,shoulderY+ry*2.8f);
-                            distant.lineTo(x+rx*.30f,shoulderY+ry*2.8f);
-                            distant.quadraticTo(x+shoulderW,shoulderY,x+rx*.45f,headY+ry*.6f);
-                            distant.closeSubPath();g.fillPath(distant);
-                            g.setColour(rimColour.withMultipliedAlpha(.82f));
-                            g.drawLine(x,headY+ry,x,shoulderY+ry*3.7f,.65f);
-                            for(int rib=0;rib<3;++rib){const float y=shoulderY+ry*(.6f+rib*.6f);g.drawLine(x-rx*(1.25f-rib*.22f),y,x+rx*(1.25f-rib*.22f),y,.55f);}
-                            g.setColour(bodyColour);g.fillEllipse(x-rx*.8f,shoulderY+ry*3.f,rx*1.6f,ry*.7f);
-                            g.drawLine(x-rx*.4f,shoulderY+ry*3.5f,x-rx*.7f,base,1.f);
-                            g.drawLine(x+rx*.4f,shoulderY+ry*3.5f,x+rx*.7f,base,1.f);
+                            distant.startNewSubPath(localX-rx*.45f,localHeadY+ry*.6f);
+                            distant.quadraticTo(localX-shoulderW,localShoulderY,localX-rx*.30f,localShoulderY+ry*2.8f);
+                            distant.lineTo(localX+rx*.30f,localShoulderY+ry*2.8f);
+                            distant.quadraticTo(localX+shoulderW,localShoulderY,localX+rx*.45f,localHeadY+ry*.6f);
+                            distant.closeSubPath();art.fillPath(distant);
+                            art.setColour(rimColour.withMultipliedAlpha(.82f));
+                            art.drawLine(localX,localHeadY+ry,localX,localShoulderY+ry*3.7f,.65f);
+                            for(int rib=0;rib<3;++rib){const float y=localShoulderY+ry*(.6f+rib*.6f);art.drawLine(localX-rx*(1.25f-rib*.22f),y,localX+rx*(1.25f-rib*.22f),y,.55f);}
+                            art.setColour(bodyColour);art.fillEllipse(localX-rx*.8f,localShoulderY+ry*3.f,rx*1.6f,ry*.7f);
+                            art.drawLine(localX-rx*.4f,localShoulderY+ry*3.5f,localX-rx*.7f,localBase,1.f);
+                            art.drawLine(localX+rx*.4f,localShoulderY+ry*3.5f,localX+rx*.7f,localBase,1.f);
                             for(int side:{-1,1}){
                                 const float sign=(float)side;
-                                const bool up=figure.pose==0 || (figure.pose==1 && side==1);
-                                const float elbowX=x+sign*shoulderW*1.2f,elbowY=shoulderY+ry*.4f;
-                                g.drawLine(x+sign*rx*.65f,shoulderY,elbowX,elbowY,.8f);
-                                g.drawLine(elbowX,elbowY,elbowX+sign*rx*.6f,elbowY+(up?-ry*2.6f:ry*1.7f),.7f);
+                                const bool up=figure.pose==0 || (figure.pose==1 && ((side>0)==figure.phoneSide));
+                                const float elbowX=localX+sign*shoulderW*1.2f,elbowY=localShoulderY+ry*.4f;
+                                art.drawLine(localX+sign*rx*.65f,localShoulderY,elbowX,elbowY,.8f);
+                                art.drawLine(elbowX,elbowY,elbowX+sign*rx*.6f,elbowY+(up?-ry*2.6f:ry*1.7f),.7f);
                             }
+                            }
+                            g.setOpacity(1.f);g.drawImageAt(sprite,juce::roundToInt(x-sw*.5f),juce::roundToInt(headY-ry*3.f-3.f));
                             continue;
                         }
-                        const juce::Graphics::ScopedSaveState tilt(g);
-                        g.addTransform(juce::AffineTransform::rotation(
-                            figure.tilt*.06f*idleSway,x,headY+ry));
                         // Raised arms behind the skull. Any visible phone must
                         // be physically attached to the corresponding hand.
                         float phoneX=0.f,phoneY=0.f;bool phoneHeld=false;
                         for(int side:{-1,1}) {
                             const float sign=(float)side;
                             const float sx=x+sign*rx*.80f;
+                            const float wristMotion=std::sin(motion*(1.08f+.11f*sign)+sign*1.31f)*idleSway;
+                            const float elbowMotion=std::sin(motion*.72f+sign*1.6f)*idleSway;
                             float ex,ey,hx,hy;
                             if(figure.pose==0) {
                                 ex=x+sign*rx*1.8f;ey=headY+ry*.35f;
                                 hx=x+sign*(rx*2.1f+wave*rx*.5f);hy=headY-hgt*.24f;
                             } else if(figure.pose==1) {
-                                const bool up=sign>0.f;
+                                const bool up=(side>0)==figure.phoneSide;
                                 ex=x+sign*rx*(up?1.5f:2.0f);ey=headY+ry*(up?.20f:1.20f);
                                 hx=ex+sign*rx*.35f;hy=ey+(up?-hgt*.26f:hgt*.09f);
                             } else if(figure.pose==2) {
@@ -461,36 +480,36 @@ public:
                                 ex=x+sign*rx*1.35f;ey=shoulderY+ry*1.8f;
                                 hx=ex-sign*rx*.20f;hy=ey+ry*1.75f;
                             }
+                            ex+=sign*rx*.24f*elbowMotion;
+                            ey+=ry*.32f*elbowMotion;
+                            hx+=rx*.44f*wristMotion;hy+=ry*.52f*wristMotion;
+                            // Maintain stable upper/forearm lengths rather than stretching the bones.
+                            const float upper=ry*2.05f,lower=ry*2.15f;
+                            auto extend=[](float ax,float ay,float& bx,float& by,float len){
+                                const float dx=bx-ax,dy=by-ay,d=std::sqrt(dx*dx+dy*dy);
+                                if(d>.001f){bx=ax+dx*len/d;by=ay+dy*len/d;}
+                            };
+                            extend(sx,shoulderY,ex,ey,upper);extend(ex,ey,hx,hy,lower);
                             g.setColour(bodyColour);
                             g.drawLine(sx,shoulderY,ex,ey,armW+2.2f);
                             g.drawLine(ex,ey,hx,hy,armW+2.2f);
-                            g.setColour(rimColour.withMultipliedAlpha(.75f));
-                            g.drawLine(sx,shoulderY,ex,ey,armW*.62f);
+                            g.setColour(rimColour.withMultipliedAlpha(.62f));
+                            g.drawLine(sx,shoulderY,ex,ey,armW*.54f);
                             g.drawLine(ex,ey,hx,hy,armW*.58f);
                             g.setColour(rimColour.withMultipliedAlpha(.48f));
                             g.drawLine(ex+sign*armW*.38f,ey,hx+sign*armW*.25f,hy,juce::jmax(.45f,armW*.19f));
                             g.fillEllipse(ex-armW*.42f,ey-armW*.42f,armW*.84f,armW*.84f);
                             if(figure.phone>0.f && ((side>0)==figure.phoneSide) && hy<headY+ry){phoneX=hx;phoneY=hy;phoneHeld=true;}
                             g.fillEllipse(hx-armW*.6f,hy-armW*.7f,armW*1.2f,armW*1.4f);
-                            for(int finger=0;finger<3;++finger)g.drawLine(hx,hy,hx+(finger-1)*armW*.65f,hy-armW*1.65f,juce::jmax(.45f,armW*.23f));
+                            // Fingers follow the forearm direction rather than all pointing skyward.
+                            const float dx=(hx-ex)/lower,dy=(hy-ey)/lower;
+                            if(ry>4.f)for(int finger=0;finger<4;++finger){
+                                const float f=(finger-1.5f)*armW*.36f;
+                                g.drawLine(hx-dy*f,hy+dx*f,hx+dx*armW*1.45f-dy*f*1.5f,
+                                    hy+dy*armW*1.45f+dx*f*1.5f,juce::jmax(.45f,armW*.19f));
+                            }
                         }
-                        // Back, shoulders and neck as one silhouette; only the
-                        // shoulder line catches light, which is what sells a
-                        // crowd seen from behind.
-                        juce::Path body;
-                        body.startNewSubPath(x-rx*.54f,shoulderY+ry*3.6f);
-                        body.lineTo(x-shoulderW*.96f,shoulderY+ry*.30f);
-                        body.quadraticTo(x-shoulderW*.58f,shoulderY-ry*.42f,x-rx*.62f,shoulderY);
-                        body.lineTo(x-rx*.66f,headY+ry*.60f);
-                        body.lineTo(x+rx*.66f,headY+ry*.60f);
-                        body.lineTo(x+rx*.62f,shoulderY);
-                        body.quadraticTo(x+shoulderW*.58f,shoulderY-ry*.42f,x+shoulderW*.96f,shoulderY+ry*.30f);
-                        body.lineTo(x+rx*.54f,shoulderY+ry*3.6f);
-                        body.closeSubPath();
-                        g.setColour(bodyColour);
-                        g.fillPath(body);
                         const float pelvisY=shoulderY+ry*3.7f;
-                        g.fillEllipse(x-rx*.85f,pelvisY,rx*1.7f,ry*.85f);
                         for(int side:{-1,1}){
                             const float sign=(float)side,hip=x+sign*rx*.45f;
                             const float kneeX=hip+sign*rx*(.33f+.14f*wave),kneeY=pelvisY+(base-pelvisY)*.55f;
@@ -498,77 +517,114 @@ public:
                             g.setColour(bodyColour);g.drawLine(hip,pelvisY+ry*.5f,kneeX,kneeY,juce::jmax(1.f,rx*.42f));g.drawLine(kneeX,kneeY,footX,base,juce::jmax(1.f,rx*.30f));
                             g.setColour(rimColour.withMultipliedAlpha(.38f));g.drawLine(hip,pelvisY+ry*.5f,kneeX,kneeY,juce::jmax(.5f,rx*.15f));g.drawLine(kneeX,kneeY,footX,base,juce::jmax(.5f,rx*.12f));
                         }
+                        // The fixed rear anatomy is individually rasterized at logical resolution.
+                        // Limbs, phone positions, head/torso movement and stage lights stay live.
+                        auto& sprite=crowdSprites[(size_t)i];
+                        const int sw=juce::jmax(12,(int)std::ceil(ry*6.f+8.f));
+                        const int sh=juce::jmax(12,(int)std::ceil(ry*8.f+8.f));
+                        if(!sprite.isValid()){
+                            sprite=juce::Image(juce::Image::ARGB,sw,sh,true);
+                            juce::Graphics art(sprite);
+                            const float localX=sw*.5f,localHeadY=ry*1.5f+3.f,localShoulderY=localHeadY+ry*1.35f;
+                        // Back, shoulders and neck as one silhouette; only the
+                        // shoulder line catches light, which is what sells a
+                        // crowd seen from behind.
+                        juce::Path body;
+                        body.startNewSubPath(localX-rx*.54f,localShoulderY+ry*3.6f);
+                        body.lineTo(localX-shoulderW*.96f,localShoulderY+ry*.30f);
+                        body.quadraticTo(localX-shoulderW*.58f,localShoulderY-ry*.42f,localX-rx*.62f,localShoulderY);
+                        body.lineTo(localX-rx*.66f,localHeadY+ry*.60f);
+                        body.lineTo(localX+rx*.66f,localHeadY+ry*.60f);
+                        body.lineTo(localX+rx*.62f,localShoulderY);
+                        body.quadraticTo(localX+shoulderW*.58f,localShoulderY-ry*.42f,localX+shoulderW*.96f,localShoulderY+ry*.30f);
+                        body.lineTo(localX+rx*.54f,localShoulderY+ry*3.6f);
+                        body.closeSubPath();
+                        art.setGradientFill(juce::ColourGradient(bodyColour.interpolatedWith(rimColour,.10f),localX-rx*1.6f,localHeadY+ry,bodyColour,localX+rx*1.8f,localHeadY+ry*4.f,false));
+                        art.fillPath(body);
+                        const float localPelvisY=localShoulderY+ry*3.7f;
+                        art.fillEllipse(localX-rx*.85f,localPelvisY,rx*1.7f,ry*.85f);
                         // Near bodies show the rear skeleton rather than
                         // featureless black coats. No detail on subpixel heads.
                         if(ry>2.6f) {
-                            const float spineY=shoulderY+ry*.25f;
+                            const float spineY=localShoulderY+ry*.25f;
                             for(int rib=0;rib<4;++rib){
-                                const float y=spineY+ry*(.55f+rib*.45f),w=shoulderW*(.83f-.10f*rib);
-                                juce::Path bones;bones.startNewSubPath(x-w,y);bones.quadraticTo(x,y+ry*.48f,x+w,y);
-                                g.setColour(rimColour.withMultipliedAlpha(.55f));g.strokePath(bones,juce::PathStrokeType(juce::jmax(.55f,ry*.10f)));
+                                const float y=spineY+ry*(.55f+rib*.49f),w=shoulderW*(.86f-.10f*rib);
+                                juce::Path bones;
+                                // Two rear rib arcs with a gap at the spine and varied depth.
+                                for(int side:{-1,1}){const float d=(float)side;
+                                    bones.startNewSubPath(localX+d*rx*.18f,y);bones.cubicTo(localX+d*w*.5f,y-ry*.20f,localX+d*w,y+ry*.18f,localX+d*w*.89f,y+ry*.53f);}
+                                
+                                art.setColour(rimColour.withMultipliedAlpha(.55f));art.strokePath(bones,juce::PathStrokeType(juce::jmax(.55f,ry*.10f)));
                             }
                             for(int v=0;v<4;++v) {
                                 const float vy=spineY+v*ry*.48f;
-                                g.setColour(rimColour.withMultipliedAlpha(.62f-.08f*v));
-                                g.fillRoundedRectangle(x-rx*.20f,vy,rx*.40f,ry*.29f,ry*.10f);
+                                art.setColour(rimColour.withMultipliedAlpha(.62f-.08f*v));
+                                art.fillRoundedRectangle(localX-rx*.20f,vy,rx*.40f,ry*.29f,ry*.10f);
                             }
                             for(int side:{-1,1}) {
                                 const float sign=(float)side;
                                 juce::Path blade;
-                                blade.startNewSubPath(x+sign*rx*.48f,spineY+ry*.12f);
-                                blade.quadraticTo(x+sign*shoulderW*.90f,spineY+ry*.15f,
-                                                  x+sign*rx*.87f,spineY+ry*1.36f);
-                                blade.quadraticTo(x+sign*rx*.40f,spineY+ry*.96f,
-                                                  x+sign*rx*.48f,spineY+ry*.12f);
+                                blade.startNewSubPath(localX+sign*rx*.48f,spineY+ry*.12f);
+                                blade.quadraticTo(localX+sign*shoulderW*.90f,spineY+ry*.15f,
+                                                  localX+sign*rx*.87f,spineY+ry*1.36f);
+                                blade.quadraticTo(localX+sign*rx*.40f,spineY+ry*.96f,
+                                                  localX+sign*rx*.48f,spineY+ry*.12f);
                                 blade.closeSubPath();
-                                g.setColour(rimColour.withMultipliedAlpha(.32f));
-                                g.fillPath(blade);
+                                art.setColour(rimColour.withMultipliedAlpha(.32f));
+                                art.fillPath(blade);
                             }
                         }
                         // Rim: shoulder crest then the skull dome.
-                        g.setColour(rimColour);
+                        art.setColour(rimColour);
                         juce::Path shoulders;
-                        shoulders.startNewSubPath(x-shoulderW*.94f,shoulderY+ry*.34f);
-                        shoulders.quadraticTo(x-shoulderW*.56f,shoulderY-ry*.44f,x-rx*.60f,shoulderY);
-                        g.strokePath(shoulders,juce::PathStrokeType(juce::jmax(.7f,hgt*.014f)));
+                        shoulders.startNewSubPath(localX-shoulderW*.94f,localShoulderY+ry*.34f);
+                        shoulders.quadraticTo(localX-shoulderW*.56f,localShoulderY-ry*.44f,localX-rx*.60f,localShoulderY);
+                        art.strokePath(shoulders,juce::PathStrokeType(juce::jmax(.7f,hgt*.014f)));
                         juce::Path shouldersR;
-                        shouldersR.startNewSubPath(x+rx*.60f,shoulderY);
-                        shouldersR.quadraticTo(x+shoulderW*.56f,shoulderY-ry*.44f,x+shoulderW*.94f,shoulderY+ry*.34f);
-                        g.strokePath(shouldersR,juce::PathStrokeType(juce::jmax(.7f,hgt*.014f)));
+                        shouldersR.startNewSubPath(localX+rx*.60f,localShoulderY);
+                        shouldersR.quadraticTo(localX+shoulderW*.56f,localShoulderY-ry*.44f,localX+shoulderW*.94f,localShoulderY+ry*.34f);
+                        art.strokePath(shouldersR,juce::PathStrokeType(juce::jmax(.7f,hgt*.014f)));
                         // Near skulls use shaped craniums; distant ones remain cheap silhouettes.
                         juce::Path backSkull;
-                        backSkull.startNewSubPath(x,headY-ry);
-                        backSkull.cubicTo(x-rx*1.2f,headY-ry,x-rx*1.15f,headY+ry*.20f,x-rx*.66f,headY+ry*.62f);
-                        backSkull.quadraticTo(x,headY+ry*1.06f,x+rx*.66f,headY+ry*.62f);
-                        backSkull.cubicTo(x+rx*1.15f,headY+ry*.20f,x+rx*1.2f,headY-ry,x,headY-ry);
+                        backSkull.startNewSubPath(localX,localHeadY-ry);
+                        backSkull.cubicTo(localX-rx*1.2f,localHeadY-ry,localX-rx*1.15f,localHeadY+ry*.20f,localX-rx*.66f,localHeadY+ry*.62f);
+                        backSkull.quadraticTo(localX,localHeadY+ry*1.06f,localX+rx*.66f,localHeadY+ry*.62f);
+                        backSkull.cubicTo(localX+rx*1.15f,localHeadY+ry*.20f,localX+rx*1.2f,localHeadY-ry,localX,localHeadY-ry);
                         backSkull.closeSubPath();
-                        g.setGradientFill(juce::ColourGradient(rimColour.withMultipliedAlpha(.62f),x-rx,headY-ry,bodyColour,x+rx,headY+ry,false));
-                        g.fillPath(backSkull);
+                        art.setGradientFill(juce::ColourGradient(rimColour.withMultipliedAlpha(.62f),localX-rx,localHeadY-ry,bodyColour,localX+rx,localHeadY+ry,false));
+                        art.fillPath(backSkull);
+                        // Asymmetric occipital planes and mastoid ridge give each head volume.
+                        {juce::Graphics::ScopedSaveState shade(art);art.reduceClipRegion(backSkull);
+                         art.setGradientFill(juce::ColourGradient(rimColour.withMultipliedAlpha(.32f),localX-rx*.45f,localHeadY-ry*.65f,bodyColour.withAlpha(0.f),localX+rx*.7f,localHeadY+ry*.55f,true));
+                         art.fillEllipse(localX-rx,localHeadY-ry,2.f*rx,2.f*ry);}
+
                         if(ry>4.f){
-                            juce::Graphics::ScopedSaveState skullClip(g);g.reduceClipRegion(backSkull);
-                            const float sutureX=x+(figure.turn-.5f)*rx*.60f;
-                            juce::Path seam;seam.startNewSubPath(sutureX,headY-ry);seam.lineTo(sutureX-rx*.12f,headY-ry*.56f);seam.lineTo(sutureX+rx*.08f,headY-ry*.28f);seam.lineTo(sutureX,headY+ry*.08f);
-                            g.setColour(bodyColour.withMultipliedAlpha(.58f));g.strokePath(seam,juce::PathStrokeType(.65f));
-                            g.setColour(rimColour.withMultipliedAlpha(.21f));g.fillEllipse(x-rx*.72f,headY-ry*.65f,rx*.68f,ry*.48f);
+                            juce::Graphics::ScopedSaveState skullClip(art);art.reduceClipRegion(backSkull);
+                            const float sutureX=localX+(figure.turn-.5f)*rx*.60f;
+                            juce::Path seam;seam.startNewSubPath(sutureX,localHeadY-ry);seam.lineTo(sutureX-rx*.12f,localHeadY-ry*.56f);seam.lineTo(sutureX+rx*.08f,localHeadY-ry*.28f);seam.lineTo(sutureX,localHeadY+ry*.08f);
+                            art.setColour(bodyColour.withMultipliedAlpha(.58f));art.strokePath(seam,juce::PathStrokeType(.65f));
+                            art.setColour(rimColour.withMultipliedAlpha(.21f));art.fillEllipse(localX-rx*.72f,localHeadY-ry*.65f,rx*.68f,ry*.48f);
                         }
                         juce::Path crescent;
-                        crescent.addCentredArc(x,headY,rx,ry,0.f,
+                        crescent.addCentredArc(localX,localHeadY,rx,ry,0.f,
                             juce::MathConstants<float>::pi*1.06f,
                             juce::MathConstants<float>::pi*1.94f,true);
-                        g.setColour(rimColour);
-                        g.strokePath(crescent,juce::PathStrokeType(juce::jmax(.7f,hgt*.016f)));
+                        art.setColour(rimColour);
+                        art.strokePath(crescent,juce::PathStrokeType(juce::jmax(.7f,hgt*.016f)));
                         // Rear-facing skull: occipital shadow and cervical joint, not a face.
                         if(ry>2.6f) {
-                            g.setColour(juce::Colour(0xff0b1012));
-                            g.fillEllipse(x-rx*.45f,headY+ry*.38f,rx*.90f,ry*.37f);
-                            g.setColour(rimColour.withMultipliedAlpha(.58f));
-                            g.drawLine(x,headY+ry*.64f,x,shoulderY+ry*.35f,juce::jmax(.65f,rx*.21f));
+                            art.setColour(juce::Colour(0xff0b1012));
+                            art.fillEllipse(localX-rx*.45f,localHeadY+ry*.38f,rx*.90f,ry*.37f);
+                            art.setColour(rimColour.withMultipliedAlpha(.58f));
+                            art.drawLine(localX,localHeadY+ry*.64f,localX,localShoulderY+ry*.35f,juce::jmax(.65f,rx*.21f));
                             if(ry>4.5f) {
-                                g.setColour(rimColour.withMultipliedAlpha(.55f));
-                                g.drawLine(x-rx*.92f,headY-ry*.10f,x-rx*.92f,headY+ry*.55f,
+                                art.setColour(rimColour.withMultipliedAlpha(.55f));
+                                art.drawLine(localX-rx*.92f,localHeadY-ry*.10f,localX-rx*.92f,localHeadY+ry*.55f,
                                            juce::jmax(.6f,hgt*.016f));
                             }
                         }
+                        }
+                        g.setOpacity(1.f);g.drawImageAt(sprite,juce::roundToInt(x-sw*.5f),juce::roundToInt(headY-ry*1.5f-3.f));
                         // Concert phone lights: the brightest thing in the pit.
                         if(phoneHeld) {
                             const float glow=juce::jlimit(.18f,1.f,.28f+.72f*activity);
@@ -684,10 +740,10 @@ private:
     std::array<float,128> cachedSignal{};
     skellpreset::visual::LiveSpectrumAnalyzer stageAnalyzer;
     std::array<float,skellpreset::visual::LiveSpectrumAnalyzer::bands> stageBands{};
-    unsigned spectrumTick=0;
+    unsigned spectrumTick=0,lastAnalyzedScope=0;
 
     // Crowd figures are generated once and reused every frame. Keeping the
-    // geometry data here means paint() does no hashing or allocation, and the
+    // geometry data here avoids per-frame hashing; artwork is cached per size/theme and the
     // same figure keeps the same pose, depth and phone light across repaints.
     struct CrowdFigure {
         float x=0.f,height=26.f,headRatio=.115f,phase=0.f,rate=1.f,sizeJitter=1.f;
@@ -700,6 +756,9 @@ private:
     static constexpr int crowdCount=88;
     std::array<CrowdFigure,crowdCount> crowd{};
     bool crowdBuilt=false;
+    std::array<juce::Image,crowdCount> crowdSprites{};
+    float crowdCacheDepth=-1.f;
+    int crowdCacheTheme=-1;
     void ensureCrowd() {
         if(crowdBuilt)return;
         crowdBuilt=true;
@@ -718,7 +777,7 @@ private:
                 f.layer=layer;
                 // Staggered spacing with deterministic jitter avoids a grid,
                 // and the wider near rows bleed past the stage edges.
-                const float even=(i+.5f+(rnd(0)-.5f)*.90f)/people;
+                const float even=(i+.5f+(rnd(0)-.5f)*1.40f)/people;
                 f.x=.5f+(even-.5f)*spread[layer];
                 // Height is a modest jitter around the row size; the skull is
                 // always a small fraction of the figure so nobody reads as a
@@ -730,7 +789,7 @@ private:
                 f.rate=.86f+rnd(47)*.34f;
                 f.pose=(int)(rnd(57)*6.f)%6;
                 f.turn=rnd(97);
-                f.yJitter=rnd(91)-.5f;
+                f.yJitter=(rnd(91)-.5f)*1.24f;
                 f.tilt=(rnd(63)-.5f)*1.8f;
                 // Phone lights thin out with distance so the pit glitters
                 // toward the front rather than uniformly.

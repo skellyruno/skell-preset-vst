@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <chrono>
+#include <algorithm>
 
 namespace {
 struct View {
@@ -737,6 +739,7 @@ int main(int argc, char** argv) {
                 if(stage){editor.showHomeForScreenshot();processor.requestSlotVisual(-1);}else editor.selectRackSlotForScreenshot(0,0);
                 juce::AudioBuffer<float> probe(2,512);juce::MidiBuffer midi;
                 std::uint64_t previousFingerprint=0;int changedFrames=0;
+                std::array<double,40> updateMs{},paintMs{};
                 for(int frame=0;frame<64;++frame){
                     for(int block=0;block<3;++block){
                         if(!stage)processor.requestSlotVisual(0);
@@ -748,9 +751,14 @@ int main(int argc, char** argv) {
                         }
                         processor.processBlock(probe,midi);
                     }
+                    const auto updateStart=std::chrono::steady_clock::now();
                     if(stage)editor.updateStageForScreenshot(frame*32.);else editor.updateLiveVisualForScreenshot();
+                    const auto paintStart=std::chrono::steady_clock::now();
                     if(frame<24)continue; // warm the real analysis history before recording
                     const auto shot=skellcore::ui::headless::capture(editor,1168,688);
+                    const auto paintEnd=std::chrono::steady_clock::now();
+                    updateMs[(size_t)(frame-24)]=std::chrono::duration<double,std::milli>(paintStart-updateStart).count();
+                    paintMs[(size_t)(frame-24)]=std::chrono::duration<double,std::milli>(paintEnd-paintStart).count();
                     if(!shot.image.isValid() || !skellcore::ui::headless::writePng(shot.image,motionFolder.getChildFile(juce::String(frame-24).paddedLeft('0',3)+".png"))){++failures;continue;}
                     // Sample the actual moving surface densely, not a sparse
                     // whole-window fingerprint dominated by static chrome.
@@ -763,6 +771,10 @@ int main(int argc, char** argv) {
                     previousFingerprint=visualFingerprint;
                 }
                 std::printf("Motion %s: %d/39 adjacent frames changed\n",view.first,changedFrames);
+                std::array<double,40> totalMs{};for(size_t i=0;i<totalMs.size();++i)totalMs[i]=updateMs[i]+paintMs[i];
+                const auto report=[](auto values){std::sort(values.begin(),values.end());return std::array<double,3>{(values[19]+values[20])*.5,values[37],values.back()};};
+                const auto u=report(updateMs),p=report(paintMs),t=report(totalMs);
+                std::printf("Perf %s: update p50 %.3f p95 %.3f; paint p50 %.3f p95 %.3f; total p50 %.3f p95 %.3f max %.3f ms\n",view.first,u[0],u[1],p[0],p[1],t[0],t[1],t[2]);
                 if(changedFrames<30)++failures;
             }
             processor.requestSlotVisual(-1);processor.loadFactoryPreset(0);

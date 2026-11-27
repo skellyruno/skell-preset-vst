@@ -23,7 +23,7 @@ public:
     void draw(juce::Graphics& g,float originX,float originY,float scale,
               float activity,float phase,float vocal=-1.f) const {
         const float react=juce::jlimit(0.f,1.f,activity);
-        const float sway=std::sin(phase*.62f);
+        const float sway=.72f*std::sin(phase*.62f)+.28f*std::sin(phase*.39f+1.4f);
         const float beat=std::sin(phase*1.45f);
         const float breath=juce::jlimit(0.f,1.f,vocal<0.f?react:vocal);
         // Mouth opening follows measured vocal energy rather than a timed
@@ -43,8 +43,10 @@ public:
 
         // Tapered capsule between two joint centres. The gradient runs across
         // the bone, so every limb reads as a cylinder lit from the upper left.
+        juce::Graphics* boneTarget=&g;
         auto limb=[&](float x0,float y0,float r0,float x1,float y1,float r1,
                       float gloss) {
+            auto& bone=*boneTarget;
             const float dx=x1-x0,dy=y1-y0;
             const float len=juce::jmax(.001f,std::sqrt(dx*dx+dy*dy));
             const float nx=-dy/len,ny=dx/len;
@@ -72,25 +74,25 @@ public:
                 stone.interpolatedWith(cool,.12f).withAlpha(gloss),mx+nx*mr,my+ny*mr,false);
             marrow.addColour(.26,ivory.withAlpha(gloss));
             marrow.addColour(.56,ivory.interpolatedWith(stone,.34f).withAlpha(gloss));
-            g.setGradientFill(marrow);g.fillPath(p);
+            bone.setGradientFill(marrow);bone.fillPath(p);
             if(len>18.f && r0>2.8f){
-                juce::Graphics::ScopedSaveState texture(g);g.reduceClipRegion(p);
+                juce::Graphics::ScopedSaveState texture(bone);bone.reduceClipRegion(p);
                 // Sparse deterministic cortical pitting and irregular end
                 // shadows: no new image allocation or random state per frame.
                 for(int mark=0;mark<14;++mark){
                     const float u=.10f+.80f*(float)((mark*37)%101)/100.f;
                     const float v=((float)((mark*19)%29)/28.f-.5f)*mr*1.5f;
-                    g.setColour((mark%4==0?ivory:ink).withAlpha(.06f+.025f*(mark%3)));
-                    g.fillEllipse(x0+dx*u+nx*v,y0+dy*u+ny*v,.65f+mr*.10f,.65f+mr*.13f);
+                    bone.setColour((mark%4==0?ivory:ink).withAlpha(.06f+.025f*(mark%3)));
+                    bone.fillEllipse(x0+dx*u+nx*v,y0+dy*u+ny*v,.65f+mr*.10f,.65f+mr*.13f);
                 }
             }
-            g.setColour(ink.withAlpha(.58f));
-            g.strokePath(p,juce::PathStrokeType(juce::jmax(.45f,r1*.16f)));
+            bone.setColour(ink.withAlpha(.58f));
+            bone.strokePath(p,juce::PathStrokeType(juce::jmax(.45f,r1*.16f)));
             if(r1>1.2f){
-                g.setColour(alive.withAlpha(.025f+.07f*react));
-                g.drawLine(x0+nx*r0*.72f,y0+ny*r0*.72f,x1+nx*r1*.72f,y1+ny*r1*.72f,juce::jmax(.5f,r1*.20f));
-                g.setColour(ivory.withAlpha(.09f*gloss+.02f));
-                g.drawLine(x0-nx*r0*.40f,y0-ny*r0*.40f,
+                bone.setColour(alive.withAlpha(.025f+.07f*(boneTarget==&g?react:0.f)));
+                bone.drawLine(x0+nx*r0*.72f,y0+ny*r0*.72f,x1+nx*r1*.72f,y1+ny*r1*.72f,juce::jmax(.5f,r1*.20f));
+                bone.setColour(ivory.withAlpha(.09f*gloss+.02f));
+                bone.drawLine(x0-nx*r0*.40f,y0-ny*r0*.40f,
                            x1-nx*r1*.40f,y1-ny*r1*.40f,
                            juce::jmax(.45f,juce::jmin(r0,r1)*.32f));
             }
@@ -98,14 +100,15 @@ public:
         // Joint spheres are kept below the radius of the shaft they cap, so the
         // silhouette stays continuous instead of turning into a bead chain.
         auto joint=[&](float x,float y,float r,float gloss) {
-            g.setGradientFill(juce::ColourGradient(
+            auto& bone=*boneTarget;
+            bone.setGradientFill(juce::ColourGradient(
                 ivory.withAlpha(gloss*.86f),x-r*.5f,y-r*.6f,
                 stone.withAlpha(gloss*.62f),x+r*.6f,y+r*.65f,false));
-            g.fillEllipse(x-r,y-r,r*2.f,r*2.f);
-            g.setColour(ink.withAlpha(.62f));
-            g.drawEllipse(x-r,y-r,r*2.f,r*2.f,juce::jmax(.5f,r*.16f));
-            g.setColour(ivory.withAlpha(.20f*gloss+.03f));
-            g.fillEllipse(x-r*.50f,y-r*.62f,r*.48f,r*.44f);
+            bone.fillEllipse(x-r,y-r,r*2.f,r*2.f);
+            bone.setColour(ink.withAlpha(.62f));
+            bone.drawEllipse(x-r,y-r,r*2.f,r*2.f,juce::jmax(.5f,r*.16f));
+            bone.setColour(ivory.withAlpha(.20f*gloss+.03f));
+            bone.fillEllipse(x-r*.50f,y-r*.62f,r*.48f,r*.44f);
         };
 
         // ---- Contact shadow, then a lit apron under the feet. Without these
@@ -118,6 +121,12 @@ public:
             ink.withAlpha(0.f),151.f,352.f,false));
         g.fillEllipse(96.f,353.f,112.f,17.f);
 
+        // Fixed weight-bearing anatomy: cached as a compact model-space plate.
+        // The moving ribs, upper limbs, head, jaw and cable are still vectors.
+        if(!lowerBody.isValid() || lowerTheme!=Theme::current){
+            lowerBody=juce::Image(juce::Image::ARGB,176,212,true);lowerTheme=Theme::current;
+            juce::Graphics lowerArt(lowerBody);lowerArt.addTransform(juce::AffineTransform::translation(-65.f,-166.f));
+            boneTarget=&lowerArt;
         // ---- Legs. Weight carried on the left leg, right leg planted a little
         // wider, which gives the pose a working stance instead of a mannequin.
         // Shafts first, then small caps at the actual articulations.
@@ -127,16 +136,16 @@ public:
         joint(169.f,213.f,5.9f,.88f);
         // Knees are a single wide condyle mass, not a pair of beads.
         auto condyle=[&](float x,float y,float w,float h,float gloss){
-            g.setGradientFill(juce::ColourGradient(
+            lowerArt.setGradientFill(juce::ColourGradient(
                 ivory.withAlpha(gloss*.90f),x-w*.22f,y-h*.58f,
                 stone.withAlpha(gloss*.66f),x+w*.36f,y+h*.55f,false));
-            g.fillEllipse(x-w*.5f,y-h*.5f,w,h);
-            g.setColour(ink.withAlpha(.62f));
-            g.drawEllipse(x-w*.5f,y-h*.5f,w,h,juce::jmax(.5f,h*.12f));
-            g.setColour(ivory.withAlpha(.22f));
-            g.fillEllipse(x-w*.30f,y-h*.42f,w*.34f,h*.30f);
-            g.setColour(ink.withAlpha(.34f));
-            g.drawLine(x-w*.26f,y+h*.12f,x+w*.26f,y+h*.12f,.9f);
+            lowerArt.fillEllipse(x-w*.5f,y-h*.5f,w,h);
+            lowerArt.setColour(ink.withAlpha(.62f));
+            lowerArt.drawEllipse(x-w*.5f,y-h*.5f,w,h,juce::jmax(.5f,h*.12f));
+            lowerArt.setColour(ivory.withAlpha(.22f));
+            lowerArt.fillEllipse(x-w*.30f,y-h*.42f,w*.34f,h*.30f);
+            lowerArt.setColour(ink.withAlpha(.34f));
+            lowerArt.drawLine(x-w*.26f,y+h*.12f,x+w*.26f,y+h*.12f,.9f);
         };
         condyle(124.f,289.f,13.5f,11.f,.90f);
         condyle(195.f,286.f,13.f,10.5f,.90f);
@@ -175,36 +184,36 @@ public:
                 wing.cubicTo(151.f+s*7.f,202.f,151.f+s*6.f,191.f,
                              151.f+s*6.f,181.f);
                 wing.closeSubPath();
-                g.setGradientFill(juce::ColourGradient(
+                lowerArt.setGradientFill(juce::ColourGradient(
                     ivory.withAlpha(.80f),151.f+s*12.f,179.f,
                     stone.withAlpha(.54f),151.f+s*31.f,211.f,false));
-                g.fillPath(wing);
+                lowerArt.fillPath(wing);
                 juce::Path iliacFossa;
                 iliacFossa.startNewSubPath(151.f+s*10.f,182.f);
                 iliacFossa.cubicTo(151.f+s*20.f,177.f,151.f+s*28.f,184.f,151.f+s*25.f,191.f);
                 iliacFossa.quadraticTo(151.f+s*17.f,199.f,151.f+s*10.f,182.f);
                 iliacFossa.closeSubPath();
-                g.setGradientFill(juce::ColourGradient(ink.withAlpha(.38f),151.f+s*12.f,181.f,stone.withAlpha(.04f),151.f+s*28.f,196.f,false));
-                g.fillPath(iliacFossa);
-                g.setColour(ink.withAlpha(.66f));
-                g.strokePath(wing,juce::PathStrokeType(.9f));
+                lowerArt.setGradientFill(juce::ColourGradient(ink.withAlpha(.38f),151.f+s*12.f,181.f,stone.withAlpha(.04f),151.f+s*28.f,196.f,false));
+                lowerArt.fillPath(iliacFossa);
+                lowerArt.setColour(ink.withAlpha(.66f));
+                lowerArt.strokePath(wing,juce::PathStrokeType(.9f));
                 // Bright iliac crest along the top of each wing.
                 juce::Path crest;
                 crest.startNewSubPath(151.f+s*7.f,181.f);
                 crest.cubicTo(151.f+s*20.f,176.f,151.f+s*31.f,183.f,
                               151.f+s*31.f,194.f);
-                g.setColour(ivory.withAlpha(.34f));
-                g.strokePath(crest,juce::PathStrokeType(2.f,
+                lowerArt.setColour(ivory.withAlpha(.34f));
+                lowerArt.strokePath(crest,juce::PathStrokeType(2.f,
                     juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
                 // Obturator foramen: a slot low on the wing, angled outward,
                 // which reads as pelvic anatomy instead of a round eye.
-                juce::Graphics::ScopedSaveState hole(g);
-                g.addTransform(juce::AffineTransform::rotation(
+                juce::Graphics::ScopedSaveState hole(lowerArt);
+                lowerArt.addTransform(juce::AffineTransform::rotation(
                     s*.30f,151.f+s*17.f,204.f));
-                g.setColour(ink.withAlpha(.92f));
-                g.fillRoundedRectangle(151.f+s*13.f,199.f,9.f,12.f,4.f);
-                g.setColour(stone.withAlpha(.26f));
-                g.drawRoundedRectangle(151.f+s*13.f,199.f,9.f,12.f,4.f,.7f);
+                lowerArt.setColour(ink.withAlpha(.92f));
+                lowerArt.fillRoundedRectangle(151.f+s*13.f,199.f,9.f,12.f,4.f);
+                lowerArt.setColour(stone.withAlpha(.26f));
+                lowerArt.drawRoundedRectangle(151.f+s*13.f,199.f,9.f,12.f,4.f,.7f);
             }
             // Sacrum recessed between the wings, plus the coccyx tip.
             juce::Path sacrum;
@@ -214,25 +223,29 @@ public:
             sacrum.lineTo(151.f,201.f);
             sacrum.lineTo(148.f,197.f);
             sacrum.closeSubPath();
-            g.setGradientFill(juce::ColourGradient(
+            lowerArt.setGradientFill(juce::ColourGradient(
                 stone.withAlpha(.60f),146.f,183.f,
                 ink.withAlpha(.50f),156.f,200.f,false));
-            g.fillPath(sacrum);
-            g.setColour(ivory.withAlpha(.12f));
+            lowerArt.fillPath(sacrum);
+            lowerArt.setColour(ivory.withAlpha(.12f));
             for(int plate=0;plate<3;++plate)
-                g.drawLine(148.f,187.f+plate*3.4f,154.f,187.f+plate*3.4f,.7f);
+                lowerArt.drawLine(148.f,187.f+plate*3.4f,154.f,187.f+plate*3.4f,.7f);
             // Pubic arch linking the two wings across the front.
             juce::Path pubis;
             pubis.startNewSubPath(135.f,211.f);
             pubis.cubicTo(140.f,217.f,147.f,219.f,151.f,219.f);
             pubis.cubicTo(155.f,219.f,162.f,217.f,167.f,211.f);
-            g.setColour(stone.withAlpha(.54f));
-            g.strokePath(pubis,juce::PathStrokeType(2.6f,
+            lowerArt.setColour(stone.withAlpha(.54f));
+            lowerArt.strokePath(pubis,juce::PathStrokeType(2.6f,
                 juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-            g.setColour(ivory.withAlpha(.18f));
-            g.strokePath(pubis,juce::PathStrokeType(1.1f,
+            lowerArt.setColour(ivory.withAlpha(.18f));
+            lowerArt.strokePath(pubis,juce::PathStrokeType(1.1f,
                 juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         }
+
+            boneTarget=&g;
+        }
+        g.setOpacity(1.f);g.drawImageAt(lowerBody,65,166);
 
         // ---- Lumbar vertebrae, narrower than the thoracic stack above them.
         for(int v=0;v<5;++v){
@@ -502,7 +515,7 @@ public:
         {
             juce::Graphics::ScopedSaveState head(g);
             g.addTransform(juce::AffineTransform::rotation(
-                std::sin(phase*1.7f)*react*.045f,151.f,70.f)
+                (.018f+.048f*react)*std::sin(phase*.81f)+.015f*react*std::sin(phase*1.7f),151.f,70.f)
                 .followedBy(juce::AffineTransform::scale(.91f,.94f,151.f,79.f)));
             juce::Path skull;
             skull.startNewSubPath(151.f,13.f);
@@ -530,29 +543,32 @@ public:
                 g.setGradientFill(juce::ColourGradient(alive.withAlpha(.12f+.17f*breath),148.f,76.f,alive.withAlpha(0.f),148.f,48.f,false));
                 g.fillRect(127.f,46.f,49.f,32.f);
             }
-            {
-                juce::Graphics::ScopedSaveState texture(g);
-                g.reduceClipRegion(skull);
-                for(int fleck=0;fleck<112;++fleck){
+            if(!skullWeathering.isValid() || skullTheme!=Theme::current){
+                skullWeathering=juce::Image(juce::Image::ARGB,108,130,true);skullTheme=Theme::current;
+                juce::Graphics art(skullWeathering);
+                art.addTransform(juce::AffineTransform::translation(-124.f,-10.f).scaled(2.f));
+                art.reduceClipRegion(skull);
+                for(int fleck=0;fleck<156;++fleck){
                     const float x=126.f+(float)((fleck*43)%50);
                     const float y=16.f+(float)((fleck*61)%58);
-                    g.setColour((fleck%3==0?ink:ivory).withAlpha(.065f));
-                    g.fillEllipse(x,y,.9f+(fleck%3)*.35f,.65f+(fleck%2)*.35f);
+                    art.setColour((fleck%3==0?ink:ivory).withAlpha(.065f));
+                    art.fillEllipse(x,y,.9f+(fleck%3)*.35f,.65f+(fleck%2)*.35f);
                 }
                 // Bone planes and porous weathering, not flat white plastic.
-                g.setGradientFill(juce::ColourGradient(juce::Colour(0xffb6a48e).withAlpha(.24f),142.f,20.f,ink.withAlpha(0.f),154.f,39.f,true));
-                g.fillRect(127.f,13.f,48.f,50.f);
-                for(int stain=0;stain<16;++stain){const float x=130.f+(float)((stain*19)%43),y=19.f+(float)((stain*13)%49);g.setColour(stone.withAlpha(.08f));g.fillEllipse(x,y,1.4f+(stain%3)*.4f,2.5f);}
+                art.setGradientFill(juce::ColourGradient(juce::Colour(0xffb6a48e).withAlpha(.24f),142.f,20.f,ink.withAlpha(0.f),154.f,39.f,true));
+                art.fillRect(127.f,13.f,48.f,50.f);
+                for(int stain=0;stain<16;++stain){const float x=130.f+(float)((stain*19)%43),y=19.f+(float)((stain*13)%49);art.setColour(stone.withAlpha(.08f));art.fillEllipse(x,y,1.4f+(stain%3)*.4f,2.5f);}
                 // Temporal fossa shading pulls the cranium into a skull.
-                g.setGradientFill(juce::ColourGradient(
+                art.setGradientFill(juce::ColourGradient(
                     ink.withAlpha(.28f),127.f,42.f,
                     ink.withAlpha(0.f),140.f,58.f,false));
-                g.fillRect(125.f,36.f,20.f,26.f);
-                g.setGradientFill(juce::ColourGradient(
+                art.fillRect(125.f,36.f,20.f,26.f);
+                art.setGradientFill(juce::ColourGradient(
                     ink.withAlpha(.24f),175.f,42.f,
                     ink.withAlpha(0.f),162.f,58.f,true));
-                g.fillRect(157.f,36.f,20.f,26.f);
+                art.fillRect(157.f,36.f,20.f,26.f);
             }
+            g.setOpacity(1.f);g.drawImageTransformed(skullWeathering,juce::AffineTransform::scale(.5f).translated(124.f,10.f));
             // Forehead and cheekbone planes.
             juce::Path forehead;
             forehead.startNewSubPath(133.f,32.f);
@@ -649,12 +665,12 @@ public:
             g.setColour(ink.withAlpha(.64f));
             g.strokePath(jaw,juce::PathStrokeType(.9f));
             for(int tooth=0;tooth<8;++tooth) {
-                const float x=139.4f+3.f*tooth;
+                const float x=139.4f+3.f*tooth+((tooth%3)-1)*.16f;
                 const float edge=std::abs((float)tooth-3.5f)/3.5f;
-                const float top=64.f+edge*.45f;
+                const float top=64.f+edge*.62f+(tooth%2)*.17f;
                 const float lower=70.1f+jawDrop-edge*1.35f;
                 g.setGradientFill(juce::ColourGradient(ivory,x,top,stone,x+2.65f,top+4.8f,false));
-                g.fillRoundedRectangle(x,top,2.65f,4.8f-edge*.8f,.65f);
+                g.fillRoundedRectangle(x,top,2.55f+(tooth%3)*.12f,4.8f-edge*.9f-(tooth%2)*.27f,.55f);
                 g.setGradientFill(juce::ColourGradient(ivory.withAlpha(.84f),x,lower,
                                                         stone,x+2.65f,lower+3.5f,false));
                 g.fillRoundedRectangle(x,lower,2.65f,3.5f,.60f);
@@ -687,5 +703,8 @@ public:
         g.drawLine(120.f,216.f,124.f,282.f,.9f);
         g.drawLine(180.f,215.f,192.f,280.f,.9f);
     }
+private:
+    mutable juce::Image skullWeathering,lowerBody;
+    mutable int skullTheme=-1,lowerTheme=-1;
 };
 } // namespace skellpreset::stage

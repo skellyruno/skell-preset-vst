@@ -148,9 +148,9 @@ bool PresetBrowser::testViewSwitchForTest() {
     artRow->setProperty("sha256",digest);
     artRow->setProperty("payload",juce::Base64::toBase64(png.getData(),png.getDataSize()));
     juce::var rowVar(artRow);
-    auto* bank=new juce::DynamicObject;
-    juce::var bankVar(bank);
-    bank->setProperty("artwork",juce::Array<juce::var>{rowVar});
+    auto* artworkBank=new juce::DynamicObject;
+    juce::var bankVar(artworkBank);
+    artworkBank->setProperty("artwork",juce::Array<juce::var>{rowVar});
     const auto cache=skellpreset::artistart::decode(bankVar,{});
     ok=ok && written && cache.size()==1;
     if(cache.size()==1){
