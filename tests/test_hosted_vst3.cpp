@@ -83,6 +83,23 @@ int main(int argc,char** argv) {
     skellpreset::host::HostedVST3 host;
     const juce::File fixture(juce::String::fromUTF8(argv[1]));
     using Host=skellpreset::host::HostedVST3;
+    // The real public scan/load entry points must reject unsafe names before
+    // attempting to open a DLL, even when the saved path no longer exists.
+    // Normal effects must remain eligible for the actual fixture load below.
+    for(const auto* name:{"FloopHole.vst3","Floop-Hole.vst3","FLOOP_HOLE.vst3","Skell Preset.vst3"}) {
+        const auto path=fixture.getSiblingFile(name);
+        const auto safety=skellpreset::host::nestedHostSafety(path.getFileNameWithoutExtension());
+        std::vector<Host::EffectChoice> blocked;
+        const auto scan=Host::inspectEffects(path,blocked);
+        const auto load=host.load(0,path,48000.,512);
+        if(safety.wasOk() || scan.getErrorMessage()!=safety.getErrorMessage()
+           || load.getErrorMessage()!=safety.getErrorMessage() || !blocked.empty() || host.get(0)) {
+            std::fprintf(stderr,"Unsafe nested bundle preflight failed: %s\n",name);
+            return 21;
+        }
+    }
+    if(skellpreset::host::nestedHostSafety("SkellyTune").failed() ||
+       skellpreset::host::nestedHostSafety("Owned fixture").failed())return 22;
     juce::OwnedArray<juce::PluginDescription> catalog;
     for(int i=0;i<3;++i){
         auto* d=catalog.add(new juce::PluginDescription());

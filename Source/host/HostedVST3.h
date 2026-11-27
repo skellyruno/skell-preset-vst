@@ -20,6 +20,17 @@ inline bool isSkellPresetProductName(juce::String name) {
     return name.removeCharacters(" -_\t").containsIgnoreCase("skellpreset");
 }
 
+// A known FL-native bridge froze the parent FL Studio when hosted in-process.
+// This is a conservative name-based preflight, not a binary sandbox. Do not
+// scan or instantiate the recognized bundle, including during project recall.
+inline juce::Result nestedHostSafety(juce::String name) {
+    if(isSkellPresetProductName(name))
+        return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
+    if(name.removeCharacters(" -_.\t").containsIgnoreCase("floophole"))
+        return juce::Result::fail("FloopHole is blocked in the in-process rack (FL Studio hang risk)");
+    return juce::Result::ok();
+}
+
 // A read-only transport snapshot for third-party effects. Only the audio thread
 // updates/reads this object while the nested plugin processes its block.
 // Never keep the DAW's ephemeral AudioPlayHead pointer beyond its callback.
@@ -111,17 +122,17 @@ public:
     }
     static juce::Result inspectEffects(const juce::File& path,std::vector<EffectChoice>& choices) {
         choices.clear();
+        const auto safety=nestedHostSafety(path.getFileNameWithoutExtension());
+        if(safety.failed())return safety;
        #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
         if(!path.exists() || !path.hasFileExtension("vst3"))
             return juce::Result::fail("Choose an installed .vst3 bundle");
-        if(isSkellPresetProductName(path.getFileNameWithoutExtension()))
-            return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
         juce::OwnedArray<juce::PluginDescription> descriptions;
         juce::VST3PluginFormat scanner;
         scanner.findAllTypesForFile(descriptions,path.getFullPathName());
         for(auto* d:descriptions){
-            if(d->isInstrument || isSkellPresetProductName(d->name) ||
-               isSkellPresetProductName(d->descriptiveName))continue;
+            if(d->isInstrument || nestedHostSafety(d->name).failed() ||
+               nestedHostSafety(d->descriptiveName).failed())continue;
             const auto key=classKey(*d);
             if(key.isEmpty() || chooseEffect(descriptions,key)!=d)continue;
             choices.push_back({key,d->name.isNotEmpty()?d->name:d->descriptiveName,d->manufacturerName,*d});
@@ -158,6 +169,8 @@ public:
     juce::Result load(int slot,const juce::File& path,double sr,int block,
                       const juce::String& identifier={},const juce::PluginDescription* scanned=nullptr) {
         if(!valid(slot))return juce::Result::fail("Invalid rack slot");
+        const auto safety=nestedHostSafety(path.getFileNameWithoutExtension());
+        if(safety.failed())return safety;
         std::lock_guard<std::mutex> lock(lifecycle);
         reclaimRetiredLocked();
        #if JUCE_WINDOWS && JUCE_PLUGINHOST_VST3
@@ -181,17 +194,17 @@ public:
         if(!chosen)return juce::Result::fail(identifier.isNotEmpty()?
             "Saved effect class unavailable or ambiguous; no substitute was loaded.":
             "An audio VST3 effect is required (not an instrument)");
-        if(isSkellPresetProductName(chosen->name)
-           || isSkellPresetProductName(chosen->descriptiveName)
-           || isSkellPresetProductName(path.getFileNameWithoutExtension()))
-            return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
+        const auto productSafety=nestedHostSafety(chosen->name);
+        if(productSafety.failed())return productSafety;
+        const auto descriptionSafety=nestedHostSafety(chosen->descriptiveName);
+        if(descriptionSafety.failed())return descriptionSafety;
         juce::String error;
         auto instance=formats.createPluginInstance(*chosen,std::max(sr,8000.),
                                                    std::max(block,64),error);
         if(!instance)return juce::Result::fail("Instantiate "+chosen->name+" / "+chosen->manufacturerName+": "+
             (error.isNotEmpty()?error:juce::String("Could not instantiate VST3")));
-        if(isSkellPresetProductName(instance->getName()))
-            return juce::Result::fail("Recursive hosting of Skell-Preset is disabled");
+        const auto instanceSafety=nestedHostSafety(instance->getName());
+        if(instanceSafety.failed())return instanceSafety;
         const auto buses=configureMainStereoBuses(*instance);
         if(buses.failed())return juce::Result::fail("Bus negotiation for "+chosen->name+": "+buses.getErrorMessage());
         instance->setPlayHead(&transport); // stable, owned copy of DAW timing
