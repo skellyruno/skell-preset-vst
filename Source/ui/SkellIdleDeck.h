@@ -334,34 +334,43 @@ public:
             juce::Graphics::ScopedSaveState boards(g);g.reduceClipRegion(stageBounds.toNearestInt());
             const float u=stage.scale,half=juce::jmin(stageBounds.getWidth()*.39f,350.f*u);
             const float back=feetY-39.f*u,front=feetY+5.f*u;
-            juce::Path deck;deck.startNewSubPath(centreX-half*.74f,back);deck.lineTo(centreX+half*.74f,back);
-            deck.lineTo(centreX+half,front);deck.lineTo(centreX-half,front);deck.closeSubPath();
-            g.setGradientFill(juce::ColourGradient(juce::Colour(0xff283339),centreX,back,juce::Colour(0xff0b1114),centreX,front,false));g.fillPath(deck);
-            g.setColour(juce::Colour(0xff526361).withAlpha(.43f));g.strokePath(deck,juce::PathStrokeType(.85f*u));
-            // Broken damp stone joints, visible only inside the raised deck.
-            {juce::Graphics::ScopedSaveState texture(g);g.reduceClipRegion(deck);
-                for(int n=0;n<70;++n){const float fx=(float)((n*37+11)%101)/101.f,fy=(float)((n*53+7)%97)/97.f;
-                    const float y=back+(front-back)*fy,x=centreX-half+2.f*half*fx;
-                    g.setColour((n%4?juce::Colour(0xff77857f):juce::Colour(0xff060b0d)).withAlpha(.045f+.07f*fy));
-                    g.drawLine(x,y,x+(3.f+(n%7)*1.7f)*u,y+((n%3)-1)*.6f*u,.65f*u);
+            const juce::Rectangle<float> geometry(centreX-half,back,2.f*half,front-back);
+            const auto imageBounds=geometry.expanded(2.f*u,2.f*u).withBottom(front+10.f*u).getSmallestIntegerContainer();
+            if(!floorPlate.isValid()||floorGeometry!=geometry||floorScale!=u||floorTheme!=Theme::current){
+                floorGeometry=geometry;floorScale=u;floorTheme=Theme::current;
+                floorPlate=juce::Image(juce::Image::ARGB,imageBounds.getWidth(),imageBounds.getHeight(),true);
+                juce::Graphics art(floorPlate);
+                art.addTransform(juce::AffineTransform::translation(-(float)imageBounds.getX(),-(float)imageBounds.getY()));
+                juce::Path deck;deck.startNewSubPath(centreX-half*.74f,back);deck.lineTo(centreX+half*.74f,back);
+                deck.lineTo(centreX+half,front);deck.lineTo(centreX-half,front);deck.closeSubPath();
+                art.setGradientFill(juce::ColourGradient(juce::Colour(0xff283339),centreX,back,juce::Colour(0xff0b1114),centreX,front,false));art.fillPath(deck);
+                art.setColour(juce::Colour(0xff526361).withAlpha(.43f));art.strokePath(deck,juce::PathStrokeType(.85f*u));
+                // Broken damp stone joints, visible only inside the raised deck.
+                {juce::Graphics::ScopedSaveState texture(art);art.reduceClipRegion(deck);
+                    for(int n=0;n<70;++n){const float fx=(float)((n*37+11)%101)/101.f,fy=(float)((n*53+7)%97)/97.f;
+                        const float y=back+(front-back)*fy,x=centreX-half+2.f*half*fx;
+                        art.setColour((n%4?juce::Colour(0xff77857f):juce::Colour(0xff060b0d)).withAlpha(.045f+.07f*fy));
+                        art.drawLine(x,y,x+(3.f+(n%7)*1.7f)*u,y+((n%3)-1)*.6f*u,.65f*u);
+                    }
                 }
+                // Thin stage apron and inset bolts make the floor a physical deck.
+                art.setGradientFill(juce::ColourGradient(juce::Colour(0xff344047),centreX,front,juce::Colour(0xff080e12),centreX,front+9.f*u,false));
+                art.fillRect(centreX-half,front,half*2.f,8.f*u);
+                for(int i=0;i<9;++i){const float x=centreX-half+(i+.5f)*half*2.f/9.f;art.setColour(juce::Colour(0xff74847e).withAlpha(.47f));art.fillEllipse(x-1.1f*u,front+2.9f*u,2.2f*u,2.2f*u);}
+                for(int k=-4;k<=4;++k){art.setColour(Theme::white.withAlpha(.025f));art.drawLine(centreX+k*half*.16f,back,centreX+k*half*.22f,front,.8f*u);}
             }
-            // Thin stage apron and inset bolts make the floor a physical deck.
-            g.setGradientFill(juce::ColourGradient(juce::Colour(0xff344047),centreX,front,juce::Colour(0xff080e12),centreX,front+9.f*u,false));
-            g.fillRect(centreX-half,front,half*2.f,8.f*u);
-            for(int i=0;i<9;++i){const float x=centreX-half+(i+.5f)*half*2.f/9.f;g.setColour(juce::Colour(0xff74847e).withAlpha(.47f));g.fillEllipse(x-1.1f*u,front+2.9f*u,2.2f*u,2.2f*u);}
-            for(int k=-4;k<=4;++k){g.setColour(Theme::white.withAlpha(.025f));g.drawLine(centreX+k*half*.16f,back,centreX+k*half*.22f,front,.8f*u);}
+            g.setOpacity(1.f);
+            g.drawImageAt(floorPlate,imageBounds.getX(),imageBounds.getY());
             for(int i=0;i<18;++i){
                 const float x=centreX-half+(i+.5f)*2.f*half/18.f;
                 const float v=live?stageBands[(size_t)(i*2)]:0.f;
                 g.setColour(accent.withAlpha(.025f+.35f*v*lightEnergy));g.fillEllipse(x-1.7f*u,front-2.f*u,3.4f*u,1.8f*u);
             }
         }
-        // Low mist is a soft gradient, not a large animated texture.
-        g.setGradientFill(juce::ColourGradient(
-            Theme::muted.withAlpha(.045f+.035f*activity),centreX,feetY-18.f*stage.scale,
-            Theme::bg.withAlpha(0.f),centreX,feetY-58.f*stage.scale,false));
-        g.fillRect(stageBounds.getX(),feetY-58.f*stage.scale,stageBounds.getWidth(),58.f*stage.scale);
+        // Feather the low mist on both axes instead of drawing a strip
+        // with a visible straight top or bottom edge.
+        skellpreset::stage::Backdrop::softMist(g,centreX,feetY-16.f*stage.scale,
+            stageBounds.getWidth()*.52f,33.f*stage.scale,Theme::muted,.045f+.035f*activity);
         // Restrained floor reflections and soft contact shadow.
         // Static set dressing, with brightness driven by real audio.
         for(int i=0;i<5;++i){
@@ -563,6 +572,12 @@ public:
                                 if(d>.001f){bx=ax+dx*len/d;by=ay+dy*len/d;}
                             };
                             extend(sx,shoulderY,ex,ey,upper);extend(ex,ey,hx,hy,lower);
+                            // Conservative bounds include stroke, fingers and
+                            // phone halo. Skip only fully clipped gestures.
+                            const float margin=juce::jmax(8.f,ry*4.f);
+                            if(std::min({shoulderY,ey,hy})-margin>pitBottom ||
+                               std::max({sx,ex,hx})+margin<stageBounds.getX() ||
+                               std::min({sx,ex,hx})-margin>stageBounds.getRight())continue;
                             g.setColour(bodyColour);
                             g.drawLine(sx,shoulderY,ex,ey,armW+2.2f);
                             g.drawLine(ex,ey,hx,hy,armW+2.2f);
@@ -787,6 +802,10 @@ private:
         if(stage.valid)micMatch.setBounds(skellpreset::stage::Performer::microphoneHitBounds(stage.originX,stage.originY,stage.scale,hasAudibleOutput()?activityLevel:0.f,crowdPhase).getIntersection(getLocalBounds()));
     }
     SkellStageBeam softBeam;
+    juce::Image floorPlate;
+    juce::Rectangle<float> floorGeometry;
+    float floorScale=-1.f;
+    int floorTheme=-1;
     skellpreset::stage::Backdrop backdrop;
     skellpreset::stage::Performer performer;
     SkellPresetAudioProcessor& processor;

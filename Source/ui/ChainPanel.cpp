@@ -140,7 +140,12 @@ namespace {void drawIcon(juce::Graphics&g,int type,int pixelX,int pixelY) {
         p.startNewSubPath(x+1,y+8.5f);p.lineTo(x+8,y+8.5f);p.startNewSubPath(x+15,y+8.5f);p.lineTo(x+22,y+8.5f);
     } else if(type==M::PhaseRotationFX){p.addCentredArc(x+11.5f,y+8.f,8.f,6.f,0.f,.4f,5.5f,true);p.lineTo(x+6,y+1);p.startNewSubPath(x+11.5f,y+8);p.lineTo(x+17,y+4);}
     else if(type!=SkellPresetAudioProcessor::Empty){p.startNewSubPath((float)x,(float)y+13);p.lineTo((float)x+7,(float)y+4);p.lineTo((float)x+14,(float)y+13);p.lineTo((float)x+22,(float)y+4);}
-    g.strokePath(p,juce::PathStrokeType(1.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+    // Fit the actual glyph bounds into one compact optical cell. Uniform
+    // scaling preserves the distinct silhouettes, including tall/narrow icons.
+    if(!p.isEmpty()){
+        p.applyTransform(p.getTransformToScaleToFit(x,y,15.5f,11.5f,true));
+        g.strokePath(p,juce::PathStrokeType(1.18f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+    }
 }}
 ChainPanel::ChainPanel(SkellPresetAudioProcessor& p):processor(p) {
     setWantsKeyboardFocus(true);
@@ -372,12 +377,9 @@ void ChainPanel::paint(juce::Graphics& g) {
             // Cable endpoint is the indicator; leave room for direct remove.
         }
         // Thin bone engraving on each module face; no generic FL clone art.
-        {
-            juce::Graphics::ScopedSaveState icon(g);
-            g.addTransform(juce::AffineTransform::translation(-51.f,-(float)(top+10))
-                .scaled(.78f,.86f).translated(53.f,(float)(top+12)));
-            drawIcon(g,type,51,top+10);
-        }
+        // Smaller artwork only: row, wet trim, power and removal hit
+        // targets keep their existing bounds and automation behavior.
+        drawIcon(g,type,54,top+13);
         // Always-visible direct removal target, separate from drag, wet and power.
         g.setColour(hovering?Theme::red:Theme::muted.withAlpha(.70f));
         const float crossY=(float)top+34.f;
