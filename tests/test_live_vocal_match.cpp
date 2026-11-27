@@ -31,6 +31,18 @@ int main(){
     auto dry=analyzer.result();auto result=optimize(audio,dry);
     std::cout<<"Candidates "<<result.tested<<" accepted "<<result.accepted<<" train "<<result.dryScore<<" -> "<<result.final<<" holdout "<<result.dryHoldout<<" -> "<<result.holdoutFinal<<"\n";
     if(!result.valid||result.tested!=25||result.final>result.initial||result.holdoutFinal>result.holdoutInitial+.025f)return 11;
+    // Sparse first-half vocal: keep the held-out split, extend the
+    // training phrase rather than lowering the minimum active duration.
+    Audio sparse;sparse.rate=48000.;sparse.stereo.resize(288000u*2);
+    for(size_t i=0;i<sparse.frames();++i){
+        const double time=i/sparse.rate;
+        const bool voiced=(time>=.10&&time<.54)||(time>=1.85&&time<2.29)||time>=3.;
+        const float x=voiced?.12f*(float)std::sin(1382.3*time):0.f;
+        sparse.stereo[2*i]=sparse.stereo[2*i+1]=x;
+    }
+    const auto first=selectSegment(sparse,0,sparse.frames()/2),second=selectSegment(sparse,sparse.frames()/2,sparse.frames());
+    if(first.end>second.begin||first.end-first.begin<=sparse.rate*1.5||!usableSegment(measure(sparse,first,nullptr)))return 13;
+    Profile loud=dry;loud.rmsDb=-1.f;if(!std::isfinite(targetFor(loud,nullptr).level))return 14;
     std::atomic<bool> canceled{true};if(optimize(audio,dry,nullptr,&canceled).valid)return 12;
     std::cout<<"Live vocal match capture and bounded profile decisions passed at four sample rates\n";
 }

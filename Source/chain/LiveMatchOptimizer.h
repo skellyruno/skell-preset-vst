@@ -40,17 +40,18 @@ private:
 };
 struct Segment {size_t begin=0,end=0;};
 inline Segment selectSegment(const Audio& a,size_t lo,size_t hi) noexcept {
-    // Fixed disjoint source halves. Select the window with most audible
-    // 20 ms frames, not the loudest peak. No resampling or spectral shortcut.
-    const size_t length=std::min(hi-lo,(size_t)(a.rate*1.5)),step=std::max<size_t>(1,(size_t)(a.rate*.25)),window=std::max<size_t>(1,(size_t)(a.rate*.02));
-    Segment best{lo,lo+length};size_t bestActive=0;
-    for(size_t start=lo;start+length<=hi;start+=step){
-        size_t active=0;
-        for(size_t i=start;i+window<=start+length;i+=window){
-            double energy=0.;for(size_t j=i;j<i+window;++j){const float l=a.stereo[j*2],r=a.stereo[j*2+1];energy+=.5*((double)l*l+(double)r*r);}
-            if(energy/window>=1.e-5)++active;
-        }
-        if(active>bestActive){bestActive=active;best={start,start+length};}
+    // Scan 20 ms RMS windows once; choose a short audible phrase first,
+    // then extend it for sparse performances, never cross the split.
+    const size_t window=std::max<size_t>(1,(size_t)(a.rate*.02));
+    constexpr size_t maxWindows=1001;
+    std::array<unsigned,maxWindows+1> prefix{};
+    const size_t count=std::min(maxWindows,(hi-lo)/window);
+    for(size_t i=0;i<count;++i){double energy=0.;for(size_t j=lo+i*window;j<lo+(i+1)*window;++j){const float l=a.stereo[j*2],r=a.stereo[j*2+1];energy+=.5*((double)l*l+(double)r*r);}prefix[i+1]=prefix[i]+(energy/window>=1.e-5);}
+    Segment best{lo,hi};unsigned bestActive=0;
+    for(size_t desired:{75u,125u}){
+        const size_t n=std::min(count,desired);if(!n)continue;
+        for(size_t i=0;i+n<=count;++i){const auto active=prefix[i+n]-prefix[i];if(active>bestActive){bestActive=active;best={lo+i*window,lo+(i+n)*window};}}
+        if(bestActive>=38u)break;
     }
     return best;
 }
@@ -74,7 +75,7 @@ inline Target targetFor(const Profile& dry,const Profile* ref) noexcept {
     return {ref?std::clamp(ref->lowDb,dry.lowDb-5.f,dry.lowDb+5.f):std::clamp(-8.f,dry.lowDb-4.f,dry.lowDb+3.f),
             ref?std::clamp(ref->highDb,dry.highDb-5.f,dry.highDb+5.f):std::clamp(-15.f,dry.highDb-3.f,dry.highDb+4.f),
             ref?std::clamp(ref->crest,dry.crest-5.f,dry.crest+2.f):std::min(dry.crest,12.f),
-            std::clamp(ref?ref->rmsDb:-20.f,dry.rmsDb-5.f,std::min(-9.f,dry.rmsDb+4.f))};
+            std::clamp(ref?ref->rmsDb:-20.f,std::min(dry.rmsDb-5.f,-9.f),std::min(-9.f,dry.rmsDb+4.f))};
 }
 inline float loss(const Profile& p,const Target& t) noexcept {
     if(!usableSegment(p)||p.peak>=.999f)return 1.e6f;
