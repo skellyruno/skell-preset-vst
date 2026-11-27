@@ -263,6 +263,8 @@ if(SKELL_PRESET_ALCHEMIST_RENDERER)
         COMMAND SkellPresetAlchemistRender --smoke)
     add_test(NAME SkellPresetBlankStartupStateRestore
         COMMAND SkellPresetAlchemistRender --smoke-blank)
+    add_test(NAME SkellPresetPhaseStateRecall
+        COMMAND SkellPresetAlchemistRender --phase-state-smoke)
     add_test(NAME SkellPresetStrictSlotOrderRestore
         COMMAND SkellPresetAlchemistRender --smoke-slot-order)
     add_test(NAME SkellPresetHostPercentageReadout

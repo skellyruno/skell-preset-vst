@@ -44,6 +44,8 @@ inline juce::Rectangle<int> control(int type,int index) noexcept {
         const int position=type==40?(index==3?2:index):(index==2?1:index==3?2:index);
         return {85+position*258,183,224,274};
     }
+    // Phase captions must clear the upper controls' value boxes.
+    if(type==45)return {36+(index%2)*654,164+(index/2)*190,180,152};
     // Motion and character processors: a central feedback instrument sits
     // between two pairs of large dials, rather than above a bottom control row.
     return {36+(index%2)*654,164+(index/2)*177,180,172};

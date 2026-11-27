@@ -2956,10 +2956,24 @@ int stereoSeparationSmoke() {
     return failures == 0 ? 0 : 1;
 }
 
+int phaseStateSmoke(){
+ auto p=std::make_unique<SkellPresetAudioProcessor>();
+ juce::MemoryBlock original;p->getStateInformation(original);auto xml=juce::AudioProcessor::getXmlFromBinary(original.getData(),(int)original.getSize());if(!xml)return 1;
+ auto old=juce::ValueTree::fromXml(*xml);int removed=0;for(int i=old.getNumChildren()-1;i>=0;--i)if(old.getChild(i).getProperty("id").toString().endsWith("_fxExt12")){old.removeChild(i,nullptr);++removed;}if(removed!=16)return 2;
+ const auto& parameters=p->getParameters();if(parameters.size()<16)return 3;for(int i=0;i<16;++i){auto* id=dynamic_cast<juce::AudioProcessorParameterWithID*>(parameters[parameters.size()-16+i]);if(!id||id->paramID!="s"+juce::String(i+1)+"_fxExt12")return 4;}
+ p->setSlotType(0,SkellPresetAudioProcessor::PhaseRotationFX);p->setSlotParam(0,0,.5f);p->setSlotParam(0,1,.4f);p->setSlotParam(0,2,1.f);p->setSlotParam(0,3,.5f);if(p->slotType(0)!=45)return 5;
+ p->prepareToPlay(48000,128);if(p->getLatencySamples()!=0)return 6;
+ juce::MemoryBlock phase;p->getStateInformation(phase);auto q=std::make_unique<SkellPresetAudioProcessor>();q->setStateInformation(phase.getData(),(int)phase.getSize());if(q->slotType(0)!=45)return 7;
+ const auto f=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("phase-state-qa",".skellpreset");if(p->exportPreset(f).failed())return 8;if(q->importPreset(f).failed()||q->slotType(0)!=45){f.deleteFile();return 9;}f.deleteFile();
+ juce::MemoryBlock older;juce::AudioProcessor::copyXmlToBinary(*old.createXml(),older);q->setStateInformation(older.getData(),(int)older.getSize());if(q->slotType(0)==45)return 10;
+ std::cout<<"PASS: appended 16 flags, zero latency, native package and state roundtrip, legacy state clears phase flags\n";return 0;
+}
+
 } // namespace
 
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
+    if(argc==2 && juce::String(argv[1])=="--phase-state-smoke")return phaseStateSmoke();
     if(argc==2 && juce::String(argv[1])=="--preview-smoke")return vocalPreviewSmoke();
     if(argc>=5 && argc<=7 && (juce::String(argv[1])=="--preview-starter" || juce::String(argv[1])=="--preview-preset" ||
                                 juce::String(argv[1])=="--audition-starter" || juce::String(argv[1])=="--audition-preset")){
