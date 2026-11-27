@@ -1182,7 +1182,6 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             // Gate -> Mic Mod -> Mic Preamp -> post-MIC detector / rack.
             micTube.process(frontL,frontR);
             // Real pre-rack input spectrum; no fabricated energy curves.
-            liveSpectrumInput.push(frontL,frontR);
             // Global Mix and power bypass share the same latency-aligned
             // original input; both formerly used identical independent delay
             // lines, fed the same samples and delay on every callback.
@@ -1196,6 +1195,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             externalKeyHistory.push(keyL?keyL[offset+n]:0.f,keyR?keyR[offset+n]:0.f);
             dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
         }
+        // Capture the exact post-MIC signal before any rack effect mutates it.
+        liveSpectrumInput.pushBlock(rackWork.getReadPointer(0),rackWork.getReadPointer(1),frames);
         // The rack is processed one block per stage. Hosted VST3 effects
         // receive proper blocks instead of one-sample callbacks.
         for(int pos=0;pos<chainCount;++pos) {
@@ -1259,6 +1260,11 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float saturatorBlend=.5f+c.p[1];
             const float saturatorDenom=std::max(.5f,saturatorDrive*.6f);
             const float exciterDrive=1.f+10.f*c.p[0];
+            const bool wetSidechain=supportsWetSidechain(c.type);
+            const bool wetDetector=wetSidechain && (c.duckOn || e.voiceDuck.currentGain()<.9995f);
+            // Inactive wet keys need no history reads. Preserve the ducker
+            // unity/envelope reset and continue processing the full effect tail.
+            if(wetSidechain && !wetDetector)e.voiceDuck.processGain(0.f,0.f);
             const bool genericKey=supportsEffectSidechain(c.type) && !supportsWetSidechain(c.type) && (c.duckOn || e.voiceDuck.currentGain()<1.f);
             const int ownLatency=c.type==Limiter || c.type==StudioLimiterFX?lookahead:
                 c.type==StudioPitchFormantFX?skellpreset::dsp::SpectralPitchFormant::latencySamples:0;
@@ -1270,7 +1276,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 float r=source.getSample(1,n);
                 float wetL=l,wetR=r;
                 float duckGain=1.f;
-                if(supportsWetSidechain(c.type)) {
+                if(wetDetector) {
                     // Serial keys follow the latency of all preceding slots.
                     // Parallel returns start at the post-MIC timeline; slot
                     // input is already aligned and must not be delayed again.
@@ -1492,7 +1498,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 if(c.type==AdlibDoubler || c.type==Delay || c.type==VoxRackRoom) {
                     wetL=skellpreset::dsp::duckDubReturn(wetL,duckGain);
                     wetR=skellpreset::dsp::duckDubReturn(wetR,duckGain);
-                } else if(supportsWetSidechain(c.type) && duckGain<1.f && c.type!=StudioDelayFX) {
+                } else if(wetSidechain && duckGain<1.f && c.type!=StudioDelayFX) {
                     // Treat other native effect paths as delta-from-dry.
                     // The live vocal remains unaffected by the wet return duck.
                     wetL=l+(wetL-l)*duckGain;
@@ -1602,12 +1608,12 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 dryR+(finalR-dryR)*blend;
             inL[n]=std::isfinite(outputL)?outputL:0.f;
             if(inR)inR[n]=std::isfinite(outputR)?outputR:0.f;
-            liveSpectrumOutput.push(inL[n],inR?inR[n]:inL[n]);
             outPeak=std::max(outPeak,std::max(std::abs(inL[n]),
                 inR?std::abs(inR[n]):0.f));
         }
         // Read only the processed output chunk here; the pointers above
         // are scoped to this host block and remain valid during capture.
+        liveSpectrumOutput.pushBlock(inL,inR,frames);
         liveScope.push(inL,inR,frames);
         capture.push(inL,inR,frames);
     }

@@ -110,6 +110,8 @@ struct Compressor {
         paramPole=std::exp(-1. / (sampleRate*.012));
         smoothedThreshold=threshold;smoothedRatio=ratio;smoothedMakeup=makeupDb;reset();
     }
+    double timingRate=0.,attackPole=0.,releasePole=0.;
+    float timingAttack=0.f,timingRelease=0.f;
     void reset() noexcept {envelope=0;}
     void set(float thr,float r,float attack,float release,float makeup) noexcept {
         threshold=clamp(thr,-60,0); ratio=clamp(r,1,20);attackMs=clamp(attack,.2f,200);releaseMs=clamp(release,5,2000);makeupDb=clamp(makeup,-24,24);
@@ -119,7 +121,12 @@ struct Compressor {
         smoothedRatio=paramPole*smoothedRatio+(1.-paramPole)*ratio;
         smoothedMakeup=paramPole*smoothedMakeup+(1.-paramPole)*makeupDb;
         const auto val=std::isfinite(detector)?std::min(10000.f,std::abs(detector)):0.f;
-        const auto a=std::exp(-1./(sampleRate*.001*(val>envelope?attackMs:releaseMs)));
+        if(timingRate!=sampleRate || timingAttack!=attackMs || timingRelease!=releaseMs) {
+            timingRate=sampleRate;timingAttack=attackMs;timingRelease=releaseMs;
+            attackPole=std::exp(-1./(sampleRate*.001*attackMs));
+            releasePole=std::exp(-1./(sampleRate*.001*releaseMs));
+        }
+        const auto a=val>envelope?attackPole:releasePole;
         envelope=a*envelope+(1-a)*val;
         if(envelope<1.e-20)envelope=0.; // no persistent denormal detector state
         const auto lvl=gainToDb(static_cast<float>(envelope));
@@ -135,10 +142,18 @@ struct Gate {
     float attackMs=4.f; // historical gate attack default
     int holdRemaining=0;
     bool open=false;
+    double timingRate=0.,detectPole=0.,attackPole=0.,releasePole=0.;
+    float timingAttack=0.f,timingRelease=0.f;
     void prepare(double rate) noexcept {sr=std::max(8000.,rate);envelope=0;gain=0;holdRemaining=0;open=false;}
     float processGain(float detector) noexcept {
         // Schmitt thresholds and a hold timer prevent quiet-consonant chatter.
-        const auto a=std::exp(-1./(sr*.004));
+        if(timingRate!=sr || timingAttack!=attackMs || timingRelease!=release) {
+            timingRate=sr;timingAttack=attackMs;timingRelease=release;
+            detectPole=std::exp(-1./(sr*.004));
+            attackPole=std::exp(-1./(sr*.001*(double)clamp(attackMs,.5f,25.f)));
+            releasePole=std::exp(-1./(sr*.001*(double)std::max(20.f,release)));
+        }
+        const auto a=detectPole;
         const double input=std::isfinite(detector)?std::abs((double)detector):0.;
         envelope=a*envelope+(1-a)*input;
         if(envelope<1.e-20)envelope=0.;
@@ -152,7 +167,7 @@ struct Gate {
                 open=false;
         }
         const float goal=open?1.f:0.f;
-        const auto smooth=std::exp(-1./(sr*.001*(goal>gain?(double)clamp(attackMs,.5f,25.f):(double)std::max(20.f,release))));
+        const auto smooth=goal>gain?attackPole:releasePole;
         gain=smooth*gain+(1-smooth)*goal;
         if(gain<1.e-20)gain=0.;
         return clamp((float)gain,0.f,1.f);
@@ -269,7 +284,7 @@ struct DetectorHistory {
         const auto size=data[0].size();
         const size_t age=static_cast<size_t>(frames-n)+static_cast<size_t>(std::max(0,delay));
         if(age>=size)return {0.f,0.f};
-        const size_t ix=(head+size-age)%size;
+        const size_t ix=head>=age?head-age:size-(age-head);
         return {data[0][ix],data[1][ix]};
     }
 };
