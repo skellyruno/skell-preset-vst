@@ -1,4 +1,5 @@
 #include "../Source/chain/LiveVocalMatch.h"
+#include "../Source/chain/AutoVocalMix.h"
 #include "../Source/chain/LiveMatchOptimizer.h"
 #include <iostream>
 #include <limits>
@@ -87,6 +88,20 @@ int main(){
         if(mode==2&&(found.recipe.delay.wet<=0||found.recipe.mod.wet>0||found.recipe.room.wet>0))return 28;
         if(mode==3&&(found.recipe.room.wet<=0||found.recipe.mod.wet>0||found.recipe.delay.wet>0))return 29;
     }
-    std::atomic<bool> canceled{true};if(optimize(audio,dry,nullptr,&canceled).valid)return 12;
+    int stylePasses=0;
+    for(auto style:{MixStyle::Balanced,MixStyle::Underground,MixStyle::Mainstream,MixStyle::RnB,MixStyle::Pop,MixStyle::Rap,MixStyle::Natural,MixStyle::Rock}){
+        const auto a=optimizeAutoMix(phrase,pd,style);
+        std::cout<<guideFor(style).name<<" auto mix "<<a.dryHoldout<<" -> "<<a.holdoutFinal<<" train "<<a.dryScore<<" -> "<<a.final<<" starter "<<a.holdoutInitial<<" accepted "<<a.valid<<" candidates "<<a.tested<<"\n";
+        if(a.tested>autoMixBudget)return 30;
+        if(a.valid){++stylePasses;if(a.holdoutFinal>=a.dryHoldout||a.final>=a.dryScore||a.recipe.output < -12.f||a.recipe.output >12.f)return 31;
+            const auto observed=measure(phrase,selectReferenceSegment(phrase,phrase.frames()/2,phrase.frames()),&a.recipe,nullptr,true);
+            const auto heldDry=measure(phrase,selectReferenceSegment(phrase,phrase.frames()/2,phrase.frames()),nullptr,nullptr,true);
+            if(!autoMixSafe(observed,heldDry))return 32;}
+    }
+    if(stylePasses<3)return 33;
+    const auto balanced=optimizeAutoMix(audio,dry,MixStyle::Balanced);
+    std::cout<<"Renderer fixture balanced "<<balanced.valid<<" "<<balanced.dryHoldout<<" -> "<<balanced.holdoutFinal<<"\n";
+    if(!balanced.valid)return 34;
+    std::atomic<bool> canceled{true};if(optimizeAutoMix(audio,dry,MixStyle::Pop,&canceled).valid)return 35;if(optimize(audio,dry,nullptr,&canceled).valid)return 12;
     std::cout<<"Live vocal match capture and bounded profile decisions passed at four sample rates\n";
 }

@@ -26,7 +26,7 @@ public:
     NativeCandidate(double rate,const Recipe& r,size_t startFrame=0):recipe(r) {
         const EqControls c(r);eq.prepare(rate);eq.set(c.p,c.q,c.kind,c.on);
         gate.prepare(rate);gate.threshold=-65.f;gate.release=160.f;gate.holdMs=55.f;gate.attackMs=4.f;gate.hysteresisDb=3.f;
-        const auto p=compControls(r);comp.set(-48.f+p[0]*42.f,1.f+p[1]*11.f,2.f+p[2]*98.f,20.f+p[3]*480.f,(p[4]-.5f)*24.f);comp.prepare(rate);
+        const auto cp=compControls(r);comp.set(-48.f+cp[0]*42.f,1.f+cp[1]*11.f,2.f+cp[2]*98.f,20.f+cp[3]*480.f,(cp[4]-.5f)*24.f);comp.prepare(rate);
         deess.prepare(rate);deess.set(3500.f+.35f*8000.f,-53.f+.65f*39.f,2.f+.15f*20.f,35.f+.3f*245.f);
         if(r.mod.wet>0.f){const auto& p=r.mod.p;if(r.modulation==1){chorus.prepare(rate);chorus.set(.08f+3.9f*p[0],1.f+10.f*p[1],2.f+3.f*p[2],p[3]);chorus.reset();chorus.phase=std::fmod(startFrame*(double)chorus.rate/rate,1.);}else if(r.modulation==2){flanger.prepare(rate);flanger.set(.05f+4.95f*p[0],.3f+9.f*p[1],(p[2]*2.f-1.f)*.82f,p[3]);flanger.reset();flanger.phase=std::fmod(startFrame*(double)flanger.rate/rate,1.);}}
         if(r.delay.wet>0.f){const auto& p=r.delay.p;delay.prepare(rate);delay.configure((int)(rate*(.055+.85*p[0])),p[1]*.8f,500.f+17500.f*p[2]);delay.reset();}

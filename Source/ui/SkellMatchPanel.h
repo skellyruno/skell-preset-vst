@@ -2,13 +2,13 @@
 #include "SkellActionButton.h"
 #include "SkellHubRadar.h"
 #include "SkellMatchOrb.h"
-#include "../chain/LiveVocalMatch.h"
+#include "../chain/AutoVocalMix.h"
 #include <functional>
 #include <cstdio>
 
 class SkellMatchPanel final:public juce::Component,private juce::Timer {
 public:
-    enum Phase { Listening, More, Reading, Refining, Done, Problem };
+    enum Phase { Listening, More, Reading, Refining, Done, Problem, ChooseStyle };
     SkellMatchPanel(){
         for(auto* b:{&close,&retry,&listen,&reference,&upload}){addAndMakeVisible(*b);b->setComponentID("header-control");}
         close.setButtonText(juce::String::charToString(0x00d7));close.setTooltip("Close Match");
@@ -17,11 +17,17 @@ public:
         reference.setButtonText("REFERENCE");reference.setTooltip("Choose an isolated reference vocal file");
         upload.setButtonText("DRY FILE");upload.setTooltip("Choose an isolated dry vocal file");
         close.onClick=[this]{if(onClose)onClose();};retry.onClick=[this]{if(onRetry)onRetry();};listen.onClick=[this]{if(onListen)onListen();};reference.onClick=[this]{if(onReference)onReference();};upload.onClick=[this]{if(onUpload)onUpload();};
+        for(size_t i=0;i<styleButtons.size();++i){auto& b=styleButtons[i];addAndMakeVisible(b);b.setComponentID("header-control");b.setButtonText(skellpreset::liveMatch::styleGuides[i].name);b.onClick=[this,i]{chooseStyle((int)i);};}
+        addAndMakeVisible(start);start.setComponentID("header-control");start.setButtonText("START LISTENING");start.onClick=[this]{if(onStart)onStart();};
+        chooseStyle(0);
         setTitle("Skell Match - vocal preset assistant");
         setMouseCursor(juce::MouseCursor::NormalCursor);
     }
     ~SkellMatchPanel()override{stopTimer();}
-    std::function<void()> onClose,onRetry,onListen,onReference,onUpload;
+    std::function<void()> onClose,onRetry,onListen,onReference,onUpload,onStart;
+    skellpreset::liveMatch::MixStyle selectedStyle() const noexcept {return static_cast<skellpreset::liveMatch::MixStyle>(styleIndex);}
+    bool testChooseStyle(){if(phase!=ChooseStyle||!start.isVisible())return false;chooseStyle(1);const bool ok=styleButtons[1].getToggleState()&&selectedStyle()==skellpreset::liveMatch::MixStyle::Underground;chooseStyle(0);return ok;}
+    void testStart(){if(start.isVisible()&&start.onClick)start.onClick();}
     bool hasOriginalArtwork()const noexcept{return radar.usesOriginalArt();}
     void setThemeSource(const juce::AudioProcessorValueTreeState& s) noexcept {themeSource=&s;}
     void resetPosition() noexcept {moved=false;dragging=false;}
@@ -81,6 +87,8 @@ public:
         if(phaseChanged||!initialised){
             initialised=true;
             retry.setVisible(next==Problem||next==Done);
+            for(auto& b:styleButtons)b.setVisible(next==ChooseStyle);
+            start.setVisible(next==ChooseStyle);
             listen.setVisible(next==Done);reference.setVisible(haveDry&&(next==Done||next==Problem));upload.setVisible(next!=Reading&&next!=Refining);
             listen.setToggleState(next==Done,juce::dontSendNotification);
             resized();syncAnimation();
@@ -89,6 +97,7 @@ public:
     }
     void resized()override{
         close.setBounds(scaled({562,8,28,28}));
+        if(phase==ChooseStyle){for(size_t i=0;i<styleButtons.size();++i)styleButtons[i].setBounds(scaled({263+(int)(i%2)*160,113+(int)(i/2)*27,153,24}));start.setBounds(scaled({263,230,153,30}));upload.setBounds(scaled({423,230,153,30}));return;}
         std::array<SkellActionButton*,4> buttons{{&retry,&listen,&reference,&upload}};
         int count=0;for(auto* b:buttons)if(b->isVisible())++count;
         int i=0;
@@ -127,6 +136,12 @@ public:
             const float x=201.f,y=232.f;g.setColour(Theme::bg);g.fillEllipse(x-12,y-12,24,24);g.setColour(tint);g.drawEllipse(x-12,y-12,24,24,1.3f);
             if(phase==Done){juce::Path check;check.startNewSubPath(x-5,y);check.lineTo(x-1,y+4);check.lineTo(x+6,y-5);g.strokePath(check,juce::PathStrokeType(1.9f));}
             else{g.drawLine(x,y-6,x,y+1,1.7f);g.fillEllipse(x-1,y+5,2,2);}
+        }
+        if(phase==ChooseStyle){
+            Theme::fittedText(g,"AUTO MIX / LOCAL",{14,267,222,22},11.f,tint,true,juce::Justification::centred);
+            Theme::fittedText(g,"Choose your vocal style",{263,53,313,29},19.f,Theme::white,true);
+            Theme::fittedText(g,"No reference needed. Match listens to your voice.",{263,84,313,23},12.f,Theme::muted,false);
+            Theme::fittedText(g,"REFERENCE OPTIONAL  /  NOTHING UPLOADED",{263,270,313,17},9.5f,Theme::muted,true,juce::Justification::centred);return;
         }
         Theme::fittedText(g,active?"ANALYZING SIGNAL":phase==Done?"MATCH COMPLETE":"INPUT REQUIRED",{14,267,222,22},11.f,tint,true,juce::Justification::centred);
         const char* title=phase==Done?"Your preset is ready":phase==Problem?"More information needed":phase==Refining?"Refining your preset":phase==Reading?"Analyzing vocal file":phase==More?"Keep playing your vocals":"Listening to your dry vocals";
@@ -176,6 +191,10 @@ private:
         advanceAnimation((float)juce::jlimit(0.,.1,(now-lastTime)*.001));
         lastTime=now;
     }
+    void chooseStyle(int index){styleIndex=index;for(size_t i=0;i<styleButtons.size();++i)styleButtons[i].setToggleState((int)i==styleIndex,juce::dontSendNotification);repaint();}
+    int styleIndex=0;
+    std::array<SkellActionButton,8> styleButtons;
+    SkellActionButton start;
     Phase phase=Listening;juce::String message;float fraction=0,energy=0,rotation=0,smoothedEnergy=0;
     bool initialised=false,dryAvailable=false,moved=false,dragging=false;
     double lastTime=0.;juce::Point<int> dragOrigin,dragStart;juce::Rectangle<int> limits;

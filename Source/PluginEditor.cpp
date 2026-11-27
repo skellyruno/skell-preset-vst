@@ -218,6 +218,7 @@ public:
         idle.onMicrophoneMatch=[this]{if(!matchPanel.isVisible())beginMatch();};
         matchPanel.onClose=[this]{closeMatch();};
         matchPanel.onRetry=[this]{beginMatch();};
+        matchPanel.onStart=[this]{startMatchListening();};
         matchPanel.onListen=[this]{closeMatch();if(chain.onSelection)chain.onSelection(processor.slotIdAt(0));};
         matchPanel.onUpload=[this]{chooseMatchFile(false);};
         matchPanel.onReference=[this]{chooseMatchFile(true);};
@@ -582,7 +583,8 @@ public:
         const auto original=processor.presetName();
         if(scene==0){if(!idle.testMicrophoneMatchTarget())return false;}else if(matchButton.onClick)matchButton.onClick();
         if(!matchPanel.isVisible()||!editingIdle||processor.presetName()!=original)return false;
-        if(scene==0)return matchPanel.hasOriginalArtwork()&&matchPanel.testPlacement();
+        if(scene==0)return matchPanel.hasOriginalArtwork()&&matchPanel.testPlacement()&&matchPanel.testChooseStyle()&&!matchListening;
+        matchPanel.testStart();
         processor.prepareToPlay(48000.,512);
         juce::MidiBuffer midi;juce::AudioBuffer<float> b(2,512);
         const int blocks=scene==1?1900:scene==4?150:660;
@@ -2024,11 +2026,15 @@ private:
         macroOpen=false;rackHidden=false;matchPanel.resetPosition();refresh();
         matchPanel.setVisible(true);matchPanel.toFront(true);
         matchButton.setToggleState(true,juce::dontSendNotification);
+        matchPanel.update(SkellMatchPanel::ChooseStyle,"Choose a style before listening.",0.f,0.f,false);
+    }
+    void startMatchListening(){
+        if(!matchPanel.isVisible()||matchListening)return;
         matchListening=true;matchStarted=juce::Time::getMillisecondCounterHiRes();
         if(!processor.startLiveMatch()){matchListening=false;matchPanel.update(SkellMatchPanel::Problem,"Not enough memory for local analysis. Close other plugins and retry.",0.f,0.f,false);return;}
-        matchPanel.update(SkellMatchPanel::Listening,"Play an isolated vocal. We will build a new rack; you can undo it.",0.f,0.f,false);
+        matchPanel.update(SkellMatchPanel::Listening,juce::String(skellpreset::liveMatch::guideFor(matchPanel.selectedStyle()).name)+" auto mix. Play an isolated vocal; your rack is unchanged until validation.",0.f,0.f,false);
     }
-    struct MatchOptimizationResult {std::atomic<bool> cancel{false},done{false};std::atomic<int> progress{0};skellpreset::liveMatch::Optimization result;skellpreset::liveMatch::Profile target;bool reference=false;};
+    struct MatchOptimizationResult {std::atomic<bool> cancel{false},done{false};std::atomic<int> progress{0};skellpreset::liveMatch::Optimization result;skellpreset::liveMatch::Profile target;skellpreset::liveMatch::MixStyle style=skellpreset::liveMatch::MixStyle::Balanced;bool reference=false;};
     void finishMatch(const skellpreset::liveMatch::Profile& profile,bool reference,std::shared_ptr<skellpreset::liveMatch::Audio> audio={}){
         processor.cancelLiveMatch();matchListening=false;
         if(!profile.valid()){
@@ -2039,12 +2045,12 @@ private:
         if(!reference){matchDry=audio?profile:skellpreset::liveMatch::Profile{};matchAudio=std::move(audio);}
         if(reference&&!audio){matchPanel.update(SkellMatchPanel::Problem,"Reference audio could not be retained. Choose another isolated file.",0.f,0.f,matchDry.valid());return;}
         if(!matchAudio){matchPanel.update(SkellMatchPanel::Problem,"No usable dry sample. Retry or choose a dry file.",0.f,0.f,false);return;}
-        auto job=std::make_shared<MatchOptimizationResult>();job->reference=reference;job->target=profile;
+        auto job=std::make_shared<MatchOptimizationResult>();job->reference=reference;job->target=profile;job->style=matchPanel.selectedStyle();
         matchOptimization=job;
         const auto source=matchAudio;const auto dry=matchDry;
         matchPanel.update(SkellMatchPanel::Refining,"Rendering native candidates and checking a separate vocal phrase. Your rack is unchanged.",0.f,0.f,true);
         matchPool.addJob(std::function<void()>([job,source,dry,referenceAudio=reference?std::move(audio):nullptr]{
-            try{job->result=skellpreset::liveMatch::optimize(*source,dry,job->reference?&job->target:nullptr,&job->cancel,&job->progress,referenceAudio.get());}catch(const std::bad_alloc&){job->result={};}
+            try{job->result=job->reference?skellpreset::liveMatch::optimize(*source,dry,&job->target,&job->cancel,&job->progress,referenceAudio.get()):skellpreset::liveMatch::optimizeAutoMix(*source,dry,job->style,&job->cancel,&job->progress);}catch(const std::bad_alloc&){job->result={};}
             job->done.store(true,std::memory_order_release);
         }));
     }
@@ -2056,7 +2062,7 @@ private:
         const auto result=processor.applyLiveMatch(matchDry,job.reference?&job.target:nullptr,&o.recipe);
         if(result.failed()){pendingHistory.reset();matchPanel.update(SkellMatchPanel::Problem,result.getErrorMessage(),0.f,0.f,matchDry.valid());return;}
         commitHistory();refresh();
-        const auto detail="Validated "+juce::String(o.tested)+" candidates. Error "+juce::String(o.dryHoldout,1)+" to "+juce::String(o.holdoutFinal,1)+" dB. Audition in your DAW.";
+        const auto detail=juce::String(job.reference?"Reference":skellpreset::liveMatch::guideFor(job.style).name)+" / "+juce::String(o.tested)+" candidates. Feature score "+juce::String(o.dryHoldout,1)+" to "+juce::String(o.holdoutFinal,1)+". Audition in your DAW.";
         matchPanel.update(SkellMatchPanel::Done,detail,1.f,0.f,true);
         matchPanel.toFront(true);
     }
@@ -2064,7 +2070,7 @@ private:
         if(!matchPanel.isVisible())return;
         if(matchOptimization){
             if(matchOptimization->done.load(std::memory_order_acquire)){auto job=std::move(matchOptimization);if(!job->cancel.load(std::memory_order_relaxed))applyOptimizedMatch(*job);}
-            else {const int n=matchOptimization->progress.load(std::memory_order_relaxed);matchPanel.update(SkellMatchPanel::Refining,"Comparing native tone and space candidates: "+juce::String(n)+". Checking held-out phrase before applying.",std::min(.95f,n/(float)(matchOptimization->reference?skellpreset::liveMatch::referenceBudget:skellpreset::liveMatch::plainBudget)),0.f,true);}
+            else {const int n=matchOptimization->progress.load(std::memory_order_relaxed);matchPanel.update(SkellMatchPanel::Refining,"Comparing native tone and space candidates: "+juce::String(n)+". Checking held-out phrase before applying.",std::min(.95f,n/(float)(matchOptimization->reference?skellpreset::liveMatch::referenceBudget:skellpreset::liveMatch::autoMixBudget)),0.f,true);}
             return;
         }
         if(matchFile&&matchFile->done.load(std::memory_order_acquire)){auto completed=std::move(matchFile);if(!completed->cancel.load(std::memory_order_relaxed))finishMatch(completed->profile,completed->reference,completed->audio);return;}
