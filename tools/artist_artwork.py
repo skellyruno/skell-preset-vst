@@ -105,12 +105,17 @@ def prepare_artwork(root, catalog, cache=None, *, offline=False, required=False)
                 dest = cache/aid/(sha(url.encode())+'.png')
                 try:
                     if dest.is_file():
-                        image = normalize(dest.read_bytes())
-                    elif not offline:
+                        try:
+                            image = normalize(dest.read_bytes())
+                        except (OSError, ValueError, ImportError):
+                            if offline:
+                                raise
+                            image = None
+                    if image is None:
+                        if offline:
+                            continue
                         image = fetch(url)
                         atomic(dest, image)
-                    else:
-                        continue
                     source = item
                     break
                 except (OSError, ValueError, ImportError) as e:

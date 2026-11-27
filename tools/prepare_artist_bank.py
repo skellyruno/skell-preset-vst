@@ -6,7 +6,10 @@ import json
 from pathlib import Path
 import re
 import zipfile
-from artist_artwork import prepare_artwork
+try:
+    from .artist_artwork import prepare_artwork
+except ImportError:
+    from artist_artwork import prepare_artwork
 
 KEY = re.compile(r'[a-z0-9_-]{1,64}')
 HEX = re.compile(r'[0-9a-f]{64}')

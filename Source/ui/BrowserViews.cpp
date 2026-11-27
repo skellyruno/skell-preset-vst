@@ -130,6 +130,46 @@ bool PresetBrowser::testViewSwitchForTest() {
     }
     ok=ok && distinct>100 && nonUniform>100 &&
         large.getPixelAt(130,52).getAlpha()>0;
+    // Exercise real image decoding, shared cache reuse and cinematic row paint
+    // with a synthetic QA texture. Never misrepresent it as artist artwork.
+    juce::Image source(juce::Image::RGB,128,128,true);
+    {
+        juce::Graphics graphics(source);
+        graphics.setGradientFill(juce::ColourGradient(juce::Colours::cyan,0.f,0.f,
+            juce::Colours::magenta,128.f,128.f,false));
+        graphics.fillAll();
+    }
+    juce::MemoryOutputStream png;
+    juce::PNGImageFormat format;
+    const bool written=format.writeImageToStream(source,png);
+    const auto digest=juce::SHA256(png.getMemoryBlock()).toHexString();
+    auto* row=new juce::DynamicObject;
+    row->setProperty("artist","QA Texture");
+    row->setProperty("sha256",digest);
+    row->setProperty("payload",juce::Base64::toBase64(png.getData(),png.getDataSize()));
+    juce::var rowVar(row);
+    auto* bank=new juce::DynamicObject;
+    juce::var bankVar(bank);
+    bank->setProperty("artwork",juce::Array<juce::var>{rowVar});
+    const auto cache=skellpreset::artistart::decode(bankVar,{});
+    ok=ok && written && cache.size()==1;
+    if(cache.size()==1){
+        const auto& artwork=cache.begin()->second;
+        const auto again=skellpreset::artistart::decode(bankVar,cache);
+        ok=ok && artwork.portrait.getWidth()==192 && artwork.soft.getWidth()==160 &&
+            again.size()==1 && again.begin()->second.digest==digest;
+        for(int w:{396,776}){
+            juce::Image canvas(juce::Image::ARGB,w,56,true);juce::Graphics g(canvas);
+            skellpreset::artistart::cinematic(g,canvas.getBounds().toFloat(),artwork,
+                Theme::panelAlt,Theme::green,false);
+            const auto portrait=skellpreset::artistart::portraitBounds(canvas.getBounds().toFloat());
+            const auto dark=canvas.getPixelAt(20,28),bright=canvas.getPixelAt((int)portrait.getCentreX(),28);
+            ok=ok && portrait.getX()>155.f && portrait.getRight()<=w-76 &&
+                dark.getBrightness()<.35f && bright.getBrightness()>dark.getBrightness()+.2f;
+        }
+    }
+    row->setProperty("sha256",juce::String::repeatedString("0",64));
+    ok=ok && skellpreset::artistart::decode(bankVar,cache).empty();
     setListView(savedMode,false);keyboardCard=oldFocus;scroll=oldScroll;resized();
     preferencesReadOnly=savedReadOnly;
     return ok;

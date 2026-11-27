@@ -10,6 +10,20 @@ using skellpreset::art::paintCover;
 #include <array>
 #include <mutex>
 #include <utility>
+#if defined(SKELL_EMBEDDED_ARTIST_BANK)
+#include "SkellArtistBankData.h"
+#endif
+
+namespace skellpreset::artistart {
+Cache embedded(const Cache& previous){
+#if defined(SKELL_EMBEDDED_ARTIST_BANK)
+    return decode(juce::JSON::parse(juce::String::fromUTF8(
+        SkellArtistBankData::skell_artist_bank_json,SkellArtistBankData::skell_artist_bank_jsonSize)),previous);
+#else
+    (void)previous;return {};
+#endif
+}
+} // namespace skellpreset::artistart
 
 namespace {
 // Serialize library copy/name selection across instances in this process.

@@ -2,9 +2,8 @@
 #include <JuceHeader.h>
 #include <juce_cryptography/juce_cryptography.h>
 #include <map>
-#if defined(SKELL_EMBEDDED_ARTIST_BANK)
-#include "SkellArtistBankData.h"
-#endif
+#include <algorithm>
+#include <iterator>
 
 namespace skellpreset::artistart {
 struct Art {
@@ -63,14 +62,7 @@ inline Cache decode(const juce::var& bank,const Cache& previous){
     }
     return result;
 }
-inline Cache embedded(const Cache& previous){
-#if defined(SKELL_EMBEDDED_ARTIST_BANK)
-    return decode(juce::JSON::parse(juce::String::fromUTF8(
-        SkellArtistBankData::skell_artist_bank_json,SkellArtistBankData::skell_artist_bank_jsonSize)),previous);
-#else
-    (void)previous;return {};
-#endif
-}
+Cache embedded(const Cache& previous);
 // Same geometry for directory and preset rows; reserve existing favorite/count
 // controls at the right. The sharp square never overlaps text even at 620 px.
 inline juce::Rectangle<float> portraitBounds(juce::Rectangle<float> row){
