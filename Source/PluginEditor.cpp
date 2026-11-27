@@ -678,6 +678,7 @@ public:
         const bool inside=visualNavigationVisible()&&!browser.isVisible()&&!settingsPanel.isVisible()&&!micPanel.isVisible()
             && isMouseOver(true)&&liveNavigationBounds().contains(getMouseXYRelative());
         for(auto* edge:{&visualLeftEdge,&visualRightEdge,&drawerEdge})edge->setContextHover(inside);
+        moonButton.setVisualHover(inside&&editingIdle);
     }
     juce::Rectangle<int> workspaceBounds()const noexcept{
         return rackHidden?juce::Rectangle<int>(14,90,1140,561):juce::Rectangle<int>(rackOnRight?14:247,90,906,561);
@@ -1580,6 +1581,7 @@ public:
         }
         moonButton.setBounds(idle.moonBounds().translated(idle.getX(),idle.getY()));
         moonButton.setVisible(editingIdle);moonButton.expanded=drawerVisible();
+        moonButton.setVisualHover(false);
         if(editingIdle){idle.toFront(false);moonButton.toFront(false);}
         if(focusVisible())focusVisual.toFront(false);
         if(routing.isVisible())routing.toFront(false);
