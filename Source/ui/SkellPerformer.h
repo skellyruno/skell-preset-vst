@@ -555,16 +555,18 @@ public:
                 .followedBy(juce::AffineTransform::scale(.91f,.94f,151.f,79.f)));
             juce::Path skull;
             skull.startNewSubPath(151.f,13.f);
-            skull.cubicTo(133.f,13.f,127.f,24.f,127.f,36.f);
-            skull.cubicTo(127.f,46.f,130.f,53.f,134.f,57.f);
+            skull.cubicTo(134.f,11.f,125.5f,23.f,126.f,35.f);
+            skull.cubicTo(125.5f,44.f,127.f,49.f,130.f,52.f);
+            skull.quadraticTo(129.f,55.f,134.f,57.f);
             skull.cubicTo(136.f,60.f,137.f,63.f,137.f,66.f);
             // The fixed cranium stops at the maxilla; the lower jaw is
             // a separate articulated shape rather than a line over bone.
             skull.cubicTo(140.f,69.f,146.f,70.f,151.f,70.f);
             skull.cubicTo(156.f,70.f,162.f,69.f,165.f,66.f);
             skull.cubicTo(165.f,63.f,166.f,60.f,168.f,57.f);
-            skull.cubicTo(172.f,53.f,175.f,46.f,175.f,36.f);
-            skull.cubicTo(175.f,24.f,169.f,13.f,151.f,13.f);
+            skull.quadraticTo(173.f,55.f,172.f,52.f);
+            skull.cubicTo(175.f,49.f,176.5f,44.f,176.f,35.f);
+            skull.cubicTo(176.f,22.f,168.f,11.f,151.f,13.f);
             skull.closeSubPath();
             g.setColour(ink);
             g.strokePath(skull,juce::PathStrokeType(3.8f));
@@ -594,6 +596,14 @@ public:
                 art.setGradientFill(juce::ColourGradient(juce::Colour(0xffb6a48e).withAlpha(.24f),142.f,20.f,ink.withAlpha(0.f),154.f,39.f,true));
                 art.fillRect(127.f,13.f,48.f,50.f);
                 for(int stain=0;stain<16;++stain){const float x=130.f+(float)((stain*19)%43),y=19.f+(float)((stain*13)%49);art.setColour(stone.withAlpha(.08f));art.fillEllipse(x,y,1.4f+(stain%3)*.4f,2.5f);}
+                // Coronal suture and layered frontal/parietal bone planes.
+                juce::Path suture;suture.startNewSubPath(128.5f,25.f);
+                suture.lineTo(135.f,23.f);suture.lineTo(139.f,24.2f);suture.lineTo(143.f,21.8f);
+                suture.lineTo(148.f,23.f);suture.lineTo(152.f,21.f);suture.lineTo(157.f,23.5f);
+                suture.lineTo(162.f,22.5f);suture.lineTo(167.f,25.f);suture.lineTo(173.f,27.f);
+                art.setColour(ink.withAlpha(.13f));art.strokePath(suture,juce::PathStrokeType(.55f));
+                art.setGradientFill(juce::ColourGradient(ivory.withAlpha(.20f),143.f,16.f,
+                    ivory.withAlpha(0.f),155.f,33.f,true));art.fillEllipse(130.f,13.f,37.f,30.f);
                 // Temporal fossa shading pulls the cranium into a skull.
                 art.setGradientFill(juce::ColourGradient(
                     ink.withAlpha(.28f),127.f,42.f,
@@ -648,14 +658,16 @@ public:
             // Sockets and nasal aperture.
             juce::Path sockets;
             sockets.startNewSubPath(131.f,45.f);
-            sockets.cubicTo(135.f,41.f,144.f,40.f,147.f,44.f);
-            sockets.cubicTo(150.f,49.f,145.f,56.f,139.f,57.f);
-            sockets.cubicTo(132.f,57.f,128.f,51.f,131.f,45.f);
+            sockets.cubicTo(134.f,40.5f,143.f,40.f,146.7f,43.4f);
+            sockets.quadraticTo(149.f,47.f,145.7f,51.8f);
+            sockets.cubicTo(143.f,56.f,138.f,58.f,133.5f,55.f);
+            sockets.quadraticTo(129.f,52.f,131.f,45.f);
             sockets.closeSubPath();
             sockets.startNewSubPath(156.f,42.f);
-            sockets.cubicTo(160.f,40.f,170.f,41.f,173.f,46.f);
-            sockets.cubicTo(174.f,52.f,168.f,58.f,162.f,57.f);
-            sockets.cubicTo(157.f,56.f,153.f,48.f,156.f,42.f);
+            sockets.cubicTo(160.f,39.8f,168.5f,41.f,172.f,45.5f);
+            sockets.quadraticTo(174.f,50.f,169.f,54.8f);
+            sockets.cubicTo(166.f,57.6f,160.f,57.8f,157.f,53.f);
+            sockets.quadraticTo(153.f,48.f,156.f,42.f);
             sockets.closeSubPath();
             sockets.startNewSubPath(151.f,53.f);
             sockets.cubicTo(148.f,56.f,145.f,61.f,146.f,63.f);

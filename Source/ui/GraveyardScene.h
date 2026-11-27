@@ -66,6 +66,22 @@ public:
                 juce::Colour(0xff0a1218).withAlpha(0.f),moonX,horizonY*1.10f,true));
             g.fillRect(0.f,0.f,width,horizonY);
 
+            // Deterministic depth layers cached with the static environment.
+            for(int layer=0;layer<3;++layer){
+                const float baseline=horizonY*(.73f+.095f*layer);
+                juce::Path ridge;ridge.startNewSubPath(0.f,baseline);
+                for(int k=0;k<=24;++k){
+                    const float x=width*k/24.f;
+                    const float y=baseline-(8.f+hash01(layer*421+k*47)*20.f)*(1.f-.20f*layer);
+                    ridge.lineTo(x,y);
+                }
+                ridge.lineTo(width,horizonY+18.f);ridge.lineTo(0.f,horizonY+18.f);ridge.closeSubPath();
+                g.setColour(juce::Colour(0xff18282c).interpolatedWith(deep,.32f+.20f*layer).withAlpha(.72f));
+                g.fillPath(ridge);
+            }
+            g.setGradientFill(juce::ColourGradient(fog.withAlpha(.15f),moonX,horizonY*.91f,
+                fog.withAlpha(0.f),moonX,horizonY*.48f,false));
+            g.fillRect(0.f,horizonY*.48f,width,horizonY*.45f);
             // Stars, denser and brighter at the zenith, dimmed near the moon.
             for(int i=0;i<120;++i) {
                 const float sx=hash01(i*3741)*width;

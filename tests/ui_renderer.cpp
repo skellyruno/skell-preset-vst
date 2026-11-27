@@ -326,6 +326,11 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-installed-vst3-browser-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-browser-70",818,482,0,1,true});
+        options.scenes.push_back({"edge-stage-left-hidden-100",1168,688,0,1,false});
+        options.scenes.push_back({"edge-stage-right-hidden-70",818,482,0,1,false});
+        options.scenes.push_back({"edge-effect-hidden-125",1460,860,0,1,false});
+        options.scenes.push_back({"edge-effect-controls-100",1168,688,0,1,false});
+        options.scenes.push_back({"edge-sidechain-hidden-100",1168,688,0,1,false});
         options.scenes.push_back({"obsidian-factory-digital-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-threeband-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-vox-velvet-70",818,482,0,1,false});
@@ -618,6 +623,12 @@ int main(int argc, char** argv) {
             editor.setSettingsPanelForScreenshot(scene.id=="obsidian-settings-70" ||
                 scene.id=="obsidian-settings-125" || scene.id=="crimson-settings-70");
             if(scene.id=="obsidian-stage-audience-100")editor.showHomeForScreenshot();
+            if(scene.id.startsWith("edge-")){
+                if(scene.id.startsWith("edge-stage"))editor.showHomeForScreenshot();
+                else editor.selectRackSlotForScreenshot(0,0);
+                editor.configureEdgesForScreenshot(scene.id.contains("right"),
+                    scene.id.contains("hidden"),scene.id.contains("controls"),scene.id.contains("sidechain"));
+            }
             if(scene.id.startsWith("obsidian-sidechain-routing-"))editor.showRoutingForScreenshot();
             if(scene.id.startsWith("audit-browser-")){
                 const int page=scene.id.fromFirstOccurrenceOf("audit-browser-",false,false).getIntValue();

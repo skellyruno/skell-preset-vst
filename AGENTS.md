@@ -27,3 +27,5 @@
 - Owner correction: move the live input/output peak meters into the header gap between branding and presets, with a shared dBFS scale. Remove the footer meters and their rail. Keep header latency/signal-path readouts removed.
 
 - Owner correction: header peak meters have no numeric labels or dBFS text; keep measured IN/OUT bars, with a tight four-pixel gap between preset, undo, redo, Settings and Power. Default browser opens aligned under preset controls, clear of the rack; retain manual browser positioning and either rack dock. Anatomical reference: OpenStax Anatomy & Physiology 2e, sections 7.1 and 8.1; original procedural contours, no downloaded art.
+
+- Owner workspace: hover/click either rack border to collapse or restore. Native effect focus expands a measured view rather than stretching controls. Lateral visual edges toggle actual sidechain routing; bottom vertical handle toggles sound controls. Presentation only. Anatomy references: https://openstax.org/books/anatomy-and-physiology-2e/pages/7-1-divisions-of-the-skeletal-system and https://openstax.org/books/anatomy-and-physiology-2e/pages/8-1-the-pectoral-girdle . Original vector geometry.

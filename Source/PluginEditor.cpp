@@ -23,6 +23,7 @@
 #endif
 #include "ui/SkellMoonButton.h"
 #include "ui/SkellRoutingPage.h"
+#include "ui/SkellLiveEffectPanel.h"
 #include <array>
 #include <cmath>
 #include <memory>
@@ -30,6 +31,58 @@
 #include <limits>
 
 namespace {
+// Presentation-only hover handles. Click or deliberate axis-aligned drag.
+class WorkspaceEdge final:public juce::Component,public juce::SettableTooltipClient {
+public:
+    enum Direction { Left,Right,Up,Down };
+    explicit WorkspaceEdge(bool vertical=false):verticalDrag(vertical){
+        setWantsKeyboardFocus(true);
+        setMouseCursor(vertical?juce::MouseCursor::UpDownResizeCursor:juce::MouseCursor::LeftRightResizeCursor);
+    }
+    std::function<void()> onAction;
+    void configure(Direction d,bool persistent,const juce::String& title){
+        direction=d;always=persistent;setTitle(title);setTooltip(title);repaint();
+    }
+    void setPreview(bool show){preview=show;repaint();}
+    bool releaseGesture(int dx,int dy){
+        const int along=std::abs(verticalDrag?dy:dx),across=std::abs(verticalDrag?dx:dy);
+        if((along<=4&&across<=4)||(along>=10&&along>=across)){
+            if(onAction)onAction();return true;
+        }return false;
+    }
+    void mouseEnter(const juce::MouseEvent&)override{hover=true;repaint();}
+    void mouseExit(const juce::MouseEvent&)override{hover=false;repaint();}
+    void mouseDown(const juce::MouseEvent& ev)override{pressed=ev.mods.isLeftButtonDown();repaint();}
+    void mouseUp(const juce::MouseEvent& ev)override{
+        if(!pressed)return;pressed=false;
+        releaseGesture(ev.getDistanceFromDragStartX(),ev.getDistanceFromDragStartY());repaint();
+    }
+    bool keyPressed(const juce::KeyPress& key)override{
+        if(key==juce::KeyPress::returnKey || key==juce::KeyPress::spaceKey){if(onAction)onAction();return true;}
+        return false;
+    }
+    void focusGained(FocusChangeType)override{repaint();}
+    void focusLost(FocusChangeType)override{pressed=false;repaint();}
+    void paint(juce::Graphics& g)override{
+        if(!(hover||pressed||always||preview||hasKeyboardFocus(false)))return;
+        auto r=getLocalBounds().toFloat().reduced(1.f);
+        const bool active=hover||pressed||hasKeyboardFocus(false);
+        g.setColour(Theme::panelAlt.withAlpha(active?.98f:.87f));g.fillRoundedRectangle(r,4.f);
+        g.setColour(Theme::green.withAlpha(active?.80f:.38f));g.drawRoundedRectangle(r,4.f,.8f);
+        const auto c=r.getCentre();juce::Path arrow;
+        if(direction==Left||direction==Right){
+            const float d=direction==Right?1.f:-1.f;
+            arrow.startNewSubPath(c.x-d*2.4f,c.y-4.f);arrow.lineTo(c.x+d*2.4f,c.y);arrow.lineTo(c.x-d*2.4f,c.y+4.f);
+        }else{
+            const float d=direction==Down?1.f:-1.f;
+            arrow.startNewSubPath(c.x-4.f,c.y-d*2.4f);arrow.lineTo(c.x,c.y+d*2.4f);arrow.lineTo(c.x+4.f,c.y-d*2.4f);
+        }
+        g.setColour(active?Theme::green:Theme::white.withAlpha(.80f));
+        g.strokePath(arrow,juce::PathStrokeType(1.6f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+    }
+private:
+    Direction direction=Left;bool verticalDrag=false,always=false,preview=false,hover=false,pressed=false;
+};
 void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical) {
     if(auto* v=p.state.getParameter(id))v->setValueNotifyingHost(v->convertTo0to1(physical));
 }
@@ -46,11 +99,16 @@ public:
         addAndMakeVisible(chain);addAndMakeVisible(slot);
         addAndMakeVisible(idle);
         addChildComponent(routing);
-        routing.onClose=[this]{if(chain.onClearSelection)chain.onClearSelection();};
+        routing.onClose=[this]{closeRouting();};
         routing.onBeforeChange=[this]{prepareHistory();};
         routing.onAfterChange=[this]{commitHistory();};
-        routing.onEdit=[this](int id){routing.setVisible(false);if(chain.onSidechainEdit)chain.onSidechainEdit(id);};
+        routing.onEdit=[this](int id){routing.setVisible(false);rackHidden=false;macroOpen=false;if(chain.onSidechainEdit)chain.onSidechainEdit(id);};
         chain.onRoutingRequest=[this](int id){openRouting(id);};
+        addChildComponent(focusVisual);focusVisual.setInterceptsMouseClicks(false,false);
+        for(auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})addAndMakeVisible(*edge);
+        rackOuterEdge.onAction=rackInnerEdge.onAction=[this]{toggleRackVisibility();};
+        visualLeftEdge.onAction=visualRightEdge.onAction=[this]{toggleRoutingEdge();};
+        drawerEdge.onAction=[this]{toggleDrawerEdge();};
         addAndMakeVisible(moonButton);
         moonButton.setTooltip("Show / hide master controls");
         moonButton.onClick=[this]{toggleView();};
@@ -69,7 +127,7 @@ public:
 
         chain.onSelection=[this](int s){
             if(routing.isVisible()){routing.selectTarget(s);chain.setSelectedSlot(s);return;}
-            editingIdle=false;
+            editingIdle=false;macroOpen=false;
             micPanel.setVisible(false); // effect editor must never sit behind MIC
             idle.setVisible(false);
             slot.select(s);chain.setSelectedSlot(s);refresh();
@@ -89,7 +147,7 @@ public:
         };
         slot.onBackgroundClick=[this] { if(chain.onClearSelection)chain.onClearSelection(); };
         chain.onReplaceRequest=[this](int s){
-            routing.setVisible(false);editingIdle=false;idle.setVisible(false);
+            routing.setVisible(false);editingIdle=false;macroOpen=false;rackHidden=false;idle.setVisible(false);
             micPanel.setVisible(false);
             slot.select(s);
             chain.setSelectedSlot(s);
@@ -438,7 +496,7 @@ public:
     }
     void dockRackForScreenshot(bool right) {dockRack(right);refresh();}
     void configureForScreenshot(int variant,int workspaceMode,bool showBrowser) {
-        routing.setVisible(false);dockRack(false);
+        routing.setVisible(false);rackHidden=false;edgePreview=false;dockRack(false);
         variant=Theme::clampVariant(variant);
         processor.state.state.setProperty("uiTheme",variant,nullptr);
         setTheme(variant,false);
@@ -500,7 +558,17 @@ public:
         slot.setModOrbForScreenshot(enabled);
     }
     void showRoutingForScreenshot(){openRouting(processor.slotIdAt(0));}
-    bool updateLiveVisualForScreenshot(){updateHeaderMeters(true);return slot.updateLiveVisualForScreenshot();}
+    bool updateLiveVisualForScreenshot(){
+        updateHeaderMeters(true);if(focusVisual.isVisible()){updateFocusVisual();return focusVisual.hasSignal();}
+        return slot.updateLiveVisualForScreenshot();
+    }
+    void configureEdgesForScreenshot(bool right,bool hide,bool controls,bool sidechain){
+        dockRack(right);edgePreview=true;
+        if(hide!=rackHidden)toggleRackVisibility();
+        if(controls!=macroOpen)toggleDrawerEdge();
+        if(sidechain!=routing.isVisible())toggleRoutingEdge();
+        refresh();
+    }
     void updateStageForScreenshot(double nowMs){
         updateHeaderMeters(true);
         idle.setAudioFresh(processor.liveScopeSampleCount()>0);
@@ -541,6 +609,7 @@ public:
     }
     // Stage drawer is presentation state only, never a host automation gesture.
     void openRouting(int target){
+        if(!routing.isVisible())routingReturnIdle=editingIdle;
         browser.setVisible(false);micPanel.setVisible(false);settingsPanel.setVisible(false);
         editingIdle=false;slot.dismissTransientOverlays();slot.setHostedEditorPresentation(false);
         routing.open(target);refresh();
@@ -551,7 +620,39 @@ public:
         slot.dismissTransientOverlays();macroOpen=!macroOpen;
         refresh();
     }
-    bool drawerVisible() const noexcept {return editingIdle && macroOpen;}
+    void closeRouting(){routing.setVisible(false);editingIdle=routingReturnIdle;refresh();}
+    void toggleRoutingEdge(){
+        if(browser.isVisible()||settingsPanel.isVisible()||micPanel.isVisible())return;
+        if(routing.isVisible())closeRouting();
+        else openRouting(editingIdle?processor.slotIdAt(0):slot.selectedSlot());
+    }
+    bool nativeVisualAvailable()const noexcept{
+        const int type=processor.slotType(slot.selectedSlot());
+        return type!=SkellPresetAudioProcessor::Empty && type!=SkellPresetAudioProcessor::ExternalVST3;
+    }
+    bool focusVisible()const noexcept{
+        return !editingIdle&&!routing.isVisible()&&nativeVisualAvailable()&&(rackHidden||macroOpen);
+    }
+    bool drawerVisible()const noexcept{return !routing.isVisible()&&macroOpen&&(editingIdle||nativeVisualAvailable());}
+    juce::Rectangle<int> workspaceBounds()const noexcept{
+        return rackHidden?juce::Rectangle<int>(14,90,1140,561):juce::Rectangle<int>(rackOnRight?14:247,90,906,561);
+    }
+    void toggleRackVisibility(){
+        if(browser.isVisible()||settingsPanel.isVisible()||micPanel.isVisible())return;
+        rackHidden=!rackHidden;slot.dismissTransientOverlays();refresh();
+    }
+    void toggleDrawerEdge(){
+        if(routing.isVisible()||browser.isVisible()||settingsPanel.isVisible()||micPanel.isVisible())return;
+        if(!editingIdle&&!nativeVisualAvailable())return;
+        macroOpen=!macroOpen;slot.dismissTransientOverlays();refresh();
+    }
+    void updateFocusVisual(){
+        if(!focusVisible())return;
+        const bool active=(int)processor.state.getRawParameterValue("mode")->load()!=3 &&
+            !browser.isVisible()&&!settingsPanel.isVisible()&&!micPanel.isVisible();
+        processor.requestSlotVisual(active?slot.selectedSlot():-1);
+        if(focusVisual.update(processor,slot.selectedSlot()))focusVisual.repaint();
+    }
     juce::StringArray getScreenshotLayoutIssues() const {
         juce::StringArray issues;
         const auto canvasBounds=juce::Rectangle<int>(0,0,Theme::width,Theme::height);
@@ -608,17 +709,17 @@ public:
         if(!juce::Rectangle<int>(0,0,Theme::width,Theme::height)
             .contains(settingsPanel.getBounds()))
             issues.add("Themed Settings overlay clipped by canvas");
-        if(chain.getBounds().intersects(slot.getBounds()))
+        if(!rackHidden && chain.getBounds().intersects(slot.getBounds()))
             issues.add("Rack overlaps the module editor");
         if(slot.getHeight()!=chain.getHeight())
             issues.add("Advanced control deck does not fill the rack height");
-        if(rackOnRight!=(chain.getX()>slot.getX()))
+        if(!rackHidden && rackOnRight!=(chain.getX()>slot.getX()))
             issues.add("Rack dock state disagrees with displayed position");
         const int current=(int)processor.state.getRawParameterValue("mode")->load();
         const bool drawer=drawerVisible();
         for(const auto& control:macro)
             if(control.isVisible()!=drawer)issues.add("Stage macro visibility differs from drawer");
-        if(!chain.isVisible() || slot.isVisible()!=(!editingIdle && !routing.isVisible()) || idle.isVisible()!=editingIdle)
+        if(chain.isVisible()==rackHidden || slot.isVisible()!=(!editingIdle && !routing.isVisible() && !focusVisible()) || idle.isVisible()!=editingIdle || focusVisual.isVisible()!=focusVisible())
             issues.add("Unified rack/stage visibility regressed");
         for(const auto* master:{&input,&mix,&output})
             if(master->isVisible()!=drawer)issues.add("Master knob visibility differs from drawer");
@@ -639,7 +740,7 @@ public:
         if(masterValues[3].isVisible())issues.add("Stereo direction text must remain hidden");
         if(current==3 && !bypassShade.isVisible())issues.add("Bypass overlay missing");
         if(powerButton.isBypassed()!=(current==3))issues.add("Power indicator mismatch");
-        if(!stereoSeparation.isVisible() || !micButton.isVisible() ||
+        if(stereoSeparation.isVisible()==rackHidden || micButton.isVisible()==rackHidden ||
            !chain.getBounds().contains(stereoSeparation.getBounds()) ||
            !chain.getBounds().contains(micButton.getBounds()) ||
            stereoSeparation.getRight()>micButton.getX() ||
@@ -651,10 +752,10 @@ public:
             issues.add("Moon trigger is outside live stage");
         if(drawer) {
             for(const auto& control:macro)
-                if(control.getY()<idle.getBottom() || !slot.getBounds().contains(control.getBounds()))
+                if(control.getY()<workspaceBounds().getBottom()-206 || !workspaceBounds().contains(control.getBounds()))
                     issues.add("Macro escapes stage drawer");
         }
-        if(routing.isVisible() && routing.getBounds()!=slot.getBounds())issues.add("Routing page escaped the effect deck");
+        if(routing.isVisible() && routing.getBounds()!=workspaceBounds())issues.add("Routing page escaped the effect deck");
         if(!preset.getButtonText().contains(processor.presetName().toUpperCase()))
             issues.add("Preset selector no longer displays the loaded preset name");
         if(!slot.moduleSelectorMatchesAudio())
@@ -806,6 +907,7 @@ public:
             issues.add("Removed VISUAL control still has an active hit target");
         if(!testEmptyGapReturnRegions())
             issues.add("Blank gap/top/bottom Home return zones leak into module or rack controls");
+        if(!testWorkspaceEdges())issues.add("Workspace edge interaction or selection regression");
         if(!browser.testBrowserKeyboardForTest())
             issues.add("Preset browser keyboard focus, pagination, bank selection or restoration failed");
         if(!browser.testBrowserSortingForTest())
@@ -1342,7 +1444,7 @@ public:
         // No footer meter rail; leave the resize grip and window geometry unchanged.
         // One shallow control drawer below the resized live performer.
         if(drawerVisible()) {
-            const auto deck=slot.getBounds();
+            const auto deck=workspaceBounds();
             const int x=deck.getX(),y=deck.getBottom()-206,w=deck.getWidth();
             Theme::panelBox(g,juce::Rectangle<float>((float)x,(float)y,(float)w,206.f),8.f,true);
             Theme::fittedText(g,"SOUND CONTROLS",{x+16,y+8,w-32,20},12.f,Theme::white,true);
@@ -1380,12 +1482,29 @@ public:
         chain.setBounds(rackOnRight?939:13,90,216,561);
         // The Advanced footer macro strip is gone: let the module editor
         // fill the space down to the shared master-control footer.
-        slot.setBounds(rackOnRight?14:247,90,906,561);
-        routing.setBounds(slot.getBounds());
-        idle.setBounds(drawerVisible()?slot.getBounds().withTrimmedBottom(212):slot.getBounds());
+        const auto workspace=workspaceBounds();
+        slot.setBounds(workspace.withSizeKeepingCentre(906,561));
+        routing.setBounds(workspace);
+        const auto visuals=drawerVisible()?workspace.withTrimmedBottom(212):workspace;
+        idle.setBounds(visuals);focusVisual.setBounds(visuals.reduced(18,12));
+        rackOuterEdge.setBounds(rackOnRight?1155:0,workspace.getCentreY()-26,13,52);
+        rackInnerEdge.setBounds(rackOnRight?921:230,workspace.getCentreY()-26,16,52);
+        rackOuterEdge.configure(rackHidden?(rackOnRight?WorkspaceEdge::Left:WorkspaceEdge::Right):
+            (rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left),rackHidden,rackHidden?"Show effect rack":"Hide effect rack");
+        rackInnerEdge.configure(rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left,false,"Hide effect rack");
+        rackInnerEdge.setVisible(!rackHidden);
+        visualLeftEdge.setBounds(workspace.getX()+2,visuals.getCentreY()-68,15,46);
+        visualRightEdge.setBounds(workspace.getRight()-17,visuals.getCentreY()-68,15,46);
+        visualLeftEdge.configure(routing.isVisible()?WorkspaceEdge::Left:WorkspaceEdge::Right,routing.isVisible(),"Click or drag: sidechain");
+        visualRightEdge.configure(routing.isVisible()?WorkspaceEdge::Right:WorkspaceEdge::Left,routing.isVisible(),"Click or drag: sidechain");
+        drawerEdge.setBounds(workspace.getCentreX()-27,drawerVisible()?visuals.getBottom()-6:workspace.getBottom()-13,54,14);
+        drawerEdge.configure(drawerVisible()?WorkspaceEdge::Down:WorkspaceEdge::Up,drawerVisible(),"Click or drag vertically: sound controls");
+        drawerEdge.setVisible(!routing.isVisible()&&(editingIdle||nativeVisualAvailable()));
+        for(auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})edge->setPreview(edgePreview);
         moonButton.setBounds(idle.moonBounds().translated(idle.getX(),idle.getY()));
         moonButton.setVisible(editingIdle);moonButton.expanded=drawerVisible();
         if(editingIdle){idle.toFront(false);moonButton.toFront(false);}
+        if(focusVisible())focusVisual.toFront(false);
         if(routing.isVisible())routing.toFront(false);
         moonButton.repaint();
         // Smaller movable mic panel opens on the LEFT; manual drag/resize
@@ -1409,7 +1528,7 @@ public:
         // Owner correction: power is the rightmost header control.
         powerButton.setBounds(1109,25,38,38);
         const bool drawer=drawerVisible();
-        const auto deck=slot.getBounds();
+        const auto deck=workspaceBounds();
         const int y=deck.getBottom()-206;
         const auto dialBounds=[&](int k){const int l=deck.getX()+10+k*(deck.getWidth()-20)/7;
             const int r=deck.getX()+10+(k+1)*(deck.getWidth()-20)/7;
@@ -1419,9 +1538,9 @@ public:
             macro[(size_t)i].setVisible(drawer);
         }
         input.setBounds(dialBounds(4));mix.setBounds(dialBounds(5));output.setBounds(dialBounds(6));
-        micButton.setVisible(true);
+        micButton.setVisible(!rackHidden);
         stereoSeparation.setBounds(chain.getX()+136,chain.getY()+6,34,34);
-        stereoSeparation.setVisible(true);
+        stereoSeparation.setVisible(!rackHidden);
         for(auto* control:{&input,&mix,&output})control->setVisible(drawer);
         for(size_t i=0;i<masterValues.size();++i){
             const auto b=dialBounds(4+juce::jmin(2,(int)i));
@@ -1438,8 +1557,9 @@ public:
         record.setVisible(false);
         // Keep the rack unobstructed when the user docks it on the right.
         browser.placeWithin(juce::Rectangle<int>(8,76,Theme::width-16,Theme::height-84),
-                            {rackOnRight?slot.getRight()-650:preset.getRight()-650,77,650,538});
-        bypassShade.setBounds(slot.getBounds().withTrimmedBottom(26));
+                            {rackOnRight&&!rackHidden?workspace.getRight()-650:preset.getRight()-650,77,650,538});
+        bypassShade.setBounds(workspace.withTrimmedBottom(26));
+        for(auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})edge->toFront(false);
         if(bypassShade.isVisible())bypassShade.toFront(false);
         if(browser.isVisible())browser.toFront(false);
         if(settingsPanel.isVisible())settingsPanel.toFront(false);
@@ -1455,7 +1575,8 @@ public:
         }
         const bool bypass=m==3;
         const bool drawer=drawerVisible();
-        chain.setVisible(true);slot.setVisible(!editingIdle && !routing.isVisible());
+        chain.setVisible(!rackHidden);slot.setVisible(!editingIdle && !routing.isVisible() && !focusVisible());
+        focusVisual.setVisible(focusVisible());
         routing.setEnabled(!bypass);
         idle.setVisible(editingIdle);
         chain.setAlpha(bypass?.30f:1.f);slot.setAlpha(bypass?.30f:1.f);
@@ -1496,10 +1617,10 @@ public:
         // the next 30Hz timer tick. This also prevents stale module names
         // during screenshot capture and fast A/B preset auditioning.
         chain.refreshIfChanged();
-        slot.setHostedEditorPresentation(!bypass && !editingIdle && !routing.isVisible() &&
+        slot.setHostedEditorPresentation(!bypass && !editingIdle && !routing.isVisible() && !focusVisible() &&
             !browser.isVisible() && !settingsPanel.isVisible() && !micPanel.isVisible());
-        slot.refreshIfChanged();
-        resized();repaint();
+        if(!focusVisible())slot.refreshIfChanged();
+        resized();updateFocusVisual();repaint();
     }
     void timerCallback() override{
         processor.refreshHostedLatency();
@@ -1521,9 +1642,10 @@ public:
         if(preset.getButtonText()!=n)preset.setButtonText(n);
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         if(bypassShade.isVisible()!=(m==3))refresh();
-        slot.setHostedEditorPresentation(m!=3 && !editingIdle && !routing.isVisible() &&
+        slot.setHostedEditorPresentation(m!=3 && !editingIdle && !routing.isVisible() && !focusVisible() &&
             !browser.isVisible() && !settingsPanel.isVisible() && !micPanel.isVisible());
-        if(m!=3){chain.refreshIfChanged();slot.refreshIfChanged();if(routing.isVisible())routing.refresh();}
+        if(m!=3){if(!rackHidden)chain.refreshIfChanged();if(!focusVisible())slot.refreshIfChanged();if(routing.isVisible())routing.refresh();}
+        if(focusVisible())updateFocusVisual();
         if(drawerVisible())syncMasterReadouts();
         const auto now=juce::Time::getMillisecondCounter();
         const unsigned count=processor.liveScopeSampleCount();
@@ -1574,7 +1696,7 @@ public:
     bool isEmptyGapReturn(juce::Point<int> point) const noexcept {
         const int laneLeft=rackOnRight?slot.getRight():chain.getRight();
         const int laneRight=rackOnRight?chain.getX():slot.getX();
-        const bool between=(point.x>laneLeft+1 && point.x<laneRight-1 &&
+        const bool between=(!rackHidden && point.x>laneLeft+1 && point.x<laneRight-1 &&
                             point.y>=chain.getY() && point.y<chain.getBottom());
         const bool above=(point.x>=14 && point.x<Theme::width-14 &&
                           point.y>=78 && point.y<89);
@@ -1594,7 +1716,27 @@ public:
             !isEmptyGapReturn({1000,50}) &&
             !isEmptyGapReturn({600,500});
     }
+    bool testWorkspaceEdges(){
+        const int selected=slot.selectedSlot(),program=processor.getCurrentProgram();
+        const bool savedIdle=editingIdle,savedMacro=macroOpen,savedDock=rackOnRight;
+        editingIdle=true;macroOpen=false;refresh();bool ok=true;
+        for(bool right:{false,true}){
+            dockRack(right);
+            ok &= rackInnerEdge.releaseGesture(24,0)&&rackHidden&&!chain.isVisible();
+            ok &= workspaceBounds().getWidth()==1140;
+            ok &= !rackOuterEdge.releaseGesture(2,25)&&rackHidden;
+            ok &= rackOuterEdge.releaseGesture(0,0)&&!rackHidden&&chain.isVisible();
+            ok &= visualLeftEdge.releaseGesture(22,0)&&routing.isVisible();
+            ok &= visualRightEdge.releaseGesture(-22,0)&&!routing.isVisible();
+            ok &= drawerEdge.releaseGesture(0,-26)&&drawerVisible();
+            ok &= drawerEdge.releaseGesture(0,26)&&!drawerVisible();
+        }
+        dockRack(savedDock);editingIdle=savedIdle;macroOpen=savedMacro;refresh();
+        return ok&&slot.selectedSlot()==selected&&processor.getCurrentProgram()==program;
+    }
     void mouseDown(const juce::MouseEvent& e)override {
+        for(const auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})
+            if(e.eventComponent==edge)return;
         const auto point=e.getEventRelativeTo(this).getPosition();
         const bool overlayWasVisible=micPanel.isVisible() ||
             browser.isVisible() || settingsPanel.isVisible();
@@ -1639,7 +1781,9 @@ public:
             settingsPanel.close();return true;
         }
         if(key==juce::KeyPress::escapeKey&&browser.isVisible()){browser.setVisible(false);return true;}
-        if(key==juce::KeyPress::escapeKey && routing.isVisible()){if(chain.onClearSelection)chain.onClearSelection();return true;}
+        if(key==juce::KeyPress::escapeKey && routing.isVisible()){closeRouting();return true;}
+        if(key==juce::KeyPress::escapeKey && rackHidden){toggleRackVisibility();return true;}
+        if(key==juce::KeyPress::escapeKey && drawerVisible()){toggleDrawerEdge();return true;}
         if(key==juce::KeyPress::escapeKey && slot.isVisible()){
             editingIdle=true;slot.setHostedEditorPresentation(false);idle.setVisible(true);chain.setSelectedSlot(-1);
             idle.toFront(false);refresh();return true;
@@ -1712,6 +1856,8 @@ private:
     SkellPresetAudioProcessorEditor& outer;
     SkellPresetAudioProcessor& processor;
     ChainPanel chain;SlotEditor slot;SkellIdleDeck idle;SkellRoutingPage routing;
+    SkellLiveEffectPanel focusVisual;
+    WorkspaceEdge rackOuterEdge,rackInnerEdge,visualLeftEdge,visualRightEdge,drawerEdge{true};
     PresetBrowser browser;SkellMicModelPanel micPanel;
     SkellSettingsPanel settingsPanel;
     SkellMoonButton moonButton;
@@ -1720,7 +1866,7 @@ private:
     BypassShade bypassShade;
     std::unique_ptr<skellcore::ui::LookAndFeel> skin;
     int selectedTheme=Theme::Obsidian,previousMode=1;
-    bool rackOnRight=false,editingIdle=true,macroOpen=false;
+    bool rackOnRight=false,editingIdle=true,macroOpen=false,rackHidden=false,edgePreview=false,routingReturnIdle=true;
     int lastInputMeter=-1,lastOutputMeter=-1;
     float displayedInputPeak=0.f,displayedOutputPeak=0.f;
     bool lastInputOverload=false,lastOutputOverload=false;
@@ -1827,6 +1973,7 @@ void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
 }
 
 void SkellPresetAudioProcessorEditor::showRoutingForScreenshot(){canvas->showRoutingForScreenshot();}
+void SkellPresetAudioProcessorEditor::configureEdgesForScreenshot(bool right,bool hide,bool controls,bool sidechain){canvas->configureEdgesForScreenshot(right,hide,controls,sidechain);}
 bool SkellPresetAudioProcessorEditor::updateLiveVisualForScreenshot(){return canvas->updateLiveVisualForScreenshot();}
 void SkellPresetAudioProcessorEditor::updateStageForScreenshot(double nowMs){canvas->updateStageForScreenshot(nowMs);}
 bool SkellPresetAudioProcessorEditor::showHistoryForScreenshot(bool redoAvailable){return canvas->showHistoryForScreenshot(redoAvailable);}

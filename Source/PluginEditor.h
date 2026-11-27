@@ -21,6 +21,7 @@ public:
     void setModOrbForScreenshot(bool enabled);
     void dockRackForScreenshot(bool right);
     void showRoutingForScreenshot();
+    void configureEdgesForScreenshot(bool right,bool hide,bool controls,bool sidechain);
     bool updateLiveVisualForScreenshot();
     void updateStageForScreenshot(double nowMs);
     bool showHistoryForScreenshot(bool redoAvailable);
