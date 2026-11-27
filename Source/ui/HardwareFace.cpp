@@ -63,7 +63,10 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         // Wide reduction meter above the two timing controls. Atomic telemetry
         // comes from this slot's actual envelope, never a transfer-curve proxy.
         const bool measured=type==2 || type==36 || type==43;
-        livePanel.paintHistory(g,{548.f,169.f,306.f,88.f},measured);
+        if(type==2 || type==36){
+            livePanel.paintCompressorTransfer(g,{42.f,158.f,270.f,161.f},processor,slot,type);
+            livePanel.paintHistory(g,{326.f,158.f,534.f,161.f},true);
+        }else livePanel.paintHistory(g,{548.f,169.f,306.f,88.f},measured);
         if(type==36)Theme::text(g,"SOFT KNEE",{430,107,116,20},11.5f,Theme::white,true);
     } else if(type==4 || type==29) {
         livePanel.paintHistory(g,{342.f,170.f,496.f,83.f},false);
@@ -79,8 +82,9 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         meter(g,{624.f,171.f,214.f,81.f},type==11?reduction/24.f:level,
               type==11?"REDUCTION":"OUTPUT",type==11?gr:output);
     } else if(space(type)) {
-        livePanel.paintSpace(g,{344.f,166.f,493.f,109.f});
-        meter(g,{66.f,478.f,215.f,37.f},level,"RETURN",output);
+        if(type==6)livePanel.paintSpace(g,{42.f,158.f,818.f,161.f});
+        else {livePanel.paintSpace(g,{344.f,166.f,493.f,109.f});
+            meter(g,{66.f,478.f,215.f,37.f},level,"RETURN",output);}
     } else if(type==30) {
         Theme::text(g,"PITCH",{111,140,245,20},11.f,Theme::muted,true);
         Theme::text(g,"FORMANT",{476,140,245,20},11.f,Theme::muted,true);
@@ -126,7 +130,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         const float drive=std::pow(10.f,(driveParam*24.f+10.f*(macroGrit-.5f))/20.f);
         const float blend=.5f+character;
         const float denom=std::max(.5f,drive*.6f);
-        const auto screen=juce::Rectangle<float>(272.f,176.f,362.f,310.f);
+        const auto screen=juce::Rectangle<float>(42.f,158.f,270.f,161.f);
         g.setGradientFill(juce::ColourGradient(
             juce::Colour(0xff070d0a),screen.getTopLeft(),
             juce::Colour(0xff020504),screen.getBottomRight(),false));
@@ -134,7 +138,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         g.setColour(Theme::stroke.withAlpha(.55f));
         g.drawRoundedRectangle(screen,7.f,1.f);
         // Graticule plus the 1:1 reference diagonal.
-        const auto plot=juce::Rectangle<float>(298.f,207.f,310.f,175.f);
+        const auto plot=juce::Rectangle<float>(54.f,183.f,246.f,124.f);
         g.setColour(Theme::stroke.withAlpha(.22f));
         for(int line=1;line<4;++line) {
             const float f=(float)line/4.f;
@@ -159,10 +163,10 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
                                        plot.getCentreY()-outLevel*yScale);
             if(i==0)curve.startNewSubPath(x,y);else curve.lineTo(x,y);
         }
-        g.setColour(Theme::green.withAlpha(.16f));
+        g.setColour(juce::Colour(0xffc77996).withAlpha(.16f));
         g.strokePath(curve,juce::PathStrokeType(6.f,
             juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-        g.setColour(Theme::green.withAlpha(.88f));
+        g.setColour(juce::Colour(0xffc77996).withAlpha(.90f));
         g.strokePath(curve,juce::PathStrokeType(2.f,
             juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         // Live operating point: where the current slot output sits on the curve.
@@ -177,21 +181,8 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
             g.setColour(Theme::white);
             g.fillEllipse(px-2.4f,py-2.4f,4.8f,4.8f);
         }
-        Theme::text(g,"TRANSFER  /  IN -> OUT",{286,184,300,16},9.f,Theme::muted,true);
-        Theme::fittedText(g,juce::String(drive,2)+"x DRIVE",{286,432,200,16},10.f,
-                          Theme::green,true);
-        Theme::fittedText(g,output,{436,432,190,16},10.f,Theme::muted,true,
-                          juce::Justification::centredRight);
-        // Harmonic balance readout driven by the real Character value.
-        Theme::text(g,"INPUT / OUTPUT SPECTRUM",{286,393,320,13},8.6f,Theme::muted,true);
-        livePanel.paintHarmonicSpectrum(g,{286.f,407.f,330.f,22.f});
-        Theme::text(g,"CHARACTER CONTROL",{286,450,220,14},8.6f,Theme::muted,true);
-        const auto bar=juce::Rectangle<float>(286.f,466.f,330.f,5.f);
-        g.setColour(Theme::stroke.withAlpha(.60f));
-        g.fillRoundedRectangle(bar,2.5f);
-        g.setColour(Theme::green.withAlpha(.82f));
-        g.fillRoundedRectangle(bar.withWidth(
-            bar.getWidth()*juce::jlimit(0.f,1.f,character)),2.5f);
+        Theme::text(g,"TRANSFER / IN -> OUT",{54,163,246,16},10.f,Theme::muted,true);
+        livePanel.paintDriveSpectrum(g,{326.f,158.f,534.f,161.f});
     } else {
         // Dedicated central hardware instrument, with a live level ring and
         // a purpose-specific description. No generic frequency/XY graph.

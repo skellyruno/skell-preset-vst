@@ -30,8 +30,8 @@ public:
         // sine wave. Body sway remains theatrical set animation.
         const float jawDrop=6.5f*std::sqrt(vocal<0.f?react:juce::jlimit(0.f,1.f,vocal));
         const auto ink=Theme::bg;
-        const auto ivory=juce::Colour(0xffd9cbb7);
-        const auto stone=juce::Colour(0xff5c625c);
+        const auto ivory=juce::Colour(0xffdfd7c5);
+        const auto stone=juce::Colour(0xff454e4b);
         const auto alive=Theme::green;
         const auto cool=Theme::blue;
 
@@ -533,10 +533,10 @@ public:
             {
                 juce::Graphics::ScopedSaveState texture(g);
                 g.reduceClipRegion(skull);
-                for(int fleck=0;fleck<80;++fleck){
+                for(int fleck=0;fleck<112;++fleck){
                     const float x=126.f+(float)((fleck*43)%50);
                     const float y=16.f+(float)((fleck*61)%58);
-                    g.setColour((fleck%3==0?ink:ivory).withAlpha(.045f));
+                    g.setColour((fleck%3==0?ink:ivory).withAlpha(.065f));
                     g.fillEllipse(x,y,.9f+(fleck%3)*.35f,.65f+(fleck%2)*.35f);
                 }
                 // Temporal fossa shading pulls the cranium into a skull.

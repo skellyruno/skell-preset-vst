@@ -29,7 +29,7 @@ class Backdrop {
 public:
     // One shared moon rectangle drives both the cached artwork and live hit target.
     static juce::Rectangle<float> moonDisc(float width,float horizon) noexcept {
-        const float radius=juce::jmax(18.f,juce::jmin(58.f,width*.046f));
+        const float radius=juce::jmax(18.f,juce::jmin(64.f,width*.054f));
         const float x=width*.760f,y=juce::jmax(radius+9.f,horizon*.30f);
         return {x-radius,y-radius,2.f*radius,2.f*radius};
     }
@@ -50,8 +50,8 @@ public:
             lastTheme=Theme::current;lastHorizon=skyline;
             juce::Graphics g(image);const float width=(float)w,height=(float)h;
             const float horizonY=skyline;
-            const auto sky=juce::Colour(0xff15222a),stone=juce::Colour(0xff52615b);
-            const auto deep=juce::Colour(0xff090e13);
+            const auto sky=juce::Colour(0xff0c171f),stone=juce::Colour(0xff52615b);
+            const auto deep=juce::Colour(0xff05090f);
             const auto fog=juce::Colour(0xff8aa6a6);
             const auto disc=moonDisc(width,horizonY);
             const float moonX=disc.getCentreX(),moonY=disc.getCentreY(),moonR=disc.getWidth()*.5f;
@@ -62,7 +62,7 @@ public:
             g.setGradientFill(juce::ColourGradient(sky,width*.5f,0.f,deep,width*.5f,height,false));
             g.fillAll();
             g.setGradientFill(juce::ColourGradient(
-                juce::Colour(0xff375951).withAlpha(.56f),moonX,moonY-moonR,
+                juce::Colour(0xff274d50).withAlpha(.62f),moonX,moonY-moonR,
                 juce::Colour(0xff0a1218).withAlpha(0.f),moonX,horizonY*1.10f,true));
             g.fillRect(0.f,0.f,width,horizonY);
 
@@ -104,19 +104,19 @@ public:
             // --- Moon: heavy silver disc with layered halo, craters and a
             // green rim from the fog.
             const float halo=moonR*3.4f;
-            g.setGradientFill(juce::ColourGradient(fog.withAlpha(.18f),moonX,moonY,
+            g.setGradientFill(juce::ColourGradient(fog.withAlpha(.25f),moonX,moonY,
                 fog.withAlpha(0.f),moonX+halo,moonY,true));
             g.fillEllipse(moonX-halo,moonY-halo,halo*2.f,halo*2.f);
             g.setGradientFill(juce::ColourGradient(
-                juce::Colour(0xfff2f7ee).withAlpha(.94f),moonX-moonR*.45f,moonY-moonR*.55f,
-                juce::Colour(0xff93a89f).withAlpha(.62f),moonX+moonR*.6f,moonY+moonR*.75f,false));
+                juce::Colour(0xffe6f1e5).withAlpha(.98f),moonX-moonR*.45f,moonY-moonR*.55f,
+                juce::Colour(0xff637c80).withAlpha(.80f),moonX+moonR*.6f,moonY+moonR*.75f,false));
             g.fillEllipse(moonX-moonR,moonY-moonR,moonR*2.f,moonR*2.f);
             // Real relief is clipped to the disc. No horizontal stripes.
             {
             juce::Graphics::ScopedSaveState lunar(g);
             juce::Path discClip;discClip.addEllipse(moonX-moonR,moonY-moonR,2.f*moonR,2.f*moonR);
             g.reduceClipRegion(discClip);
-            for(int c=0;c<22;++c) {
+            for(int c=0;c<40;++c) {
                 const float a=hash01(c*211)*6.2831f,r=moonR*.70f*std::sqrt(hash01(c*97));
                 const float cx=moonX+std::cos(a)*r,cy=moonY+std::sin(a)*r;
                 const float cr=moonR*(.07f+.20f*hash01(c*43));
@@ -510,13 +510,22 @@ public:
             g.setColour(lamp.withAlpha(.30f*level));
             g.fillRoundedRectangle(bx,chapelBase-70.f*s,w,h,3.f);
         }
+        // Distant storm: a soft, slowly breathing fork in the far sky, not a strobe.
+        if(width>450.f && worldSkyline-bounds.getY()>115.f){
+            const float pulse=.10f+.20f*std::pow(juce::jmax(0.f,std::sin(phase*.36f+1.2f)),6.f)+.08f*react;
+            const float x=bounds.getX()+width*.22f,y=bounds.getY()+8.f,h=juce::jmin(112.f,(worldSkyline-y)*.62f);
+            juce::Path bolt;bolt.startNewSubPath(x,y);bolt.lineTo(x+13.f,y+h*.24f);bolt.lineTo(x+2.f,y+h*.37f);bolt.lineTo(x+20.f,y+h*.57f);bolt.lineTo(x+9.f,y+h*.70f);bolt.lineTo(x+27.f,y+h);
+            bolt.startNewSubPath(x+20.f,y+h*.57f);bolt.lineTo(x+42.f,y+h*.70f);bolt.lineTo(x+35.f,y+h*.89f);
+            g.setColour(Theme::blue.withAlpha(pulse*.19f));g.strokePath(bolt,juce::PathStrokeType(3.1f));
+            g.setColour(Theme::blue.withAlpha(pulse*.62f));g.strokePath(bolt,juce::PathStrokeType(.75f));
+        }
         // Drifting mist: three soft bands moving at different speeds.
         const auto mist=juce::Colour(0xff8aa6a6);
         for(int band=0;band<3;++band) {
             const float speed=.055f+.028f*band;
             const float offset=std::fmod(phase*speed*width*.30f+band*width*.42f,width*1.5f);
             const float y=worldSkyline-70.f+band*26.f;
-            const float a=.030f+.014f*band;
+            const float a=.045f+.018f*band;
             g.setGradientFill(juce::ColourGradient(
                 mist.withAlpha(0.f),bounds.getX()+offset-width*.7f,y,
                 mist.withAlpha(a),bounds.getX()+offset-width*.2f,y+14.f,false));

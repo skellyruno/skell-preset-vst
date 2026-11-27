@@ -371,12 +371,9 @@ void ChainPanel::paint(juce::Graphics& g) {
         }
         // Always-visible direct removal target, separate from drag, wet and power.
         g.setColour(hovering?Theme::red:Theme::muted.withAlpha(.70f));
-        const float binY=(float)top+29.f;
-        g.drawRoundedRectangle(35.f,binY+3.f,8.f,8.f,1.2f,1.f);
-        g.drawLine(33.5f,binY+2.f,44.5f,binY+2.f,1.2f);
-        g.drawLine(37.f,binY,41.f,binY,1.f);
-        g.drawLine(38.f,binY+5.f,38.f,binY+9.f,.8f);
-        g.drawLine(40.f,binY+5.f,40.f,binY+9.f,.8f);
+        const float crossY=(float)top+34.f;
+        g.drawLine(35.f,crossY-3.5f,43.f,crossY+3.5f,1.35f);
+        g.drawLine(43.f,crossY-3.5f,35.f,crossY+3.5f,1.35f);
         // Narrow, hardware-like row: effect / FL-style wet trim / power dot.
         // Wet is the existing 0..1 automatable APVTS slot parameter.
         juce::String compact=processor.moduleDisplayName(type);

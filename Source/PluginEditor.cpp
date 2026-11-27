@@ -500,6 +500,7 @@ public:
         slot.setModOrbForScreenshot(enabled);
     }
     void showRoutingForScreenshot(){openRouting(processor.slotIdAt(0));}
+    bool updateLiveVisualForScreenshot(){return slot.updateLiveVisualForScreenshot();}
     bool showHistoryForScreenshot(bool redoAvailable){
         undoStates.clear();redoStates.clear();pendingHistory.reset();updateHistoryButtons();
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
@@ -858,7 +859,7 @@ public:
            undo.getX()-preset.getRight()<0 ||
            undo.getX()-preset.getRight()>12 ||
            redo.getX()-undo.getRight()>12 ||
-           settings.getX()<=redo.getRight() ||
+           settings.getX()<=redo.getRight() || settings.getX()-redo.getRight()>16 ||
            powerButton.getX()-settings.getRight()<0 ||
            powerButton.getX()-settings.getRight()>12 ||
            Theme::width-powerButton.getRight()>22 ||
@@ -1270,24 +1271,16 @@ public:
         brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,340.f);
-        const float titleX=75.f,titleY=18.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
+        const float titleX=75.f,titleY=23.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
         wordmark.draw(g,{titleX,titleY,titleW,titleH});
-        const int subY=49;
+        const int subY=52;
         juce::AttributedString edition;edition.append("v.01",Theme::font(9.5f,true),Theme::green);
         juce::TextLayout editionLayout;editionLayout.createLayout(edition,60.f);
-        const int editionX=286-juce::roundToInt(editionLayout.getWidth());
+        const int editionX=juce::roundToInt(titleX+titleW-editionLayout.getWidth());
         Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{75,subY,editionX-83,16},
                           11.f,Theme::muted,true,juce::Justification::centredLeft);
         editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
-        Theme::text(g,"PRESET",{316,8,350,15},11.f,Theme::muted,true);
-        const double sampleRate=juce::jmax(8000.,processor.preparedAudioRate());
-        const double latencyMs=1000.*processor.getLatencySamples()/sampleRate;
-        Theme::text(g,"LATENCY",{780,18,142,17},10.5f,Theme::muted,true);
-        Theme::text(g,juce::String(latencyMs,1)+" ms",{780,35,142,24},15.f,Theme::white,true);
-        g.setColour(Theme::stroke.withAlpha(.55f));g.drawVerticalLine(766,19.f,60.f);
-        Theme::text(g,"SIGNAL PATH",{926,18,122,17},10.5f,Theme::muted,true);
-        const bool bypassed=(int)processor.state.getRawParameterValue("mode")->load()==3;
-        Theme::text(g,bypassed?"BYPASSED":"ACTIVE",{926,35,122,24},14.f,bypassed?Theme::amber:Theme::white,true);
+        Theme::text(g,"PRESET",{623,8,350,15},11.f,Theme::muted,true);
         g.setColour(Theme::stroke);g.drawHorizontalLine(661,0.f,(float)Theme::width);
         g.setGradientFill(juce::ColourGradient(
             Theme::panelAlt.withMultipliedBrightness(.88f),0.f,662.f,
@@ -1374,11 +1367,11 @@ public:
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
-        preset.setBounds(316,24,350,38);
+        preset.setBounds(623,24,350,38);
         // No dedicated Live Stage button: the wordmark is the return target.
         stageButton.setBounds(73,15,225,52);
-        undo.setBounds(676,27,32,32);
-        redo.setBounds(716,27,32,32);
+        undo.setBounds(981,27,32,32);
+        redo.setBounds(1021,27,32,32);
         micButton.setBounds(chain.getX()+174,chain.getY()+6,34,34);
         // Owner correction: power is the rightmost header control.
         powerButton.setBounds(1112,25,38,38);
@@ -1814,6 +1807,7 @@ void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
 }
 
 void SkellPresetAudioProcessorEditor::showRoutingForScreenshot(){canvas->showRoutingForScreenshot();}
+bool SkellPresetAudioProcessorEditor::updateLiveVisualForScreenshot(){return canvas->updateLiveVisualForScreenshot();}
 bool SkellPresetAudioProcessorEditor::showHistoryForScreenshot(bool redoAvailable){return canvas->showHistoryForScreenshot(redoAvailable);}
 void SkellPresetAudioProcessorEditor::showHomeForScreenshot() {
     canvas->showHomeForScreenshot();

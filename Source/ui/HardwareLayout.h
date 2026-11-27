@@ -14,12 +14,12 @@ inline bool space(int type) noexcept {return type==6 || type==7 || type==9 || ty
 inline juce::Rectangle<int> control(int type,int index) noexcept {
     if(limiter(type))return {42+index*222,203,202,246};
     // Saturator: two large dials flanking a real transfer-curve screen.
-    if(saturator(type))return index==0?juce::Rectangle<int>{36,196,204,250}
-                                      :juce::Rectangle<int>{666,196,204,250};
+    if(saturator(type))return {230+index*260,352,182,151};
     if(type==4 || type==29) {
         if(index==0)return {45,177,260,282};
         return {328+(index-1)*181,302,170,181};
     }
+    if(type==2 || type==36)return {38+index*216,352,182,151};
     if(dynamics(type)) {
         // Keep dial centers fixed while reducing oversized primary caps.
         // Shared geometry is used by the real controls and their captions.
@@ -30,6 +30,7 @@ inline juce::Rectangle<int> control(int type,int index) noexcept {
         if(index==0)return {48,181,257,278};
         return {329+(index-1)*179,299,164,184};
     }
+    if(type==6)return {205+index*310,352,182,151};
     if(space(type)) {
         if(index==0)return {49,179,250,281};
         return {329+(index-1)*179,301,164,182};

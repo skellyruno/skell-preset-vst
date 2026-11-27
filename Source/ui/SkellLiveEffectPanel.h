@@ -126,11 +126,35 @@ public:
             if(filled){auto area=line;const float left=plot.getX()+plot.getWidth()*std::log(80.f/20.f)/std::log(1000.f);
                 const float right=plot.getX()+plot.getWidth()*std::log(9000.f/20.f)/std::log(1000.f);
                 area.lineTo(right,plot.getBottom());area.lineTo(left,plot.getBottom());area.closeSubPath();
-                g.setGradientFill(juce::ColourGradient(colour.withAlpha(.19f),plot.getCentreX(),plot.getY(),colour.withAlpha(.025f),plot.getCentreX(),plot.getBottom(),false));
+                g.setGradientFill(juce::ColourGradient(colour.withAlpha(.29f),plot.getCentreX(),plot.getY(),colour.withAlpha(.06f),plot.getCentreX(),plot.getBottom(),false));
                 g.fillPath(area);}
             g.setColour(colour.withAlpha(.68f));g.strokePath(line,juce::PathStrokeType(1.35f));
         };
         draw(inBands,Theme::muted,false);draw(outBands,Theme::blue,true);
+    }
+    void paintCompressorTransfer(juce::Graphics& g,juce::Rectangle<float> area,P& p,int slot,int type) const {
+        Theme::panelBox(g,area,6.f);
+        auto plot=area.reduced(10.f,8.f);const auto title=plot.removeFromTop(18.f);
+        Theme::fittedText(g,"DETECTOR TRANSFER",title.toNearestInt(),10.f,Theme::muted,true);
+        const float a=p.getSlotParam(slot,0),b=p.getSlotParam(slot,1),k=p.getSlotParam(slot,4);
+        const bool studio=type==P::StudioCompressorFX;
+        const auto* punch=p.state.getRawParameterValue("macro2");
+        const float threshold=studio?20.f*std::log10(juce::jmax(.001f,skellpreset::studio::detail::level(juce::roundToInt(a*1000.f),7.))):-48.f+a*42.f-12.f*((punch?punch->load():.5f)-.5f);
+        const float ratio=studio?1.f+.38f*(std::pow(51.f,b)-1.f):1.f+b*11.f;
+        const float knee=(std::pow(201.f,k)-1.f)*.005f;
+        const float kneeNorm=knee>1.e-6f?1.f/std::log1p(knee):0.f;
+        for(int i=1;i<4;++i){const float f=(float)i/4.f;g.setColour(Theme::stroke.withAlpha(.45f));g.drawLine(plot.getX()+plot.getWidth()*f,plot.getY(),plot.getX()+plot.getWidth()*f,plot.getBottom(),.6f);g.drawLine(plot.getX(),plot.getY()+plot.getHeight()*f,plot.getRight(),plot.getY()+plot.getHeight()*f,.6f);}
+        g.setColour(Theme::muted.withAlpha(.45f));g.drawLine(plot.getX(),plot.getBottom(),plot.getRight(),plot.getY(),.8f);
+        juce::Path curve;
+        for(int i=0;i<=96;++i){const float f=(float)i/96.f,in=-60.f+60.f*f,over=std::max(0.f,in-threshold);
+            const float slope=1.f/ratio-1.f;
+            const float gain=studio && knee>1.e-5f && over>0.f?((std::log1p((over+1.f)*knee)*kneeNorm-1.f)*(slope+1.f)-over):over*slope;
+            const float y=plot.getBottom()-plot.getHeight()*juce::jlimit(0.f,1.f,(in+gain+60.f)/60.f);
+            const float x=plot.getX()+plot.getWidth()*f;if(i==0)curve.startNewSubPath(x,y);else curve.lineTo(x,y);
+        }
+        g.setColour(Theme::white);g.strokePath(curve,juce::PathStrokeType(1.5f));
+        const float x=plot.getX()+plot.getWidth()*juce::jlimit(0.f,1.f,(threshold+60.f)/60.f);
+        g.setColour(Theme::amber.withAlpha(.7f));g.drawLine(x,plot.getY(),x,plot.getBottom(),.9f);
     }
     void paintHistory(juce::Graphics& g,juce::Rectangle<float> area,bool reduction) const {
         Theme::panelBox(g,area,6.f,true);
@@ -144,7 +168,7 @@ public:
         const auto left=legend.withWidth(legend.getWidth()*.5f);
         const auto right=legend.withTrimmedLeft(legend.getWidth()*.5f);
         if(reduction) {
-            Theme::fittedText(g,"GR "+juce::String(grHistory.back()*24.f,1)+" dB",left.toNearestInt(),9.5f,Theme::amber,true);
+            Theme::fittedText(g,"GR "+juce::String(grHistory.back()*24.f,1)+" dB / OUTPUT",left.toNearestInt(),9.5f,Theme::red,true);
             Theme::fittedText(g,"KEY "+juce::String(duckHistory.back()*24.f,1)+" dB",right.toNearestInt(),9.5f,Theme::blue,true,juce::Justification::centredRight);
         } else {
             Theme::fittedText(g,"INPUT",left.toNearestInt(),9.5f,Theme::muted,true);
@@ -158,11 +182,14 @@ public:
                 const float x=plot.getX()+plot.getWidth()*static_cast<float>(i)/static_cast<float>(values.size()-1);
                 const float y=down?plot.getY()+values[i]*plot.getHeight():plot.getBottom()-values[i]*plot.getHeight();
                 if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);}
-            g.setColour(colour.withAlpha(.17f));g.strokePath(line,juce::PathStrokeType(4.f));
+            auto fill=line;const float base=down?plot.getY():plot.getBottom();
+            fill.lineTo(plot.getRight(),base);fill.lineTo(plot.getX(),base);fill.closeSubPath();
+            g.setColour(colour.withAlpha(.18f));g.fillPath(fill);
             g.setColour(colour);g.strokePath(line,juce::PathStrokeType(1.5f));
         };
-        if(reduction){draw(grHistory,Theme::amber,true);draw(duckHistory,Theme::blue,true);}
-        else {draw(inputHistory,Theme::muted,false);draw(outputHistory,Theme::green,false);}
+        if(reduction && fresh){draw(outputHistory,Theme::blue,false);draw(grHistory,Theme::red,true);if(duck>0.f)draw(duckHistory,Theme::amber,true);}
+        else if(reduction)Theme::fittedText(g,"WAITING FOR AUDIO",plot.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);
+        else if(fresh){draw(inputHistory,Theme::muted,false);draw(outputHistory,Theme::green,false);}
     }
     void paintSpace(juce::Graphics& g,juce::Rectangle<float> area) const {
         Theme::panelBox(g,area,6.f,true);
@@ -170,28 +197,54 @@ public:
         auto title=plot.removeFromTop(15.f);
         Theme::fittedText(g,isolatedHistory?"WET RETURN WATERFALL  /  80 Hz - 9 kHz":"OUTPUT WATERFALL  /  80 Hz - 9 kHz",title.toNearestInt(),9.5f,Theme::muted,true);
         const auto legend=plot.removeFromBottom(12.f);
-        Theme::fittedText(g,"LOW                                    HIGH  /  NEWEST IN FRONT",legend.toNearestInt(),8.f,Theme::muted);
+        Theme::fittedText(g,"LOW TO HIGH FREQUENCY / NEWEST IN FRONT",legend.toNearestInt(),8.f,Theme::muted);
         juce::Graphics::ScopedSaveState clipped(g);g.reduceClipRegion(plot.toNearestInt());
         const float h=plot.getHeight(),w=plot.getWidth();
+        for(int grid=0;grid<5;++grid){
+            const float f=(float)grid/4.f;
+            g.setColour(Theme::stroke.withAlpha(.50f));
+            g.drawLine(plot.getX()+w*(.18f+.64f*f),plot.getY()+h*.30f,plot.getX()+w*f,plot.getBottom(),.65f);
+        }
         for(size_t row=0;row<historyCount;++row){
             const size_t index=(historyHead+spectrumHistory.size()-historyCount+row)%spectrumHistory.size();
             const float depth=(float)(spectrumHistory.size()-historyCount+row+1)/(float)spectrumHistory.size();
-            const float width=w*(.65f+.33f*depth),left=plot.getCentreX()-.5f*width;
-            const float base=plot.getY()+h*(.36f+.60f*depth);
+            const float width=w*(.60f+.26f*depth),left=plot.getX()+w*(.32f-.28f*depth);
+            const float base=plot.getY()+h*(.42f+.53f*depth);
             juce::Path ridge;
             const auto& values=spectrumHistory[index];
             for(size_t band=0;band<values.size();++band){
-                const float x=left+width*(float)band/(float)(values.size()-1);
-                const float y=base-values[band]*h*(.16f+.19f*depth);
+                const float f=(float)band/(float)(values.size()-1);
+                const float x=left+width*f;
+                const float y=base-values[band]*h*(.22f+.29f*depth)-h*.24f*f;
                 if(band==0)ridge.startNewSubPath(x,y);else ridge.lineTo(x,y);
             }
-            auto fill=ridge;fill.lineTo(left+width,base);fill.lineTo(left,base);fill.closeSubPath();
-            const auto ink=Theme::blue.interpolatedWith(Theme::green,depth);
+            auto fill=ridge;fill.lineTo(left+width,base-h*.24f);fill.lineTo(left,base);fill.closeSubPath();
+            const auto ink=Theme::blue.interpolatedWith(Theme::green,.18f*depth);
             g.setColour(Theme::bg.withAlpha(.38f));g.fillPath(fill);
             g.setColour(ink.withAlpha(.055f+.10f*depth));g.fillPath(fill);
-            g.setColour(ink.withAlpha(.12f+.55f*depth));g.strokePath(ridge,juce::PathStrokeType(row+1==historyCount?1.7f:.75f));
+            g.setColour(ink.withAlpha(.20f+.65f*depth));g.strokePath(ridge,juce::PathStrokeType(row+1==historyCount?1.7f:.75f));
         }
         if(!fresh)Theme::fittedText(g,"WAITING FOR AUDIO",plot.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);
+    }
+    void paintDriveSpectrum(juce::Graphics& g,juce::Rectangle<float> area) const {
+        Theme::panelBox(g,area,6.f);
+        auto inner=area.reduced(10.f,7.f);
+        Theme::fittedText(g,"INPUT / OUTPUT SPECTRUM",inner.removeFromTop(15.f).toNearestInt(),10.f,Theme::muted,true);
+        auto upper=inner.removeFromTop(inner.getHeight()*.58f);
+        inner.removeFromTop(5.f);
+        Theme::fittedText(g,"SPECTRAL CHANGE / +/-24 dB",inner.removeFromTop(13.f).toNearestInt(),9.f,Theme::muted,true);
+        const auto rose=juce::Colour(0xffc77996);
+        for(auto r:{upper,inner})for(int n=1;n<8;++n){const float x=r.getX()+r.getWidth()*n/8.f;g.setColour(Theme::stroke.withAlpha(.4f));g.drawLine(x,r.getY(),x,r.getBottom(),.6f);}
+        g.setColour(Theme::stroke);g.drawLine(inner.getX(),inner.getCentreY(),inner.getRight(),inner.getCentreY(),.6f);
+        if(!fresh){Theme::fittedText(g,"WAITING FOR AUDIO",upper.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);return;}
+        auto draw=[&](const auto& values,juce::Rectangle<float> r,juce::Colour tint,bool centred){
+            juce::Path line;
+            for(size_t i=0;i<values.size();++i){const float x=r.getX()+r.getWidth()*(float)i/(float)(values.size()-1);const float y=centred?r.getCentreY()-values[i]*r.getHeight()*.5f:r.getBottom()-values[i]*r.getHeight();if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);}
+            auto fill=line;const float base=centred?r.getCentreY():r.getBottom();fill.lineTo(r.getRight(),base);fill.lineTo(r.getX(),base);fill.closeSubPath();g.setColour(tint.withAlpha(.24f));g.fillPath(fill);g.setColour(tint.withAlpha(.88f));g.strokePath(line,juce::PathStrokeType(1.25f));
+        };
+        draw(inBands,upper,Theme::muted,false);draw(outBands,upper,rose,false);
+        std::array<float,Analyzer::bands> delta{};for(size_t i=0;i<delta.size();++i)delta[i]=std::clamp((outBands[i]-inBands[i])*3.f,-1.f,1.f);
+        draw(delta,inner,rose,true);
     }
     void paintHarmonicSpectrum(juce::Graphics& g,juce::Rectangle<float> area) const {
         if(!fresh)return;

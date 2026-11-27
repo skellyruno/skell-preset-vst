@@ -143,25 +143,24 @@ public:
     static StageLayout layoutFor(int width,int height) noexcept {
         const float w=(float)width,h=(float)height;
         StageLayout out;
-        if(w<160.f || h<160.f)return out;
+        if(w<=160.f || h<=160.f)return out;
         const float margin=juce::jmax(17.f,juce::jmin(46.f,w*.075f));
-        const float bottom=juce::jmax(14.f,juce::jmin(40.f,h*.078f));
-        // Keep the trace compact so the performance stage owns the composition.
-        // Advanced mode gets a slim audio rail rather than a second empty panel.
-        const float scopeHeight=juce::jmax(26.f,juce::jmin(32.f,h*.095f));
+        const float bottom=12.f;
+        // Only reserve a lower safety margin; the audio-reactive stage owns the canvas.
+        const float scopeHeight=1.f; // virtual lower safety margin, not a visible rail
         out.scope={margin,h-bottom-scopeHeight,
                    juce::jmax(1.f,w-2.f*margin),scopeHeight};
         // The stage above the trace is split into the performer's boards and a
         // deep crowd pit. Reserving the pit keeps the audience cinematic
         // instead of a thin strip pressed under the figure's feet.
-        const float stageBottom=out.scope.getY()-18.f;
+        const float stageBottom=out.scope.getY()-6.f;
         const float headroom=h>=350.f?juce::jmin(26.f,h*.040f):0.f;
         const float stageTop=12.f+headroom;
         const float available=juce::jmax(0.f,stageBottom-stageTop);
         // Keep enough room for the smallest supported figure before the pit
         // takes its share, so tiny frames still produce a valid layout.
         const float pitMax=juce::jmax(0.f,available-372.f*.30f);
-        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f && h>=440.f?.225f:w>=580.f?.18f:.24f)));
+        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f && h>=440.f?.25f:w>=580.f?.22f:.24f)));
         const float feet=stageBottom-pitHeight;
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
             // Let the performer read as the headliner, using the space recovered
@@ -176,7 +175,7 @@ public:
         return out;
     }
     static juce::Rectangle<float> sceneryBounds(const StageLayout& stage,float width) noexcept {
-        return {10.f,10.f,width-20.f,stage.scope.getY()-18.f};
+        return {10.f,10.f,width-20.f,stage.scope.getY()-6.f};
     }
     static float stageHorizon(const StageLayout& stage) noexcept {
         const float feet=stage.originY+372.f*stage.scale;
@@ -378,12 +377,12 @@ public:
                     // Far rows are small and high, near rows large and cropped
                     // by the bottom of the stage. The pit starts narrow so the
                     // cemetery keeps its own band of picture above the crowd.
-                    const float heightPix=depth*(.30f+.76f*t*t);
+                    const float heightPix=depth*(.32f+.66f*t*t);
                     if(heightPix<6.f)continue;
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.72f+.20f*t);
-                    const auto rimColour=porcelain.withAlpha(.12f+.36f*t);
+                    const auto rimColour=porcelain.interpolatedWith(Theme::blue,.16f).withAlpha(.10f+.25f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
@@ -401,7 +400,7 @@ public:
                             -std::abs(bob)*2.0f*unit;
                         const float base=headY+hgt;
                         const float ry=hgt*figure.headRatio;
-                        const float rx=ry*.86f;
+                        const float rx=ry*.78f;
                         const float armW=juce::jmax(1.1f,hgt*.045f);
                         const float shoulderY=headY+ry*1.35f;
                         const float shoulderW=rx*1.9f;
@@ -415,12 +414,16 @@ public:
                             // a cervical stem and separate angled arms.
                             juce::Path distant;
                             distant.startNewSubPath(x-rx*.45f,headY+ry*.6f);
-                            distant.quadraticTo(x-shoulderW,shoulderY,x-shoulderW*.68f,base);
-                            distant.lineTo(x+shoulderW*.68f,base);
+                            distant.quadraticTo(x-shoulderW,shoulderY,x-rx*.30f,shoulderY+ry*2.8f);
+                            distant.lineTo(x+rx*.30f,shoulderY+ry*2.8f);
                             distant.quadraticTo(x+shoulderW,shoulderY,x+rx*.45f,headY+ry*.6f);
                             distant.closeSubPath();g.fillPath(distant);
                             g.setColour(rimColour.withMultipliedAlpha(.82f));
-                            g.drawLine(x,headY+ry,x,shoulderY+ry*.8f,.65f);
+                            g.drawLine(x,headY+ry,x,shoulderY+ry*3.7f,.65f);
+                            for(int rib=0;rib<3;++rib){const float y=shoulderY+ry*(.6f+rib*.6f);g.drawLine(x-rx*(1.25f-rib*.22f),y,x+rx*(1.25f-rib*.22f),y,.55f);}
+                            g.setColour(bodyColour);g.fillEllipse(x-rx*.8f,shoulderY+ry*3.f,rx*1.6f,ry*.7f);
+                            g.drawLine(x-rx*.4f,shoulderY+ry*3.5f,x-rx*.7f,base,1.f);
+                            g.drawLine(x+rx*.4f,shoulderY+ry*3.5f,x+rx*.7f,base,1.f);
                             for(int side:{-1,1}){
                                 const float sign=(float)side;
                                 const bool up=figure.pose==0 || (figure.pose==1 && side==1);
@@ -458,27 +461,36 @@ public:
                             g.setColour(rimColour.withMultipliedAlpha(.75f));
                             g.drawLine(sx,shoulderY,ex,ey,armW*.7f);
                             g.drawLine(ex,ey,hx,hy,armW*.7f);
-                            g.fillEllipse(hx-armW*1.1f,hy-armW*1.1f,armW*2.2f,armW*2.2f);
+                            g.fillEllipse(hx-armW*.6f,hy-armW*.7f,armW*1.2f,armW*1.4f);
+                            for(int finger=0;finger<3;++finger)g.drawLine(hx,hy,hx+(finger-1)*armW*.65f,hy-armW*1.65f,juce::jmax(.45f,armW*.23f));
                         }
                         // Back, shoulders and neck as one silhouette; only the
                         // shoulder line catches light, which is what sells a
                         // crowd seen from behind.
                         juce::Path body;
-                        body.startNewSubPath(x-shoulderW,base+hgt*.45f);
+                        body.startNewSubPath(x-rx*.54f,shoulderY+ry*3.6f);
                         body.lineTo(x-shoulderW*.96f,shoulderY+ry*.30f);
                         body.quadraticTo(x-shoulderW*.58f,shoulderY-ry*.42f,x-rx*.62f,shoulderY);
                         body.lineTo(x-rx*.66f,headY+ry*.60f);
                         body.lineTo(x+rx*.66f,headY+ry*.60f);
                         body.lineTo(x+rx*.62f,shoulderY);
                         body.quadraticTo(x+shoulderW*.58f,shoulderY-ry*.42f,x+shoulderW*.96f,shoulderY+ry*.30f);
-                        body.lineTo(x+shoulderW,base+hgt*.45f);
+                        body.lineTo(x+rx*.54f,shoulderY+ry*3.6f);
                         body.closeSubPath();
                         g.setColour(bodyColour);
                         g.fillPath(body);
+                        const float pelvisY=shoulderY+ry*3.7f;
+                        g.fillEllipse(x-rx*.85f,pelvisY,rx*1.7f,ry*.85f);
+                        for(int side:{-1,1}){const float sign=(float)side;g.setColour(bodyColour);g.drawLine(x+sign*rx*.45f,pelvisY+ry*.5f,x+sign*rx*.72f,base,juce::jmax(1.f,rx*.30f));}
                         // Near bodies show the rear skeleton rather than
                         // featureless black coats. No detail on subpixel heads.
-                        if(ry>4.5f && row>=crowdLayers-2) {
+                        if(ry>2.6f) {
                             const float spineY=shoulderY+ry*.25f;
+                            for(int rib=0;rib<4;++rib){
+                                const float y=spineY+ry*(.55f+rib*.45f),w=shoulderW*(.83f-.10f*rib);
+                                juce::Path bones;bones.startNewSubPath(x-w,y);bones.quadraticTo(x,y+ry*.48f,x+w,y);
+                                g.setColour(rimColour.withMultipliedAlpha(.55f));g.strokePath(bones,juce::PathStrokeType(juce::jmax(.55f,ry*.10f)));
+                            }
                             for(int v=0;v<4;++v) {
                                 const float vy=spineY+v*ry*.48f;
                                 g.setColour(rimColour.withMultipliedAlpha(.62f-.08f*v));
@@ -611,58 +623,20 @@ public:
         }
         // The trace and bone illumination are directly audio-reactive;
         // nothing is a fake spectrum or prerecorded animation.
-        const auto scope=stage.scope;
-        g.setColour(Theme::bg.withAlpha(.72f));g.fillRoundedRectangle(scope.expanded(8.f,4.f),6.f);
-        g.setColour(Theme::stroke.withAlpha(.55f));g.drawRoundedRectangle(scope.expanded(8.f,4.f),6.f,.8f);
-        // A compact measured peak readout gives the trace a useful scale
-        // without shrinking the scene on the smallest supported editor.
-        const bool showPeak=scope.getWidth()>420.f;
-        const auto plot=showPeak?scope.withTrimmedLeft(142.f):scope;
-        if(showPeak){
-            Theme::fittedText(g,"OUT PEAK",scope.withWidth(135.f).withHeight(14.f).toNearestInt(),11.f,Theme::muted,true);
-            const auto peakText=audioFresh && outputMeter.level>.00003162f
-                ?juce::String(juce::Decibels::gainToDecibels(outputMeter.level,-90.f),1)+" dBFS"
-                :juce::String("-inf dBFS");
-            Theme::fittedText(g,peakText,scope.withWidth(135.f).withTrimmedTop(14.f).toNearestInt(),13.f,
-                              outputMeter.level>1.f?Theme::amber:Theme::white,true);
-            g.setColour(Theme::stroke.withAlpha(.50f));
-            g.drawVerticalLine(juce::roundToInt(plot.getX()),scope.getY()+3.f,scope.getBottom()-3.f);
-        }
-        g.setColour(accent.withAlpha(.10f));
-        g.drawLine(plot.getX()+9.f,plot.getCentreY(),
-                   plot.getRight()-9.f,plot.getCentreY(),.7f);
-        if(!live){
-            Theme::fittedText(g,audioFresh?"WAITING FOR SIGNAL":"NO AUDIO / READY",
-                plot.withHeight(14.f).toNearestInt(),10.f,Theme::muted,false,juce::Justification::centred);
-        }
-        juce::Path trace;
-        for(int index=0;index<128;++index){
-            const float raw=cachedSignal[(size_t)index];
-            // Clear the visual trace when the DAW has stopped processing
-            // instead of displaying a stale recorded vocal as LIVE.
-            const float value=audioFresh && std::isfinite(raw)?
-                juce::jlimit(-1.f,1.f,raw):0.f;
-            const float x=plot.getX()+11.f+(plot.getWidth()-22.f)*index/127.f;
-            const float y=plot.getCentreY()-value*plot.getHeight()*.43f;
-            if(index==0)trace.startNewSubPath(x,y);
-            else trace.lineTo(x,y);
-        }
-        if(live) {
-            auto envelope=trace;
-            envelope.lineTo(plot.getRight()-11.f,plot.getCentreY());
-            envelope.lineTo(plot.getX()+11.f,plot.getCentreY());
-            envelope.closeSubPath();
-            g.setColour(accent.withAlpha(.045f+.07f*activity));
-            g.fillPath(envelope);
-        }
+        // The stage is the display. Live waveform light belongs to the boards.
         if(live){
-            g.setColour(accent.withAlpha(.13f));
-            g.strokePath(trace,juce::PathStrokeType(5.f,
-                juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            const juce::Rectangle<float> plot(stageBounds.getX()+28.f,feetY-8.f,stageBounds.getWidth()-56.f,14.f);
+            juce::Path trace;
+            for(int index=0;index<128;++index){
+                const float raw=cachedSignal[(size_t)index];
+                const float value=std::isfinite(raw)?juce::jlimit(-1.f,1.f,raw):0.f;
+                const float x=plot.getX()+plot.getWidth()*index/127.f;
+                const float y=plot.getCentreY()-value*plot.getHeight()*.43f;
+                if(index==0)trace.startNewSubPath(x,y);else trace.lineTo(x,y);
+            }
+            g.setColour(accent.withAlpha(.16f));g.strokePath(trace,juce::PathStrokeType(3.f));
+            g.setColour(accent.withAlpha(.62f));g.strokePath(trace,juce::PathStrokeType(1.f));
         }
-        g.setColour(accent.withAlpha(live?.95f:.29f));
-        g.strokePath(trace,juce::PathStrokeType(live?1.85f:1.0f,
-            juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
         const auto status=juce::Rectangle<float>(stageBounds.getX()+15.f,
             stageBounds.getY()+13.f,90.f,24.f);
         g.setColour(Theme::bg.withAlpha(.84f));
@@ -730,8 +704,8 @@ private:
                 // always a small fraction of the figure so nobody reads as a
                 // giant balloon head.
                 f.height=24.f+rnd(7)*12.f;
-                f.headRatio=.085f+rnd(17)*.048f;
-                f.sizeJitter=.77f+rnd(27)*.48f;
+                f.headRatio=.075f+rnd(17)*.042f;
+                f.sizeJitter=.69f+rnd(27)*.60f;
                 f.phase=rnd(37)*6.2831f;
                 f.rate=.86f+rnd(47)*.34f;
                 f.pose=(int)(rnd(57)*4.f)%4;

@@ -692,6 +692,27 @@ int main(int argc, char** argv) {
             ++failures;
         }
 
+        // Feed deterministic dynamic multitone audio through the actual slot, then
+        // capture its actual editor using measured telemetry (not an animation mock).
+        if(!quick4){
+            const std::pair<const char*,int> visuals[]={{"compressor",SkellPresetAudioProcessor::Compressor},{"studio-compressor",SkellPresetAudioProcessor::StudioCompressorFX},{"eq",SkellPresetAudioProcessor::EQ},{"saturator",SkellPresetAudioProcessor::Saturator},{"reverb",SkellPresetAudioProcessor::Reverb}};
+            for(const auto& effect:visuals){
+                processor.clearRackToEmpty();processor.setSlotType(0,effect.second);processor.setSlotOn(0,true);
+                processor.setSlotParam(0,0,.25f);processor.setSlotParam(0,1,.72f);
+                editor.configureForScreenshot(0,1,false);editor.selectRackSlotForScreenshot(0,0);
+                bool fresh=false;juce::AudioBuffer<float> probe(2,512);juce::MidiBuffer midi;
+                for(int block=0;block<192;++block){
+                    processor.requestSlotVisual(0);
+                    const float envelope=.035f+.55f*(.5f+.5f*std::sin(block*.31f));
+                    for(int n=0;n<512;++n){const double t=(block*512+n)/48000.;const float sample=envelope*(.60f*(float)std::sin(t*690.0)+.26f*(float)std::sin(t*2349.0)+.14f*(float)std::sin(t*8831.0));probe.setSample(0,n,sample);probe.setSample(1,n,sample*.82f);}
+                    processor.processBlock(probe,midi);
+                    if(block%2==0)fresh=editor.updateLiveVisualForScreenshot();
+                }
+                const auto shot=skellcore::ui::headless::capture(editor,1168,688);
+                if(!fresh || !shot.image.isValid() || !skellcore::ui::headless::writePng(shot.image,folder.getChildFile(juce::String("measured-effect-")+effect.first+"-100.png"))){std::fprintf(stderr,"Measured effect capture failed: %s\n",effect.first);++failures;}
+            }
+            processor.requestSlotVisual(-1);processor.loadFactoryPreset(0);
+        }
         // Pixel-level branding regression: a previous AttributedString bug
         // drew PRESET at JUCE's 14pt default despite a 27pt design size.
         // Exclude the skull badge and the content area from the measurement.

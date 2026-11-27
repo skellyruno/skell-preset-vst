@@ -108,6 +108,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void select(int newSlot);
+    bool updateLiveVisualForScreenshot(){livePanel.update(processor,slot);return livePanel.hasSignal();}
     void applyTheme();
     void refreshIfChanged(); // only redraw when DSP controls or type change
     int selectedSlot()const noexcept{return slot;}
