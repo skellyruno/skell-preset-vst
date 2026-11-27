@@ -6,12 +6,13 @@ import json
 from pathlib import Path
 import re
 import zipfile
+from artist_artwork import prepare_artwork
 
 KEY = re.compile(r'[a-z0-9_-]{1,64}')
 HEX = re.compile(r'[0-9a-f]{64}')
 
 
-def prepare(root: Path, generation: int):
+def prepare(root: Path, generation: int, *, artwork_cache=None, offline=False, require_artwork=False):
     if not 0 < generation <= 2**31-1:
         raise ValueError('invalid release generation')
     catalog = json.loads((root/'catalog.json').read_text(encoding='utf-8'))
@@ -50,7 +51,8 @@ def prepare(root: Path, generation: int):
                          sha256=latest, history=history, payload=base64.b64encode(raw).decode('ascii')))
     if not 0 < len(rows) <= 1000:
         raise ValueError('invalid bank size')
-    return dict(schema=1, generation=generation, entries=rows)
+    artwork = prepare_artwork(root, catalog, artwork_cache, offline=offline, required=require_artwork)
+    return dict(schema=1, generation=generation, entries=rows, artwork=artwork)
 
 
 def main():
@@ -58,8 +60,11 @@ def main():
     p.add_argument('catalog', type=Path)
     p.add_argument('output', type=Path)
     p.add_argument('--generation', required=True, type=int)
+    p.add_argument('--artwork-cache', type=Path)
+    p.add_argument('--offline', action='store_true', help='Use cached/owner artwork only')
+    p.add_argument('--require-artwork', action='store_true', help='Fail private release when an artist has no verified image')
     a = p.parse_args()
-    bank = prepare(a.catalog, a.generation)
+    bank = prepare(a.catalog, a.generation, artwork_cache=a.artwork_cache, offline=a.offline, require_artwork=a.require_artwork)
     data = json.dumps(bank, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     if len(data) > 8*1024*1024:
         raise ValueError('embedded bank exceeds size limit')

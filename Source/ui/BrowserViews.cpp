@@ -18,7 +18,7 @@ void PresetBrowser::loadUIPreferences() {
     if(!file.existsAsFile() || file.getSize()>4096)return;
     const auto settings=juce::JSON::parse(file.loadFileAsString());
     if(!settings.isObject())return;
-    listMode=(bool)settings.getProperty("list",false);
+    listMode=(bool)settings.getProperty("list",true);
     const auto stored=settings.getProperty("recent",{});
     if(const auto* recents=stored.getArray())for(const auto& entry:*recents)
         if(entry.isString() && entry.toString().length()<=270 && recentKeys.size()<40)recentKeys.addIfNotAlreadyThere(entry.toString());
@@ -62,7 +62,7 @@ void PresetBrowser::paintPresetGrid(juce::Graphics& g,const std::vector<int>& en
         }
         auto art=bounds.reduced(6.f).removeFromTop(bounds.getHeight()-49.f);
         juce::Image cover;
-        if(entry<0 && -entry-1<(int)userArtwork.size())cover=userArtwork[(size_t)(-entry-1)];
+        if(entry<0)cover=artworkForUser(-entry-1).portrait;
         else if(entry==skellpreset::alchemist::factoryIndex)cover=alchemistArtwork;
         if(cover.isValid()) {
             juce::Graphics::ScopedSaveState save(g);g.reduceClipRegion(art.toNearestInt());
@@ -80,7 +80,7 @@ void PresetBrowser::paintPresetGrid(juce::Graphics& g,const std::vector<int>& en
         g.setColour(isFavorite(entry)?Theme::green:Theme::white);
         if(isFavorite(entry))g.fillPath(glyph);
         else g.strokePath(glyph,juce::PathStrokeType(1.5f));
-        const auto name=entry>=0?processor.getProgramName(entry):userPresets[(size_t)(-entry-1)].getFileNameWithoutExtension();
+        const auto name=entry>=0?processor.getProgramName(entry):userDisplayName(-entry-1);
         const auto card=directoryCardBounds(i);
         const int nameWidth=card.getWidth()-(selected?34:20);
         Theme::fittedText(g,name,{card.getX()+10,card.getBottom()-43,nameWidth,22},

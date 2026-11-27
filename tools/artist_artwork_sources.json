@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "artists": {
+    "skellyruno": [
+      {
+        "kind": "artist-profile",
+        "profile": "https://open.spotify.com/artist/0HL80yGveje94P170Txkju",
+        "url": "https://i.scdn.co/image/ab6761610000e5ebeb5f1a1de33ecd94e04a5ff4",
+        "verifiedVia": "https://www.musicmetricsvault.com/artists/skellyruno/0HL80yGveje94P170Txkju"
+      },
+      {
+        "kind": "official-social-avatar",
+        "profile": "https://linktr.ee/skellyruno",
+        "url": "https://ugc.production.linktr.ee/147a6f4f-9441-4c59-9f66-ef5eb6467217_e887d1c63f22995516dd1da59f733f4a.jpeg?io=true&size=avatar-v3_0",
+        "verifiedVia": "https://linktr.ee/skellyruno"
+      }
+    ]
+  }
+}

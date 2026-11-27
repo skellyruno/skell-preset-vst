@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 #include "../chain/ArtistBank.h"
+#include "ArtistArtwork.h"
 #include <array>
 #include <functional>
 #include <map>
@@ -69,7 +70,7 @@ public:
     std::function<void()> onCoverChanged;
 private:
     juce::TextButton thumbnailView{"THUMBNAILS"},listView{"LIST"};
-    bool listMode=false,preferencesReadOnly=false;
+    bool listMode=true,preferencesReadOnly=false;
     juce::StringArray recentKeys;
     void rememberRecent(int entry);
     bool resizeLeft=false,resizeTop=false;
@@ -131,6 +132,11 @@ private:
     juce::StringArray genreKeys,genreNames; // manually assigned; never auto-detected
     juce::StringArray customCategories; // user-owned local sidecar, not a preset
     std::vector<juce::File> userPresets;
+    skellpreset::artistart::Art artworkForUser(int index) const;
+    skellpreset::artistart::Cache artistArtwork;
+    skellpreset::artistart::Cache fallbackArtistArtwork;
+    void rebuildArtistArtworkFallbacks();
+    std::vector<skellpreset::artistart::Art> userCinemaArtwork;
     std::vector<juce::Image> userArtwork; // UI-thread thumbnail cache, no filesystem in paint()
     juce::Image alchemistArtwork; // editable factory cover, stored separately
     juce::Image selectedUserBackdrop; // single full-res cached artwork
@@ -216,6 +222,7 @@ private:
     struct CoverCacheEntry {
         juce::int64 modified=0,size=0;
         juce::Image thumbnail;
+        skellpreset::artistart::Art cinema;
     };
     using CoverCache=std::map<juce::String,CoverCacheEntry>;
     struct LibrarySnapshot {
@@ -224,6 +231,9 @@ private:
         std::vector<juce::Image> thumbnails;
         CoverCache covers;
         juce::Image alchemist;
+        std::vector<skellpreset::artistart::Art> cinema;
+        skellpreset::artistart::Cache artistArt;
+        bool artistArtScanned=false;
         bool bankScanned=false;
         skellpreset::artistbank::MetadataMap bankMetadata;
     };

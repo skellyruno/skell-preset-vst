@@ -302,6 +302,7 @@ PresetBrowser::LibrarySnapshot PresetBrowser::collectLibrary(
         });
     if(result.files.size()>maxUserLibraryPresets)result.files.resize(maxUserLibraryPresets);
     result.thumbnails.resize(result.files.size());
+    result.cinema.resize(result.files.size());
     const auto factoryCover=folder.getChildFile("Covers").getChildFile("Alchemist.png");
     if(factoryCover.existsAsFile() && factoryCover.getSize()>0 &&
        factoryCover.getSize()<=8*1024*1024) {
@@ -321,13 +322,15 @@ PresetBrowser::LibrarySnapshot PresetBrowser::collectLibrary(
         if(found!=previous.end() && found->second.modified==modified &&
            found->second.size==size && found->second.thumbnail.isValid()) {
             result.thumbnails[i]=found->second.thumbnail;
+            result.cinema[i]=found->second.cinema;
             result.covers.emplace(key,found->second);
             continue;
         }
         auto image=juce::ImageFileFormat::loadFrom(cover);
         if(!image.isValid() || image.getWidth()>4096 || image.getHeight()>4096)continue;
         result.thumbnails[i]=image.rescaled(128,96,juce::Graphics::mediumResamplingQuality);
-        result.covers.emplace(key,CoverCacheEntry{modified,size,result.thumbnails[i]});
+        result.cinema[i]=skellpreset::artistart::prepare(image);
+        result.covers.emplace(key,CoverCacheEntry{modified,size,result.thumbnails[i],result.cinema[i]});
     }
     result.ok=true;
     return result;
@@ -338,11 +341,17 @@ void PresetBrowser::applyLibrarySnapshot(LibrarySnapshot snapshot) {
     if(snapshot.bankScanned)embeddedArtistMetadata=std::move(snapshot.bankMetadata);
     userPresets=std::move(snapshot.files);
     userArtwork=std::move(snapshot.thumbnails);
+    userCinemaArtwork=std::move(snapshot.cinema);
+    if(snapshot.artistArtScanned)artistArtwork=std::move(snapshot.artistArt);
+    rebuildArtistArtworkFallbacks();
     coverCache=std::move(snapshot.covers);
     alchemistArtwork=std::move(snapshot.alchemist);
 }
 void PresetBrowser::scanLibrary() {
-    applyLibrarySnapshot(collectLibrary(libraryDirectory(),coverCache));
+    auto snapshot=collectLibrary(libraryDirectory(),coverCache);
+    snapshot.artistArt=skellpreset::artistart::embedded(artistArtwork);
+    snapshot.artistArtScanned=true;
+    applyLibrarySnapshot(std::move(snapshot));
 }
 void PresetBrowser::requestLibraryScan() {
     if(preferencesReadOnly)return;
@@ -355,8 +364,9 @@ void PresetBrowser::requestLibraryScan() {
     const auto revision=libraryRevision;
     const auto folder=libraryDirectory();
     const auto previous=coverCache;
+    const auto previousArtists=artistArtwork;
     juce::Component::SafePointer<PresetBrowser> safe(this);
-    juce::Thread::launch([safe,revision,folder,previous] {
+    juce::Thread::launch([safe,revision,folder,previous,previousArtists] {
         // Worker only: populate the private bundled artist presets before the
         // ordinary snapshot. Existing personal metadata remains authoritative.
         skellpreset::artistbank::SyncResult bank;
@@ -368,6 +378,8 @@ void PresetBrowser::requestLibraryScan() {
         snapshot.bankScanned=bank.error.isEmpty();
         if(bank.error.isNotEmpty())juce::Logger::writeToLog("Skell artist bank: "+bank.error);
         snapshot.bankMetadata=std::move(bank.metadata);
+        snapshot.artistArt=skellpreset::artistart::embedded(previousArtists);
+        snapshot.artistArtScanned=true;
         juce::MessageManager::callAsync([safe,revision,snapshot=std::move(snapshot)]() mutable {
             if(!safe)return;
             safe->libraryScanInFlight=false;
@@ -1129,7 +1141,24 @@ void PresetBrowser::refreshOrganizationEditor(){
     typeEditor.setEnabled(enabled);pairEditor.setEnabled(enabled);metadataButton.setEnabled(enabled);
     relatedButton.setEnabled(enabled && pairForUser(index).isNotEmpty());
 }
+void PresetBrowser::rebuildArtistArtworkFallbacks(){
+    fallbackArtistArtwork.clear();
+    for(int i=0;i<(int)userCinemaArtwork.size() && i<(int)userPresets.size();++i){
+        const auto key=skellpreset::artistart::key(artistForUser(i));
+        if(key.isNotEmpty() && userCinemaArtwork[(size_t)i].portrait.isValid())
+            fallbackArtistArtwork.emplace(key,userCinemaArtwork[(size_t)i]);
+    }
+}
+skellpreset::artistart::Art PresetBrowser::artworkForUser(int index) const {
+    if(index<0 || index>=(int)userPresets.size())return {};
+    if(index<(int)userCinemaArtwork.size() && userCinemaArtwork[(size_t)index].portrait.isValid())
+        return userCinemaArtwork[(size_t)index];
+    const auto key=skellpreset::artistart::key(artistForUser(index));
+    auto found=artistArtwork.find(key);if(found!=artistArtwork.end())return found->second;
+    auto fallback=fallbackArtistArtwork.find(key);return fallback==fallbackArtistArtwork.end()?skellpreset::artistart::Art{}:fallback->second;
+}
 void PresetBrowser::refreshArtistChoices(){
+    rebuildArtistArtworkFallbacks();
     const auto previous=artistFilter.getText();
     artistFilter.clear(juce::dontSendNotification);artistFilter.addItem("All matching artists",1);
     juce::StringArray names;
@@ -1194,7 +1223,7 @@ std::vector<PresetBrowser::DirectoryCard> PresetBrowser::directoryCards() const 
             if(!matches)continue;
             if(type=="main")++card.main;else if(type=="adlib")++card.adlib;else ++card.other;
             // Reuse cached user cover art only. No generated artist portraits or disk I/O.
-            if(card.artIndex<0 && i<(int)userArtwork.size() && userArtwork[(size_t)i].isValid())
+            if(card.artIndex<0 && artworkForUser(i).portrait.isValid())
                 card.artIndex=i;
         }
     }
@@ -1269,22 +1298,32 @@ void PresetBrowser::paintDirectory(juce::Graphics& g,const std::vector<Directory
         g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(hover?.20f:.08f),
             bounds.getTopLeft(),Theme::plot,bounds.getBottomRight(),false));
         g.fillRoundedRectangle(bounds,8.f);
-        const auto art=listMode?juce::Rectangle<float>(bounds.getX()+6.f,bounds.getY()+6.f,44.f,44.f):
+        auto artistArt=artworkForUser(card.artIndex);
+        if(directoryMode()==DirectoryMode::artists){
+            const auto found=artistArtwork.find(skellpreset::artistart::key(card.label));
+            if(found!=artistArtwork.end())artistArt=found->second;
+        }
+        const auto art=listMode?skellpreset::artistart::portraitBounds(bounds):
             bounds.reduced(6.f).removeFromTop(bounds.getHeight()-49.f);
-        if(card.artIndex>=0 && card.artIndex<(int)userArtwork.size() && userArtwork[(size_t)card.artIndex].isValid()){
+        if(listMode){
+            skellpreset::artistart::cinematic(g,bounds,artistArt,Theme::panelAlt,accent,hover);
+            if(!artistArt.portrait.isValid())paintCover(g,art,card.id,accent);
+        }else if(artistArt.portrait.isValid()){
             juce::Graphics::ScopedSaveState saved(g);g.reduceClipRegion(art.toNearestInt());
-            g.drawImageWithin(userArtwork[(size_t)card.artIndex],(int)art.getX(),(int)art.getY(),
+            g.drawImageWithin(artistArt.portrait,(int)art.getX(),(int)art.getY(),
                 (int)art.getWidth(),(int)art.getHeight(),juce::RectanglePlacement::fillDestination);
         }else paintCover(g,art,card.id,accent);
-        g.setGradientFill(juce::ColourGradient(Theme::plot.withAlpha(.06f),art.getCentreX(),art.getY(),
-            Theme::plot.withAlpha(.75f),art.getCentreX(),art.getBottom(),false));
-        g.fillRoundedRectangle(art,5.f);
+        if(!listMode){
+            g.setGradientFill(juce::ColourGradient(Theme::plot.withAlpha(.06f),art.getCentreX(),art.getY(),
+                Theme::plot.withAlpha(.75f),art.getCentreX(),art.getBottom(),false));
+            g.fillRoundedRectangle(art,5.f);
+        }
         const int total=card.main+card.adlib+card.other;
         const auto badge=listMode?juce::Rectangle<float>(bounds.getRight()-56.f,bounds.getY()+17.f,44.f,21.f):
             juce::Rectangle<float>(art.getRight()-50.f,art.getY()+6.f,44.f,21.f);
         g.setColour(Theme::bg.withAlpha(.92f));g.fillRoundedRectangle(badge,5.f);
         Theme::fittedText(g,juce::String(total),badge.toNearestInt(),12.f,Theme::white,true,juce::Justification::centred);
-        const auto x=(int)bounds.getX()+(listMode?64:10),y=(int)bounds.getBottom()-47,w=(int)bounds.getWidth()-(listMode?130:20);
+        const auto x=(int)bounds.getX()+(listMode?13:10),y=(int)bounds.getBottom()-47,w=juce::jmax(1,(int)bounds.getWidth()-(listMode?155:20));
         Theme::fittedText(g,card.label,{x,y,w,22},16.f,Theme::white,true,juce::Justification::centredLeft);
         juce::String summary=juce::String(card.main)+" MAIN  ·  "+juce::String(card.adlib)+" ADLIB";
         if(card.other>0)summary+="  ·  "+juce::String(card.other)+" OTHER";
@@ -2247,37 +2286,14 @@ void PresetBrowser::paint(juce::Graphics&g) {
         }
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
-        // Layered smoked-metal row rather than the old flat tile. This
-        // stays a single paint pass and does not fetch images from disk.
         const bool rowHover=itemIndex==hoveredCard;
-        g.setGradientFill(juce::ColourGradient(
-            Theme::panelAlt.brighter(rowHover?.13f:.065f),
-            rect.getTopLeft(),
-            Theme::panel.darker(rowHover?.04f:.09f),
-            rect.getBottomRight(),false));
-        g.fillRoundedRectangle(rect,7.f);
-        g.setColour(Theme::white.withAlpha(rowHover?.10f:.05f));
-        g.drawLine(rect.getX()+84.f,rect.getY()+1.6f,
-                   rect.getRight()-13.f,rect.getY()+1.6f,.7f);
-        const juce::Image tileArt=custom
-            ?((size_t)(-entry-1)<userArtwork.size()?userArtwork[(size_t)(-entry-1)]:juce::Image{})
-            :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
-        // Preserve text contrast: artwork lives in its own thumbnail, not behind the title.
         const std::array<juce::Colour,4> accents{{Theme::green,Theme::amber,Theme::pink,Theme::white}};
         const int seed=custom?-entry:entry+1;
         const auto accent=accents[(size_t)artworkPaletteIndexForTest(seed)];
-        const auto cover=juce::Rectangle<float>(rect.getX()+8.f,(float)y+5.f,65.f,46.f);
-        const auto& coverArt=tileArt;
-        if(coverArt.isValid()) {
-            // Full-bleed card artwork; graphics clipping keeps rounded card edges.
-            juce::Graphics::ScopedSaveState artworkSave(g);
-            g.reduceClipRegion(cover.toNearestInt());
-            g.drawImageWithin(coverArt,(int)cover.getX(),(int)cover.getY(),
-                              (int)cover.getWidth(),(int)cover.getHeight(),
-                              juce::RectanglePlacement::fillDestination);
-        } else paintCover(g,cover,seed,accent);
-        g.setColour(Theme::stroke.withAlpha(.8f));
-        g.drawRoundedRectangle(cover.reduced(.5f),5.f,1.f);
+        const auto art=custom?artworkForUser(-entry-1):
+            skellpreset::artistart::Art{entry==alchemistIndex?alchemistArtwork:juce::Image{},juce::Image{},{}};
+        skellpreset::artistart::cinematic(g,rect,art,Theme::panelAlt,accent,rowHover);
+        if(!art.portrait.isValid())paintCover(g,skellpreset::artistart::portraitBounds(rect),seed,accent);
         g.setColour(Theme::bg.withAlpha(.84f));
         g.fillRoundedRectangle(rect.getRight()-76.f,rect.getY()+8.f,52.f,40.f,5.f);
         const bool loaded=custom
@@ -2301,10 +2317,10 @@ void PresetBrowser::paint(juce::Graphics&g) {
             g.fillRoundedRectangle(rect.getX(),rect.getY()+9.f,2.5f,
                                    rect.getHeight()-18.f,1.25f);
         }
-        Theme::fittedText(g,itemName,{292,y+6,juce::jmax(1,getWidth()-376),25},17.f,Theme::white,true,
+        Theme::fittedText(g,itemName,{220,y+5,juce::jmax(1,getWidth()-394),25},16.f,Theme::white,true,
                           juce::Justification::centredLeft);
-        const auto bankColour=custom?Theme::green:Theme::muted;
-        Theme::fittedText(g,itemBank,{292,y+33,juce::jmax(1,getWidth()-376),17},11.5f,bankColour,true,
+        const auto bankColour=juce::Colour(0xffb5c0cb);
+        Theme::fittedText(g,itemBank,{220,y+32,juce::jmax(1,getWidth()-394),17},10.5f,bankColour,true,
                           juce::Justification::centredLeft);
         // Independent star target: selecting a favorite must not audition the
         // preset or alter any audio/host automation IDs.
@@ -2338,7 +2354,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
         // content, duplicate presets or heavy image loads in paint().
         const int entry=entries[0];
         const bool custom=entry<0;
-        const auto art=custom?((size_t)(-entry-1)<userArtwork.size()?userArtwork[(size_t)(-entry-1)]:juce::Image{})
+        const auto art=custom?artworkForUser(-entry-1).portrait
             :(entry==alchemistIndex?alchemistArtwork:juce::Image{});
         const auto frame=juce::Rectangle<float>(229.f,277.f,177.f,167.f);
         g.setColour(Theme::bg);g.fillRoundedRectangle(frame,8.f);
