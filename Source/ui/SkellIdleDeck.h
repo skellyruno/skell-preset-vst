@@ -236,11 +236,12 @@ public:
         Theme::workspaceFrame(g,getLocalBounds().toFloat());
         const bool live=hasAudibleOutput();
         const float activity=live?activityLevel:0.f;
+        const float lightEnergy=audioFresh?std::sqrt(juce::jlimit(0.f,1.f,juce::jmax(activity,vocalActivity*.72f))):0.f;
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
         auto bandEnergy=[&](int first,int last){float sum=0.f;for(int i=first;i<last;++i)sum+=stageBands[(size_t)i];return sum/(last-first);};
-        const std::array<float,3> rigEnergy{{bandEnergy(0,12),bandEnergy(12,24),bandEnergy(24,36)}};
+        const std::array<float,3> rigEnergy{{live?bandEnergy(0,12):0.f,live?bandEnergy(12,24):0.f,live?bandEnergy(24,36):0.f}};
         const float crowdEnergy=juce::jlimit(0.f,1.f,.52f*activity+.30f*rigEnergy[1]+.18f*rigEnergy[2]);
 
         // Minimal midnight performance stage. All lighting is drawn in the
@@ -256,19 +257,19 @@ public:
         const auto* mode=processor.state.getRawParameterValue("mode");
         const bool bypassed=mode && (int)mode->load()==3;
         backdrop.draw(g,stageBounds,horizon);
-        backdrop.atmosphere(g,stageBounds,horizon,crowdPhase,activity);
+        backdrop.atmosphere(g,stageBounds,horizon,crowdPhase,lightEnergy);
         // A layered eclipse behind the performer, distinct from the signal rail.
         // Its radiance follows real output bands; no simulated frequency data.
         if(stageBounds.getHeight()>220.f){
             juce::Graphics::ScopedSaveState eclipse(g);g.reduceClipRegion(stageBounds.toNearestInt());
             const float cx=centreX,cy=stage.originY+120.f*stage.scale,r=110.f*stage.scale;
-            g.setGradientFill(juce::ColourGradient(accent.withAlpha(.055f+.09f*rigEnergy[1]),cx,cy,
+            g.setGradientFill(juce::ColourGradient(accent.withAlpha(.025f+.16f*lightEnergy),cx,cy,
                 Theme::bg.withAlpha(0.f),cx+r*1.8f,cy,true));
             g.fillEllipse(cx-r*1.8f,cy-r*1.8f,r*3.6f,r*3.6f);
             for(int ring=0;ring<2;++ring){
                 const float radius=r*(.80f+.15f*ring);
                 juce::Path arc;arc.addCentredArc(cx,cy,radius,radius,0.f,.22f+ring*.3f,5.9f-ring*.32f,true);
-                g.setColour((ring==1?Theme::blue:accent).withAlpha(.055f+.12f*rigEnergy[(size_t)ring]));
+                g.setColour((ring==1?Theme::blue:accent).withAlpha(.025f+.20f*lightEnergy*rigEnergy[(size_t)ring]));
                 g.strokePath(arc,juce::PathStrokeType(juce::jmax(.7f,1.3f*stage.scale)));
             }
         }
@@ -276,52 +277,26 @@ public:
         {
             juce::Graphics::ScopedSaveState keyLight(g);g.reduceClipRegion(stageBounds.toNearestInt());
             const float lx=centreX-22.f*stage.scale,ly=feetY-238.f*stage.scale,radius=220.f*stage.scale;
-            juce::ColourGradient glow(Theme::white.withAlpha(.16f+.15f*activity),lx,ly,Theme::white.withAlpha(0.f),lx+radius,ly,true);
-            glow.addColour(.42,Theme::blue.withAlpha(.065f+.05f*activity));
+            juce::ColourGradient glow(Theme::white.withAlpha(.075f+.30f*lightEnergy),lx,ly,Theme::white.withAlpha(0.f),lx+radius,ly,true);
+            glow.addColour(.42,Theme::blue.withAlpha(.025f+.12f*lightEnergy));
             g.setGradientFill(glow);g.fillEllipse(lx-radius,ly-radius,2.f*radius,2.f*radius);
         }
-        // Concert architecture: low-profile truss, line arrays and a segmented
-        // rear light wall. Keep the moon and chapel visible outside the rig.
-        // All measured intensity comes from the existing GUI spectrum snapshot.
-        if(stageBounds.getWidth()>=480.f && stageBounds.getHeight()>235.f) {
-            juce::Graphics::ScopedSaveState venue(g);g.reduceClipRegion(stageBounds.toNearestInt());
+        // Keep the cemetery skyline unobstructed. No suspended speaker
+        // cabinets or rectangular LED towers. Ground-level spectral lanterns
+        // follow measured bands; their glows fade away at silence.
+        if(stageBounds.getWidth()>=480.f && stageBounds.getHeight()>235.f){
+            juce::Graphics::ScopedSaveState lanterns(g);g.reduceClipRegion(stageBounds.toNearestInt());
             const float u=stage.scale;
-            const float half=juce::jmin(stageBounds.getWidth()*.32f,340.f*u);
-            const float lower=stageBounds.getY()+17.f*u;
-            const auto metal=juce::Colour(0xff334044);
-            // Individual flown speaker and lamp mounts leave the sky open.
-            // Rear light wall uses separate vertical panels, not a solid UI card.
-            for(int side:{-1,1}) {
+            for(int side:{-1,1})for(int i=0;i<6;++i){
+                const float lx=centreX+side*(105.f+i*34.f)*u,ly=horizon+7.f*u;
+                const float v=live?stageBands[(size_t)(side<0?i*3:35-i*3)]:0.f;
                 const auto tint=side<0?Theme::blue:accent;
-                for(int column=0;column<5;++column) {
-                    const float x=centreX+side*(91.f+column*24.f)*u;
-                    const float y=horizon-(103.f-column*8.f)*u;
-                    const float h=juce::jmax(8.f,horizon-y+8.f*u);
-                    const float v=live?stageBands[(size_t)(side<0?column*3:35-column*3)]:0.f;
-                    const juce::Rectangle<float> panel(x-8.f*u,y,16.f*u,h);
-                    g.setColour(juce::Colour(0xff0b1316).withAlpha(.63f));g.fillRoundedRectangle(panel,2.f*u);
-                    g.setColour(tint.withAlpha(.12f+.27f*v));g.drawRoundedRectangle(panel,2.f*u,.9f*u);
-                    for(int k=0;k<9;++k) {
-                        const float f=(float)(9-k)/9.f;
-                        const float brightness=.09f+(v>=f?.56f*v:0.f);
-                        g.setColour(tint.withAlpha(brightness));
-                        g.fillRoundedRectangle(x-5.f*u,y+h*(k+.28f)/9.f,10.f*u,juce::jmax(.8f,h*.053f),.65f*u);
-                    }
-                }
-                // Suspended line arrays with a slight curvature and grille detail.
-                const float arrayX=centreX+side*(half-17.f*u);
-                g.setColour(metal.withAlpha(.75f));
-                for(float offset:{-10.f,10.f})g.drawLine(arrayX+offset*u,stageBounds.getY(),arrayX+offset*u,lower+7.f*u,.8f*u);
-                for(int cab=0;cab<5;++cab) {
-                    const float x=arrayX+side*(float)(cab*cab)*.32f*u;
-                    const juce::Rectangle<float> r(x-15.f*u,lower+5.f*u+cab*17.f*u,30.f*u,16.f*u);
-                    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff293236),r.getX(),r.getY(),juce::Colour(0xff090e10),r.getRight(),r.getBottom(),false));
-                    g.fillRoundedRectangle(r,2.2f*u);
-                    g.setColour(metal);g.drawRoundedRectangle(r,2.2f*u,.7f*u);
-                    g.setColour(juce::Colour(0xff080d10));g.fillRoundedRectangle(r.reduced(3.f*u),1.4f*u);
-                    for(int line=0;line<4;++line){g.setColour(metal.withAlpha(.65f));g.drawLine(r.getX()+5.f*u,r.getY()+(4.f+line*2.3f)*u,r.getRight()-5.f*u,r.getY()+(4.f+line*2.3f)*u,.5f*u);}
-                    g.setColour(tint.withAlpha(.24f+.52f*rigEnergy[0]));g.fillEllipse(r.getRight()-4.f*u,r.getY()+2.f*u,1.8f*u,1.8f*u);
-                }
+                const float power=.035f+.35f*v*lightEnergy;
+                const float radius=(14.f+24.f*v)*u;
+                g.setGradientFill(juce::ColourGradient(tint.withAlpha(power),lx,ly-4.f*u,tint.withAlpha(0.f),lx+radius,ly-4.f*u,true));
+                g.fillEllipse(lx-radius,ly-4.f*u-radius,radius*2.f,radius*2.f);
+                g.setColour(juce::Colour(0xff101c1b));g.fillEllipse(lx-4.f*u,ly-1.f*u,8.f*u,3.f*u);
+                g.setColour(tint.withAlpha(.14f+.76f*v*lightEnergy));g.fillEllipse(lx-1.9f*u,ly-5.f*u,3.8f*u,5.f*u);
             }
         }
         // Volumetric stage beams from the rig above the performer. These are
@@ -330,7 +305,7 @@ public:
         {
             juce::Graphics::ScopedSaveState beams(g);
             g.reduceClipRegion(stageBounds.toNearestInt());
-            const float rigY=stageBounds.getY()+(stageBounds.getWidth()>=480.f && stageBounds.getHeight()>235.f?31.f*stage.scale:7.f);
+            const float rigY=stageBounds.getY()+3.f;
             const float spread=.55f+.10f*activity;
             for(int beam=0;beam<3;++beam) {
                 const float rigX=centreX+(beam-1)*92.f*stage.scale;
@@ -344,31 +319,14 @@ public:
                     juce::Path wedge;
                     wedge.startNewSubPath(rigX-2.f,rigY);wedge.lineTo(rigX+2.f,rigY);
                     wedge.lineTo(targetX+spreadWidth,targetY);wedge.lineTo(targetX-spreadWidth,targetY);wedge.closeSubPath();
-                    g.setGradientFill(juce::ColourGradient(tint.withAlpha(.038f+.064f*rigEnergy[(size_t)beam]),rigX,rigY,tint.withAlpha(0.f),targetX,targetY,false));
+                    g.setGradientFill(juce::ColourGradient(tint.withAlpha(.012f+lightEnergy*(.055f+.035f*rigEnergy[(size_t)beam])),rigX,rigY,tint.withAlpha(0.f),targetX,targetY,false));
                     g.fillPath(wedge);
                 }
                 juce::Path core;
                 core.startNewSubPath(rigX-1.4f,rigY);core.lineTo(rigX+1.4f,rigY);
                 core.lineTo(targetX+24.f*stage.scale,targetY);core.lineTo(targetX-24.f*stage.scale,targetY);core.closeSubPath();
-                g.setGradientFill(juce::ColourGradient(tint.withAlpha(.045f+.055f*rigEnergy[(size_t)beam]),rigX,rigY,
+                g.setGradientFill(juce::ColourGradient(tint.withAlpha(.012f+lightEnergy*(.09f+.04f*rigEnergy[(size_t)beam])),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));g.fillPath(core);
-            }
-            // Three independent suspended moving-head fixtures.
-            const float fixtureScale=stage.scale;
-            for(int lamp=0;lamp<3;++lamp) {
-                const float lx=centreX+(lamp-1)*92.f*stage.scale;
-                g.setColour(juce::Colour(0xff445358).withAlpha(.72f));g.drawLine(lx,stageBounds.getY(),lx,rigY-8.f*fixtureScale,.9f*fixtureScale);
-                const auto housing=juce::Rectangle<float>(lx-8.f*fixtureScale,rigY-10.f*fixtureScale,16.f*fixtureScale,12.f*fixtureScale);
-                g.setGradientFill(juce::ColourGradient(juce::Colour(0xff39484b),housing.getTopLeft(),juce::Colour(0xff101719),housing.getBottomRight(),false));g.fillRoundedRectangle(housing,3.f*fixtureScale);
-                g.setColour(juce::Colour(0xff73807c).withAlpha(.48f));g.drawRoundedRectangle(housing,3.f*fixtureScale,.7f*fixtureScale);
-                const int lit=juce::roundToInt(65+190*rigEnergy[(size_t)lamp]);
-                g.setColour(Theme::green.withAlpha(.10f));
-                g.fillEllipse(lx-9.f*stage.scale,rigY-3.f*stage.scale,
-                              18.f*stage.scale,12.f*stage.scale);
-                g.setColour((lamp==1?accent:Theme::blue).withAlpha(
-                    juce::jlimit(.18f,.98f,(float)lit/255.f)));
-                g.fillEllipse(lx-3.2f*stage.scale,rigY-1.f*stage.scale,
-                              6.4f*stage.scale,4.2f*stage.scale);
             }
         }
         // A broad raised deck with a faceted apron grounds the headliner.
@@ -428,14 +386,14 @@ public:
             for(int ring=3;ring>=1;--ring) {
                 const float f=(float)ring/3.f;
                 g.setGradientFill(juce::ColourGradient(
-                    Theme::blue.interpolatedWith(accent,.3f).withAlpha(.075f*activity+.048f),centreX,feetY,
+                    Theme::blue.interpolatedWith(accent,.3f).withAlpha(.16f*lightEnergy+.026f),centreX,feetY,
                     Theme::bg.withAlpha(0.f),centreX+poolW*f*.55f,feetY,true));
                 g.fillEllipse(centreX-poolW*f,feetY-poolH*f*.42f,
                               poolW*2.f*f,poolH*2.f*f);
             }
             // Mirrored figure glint, kept subtle and tied to measured peak.
             g.setGradientFill(juce::ColourGradient(
-                Theme::white.withAlpha(.09f+.075f*activity),centreX,feetY,
+                Theme::white.withAlpha(.035f+.17f*lightEnergy),centreX,feetY,
                 Theme::bg.withAlpha(0.f),centreX,feetY+26.f*stage.scale,false));
             g.fillEllipse(centreX-26.f*stage.scale,feetY-2.f*stage.scale,
                           52.f*stage.scale,30.f*stage.scale);

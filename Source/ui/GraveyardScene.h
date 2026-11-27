@@ -451,6 +451,23 @@ public:
                 g.setColour((grain%3==0?fog:Theme::bg).withAlpha(.025f+.045f*t));
                 g.fillEllipse(x,y,1.f+4.f*t, .6f+1.1f*t);
             }
+            // Broken burial ground flanks the raised performance platform.
+            // Cached irregular silhouettes and grass break up the tiled plane.
+            for(int side:{-1,1}){
+                const float edge=width*(side<0?.27f:.73f);
+                juce::Path soil;soil.startNewSubPath(width*(side<0?0.f:1.f),horizonY);
+                soil.lineTo(edge,horizonY);
+                soil.cubicTo(edge+side*width*.035f,horizonY+40.f,edge-side*width*.035f,height*.82f,edge-side*width*.095f,height);
+                soil.lineTo(width*(side<0?0.f:1.f),height);soil.closeSubPath();
+                juce::Graphics::ScopedSaveState dirt(g);g.reduceClipRegion(soil);
+                g.setGradientFill(juce::ColourGradient(juce::Colour(0xff26352d),edge,horizonY,juce::Colour(0xff0b1414),edge,height,false));g.fillPath(soil);
+                for(int n=0;n<155;++n){
+                    const float x=width*hash01(n*617+side*73+220),t=hash01(n*193+97),y=horizonY+(height-horizonY)*t;
+                    const float scale=.6f+1.7f*t;
+                    g.setColour((n%4?stone:deep).withAlpha(.10f+.08f*t));g.fillEllipse(x,y,scale*3.f,scale);
+                    if(n%5==0){g.setColour(juce::Colour(0xff435348).withAlpha(.45f));for(int blade=0;blade<3;++blade)g.drawLine(x,y,x+(blade-1)*scale*2.f,y-scale*(3.f+hash01(n*31+blade)*3.f),.6f);}
+                }
+            }
             // Damp reflection of the moon on the boards.
             g.setGradientFill(juce::ColourGradient(
                 juce::Colours::white.withAlpha(.075f),moonX,horizonY+2.f,
@@ -458,7 +475,7 @@ public:
             g.fillEllipse(moonX-moonR*1.1f,horizonY,moonR*2.2f,36.f);
             // Wet lip highlight: a soft band, never a one-pixel laser line.
             g.setGradientFill(juce::ColourGradient(
-                Theme::green.withAlpha(.22f),0.f,horizonY-1.f,
+                Theme::green.withAlpha(.09f),0.f,horizonY-1.f,
                 Theme::green.withAlpha(.03f),0.f,horizonY+7.f,false));
             g.fillRect(0.f,horizonY-1.f,width,8.f);
             g.setGradientFill(juce::ColourGradient(
@@ -565,11 +582,16 @@ public:
             const float speed=.055f+.028f*band;
             const float offset=std::fmod(phase*speed*width*.30f+band*width*.42f,width*1.5f);
             const float y=worldSkyline-70.f+band*26.f+4.f*std::sin(phase*.31f+band);
-            const float a=.075f+.021f*band;
-            g.setGradientFill(juce::ColourGradient(
-                mist.withAlpha(0.f),bounds.getX()+offset-width*.7f,y,
-                mist.withAlpha(a),bounds.getX()+offset-width*.2f,y+14.f,false));
-            g.fillEllipse(bounds.getX()+offset-width*.9f,y,width*.9f,30.f+band*8.f);
+            const float a=.045f+.021f*band+.10f*react;
+            const float mx=bounds.getX()+offset-width*.45f,my=y+15.f;
+            juce::ColourGradient cloud(mist.withAlpha(a),mx,my,mist.withAlpha(0.f),mx+width*.40f,my+24.f,true);
+            g.setGradientFill(cloud);g.fillEllipse(mx-width*.45f,my-20.f,width*.9f,40.f+band*8.f);
+        }
+        // Green spectral moonlight on the low mist, not the whole sky.
+        if(react>.001f){
+            const float cx=bounds.getCentreX(),cy=worldSkyline+12.f,r=width*.48f;
+            g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.17f*react),cx,cy,Theme::green.withAlpha(0.f),cx+r,cy,true));
+            g.fillEllipse(cx-r,cy-r,r*2.f,r*2.f);
         }
         // Grave fireflies: a dozen slow pulses just above the headstones.
         for(int i=0;i<14;++i) {
