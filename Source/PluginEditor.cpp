@@ -1544,15 +1544,22 @@ public:
         brand.setFont(Theme::font(27.f,true));
         juce::TextLayout wordmark;
         wordmark.createLayout(brand,340.f);
-        const float titleX=75.f,titleY=23.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
+        // Treat the brand as one compact lockup, vertically centred on the
+        // logo. Subtitle and version share the same font/baseline and both
+        // edges derive from the measured wordmark, not unrelated offsets.
+        const float titleX=75.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
+        constexpr int subHeight=14;
+        constexpr float overlap=4.f;
+        const float titleY=39.5f-(titleH+subHeight-overlap)*.5f;
         wordmark.draw(g,{titleX,titleY,titleW,titleH});
-        const int subY=52;
-        juce::AttributedString edition;edition.append("v.01",Theme::font(9.5f,true),Theme::green);
-        juce::TextLayout editionLayout;editionLayout.createLayout(edition,60.f);
-        const int editionX=juce::roundToInt(titleX+titleW-editionLayout.getWidth());
-        Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{75,subY,editionX-83,16},
-                          11.f,Theme::muted,true,juce::Justification::centredLeft);
-        editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
+        const int subY=juce::roundToInt(titleY+titleH-overlap);
+        const int left=juce::roundToInt(titleX),right=juce::roundToInt(titleX+titleW);
+        constexpr int editionWidth=29,editionGap=5;
+        Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",
+            {left,subY,juce::jmax(1,right-left-editionWidth-editionGap),subHeight},
+            10.5f,Theme::muted,true,juce::Justification::centredLeft);
+        Theme::text(g,"v.01",{right-editionWidth,subY,editionWidth,subHeight},
+            10.5f,Theme::green,true,juce::Justification::centredRight);
         Theme::text(g,"PRESET",{623,8,268,15},11.f,Theme::muted,true);
         paintHeaderMeters(g);
         if(focusVisible()){

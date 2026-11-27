@@ -12,7 +12,7 @@ class Performer {
     void line(juce::Graphics& g,const Path& p,float w,C c)const{g.setColour(c);g.strokePath(p,juce::PathStrokeType(w,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
     void solid(juce::Graphics& g,const Path& p,P a,P b,float light=1.f)const{
         juce::ColourGradient grad(bone.interpolatedWith(shade,1.f-light),a,shade.interpolatedWith(dark,.18f),b,false);
-        grad.addColour(.18,bone.interpolatedWith(shade,1.f-light*.96f));grad.addColour(.42,bone.interpolatedWith(shade,1.f-light*.74f));grad.addColour(.72,bone.interpolatedWith(shade,1.f-light*.30f));g.setGradientFill(grad);g.fillPath(p);line(g,p,.60f,dark.withAlpha(.86f));
+        grad.addColour(.18,bone.interpolatedWith(shade,1.f-light*.98f));grad.addColour(.42,bone.interpolatedWith(shade,1.f-light*.72f));grad.addColour(.72,bone.interpolatedWith(shade,1.f-light*.43f));g.setGradientFill(grad);g.fillPath(p);line(g,p,.60f,dark.withAlpha(.86f));
     }
     void limb(juce::Graphics& g,P a,P b,float ra,float rb,float light=1.f,float bend=0.f)const{
         const P d=b-a;const float len=juce::jmax(1.f,d.getDistanceFromOrigin());const P u=d/len,n{-u.y,u.x},m=(a+b)*.5f+n*bend;const float w=(ra+rb)*.31f;
@@ -37,8 +37,7 @@ class Performer {
         Path st;st.startNewSubPath(151,94);st.quadraticTo(155,90,160,94);st.lineTo(162,105);st.quadraticTo(157,126,159,145);st.lineTo(155,155);st.lineTo(151,146);st.lineTo(153,108);st.closeSubPath();solid(g,st,{151,94},{162,151},.95f);
         Path cl;cl.startNewSubPath(155,96);cl.cubicTo(140,88,119,85,107,94);cl.cubicTo(123,91,140,99,155,102);cl.closeSubPath();solid(g,cl,{110,88},{155,104});Path cr;cr.startNewSubPath(158,94);cr.cubicTo(172,86,181,84,192,88);cr.cubicTo(180,91,168,101,158,101);cr.closeSubPath();solid(g,cr,{161,86},{192,102},.79f);
     }
-    void skull(juce::Graphics& g,float jaw,float turn,float react)const{
-        juce::Graphics::ScopedSaveState pose(g);g.addTransform(juce::AffineTransform::scale(.90f,.94f,150.f,65.f).followedBy(juce::AffineTransform::rotation(turn,150,65)));
+    void craniumArt(juce::Graphics& g)const{
         Path cr;cr.startNewSubPath(126,40);cr.cubicTo(120,29,126,15,139,11);cr.cubicTo(153,6,168,12,174,23);cr.cubicTo(179,33,175,42,173,47);cr.quadraticTo(178,50,172,54);cr.lineTo(169,57);cr.quadraticTo(168,61,166,64);cr.lineTo(151,66);cr.quadraticTo(143,60,139,56);cr.cubicTo(129,57,124,49,126,40);cr.closeSubPath();solid(g,cr,{133,13},{174,60});
         {juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(cr);g.setGradientFill(juce::ColourGradient(bone.withAlpha(.48f),136,17,bone.withAlpha(0.f),158,34,true));g.fillEllipse(123,7,45,38);g.setGradientFill(juce::ColourGradient(shade.withAlpha(.58f),125,44,shade.withAlpha(0.f),145,23,true));g.fillRect(119.f,9.f,48.f,49.f);Path suture;suture.startNewSubPath(139,10);suture.lineTo(141,14);suture.lineTo(138,18);suture.lineTo(140,21);suture.lineTo(138,25);suture.lineTo(140,29);line(g,suture,.65f,shade.withAlpha(.40f));for(int k=0;k<90;++k){float x=124.f+(float)((k*47)%51),y=9.f+(float)((k*31)%58);g.setColour((k%4?shade:bone).withAlpha(.12f));g.fillEllipse(x,y,.65f+(k%3)*.2f,.55f);}}
         Path orbit;orbit.startNewSubPath(145,36);orbit.cubicTo(149,31,157,29,161,34);orbit.cubicTo(163,39,158,44,154,45);orbit.cubicTo(147,47,143,42,145,36);orbit.closeSubPath();Path far;far.startNewSubPath(168,34);far.quadraticTo(174,32,175,37);far.cubicTo(174,43,171,45,168,44);far.quadraticTo(165,40,168,34);far.closeSubPath();for(const auto* hole:{&orbit,&far}){auto b=hole->getBounds();g.setGradientFill(juce::ColourGradient(dark.darker(.8f),b.getCentreX(),b.getY(),shade.darker(.65f),b.getCentreX(),b.getBottom(),false));g.fillPath(*hole);line(g,*hole,.85f,shade.darker(.28f));}
@@ -46,6 +45,22 @@ class Performer {
         Path cheek;cheek.startNewSubPath(132,48);cheek.quadraticTo(143,44,150,48);cheek.quadraticTo(157,50,155,54);cheek.quadraticTo(145,53,138,56);cheek.closeSubPath();solid(g,cheek,{137,47},{151,56},.94f);Path nose;nose.startNewSubPath(164,42);nose.cubicTo(160,46,157,51,160,54);nose.quadraticTo(163,56,165,52);nose.quadraticTo(169,55,170,51);nose.quadraticTo(168,45,164,42);nose.closeSubPath();g.setColour(dark.darker(.7f));g.fillPath(nose);
         Path brow;brow.startNewSubPath(143,34);brow.quadraticTo(151,27,161,32);brow.startNewSubPath(167,31);brow.quadraticTo(171,29,175,33);line(g,brow,.85f,bone.brighter(.06f));
         Path cheekRidge;cheekRidge.startNewSubPath(130,45);cheekRidge.cubicTo(136,43,144,47,147,50);line(g,cheekRidge,1.05f,bone.withAlpha(.56f));
+        // Temporal and zygomatic contours follow the socket rather than
+        // a single flat cheek plate. These details are rasterized once.
+        Path arch;arch.startNewSubPath(130,43);arch.cubicTo(131,39,137,40,141,44);arch.quadraticTo(145,46,147,47);
+        line(g,arch,.80f,shade.withAlpha(.62f));
+        Path maxilla;maxilla.startNewSubPath(154,54);maxilla.quadraticTo(158,51,162,54);
+        line(g,maxilla,.72f,bone.withAlpha(.60f));
+    }
+    void skull(juce::Graphics& g,float jaw,float turn,float react)const{
+        juce::Graphics::ScopedSaveState pose(g);g.addTransform(juce::AffineTransform::scale(.90f,.94f,150.f,65.f).followedBy(juce::AffineTransform::rotation(turn,150,65)));
+        if(!cranium.isValid()){
+            cranium=juce::Image(juce::Image::ARGB,144,144,true);
+            juce::Graphics art(cranium);
+            art.addTransform(juce::AffineTransform::translation(-112.f,0.f).scaled(2.f));
+            craniumArt(art);
+        }
+        g.setOpacity(1.f);g.drawImageTransformed(cranium,juce::AffineTransform::scale(.5f).translated(112.f,0.f));
         // Jaw rotates around condyle, teeth retain dimensions at every level.
         const float gape=.003f+.17f*std::sqrt(jaw);auto mouth=poly({{146,55},{170,55},{170,65+jaw*5},{153,71+jaw*6},{140,56}});g.setColour(dark.darker(.7f));g.fillPath(mouth);
         for(int k=0;k<8;++k){const float x=150.f+k*2.45f,y=59.4f-std::sin(k*.29f)*1.6f;Path t;t.addRoundedRectangle(x,y,1.88f,3.30f-(k>5?.55f:0.f)+(k%3)*.12f,.38f);solid(g,t,{x,y},{x+2,y+4},.97f);}
@@ -57,7 +72,18 @@ class Performer {
     void arms(juce::Graphics& g,float activity,float phase)const{
         const float sway=std::sin(phase*.68f)*activity;
         const float lift=(.5f+.5f*std::sin(phase*.46f+1.2f))*activity;
-        const P sh{107,95},el{77-9.f*lift,143+sway*5-9.f*lift},wr{47-sway*7-9.f*lift,172-sway*12-37.f*lift};joint(g,sh,5.6f,5.2f);limb(g,sh,el,6.3f,4.8f,.96f,-2);joint(g,el,4.3f,4.2f);limb(g,el+P{1,1},wr,3.4f,2.6f,.92f);limb(g,el+P{5,1},wr+P{4,3},2.4f,2.1f,.79f);joint(g,wr,3.3f,2.9f);for(int k=0;k<4;++k){const P a=wr+P{-4.f,((float)k-1.5f)*2.2f},b=wr+P{-12.f,((float)k-1.5f)*3.1f+7.f};limb(g,wr,a,1.35f,1.2f,.97f);limb(g,a,b,1.1f,.85f,.92f);limb(g,b,b+P{-3,3},.85f,.65f,.88f);}limb(g,wr+P{1,3},wr+P{-4,9},1.4f,1,.93f);
+        const P sh{107,95};
+        P wr{47-sway*7-9.f*lift,172-sway*12-37.f*lift};
+        // Two-link arm with fixed bone lengths. Solve the elbow on the
+        // same side as the resting pose, rather than stretching the humerus.
+        constexpr float upper=56.6f,lower=41.7f;
+        P delta=wr-sh;const float distance=juce::jlimit(upper-lower+.1f,upper+lower-.1f,delta.getDistanceFromOrigin());
+        const P direction=delta/juce::jmax(.001f,delta.getDistanceFromOrigin());
+        wr=sh+direction*distance;
+        const float along=(upper*upper-lower*lower+distance*distance)/(2.f*distance);
+        const float bend=std::sqrt(juce::jmax(0.f,upper*upper-along*along));
+        const P el=sh+direction*along+P{direction.y,-direction.x}*bend;
+        joint(g,sh,5.6f,5.2f);limb(g,sh,el,6.3f,4.8f,.96f,-2);joint(g,el,4.3f,4.2f);limb(g,el+P{1,1},wr,3.4f,2.6f,.92f);limb(g,el+P{5,1},wr+P{4,3},2.4f,2.1f,.79f);joint(g,wr,3.3f,2.9f);for(int k=0;k<4;++k){const P a=wr+P{-4.f,((float)k-1.5f)*2.2f},b=wr+P{-12.f,((float)k-1.5f)*3.1f+7.f};limb(g,wr,a,1.35f,1.2f,.97f);limb(g,a,b,1.1f,.85f,.92f);limb(g,b,b+P{-3,3},.85f,.65f,.88f);}limb(g,wr+P{1,3},wr+P{-4,9},1.4f,1,.93f);
         const P rs{191,89},re{213,139},rw{191,83};joint(g,rs,5.2f,4.8f,.77f);limb(g,rs,re,5.7f,4.5f,.77f,2);joint(g,re,4.4f,4.1f,.75f);limb(g,re,rw,3.8f,2.9f,.88f);limb(g,re+P{4,-1},rw+P{4,1},2.5f,2.1f,.71f);
         {juce::Graphics::ScopedSaveState mic(g);g.addTransform(juce::AffineTransform::rotation(-.48f,191,83));g.setGradientFill(juce::ColourGradient(C(0xffa5aaa4),187,75,C(0xff232a2b),195,75,false));g.fillRoundedRectangle(187,61,8,32,2);g.setColour(Theme::green.withAlpha(.42f+.42f*activity));g.fillRect(187,67,8,2);g.setGradientFill(juce::ColourGradient(C(0xffe0ded1),187,54,C(0xff323c3c),196,65,false));g.fillEllipse(183,49,16,19);Path cap;cap.addEllipse(183,49,16,19);g.reduceClipRegion(cap);g.setColour(dark.withAlpha(.68f));for(int k=0;k<12;++k){g.drawLine(180.f+k*2,49,188.f+k*2,68,.55f);g.drawLine(180.f+k*2,68,188.f+k*2,49,.55f);}}
         for(int k=0;k<4;++k){const P a{187.f+k*.8f,77.f+k*3.1f};limb(g,a,a+P{8,1.7f},1.45f,1.05f,.96f);limb(g,a+P{8,1.7f},a+P{9,4},1.05f,.8f,.82f);}
@@ -84,6 +110,6 @@ public:
         g.addTransform(bodyLean(react,phase));
         g.setOpacity(1.f);g.drawImageTransformed(body,juce::AffineTransform::scale(.5f));arms(g,react,phase);skull(g,voice,-.075f+.075f*std::sin(phase*.73f)*react,react);
     }
-private: mutable juce::Image body;mutable int cachedTheme=-1;
+private: mutable juce::Image body,cranium;mutable int cachedTheme=-1;
 };
 } // namespace skellpreset::stage

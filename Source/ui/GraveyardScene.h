@@ -297,8 +297,10 @@ public:
                 const float x=width*i/51.f;
                 const bool gate=std::abs(x-width*.5f)<width*.060f;
                 const float barTop=gate?fenceY-40.f:fenceY-25.f-hash01(i*61)*8.f;
+                const float drift=(hash01(i*41)-.5f)*2.f;
                 g.setColour(juce::Colour(0xff101a1c).withAlpha(.60f));
-                g.drawLine(x,barTop,x+(hash01(i*41)-.5f)*2.0f,fenceY+10.f,i%8==0?2.4f:1.f);
+                g.drawLine(x,barTop,x+drift,fenceY+10.f,i%8==0?2.4f:1.f);
+                if(i%3==0){g.setColour(stone.withAlpha(.18f));g.drawLine(x+.7f,barTop+2.f,x+drift+.7f,fenceY+5.f,.55f);g.setColour(juce::Colour(0xff101a1c).withAlpha(.60f));}
                 juce::Path spear;
                 spear.addTriangle(x-2.2f,barTop+1.f,x,barTop-7.f,x+2.2f,barTop+1.f);
                 g.fillPath(spear);
@@ -307,6 +309,16 @@ public:
             g.drawHorizontalLine((int)fenceY-42,0.f,width);
             g.drawHorizontalLine((int)fenceY-24,0.f,width);
             g.drawHorizontalLine((int)fenceY-6,0.f,width);
+            // Stone piers with eroded caps anchor the distant fence, rather
+            // than a perfectly uniform repeating line across the cemetery.
+            for(float pos:{.17f,.34f,.66f,.83f}){
+                const float px=width*pos,top=fenceY-38.f,base=fenceY+12.f;
+                g.setGradientFill(juce::ColourGradient(stone.darker(.65f),px-4.f,top,deep,px+4.f,base,false));
+                g.fillRect(px-4.f,top,8.f,base-top);
+                g.setColour(stone.withAlpha(.33f));g.fillRect(px-5.5f,top-2.f,11.f,3.f);
+                g.setColour(deep.withAlpha(.65f));g.drawLine(px-3.f,top+15.f,px+3.f,top+15.f,.7f);
+                g.drawLine(px-3.f,top+29.f,px+3.f,top+29.f,.7f);
+            }
             {
                 const float gx=width*.5f,gw=width*.064f;
                 g.setColour(juce::Colour(0xff0e1618));

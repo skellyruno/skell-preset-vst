@@ -375,7 +375,8 @@ public:
     bool testLayoutForTest() const noexcept {return getWidth()>=600 && getHeight()>=190;}
     void paint(juce::Graphics& g) override {
         const auto bounds=getLocalBounds().toFloat();
-        Theme::panelBox(g,bounds,8.f,true);
+        Theme::panelBox(g,bounds,8.f);
+        Theme::workspaceFrame(g,bounds,8.f);
         if(bounds.getWidth()<300 || bounds.getHeight()<140)return;
         const bool stereo=isStereo(lastType),drive=isDrive(lastType);
         const bool pitch=lastType==P::StudioPitchFormantFX;
@@ -394,7 +395,10 @@ public:
         const auto heading=pitch?"PITCH / DETECTED NOTES":transferView?"DRIVE / CORE TRANSFER":taps?"DELAY / LIVE WET TAPS":room?"ROOM / MEASURED WET TAIL":stereo?"STEREO / VECTOR FIELD":drive?"DRIVE / WAVE SHAPE":deess?"DE-ESS / SIBILANCE":gate?"GATE / LEVEL + THRESHOLD":dynamics?"DYNAMICS / REDUCTION":delay?"DELAY / LEFT + RIGHT HISTORY":space?"SPACE / ENERGY HISTORY":"SPECTRUM / BEFORE + AFTER";
         Theme::fittedText(g,heading,
             top.withTrimmedRight(110.f).toNearestInt(),13.f,Theme::white,true);
-        Theme::fittedText(g,fresh?"LIVE":"WAITING FOR AUDIO",top.removeFromRight(110.f).toNearestInt(),10.f,
+        const auto status=top.removeFromRight(110.f);
+        g.setColour((fresh?Theme::green:Theme::muted).withAlpha(fresh?.92f:.44f));
+        g.fillEllipse(status.getX()+2.f,status.getCentreY()-2.5f,5.f,5.f);
+        Theme::fittedText(g,fresh?"LIVE":"WAITING FOR AUDIO",status.withTrimmedLeft(10.f).toNearestInt(),10.f,
             fresh?Theme::green:Theme::muted,true,juce::Justification::centredRight);
         auto footer=inner.removeFromBottom(23.f);
         auto right=inner.removeFromRight(146.f).reduced(4.f,0.f);

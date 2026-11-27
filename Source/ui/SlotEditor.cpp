@@ -2037,6 +2037,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     // ONE uninterrupted studio effect face. Controls and graph are inside
     // it; the former second box and duplicate knob panel are gone.
     Theme::panelBox(g,{0,0,906.f,535.f},9.f);
+    Theme::workspaceFrame(g,{0,0,906.f,535.f});
     g.setColour(Theme::stroke.withAlpha(.60f));
     g.drawHorizontalLine(65,20.f,886.f);
     const int type=processor.slotType(slot);
@@ -2066,7 +2067,7 @@ void SlotEditor::paint(juce::Graphics&g) {
     const auto hostedName=type==SkellPresetAudioProcessor::ExternalVST3
         ?processor.hostedVST3Name(slot):juce::String{};
     Theme::fittedText(g,hostedName.isNotEmpty()?hostedName:processor.moduleDisplayName(type),
-                      {21,29,500,38},25,Theme::white,true);
+                      {21,26,500,36},25,Theme::white,true);
     if(type==SkellPresetAudioProcessor::ExternalVST3) {
         // Do not paint a fake effect face behind a real native child window.
         if(!embeddedEditor || !embeddedEditor->isVisible()) {
@@ -2094,6 +2095,7 @@ void SlotEditor::paint(juce::Graphics&g) {
         Theme::fittedText(g,category,{528,10,294,18},10.8f,
                           familyAccent.withAlpha(.92f),true,
                           juce::Justification::centredRight);
+        g.setColour(familyAccent.withAlpha(.48f));g.fillRoundedRectangle(21.f,64.f,36.f,1.5f,.75f);
         // Segment animation is bound to the real per-slot DSP peak. Bone-shaped
         // vertebrae respond to the signal while leaving parameter graphs readable.
         Theme::text(g,"SLOT OUTPUT",{22,73,158,18},11.2f,Theme::muted,true);
