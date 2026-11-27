@@ -3,6 +3,9 @@
 #include "StudioNativeDSP.h"
 #include "ModulationFX.h"
 #include "VoxRackFX.h"
+#include "ImportedVocalFX.h"
+#include "AdvancedVocalDSP.h"
+#include "VisualAnalysis.h"
 
 namespace skellpreset::liveMatch {
 // Shared normalized control mapping: the scorer and rack writer use the
@@ -31,6 +34,9 @@ public:
         if(r.mod.wet>0.f){const auto& p=r.mod.p;if(r.modulation==1){chorus.prepare(rate);chorus.set(.08f+3.9f*p[0],1.f+10.f*p[1],2.f+3.f*p[2],p[3]);chorus.reset();chorus.phase=std::fmod(startFrame*(double)chorus.rate/rate,1.);}else if(r.modulation==2){flanger.prepare(rate);flanger.set(.05f+4.95f*p[0],.3f+9.f*p[1],(p[2]*2.f-1.f)*.82f,p[3]);flanger.reset();flanger.phase=std::fmod(startFrame*(double)flanger.rate/rate,1.);}}
         if(r.delay.wet>0.f){const auto& p=r.delay.p;delay.prepare(rate);delay.configure((int)(rate*(.055+.85*p[0])),p[1]*.8f,500.f+17500.f*p[2]);delay.reset();}
         if(r.room.wet>0.f){const auto& p=r.room.p;room.prepare(rate);room.set(p[0],p[1],200.f*p[2],20.f+980.f*p[3]);room.reset();}
+        if(r.rider.wet>0.f){const auto& controls=r.rider.p;rider.prepare(rate);rider.set(controls[0],-26.f+14.f*controls[1],3.f+12.f*controls[2],controls[3]);}
+        if(r.harshness.wet>0.f){const auto& controls=r.harshness.p;harshness.prepare(rate);harshness.set(controls[0],controls[1],controls[2],controls[3]);}
+        if(r.saturation.wet>0.f){satDrive=dsp::dbToGain(r.saturation.p[0]*24.f);satBlend=.5f+r.saturation.p[1];satDenom=std::max(.5f,satDrive*.6f);}
         out=dsp::dbToGain(r.output);
     }
     std::array<float,2> process(float l,float r) noexcept {
@@ -39,6 +45,9 @@ public:
         const float c=comp.gain(std::max(std::abs(v[0]),std::abs(v[1])));v[0]*=c;v[1]*=c;
         if(recipe.deess)v=deess.process(v[0],v[1]);
         auto mix=[&](const std::array<float,2>& w,float wet){v[0]+=(w[0]-v[0])*wet;v[1]+=(w[1]-v[1])*wet;};
+        if(recipe.rider.wet>0.f)mix(rider.process(v[0],v[1]),recipe.rider.wet);
+        if(recipe.saturation.wet>0.f)mix({visual::saturatorCore(v[0],satDrive,satBlend,satDenom),visual::saturatorCore(v[1],satDrive,satBlend,satDenom)},recipe.saturation.wet);
+        if(recipe.harshness.wet>0.f)mix(harshness.process(v[0],v[1]),recipe.harshness.wet);
         if(recipe.mod.wet>0.f){if(recipe.modulation==1)mix(chorus.process(v[0],v[1]),recipe.mod.wet);else if(recipe.modulation==2)mix(flanger.process(v[0],v[1]),recipe.mod.wet);}
         if(recipe.delay.wet>0.f)mix(delay.process(v[0],v[1]),recipe.delay.wet);
         if(recipe.room.wet>0.f)mix(room.process(v[0],v[1]),recipe.room.wet);
@@ -46,6 +55,7 @@ public:
     }
 private:
     dsp::VocalChorus chorus;dsp::VocalFlanger flanger;dsp::Delay delay;dsp::VoxRackRoom room;
+    dsp::VocalRider rider;dsp::DynamicHarshness harshness;float satDrive=1.f,satBlend=1.f,satDenom=1.f;
     Recipe recipe;studio::ParametricEQ eq;dsp::Gate gate;dsp::Compressor comp;dsp::SplitDeEsser deess;float out=1.f;
 };
 struct Segment {size_t begin=0,end=0;};
@@ -73,7 +83,7 @@ inline Profile measure(const Audio& a,Segment s,const Recipe* r,const std::atomi
     Analyzer analyzer;analyzer.prepare(a.rate,detailed);
     // Warm up the exact native kernels before measuring the chosen phrase.
     Recipe neutral;
-    const size_t warm=(size_t)(a.rate*(r&&(r->mod.wet>0||r->delay.wet>0||r->room.wet>0)?1.5:.2)),start=s.begin>warm?s.begin-warm:0;
+    const size_t warm=(size_t)(a.rate*(r&&(r->mod.wet>0||r->delay.wet>0||r->room.wet>0||r->rider.wet>0||r->harshness.wet>0)?1.5:.2)),start=s.begin>warm?s.begin-warm:0;
     NativeCandidate chain(a.rate,r?*r:neutral,start);
     for(size_t i=start;i<s.end;++i){
         if((i&2047u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return {};

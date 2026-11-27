@@ -17,10 +17,10 @@ struct Profile {
     // Detailed features are worker-only; live capture retains its original cost.
     bool detailed=false;
     std::array<float,6> bands{};
-    float envelopeContrast=0,quietDb=-120;
+    float envelopeContrast=0,quietDb=-120,activeContrast=0;
     std::array<float,4> envelopeLag{};
     bool finite() const noexcept {
-        if(detailed){for(float b:bands)if(!std::isfinite(b))return false;if(!std::isfinite(envelopeContrast)||!std::isfinite(quietDb))return false;for(float v:envelopeLag)if(!std::isfinite(v))return false;}
+        if(detailed){for(float b:bands)if(!std::isfinite(b))return false;if(!std::isfinite(envelopeContrast)||!std::isfinite(quietDb)||!std::isfinite(activeContrast))return false;for(float v:envelopeLag)if(!std::isfinite(v))return false;}
         return std::isfinite(elapsed)&&std::isfinite(active)&&std::isfinite(rmsDb)&&std::isfinite(peak)&&std::isfinite(lowDb)&&std::isfinite(highDb)&&std::isfinite(crest)&&std::isfinite(clipped)&&std::isfinite(invalid)&&std::isfinite(sideDb)&&std::isfinite(correlation);
     }
     bool valid() const noexcept {
@@ -59,6 +59,7 @@ public:
             p.sideDb=db(sideEnergy/std::max(1.e-20,midEnergy));
             p.detailed=detailed;
             if(detailed){for(size_t k=0;k<p.bands.size();++k)p.bands[k]=db(bandEnergy[k]/std::max(1.e-20,activeEnergy));
+                const double activeMean=activeEnvSum/std::max(1u,activeEnvCount);p.activeContrast=(float)std::sqrt(std::max(0.,activeEnvSq/std::max(1u,activeEnvCount)-activeMean*activeMean));
                 const double mean=envSum/std::max(1u,envCount);p.envelopeContrast=(float)std::sqrt(std::max(0.,envSq/std::max(1u,envCount)-mean*mean));
                 unsigned cumulative=0;const unsigned goal=std::max(1u,envCount/4);for(size_t k=0;k<envelopeHistogram.size();++k){cumulative+=envelopeHistogram[k];if(cumulative>=goal){p.quietDb=std::clamp(-80.f+2.f*(float)k-p.rmsDb,-80.f,0.f);break;}}
                 for(size_t k=0;k<p.envelopeLag.size();++k)p.envelopeLag[k]=lagStats[k].correlation();}
@@ -80,7 +81,7 @@ private:
         if(++winFrames>=window){
             if(detailed){const double e=winEnergy/window;const double env=std::max(-80.f,db(e));envSum+=env;envSq+=env*env;++envCount;++envelopeHistogram[(size_t)std::clamp((int)((env+80.)*.5),0,40)];
                 constexpr std::array<unsigned,4> lags{{3,6,12,24}};for(size_t k=0;k<lags.size();++k)if(envCount>lags[k])lagStats[k].push(env,envRing[(envCount-1+envRing.size()-lags[k])%envRing.size()]);envRing[(envCount-1)%envRing.size()]=env;
-                if(e>=1.e-5){for(size_t k=0;k<6;++k)bandEnergy[k]+=winBands[k];}winBands.fill(0.); }
+                if(e>=1.e-5){activeEnvSum+=env;activeEnvSq+=env*env;++activeEnvCount;for(size_t k=0;k<6;++k)bandEnergy[k]+=winBands[k];}winBands.fill(0.); }
             if(winEnergy/window>=1.e-5){activeFrames+=winFrames;activeEnergy+=winEnergy;lowEnergy+=winLow;highEnergy+=winHigh;peak=std::max(peak,winPeak);clipped+=winClip;midEnergy+=winMid;sideEnergy+=winSide;leftEnergy+=winLeft;rightEnergy+=winRight;crossEnergy+=winCross;}
             winFrames=winClip=0;winEnergy=winLow=winHigh=winPeak=winMid=winSide=winLeft=winRight=winCross=0.;
         }
@@ -88,7 +89,7 @@ private:
     bool detailed=false;std::array<double,5> bandPole{};std::array<std::array<double,5>,2> bandState{};std::array<double,6> winBands{},bandEnergy{};
     struct Lag {double x=0,y=0,xx=0,yy=0,xy=0;unsigned n=0;void push(double a,double b) noexcept {x+=a;y+=b;xx+=a*a;yy+=b*b;xy+=a*b;++n;}float correlation() const noexcept {if(n<3)return 0;const double d=std::sqrt(std::max(0.,(xx-x*x/n)*(yy-y*y/n)));return d>1.e-9?(float)std::clamp((xy-x*y/n)/d,-1.,1.):0.f;}};
     std::array<Lag,4> lagStats{};std::array<double,25> envRing{};std::array<unsigned,41> envelopeHistogram{};
-    double envSum=0,envSq=0;unsigned envCount=0;
+    double envSum=0,envSq=0,activeEnvSum=0,activeEnvSq=0;unsigned envCount=0,activeEnvCount=0;
     double sr=48000,lo=0,hi=0;int window=960,winFrames=0,winClip=0;
     std::uint64_t frames=0,activeFrames=0,clipped=0,bad=0;
     std::array<double,2> low{},high{};
@@ -98,7 +99,7 @@ private:
 struct EffectChoice {float wet=0;std::array<float,4> p{{.5f,.5f,.5f,.5f}};};
 struct Recipe {float low=0,high=0,threshold=-24,ratio=2,makeup=0;bool deess=false;float output=-3;
     int modulation=0; // 0 none, 1 chorus, 2 flanger
-    EffectChoice mod,delay,room;
+    EffectChoice mod,delay,room,rider,harshness,saturation;
 };
 struct Audio {double rate=48000.;std::vector<float> stereo;size_t frames() const noexcept {return stereo.size()/2;}};
 inline bool comparable(const Profile& dry,const Profile& ref) noexcept {

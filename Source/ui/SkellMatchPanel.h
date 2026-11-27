@@ -8,7 +8,7 @@
 
 class SkellMatchPanel final:public juce::Component,private juce::Timer {
 public:
-    enum Phase { Listening, More, Reading, Refining, Done, Problem, ChooseStyle };
+    enum Phase { Listening, More, Reading, Refining, Done, Problem, ChooseStyle, RefineText };
     SkellMatchPanel(){
         for(auto* b:{&close,&retry,&listen,&reference,&upload}){addAndMakeVisible(*b);b->setComponentID("header-control");}
         close.setButtonText(juce::String::charToString(0x00d7));close.setTooltip("Close Match");
@@ -19,12 +19,23 @@ public:
         close.onClick=[this]{if(onClose)onClose();};retry.onClick=[this]{if(onRetry)onRetry();};listen.onClick=[this]{if(onListen)onListen();};reference.onClick=[this]{if(onReference)onReference();};upload.onClick=[this]{if(onUpload)onUpload();};
         for(size_t i=0;i<styleButtons.size();++i){auto& b=styleButtons[i];addAndMakeVisible(b);b.setComponentID("header-control");b.setButtonText(skellpreset::liveMatch::styleGuides[i].name);b.onClick=[this,i]{chooseStyle((int)i);};}
         addAndMakeVisible(start);start.setComponentID("header-control");start.setButtonText("START LISTENING");start.onClick=[this]{if(onStart)onStart();};
+        for(auto* b:{&beat,&refine,&submit,&back}){addAndMakeVisible(*b);b->setComponentID("header-control");}
+        beat.setButtonText("BEAT FILE");beat.setTooltip("Optional instrumental context, never processed or uploaded");beat.onClick=[this]{if(onBeat)onBeat();};
+        refine.setButtonText("REFINE");refine.onClick=[this]{if(onRefine)onRefine();};
+        submit.setButtonText("APPLY REQUEST");submit.onClick=[this]{if(onSubmit)onSubmit(prompt.getText());};
+        back.setButtonText("BACK");back.onClick=[this]{if(onBack)onBack();};
+        addAndMakeVisible(prompt);prompt.setMultiLine(false);prompt.setReturnKeyStartsNewLine(false);prompt.setInputRestrictions(240);prompt.setTextToShowWhenEmpty("More aggressive, but keep it clear",juce::Colours::grey);prompt.onReturnKey=[this]{if(submit.isVisible()&&submit.onClick)submit.onClick();};
         chooseStyle(0);
         setTitle("Skell Match - vocal preset assistant");
         setMouseCursor(juce::MouseCursor::NormalCursor);
     }
     ~SkellMatchPanel()override{stopTimer();}
-    std::function<void()> onClose,onRetry,onListen,onReference,onUpload,onStart;
+    std::function<void()> onClose,onRetry,onListen,onReference,onUpload,onStart,onBeat,onRefine,onBack;
+    std::function<void(juce::String)> onSubmit;
+    void setBeatReady(bool ready){beatReady=ready;beat.setButtonText(ready?"BEAT LOADED":"BEAT FILE");repaint();}
+    void setRefinementAvailable(bool ready){refinementAvailable=ready;initialised=false;}
+    bool editingPrompt() const noexcept {return phase==RefineText&&prompt.hasKeyboardFocus(true);}
+    bool testRefine(){if(!refine.isVisible()||!refine.onClick)return false;refine.onClick();return phase==RefineText&&prompt.isVisible()&&submit.isVisible();}
     skellpreset::liveMatch::MixStyle selectedStyle() const noexcept {return static_cast<skellpreset::liveMatch::MixStyle>(styleIndex);}
     bool testChooseStyle(){if(phase!=ChooseStyle||!start.isVisible())return false;chooseStyle(1);const bool ok=styleButtons[1].getToggleState()&&selectedStyle()==skellpreset::liveMatch::MixStyle::Underground;chooseStyle(0);return ok;}
     void testStart(){if(start.isVisible()&&start.onClick)start.onClick();}
@@ -87,9 +98,12 @@ public:
         if(phaseChanged||!initialised){
             initialised=true;
             retry.setVisible(next==Problem||next==Done);
+            beat.setVisible(next==ChooseStyle);refine.setVisible(next==Done&&refinementAvailable);
+            submit.setVisible(next==RefineText);back.setVisible(next==RefineText);prompt.setVisible(next==RefineText);
+            if(next==RefineText){prompt.clear();prompt.setColour(juce::TextEditor::backgroundColourId,Theme::bg);prompt.setColour(juce::TextEditor::textColourId,Theme::white);prompt.setColour(juce::TextEditor::outlineColourId,Theme::stroke);prompt.setColour(juce::TextEditor::focusedOutlineColourId,Theme::green);}
             for(auto& b:styleButtons)b.setVisible(next==ChooseStyle);
             start.setVisible(next==ChooseStyle);
-            listen.setVisible(next==Done);reference.setVisible(haveDry&&(next==Done||next==Problem));upload.setVisible(next!=Reading&&next!=Refining);
+            listen.setVisible(next==Done);reference.setVisible(haveDry&&(next==Done||next==Problem));upload.setVisible(next!=Reading&&next!=Refining&&next!=RefineText);
             listen.setToggleState(next==Done,juce::dontSendNotification);
             resized();syncAnimation();
         }
@@ -97,7 +111,9 @@ public:
     }
     void resized()override{
         close.setBounds(scaled({562,8,28,28}));
-        if(phase==ChooseStyle){for(size_t i=0;i<styleButtons.size();++i)styleButtons[i].setBounds(scaled({263+(int)(i%2)*160,113+(int)(i/2)*27,153,24}));start.setBounds(scaled({263,230,153,30}));upload.setBounds(scaled({423,230,153,30}));return;}
+        if(phase==ChooseStyle){for(size_t i=0;i<styleButtons.size();++i)styleButtons[i].setBounds(scaled({263+(int)(i%2)*160,113+(int)(i/2)*27,153,24}));start.setBounds(scaled({263,230,101,30}));upload.setBounds(scaled({369,230,101,30}));beat.setBounds(scaled({475,230,101,30}));return;}
+        if(phase==RefineText){prompt.setBounds(scaled({263,148,313,32}));submit.setBounds(scaled({263,230,153,30}));back.setBounds(scaled({423,230,153,30}));return;}
+        if(phase==Done&&refinementAvailable){refine.setBounds(scaled({263,222,101,29}));listen.setBounds(scaled({369,222,101,29}));retry.setBounds(scaled({475,222,101,29}));reference.setBounds(scaled({263,256,153,29}));upload.setBounds(scaled({423,256,153,29}));return;}
         std::array<SkellActionButton*,4> buttons{{&retry,&listen,&reference,&upload}};
         int count=0;for(auto* b:buttons)if(b->isVisible())++count;
         int i=0;
@@ -140,8 +156,15 @@ public:
         if(phase==ChooseStyle){
             Theme::fittedText(g,"AUTO MIX / LOCAL",{14,267,222,22},11.f,tint,true,juce::Justification::centred);
             Theme::fittedText(g,"Choose your vocal style",{263,53,313,29},19.f,Theme::white,true);
-            Theme::fittedText(g,"No reference needed. Match listens to your voice.",{263,84,313,23},12.f,Theme::muted,false);
-            Theme::fittedText(g,"REFERENCE OPTIONAL  /  NOTHING UPLOADED",{263,270,313,17},9.5f,Theme::muted,true,juce::Justification::centred);return;
+            Theme::fittedText(g,message.startsWith("Beat not usable")?message:beatReady?"Instrumental context loaded. Choose your style.":"No reference needed. Match listens to your voice.",{263,84,313,23},12.f,Theme::muted,false);
+            Theme::fittedText(g,beatReady?"BEAT CONTEXT LOADED  /  LOCAL ONLY":"REFERENCE OPTIONAL  /  NOTHING UPLOADED",{263,270,313,17},9.5f,Theme::muted,true,juce::Justification::centred);return;
+        }
+        if(phase==RefineText){
+            Theme::fittedText(g,"REFINE / LOCAL",{14,267,222,22},11.f,tint,true,juce::Justification::centred);
+            Theme::fittedText(g,"What should change?",{263,53,313,29},19.f,Theme::white,true);
+            g.setColour(Theme::white);g.setFont(Theme::font(13.f));g.drawFittedText(message,{263,85,313,52},juce::Justification::topLeft,3,.84f);
+            Theme::fittedText(g,"Brighter / drier / wider / louder / softer",{263,189,313,24},10.5f,Theme::muted,false);
+            Theme::fittedText(g,"YOUR CURRENT RACK STAYS UNTIL VALIDATION",{263,270,313,17},9.5f,Theme::muted,true,juce::Justification::centred);return;
         }
         Theme::fittedText(g,active?"ANALYZING SIGNAL":phase==Done?"MATCH COMPLETE":"INPUT REQUIRED",{14,267,222,22},11.f,tint,true,juce::Justification::centred);
         const char* title=phase==Done?"Your preset is ready":phase==Problem?"More information needed":phase==Refining?"Refining your preset":phase==Reading?"Analyzing vocal file":phase==More?"Keep playing your vocals":"Listening to your dry vocals";
@@ -192,6 +215,9 @@ private:
         lastTime=now;
     }
     void chooseStyle(int index){styleIndex=index;for(size_t i=0;i<styleButtons.size();++i)styleButtons[i].setToggleState((int)i==styleIndex,juce::dontSendNotification);repaint();}
+    bool beatReady=false,refinementAvailable=false;
+    juce::TextEditor prompt;
+    SkellActionButton beat,refine,submit,back;
     int styleIndex=0;
     std::array<SkellActionButton,8> styleButtons;
     SkellActionButton start;

@@ -102,6 +102,32 @@ int main(){
     const auto balanced=optimizeAutoMix(audio,dry,MixStyle::Balanced);
     std::cout<<"Renderer fixture balanced "<<balanced.valid<<" "<<balanced.dryHoldout<<" -> "<<balanced.holdoutFinal<<"\n";
     if(!balanced.valid)return 34;
+    // Local command parsing is bounded, cumulative and transactional.
+    MixIntent intent;
+    if(!parseMixIntent("Make my vocal more aggressive but keep it clear",intent)||intent.aggression!=.5f||!intent.clarity)return 36;
+    if(parseMixIntent("Do not make it brighter",intent)||intent.brightness!=0.f)return 37;
+    if(parseMixIntent("brighter and darker",intent)||intent.brightness!=0.f)return 38;
+    if(parseMixIntent("correct my pitch",intent))return 39;
+    if(!parseMixIntent("less reverb and wider",intent)||intent.space!=-.5f||intent.width!=.5f)return 40;
+    if(!parseMixIntent("more aggressive",intent)||intent.aggression!=1.f||!intent.clarity)return 41;
+    const auto dryDetailed=measure(audio,{0,audio.frames()/2},nullptr,nullptr,true);
+    Profile beat=dry;beat.detailed=true;beat.rmsDb=-12.f;beat.bands.fill(-30.f);beat.bands[3]=-7.f;
+    const auto g1=contextualGuide(MixStyle::Balanced,dryDetailed,{},nullptr),g2=contextualGuide(MixStyle::Balanced,dryDetailed,{},&beat);
+    if(g2.level<=g1.level||g2.room>=g1.room||g2.high<=g1.high)return 42;
+    beat.invalid=1.f;const auto invalidBeat=contextualGuide(MixStyle::Balanced,dryDetailed,{},&beat);
+    if(invalidBeat.level!=g1.level||invalidBeat.room!=g1.room||invalidBeat.high!=g1.high)return 43;
+    // Each candidate stage must change the actual render, not just its settings.
+    Recipe flat;flat.ratio=1.f;flat.output=0.f;
+    for(int fx=0;fx<3;++fx){auto r=flat;
+        if(fx==0)r.rider={.8f,{{.8f,.6f,.4f,0.f}}};
+        if(fx==1)r.saturation={.5f,{{.55f,.35f,.5f,.5f}}};
+        if(fx==2)r.harshness={.8f,{{.55f,.15f,.75f,.3f}}};
+        NativeCandidate base(48000.,flat),changed(48000.,r);double diff=0.,power=0.;
+        for(int i=0;i<48000;++i){const double t=i/48000.;const float x=(i<24000?.04f:.24f)*(float)std::sin(6.283185307179586*300.*t)+.08f*(float)std::sin(6.283185307179586*4000.*t);const auto a=base.process(x,x),b=changed.process(x,x);if(!std::isfinite(b[0])||b[0]!=b[1])return 44;diff+=(a[0]-b[0])*(a[0]-b[0]);power+=a[0]*a[0];}
+        if(diff<std::max(1.e-6,1.e-5*power))return 45+fx;
+    }
+    const auto refined=optimizeAutoMix(audio,dry,MixStyle::Balanced,nullptr,nullptr,intent,nullptr,&balanced.recipe);
+    if(refined.valid){const auto h=selectReferenceSegment(audio,audio.frames()/2,audio.frames());const auto raw=measure(audio,h,nullptr,nullptr,true);const auto guide=contextualGuide(MixStyle::Balanced,dryDetailed,intent,nullptr);const auto target=styleTarget(raw,guide);const auto prev=styleLoss(measure(audio,h,&balanced.recipe,nullptr,true),raw,target,balanced.recipe,guide);if(refined.holdoutFinal+.025f>=prev)return 48;}
     std::atomic<bool> canceled{true};if(optimizeAutoMix(audio,dry,MixStyle::Pop,&canceled).valid)return 35;if(optimize(audio,dry,nullptr,&canceled).valid)return 12;
     std::cout<<"Live vocal match capture and bounded profile decisions passed at four sample rates\n";
 }
