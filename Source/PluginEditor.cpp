@@ -1529,11 +1529,8 @@ public:
         g.setGradientFill(juce::ColourGradient(
             Theme::panel,0.f,0.f,
             Theme::bg,0.f,76.f,false));
-        g.fillRect(0,0,Theme::width,76);
-        g.setColour(Theme::white.withAlpha(.065f));
-        g.drawHorizontalLine(1,10.f,(float)Theme::width-10.f);
-        g.setColour(Theme::stroke.withAlpha(.95f));
-        g.drawHorizontalLine(75,0.f,(float)Theme::width);
+        const auto header=juce::Rectangle<float>(14.f,5.f,(float)Theme::width-28.f,69.f);
+        g.fillRoundedRectangle(header,9.f);Theme::workspaceFrame(g,header);
         // One typographic run avoids the clipped hyphen and inconsistent gaps.
         // PRESET stays neon green in the main Obsidian skin.
         juce::AttributedString brand;

@@ -10,4 +10,12 @@ inline juce::Rectangle<float> face(juce::Graphics& g,juce::Rectangle<float> boun
     g.setColour(Theme::white.withAlpha(enabled?.10f:.04f));g.drawLine(r.getX()+5.f,r.getY()+2.f,r.getRight()-5.f,r.getY()+2.f,.8f);
     return r;
 }
+inline juce::Rectangle<float> rackDisc(juce::Graphics& g,juce::Rectangle<float> r,bool enabled,bool over,bool down) {
+    const auto disc=r.withSizeKeepingCentre(25.f,25.f);
+    g.setColour(Theme::bg.withAlpha(.62f));g.fillEllipse(disc.translated(0.f,.8f));
+    g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(over?.28f:.21f),disc.getTopLeft(),Theme::panelAlt.darker(down?.42f:.32f),disc.getBottomRight(),false));g.fillEllipse(disc);
+    g.setColour(Theme::white.withAlpha(enabled?.20f:.08f));g.drawEllipse(disc.reduced(.5f),.85f);
+    g.setColour(Theme::bg.withAlpha(.66f));g.drawEllipse(disc.reduced(2.f),.8f);
+    return disc;
+}
 }

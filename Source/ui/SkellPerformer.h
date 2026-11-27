@@ -7,7 +7,7 @@ namespace skellpreset::stage {
 // Model coordinates remain 345 x 372; only presentation changes.
 class Performer {
     using P=juce::Point<float>;using Path=juce::Path;using C=juce::Colour;
-    const C bone{0xffd7d6c9}, shade{0xff515951}, dark{0xff101719};
+    const C bone{0xffdedbd0}, shade{0xff485952}, dark{0xff101719};
     static Path poly(std::initializer_list<P> pts){Path p;bool first=true;for(auto v:pts){if(first){p.startNewSubPath(v);first=false;}else p.lineTo(v);}p.closeSubPath();return p;}
     void line(juce::Graphics& g,const Path& p,float w,C c)const{g.setColour(c);g.strokePath(p,juce::PathStrokeType(w,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
     void solid(juce::Graphics& g,const Path& p,P a,P b,float light=1.f)const{
@@ -17,7 +17,8 @@ class Performer {
     void limb(juce::Graphics& g,P a,P b,float ra,float rb,float light=1.f,float bend=0.f)const{
         const P d=b-a;const float len=juce::jmax(1.f,d.getDistanceFromOrigin());const P u=d/len,n{-u.y,u.x},m=(a+b)*.5f+n*bend;const float w=(ra+rb)*.27f;
         Path p;p.startNewSubPath(a+n*ra);p.cubicTo(a+u*len*.19f+n*ra*.65f,m-u*len*.15f+n*w,m+n*w);p.cubicTo(m+u*len*.17f+n*w,b-u*len*.17f+n*rb*.7f,b+n*rb);p.cubicTo(b+u*rb+n*rb,b+u*rb-n*rb,b-n*rb);p.cubicTo(b-u*len*.17f-n*rb*.7f,m+u*len*.17f-n*w,m-n*w);p.cubicTo(m-u*len*.15f-n*w,a+u*len*.19f-n*ra*.65f,a-n*ra);p.cubicTo(a-u*ra-n*ra,a-u*ra+n*ra,a+n*ra);p.closeSubPath();solid(g,p,m-n*juce::jmax(ra,rb),m+n*juce::jmax(ra,rb),light);
-        Path ridge;ridge.startNewSubPath(a+u*len*.20f-n*w*.60f);ridge.quadraticTo(m-n*w*.65f,b-u*len*.20f-n*w*.40f);line(g,ridge,.55f,bone.withAlpha(.36f*light));
+        Path ridge;ridge.startNewSubPath(a+u*len*.20f-n*w*.60f);ridge.quadraticTo(m-n*w*.65f,b-u*len*.20f-n*w*.40f);line(g,ridge,.65f,bone.withAlpha(.46f*light));
+        Path groove;groove.startNewSubPath(a+u*len*.24f+n*w*.56f);groove.quadraticTo(m+n*w*.60f,b-u*len*.23f+n*w*.38f);line(g,groove,.42f,shade.withAlpha(.34f*light));
     }
     void joint(juce::Graphics& g,P p,float x,float y,float light=1.f)const{Path a;a.addEllipse(p.x-x,p.y-y,x*2,y*2);solid(g,a,p-P{x*.6f,y},p+P{x,y},light);}
     void feet(juce::Graphics& g,P a,float dir,float light)const{joint(g,a+P{0.f,0.f},4.3f,4.7f,light);limb(g,a,a+P{-dir*4.f,7.f},3.5f,2.8f,light);joint(g,a+P{-dir*4.f,7.f},4,3,light);for(int i=0;i<5;++i){const P b=a+P{dir*(20.f-i*2.4f),10.f+i*.4f};limb(g,a+P{dir*(2.f+i*1.4f),4.f+i*.5f},b,1.7f,1.1f,light);limb(g,b,b+P{dir*(5.f-i*.5f),1},1,.72f,light);}}
@@ -32,7 +33,7 @@ class Performer {
         limb(g,{142,211},{155,213},2.7f,2.1f,.83f);
         // Rotated thorax: the posterior ribs remain visible through the gaps.
         const float reach[12]{15,22,29,34,39,42,43,42,39,35,28,20};
-        for(int pass=0;pass<2;++pass)for(int k=0;k<12;++k)for(int side:{-1,1}){const float s=(float)side,w=reach[k]*(side<0?1.f:.65f),y=88.f+k*5.9f+(side>0?-3.f:0.f),inner=side<0?154.f:157.f,edge=inner+s*w,fy=y+10.f+k*1.38f;Path p;if(pass==0){p.startNewSubPath(150.f,y);p.cubicTo(150.f+s*w*.5f,y-5,edge,y-2,edge,y+4);line(g,p,1.8f,shade.withAlpha(.75f));}else{const float end=k<7?inner+s*4.7f:k<10?inner+s*(10.f+(k-7)*5.f):edge-s*7.f;p.startNewSubPath(edge,y+3);p.cubicTo(edge+s*1.5f,y+12,inner+s*w*.62f,fy+3,end,fy);line(g,p,3.6f,dark);line(g,p,2.55f,bone.interpolatedWith(shade,side<0?.22f:.47f));Path glint;glint.startNewSubPath(edge,y+4);glint.quadraticTo(edge,fy-1,inner+s*w*.53f,fy+1);line(g,glint,.65f,bone.withAlpha(side<0?.68f:.32f));if(k>=7&&k<10){Path cart;cart.startNewSubPath(end,fy);cart.quadraticTo(inner+s*8,fy-2,inner+s*5,151.f+(k-7)*2);line(g,cart,1.4f,bone.interpolatedWith(shade,.50f));}}}
+        for(int pass=0;pass<2;++pass)for(int k=0;k<12;++k)for(int side:{-1,1}){const float s=(float)side,w=reach[k]*(side<0?1.f:.65f),y=88.f+k*5.9f+(side>0?-3.f:0.f),inner=side<0?154.f:157.f,edge=inner+s*w,fy=y+10.f+k*1.38f;Path p;if(pass==0){p.startNewSubPath(150.f,y);p.cubicTo(150.f+s*w*.5f,y-5,edge,y-2,edge,y+4);line(g,p,1.8f,shade.withAlpha(.75f));}else{const float end=k<7?inner+s*4.7f:k<10?inner+s*(10.f+(k-7)*5.f):edge-s*7.f;p.startNewSubPath(edge,y+3);p.cubicTo(edge+s*1.5f,y+12,inner+s*w*.62f,fy+3,end,fy);line(g,p,3.6f,dark);line(g,p,2.65f,bone.interpolatedWith(shade,side<0?.18f:.42f));Path glint;glint.startNewSubPath(edge,y+4);glint.quadraticTo(edge,fy-1,inner+s*w*.53f,fy+1);line(g,glint,.65f,bone.withAlpha(side<0?.68f:.32f));if(k>=7&&k<10){Path cart;cart.startNewSubPath(end,fy);cart.quadraticTo(inner+s*8,fy-2,inner+s*5,151.f+(k-7)*2);line(g,cart,1.4f,bone.interpolatedWith(shade,.50f));}}}
         Path st;st.startNewSubPath(151,94);st.quadraticTo(155,90,160,94);st.lineTo(162,105);st.quadraticTo(157,126,159,145);st.lineTo(155,155);st.lineTo(151,146);st.lineTo(153,108);st.closeSubPath();solid(g,st,{151,94},{162,151},.95f);
         Path cl;cl.startNewSubPath(155,96);cl.cubicTo(140,88,119,85,107,94);cl.cubicTo(123,91,140,99,155,102);cl.closeSubPath();solid(g,cl,{110,88},{155,104});Path cr;cr.startNewSubPath(158,94);cr.cubicTo(172,86,181,84,192,88);cr.cubicTo(180,91,168,101,158,101);cr.closeSubPath();solid(g,cr,{161,86},{192,102},.79f);
     }
@@ -46,8 +47,8 @@ class Performer {
         Path brow;brow.startNewSubPath(143,34);brow.quadraticTo(151,27,161,32);brow.startNewSubPath(167,31);brow.quadraticTo(171,29,175,33);line(g,brow,1.25f,bone.brighter(.08f));
         // Jaw rotates around condyle, teeth retain dimensions at every level.
         const float gape=.014f+.25f*std::sqrt(jaw);auto mouth=poly({{146,55},{170,55},{170,65+jaw*5},{153,71+jaw*6},{140,56}});g.setColour(dark.darker(.7f));g.fillPath(mouth);
-        for(int k=0;k<8;++k){const float x=150.f+k*2.45f,y=59.4f-std::sin(k*.29f)*1.6f;Path t;t.addRoundedRectangle(x,y,2.15f,4.f-(k>5?.6f:0.f),.55f);solid(g,t,{x,y},{x+2,y+4},.97f);}
-        {juce::Graphics::ScopedSaveState mandible(g);g.addTransform(juce::AffineTransform::rotation(gape,138,48));Path lower;lower.startNewSubPath(136,47);lower.quadraticTo(141,47,142,53);lower.lineTo(144,63);lower.quadraticTo(151,69,165,66);lower.lineTo(171,63);lower.quadraticTo(174,70,164,73);lower.cubicTo(151,77,139,69,137,61);lower.closeSubPath();solid(g,lower,{141,51},{169,75},.90f);for(int k=0;k<7;++k){float x=151.f+k*2.45f,y=64.2f-std::sin(k*.3f)*1.6f;Path t;t.addRoundedRectangle(x,y,2.1f,3.2f,.4f);solid(g,t,{x,y},{x+2,y+3},.88f);}}
+        for(int k=0;k<8;++k){const float x=150.f+k*2.45f,y=59.4f-std::sin(k*.29f)*1.6f;Path t;t.addRoundedRectangle(x,y,1.98f,3.65f-(k>5?.6f:0.f)+(k%3)*.14f,.48f);solid(g,t,{x,y},{x+2,y+4},.97f);}
+        {juce::Graphics::ScopedSaveState mandible(g);g.addTransform(juce::AffineTransform::rotation(gape,138,48));Path lower;lower.startNewSubPath(136,47);lower.quadraticTo(141,47,142,53);lower.lineTo(144,63);lower.quadraticTo(151,69,165,66);lower.lineTo(171,63);lower.quadraticTo(174,70,164,73);lower.cubicTo(151,77,139,69,137,61);lower.closeSubPath();solid(g,lower,{141,51},{169,75},.90f);for(int k=0;k<7;++k){float x=151.f+k*2.45f,y=64.2f-std::sin(k*.3f)*1.6f;Path t;t.addRoundedRectangle(x,y,1.92f,2.95f+(k%2)*.18f,.4f);solid(g,t,{x,y},{x+2,y+3},.88f);}}
         g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.06f+.19f*react),153,39,Theme::green.withAlpha(0.f),160,42,true));g.fillEllipse(146,32,15,15);
         // Small rim glints make the head read as lit bone, not a flat cartoon.
         Path edge;edge.startNewSubPath(128,30);edge.cubicTo(128,16,143,10,153,12);line(g,edge,.8f,C(0xffa9c6c0).withAlpha(.64f));

@@ -28,21 +28,21 @@ public:
     void placeWithin(juce::Rectangle<int> available,bool /*left*/){
         limits=available.reduced(12);
         if(limits.isEmpty())return;
-        // 25% larger in both dimensions; center on the entire plugin canvas.
+        // Owner refinement: 10% smaller than 670 x 413; full-canvas centre.
         // Retain manual drag and fit compact bounds.
-        const float s=std::min({1.25f,limits.getWidth()/536.f,limits.getHeight()/330.f});
+        const float s=std::min({1.125f,limits.getWidth()/536.f,limits.getHeight()/330.f});
         // Explicit half-up rounding: JUCE roundToInt rounds 412.5 to 412 on some targets.
         const int w=juce::jmin(limits.getWidth(),(int)std::round(536.f*s)),h=juce::jmin(limits.getHeight(),(int)std::round(330.f*s));
         if(w<=0||h<=0)return;
-        if(!moved)setBounds(limits.withSizeKeepingCentre(w,h));
+        if(!moved){const auto c=available.getCentre();setBounds(c.x-w/2,c.y-h/2,w,h);}
         else setSize(w,h);
         clampPosition(getPosition());
     }
     void advanceAnimationForScreenshot(float seconds) {advanceAnimation(seconds);}
     double benchmarkOrbForScreenshot(){
         if(themeSource)Theme::selectFor(*themeSource);
-        juce::Image image(juce::Image::ARGB,670,413,true);juce::Graphics g(image);
-        g.addTransform(juce::AffineTransform::scale(1.25f));
+        juce::Image image(juce::Image::ARGB,603,371,true);juce::Graphics g(image);
+        g.addTransform(juce::AffineTransform::scale(603.f/536.f,371.f/330.f));
         std::array<double,120> times{};
         for(size_t i=0;i<times.size();++i){image.clear(image.getBounds());const auto start=juce::Time::getMillisecondCounterHiRes();orb.draw(g,{14,57,222,222},(float)i*.035f,.25f,.5f,false);times[i]=juce::Time::getMillisecondCounterHiRes()-start;}
         std::sort(times.begin(),times.end());
@@ -51,7 +51,7 @@ public:
     bool testPlacement(){
         if(limits.isEmpty()||!limits.contains(getBounds()))return false;
         if(!moved&&(getBounds().getCentre().getDistanceFrom(limits.getCentre())>1||!getParentComponent()||getBounds().getCentre().getDistanceFrom(getParentComponent()->getLocalBounds().getCentre())>1))return false;
-        if(limits.getWidth()>=670&&limits.getHeight()>=413&&(getWidth()!=670||getHeight()!=413))return false;
+        if(limits.getWidth()>=603&&limits.getHeight()>=371&&(getWidth()!=603||getHeight()!=371))return false;
         const auto previous=getPosition();const bool wasMoved=moved;
         clampPosition({limits.getRight()+100,limits.getBottom()+100});
         const bool bottom=limits.contains(getBounds())&&getRight()==limits.getRight()&&getBottom()==limits.getBottom();
@@ -93,7 +93,7 @@ public:
         int count=0;for(auto* b:buttons)if(b->isVisible())++count;
         int i=0;
         for(auto* b:buttons)if(b->isVisible()){
-            const int cell=122,gap=8,col=i%2,row=i/2;
+            const int cell=120,gap=9,col=i%2,row=i/2;
             const bool single=count==1||(count==3&&i==2);
             const int x=single?328:263+col*(cell+gap);
             const int y=count<=2?278:246+row*34;
@@ -112,12 +112,13 @@ public:
         g.fillRoundedRectangle(r,12.f);
         g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(.26f),250.f,43.f,Theme::bg.withAlpha(.78f),524.f,310.f,false));
         g.fillRoundedRectangle(juce::Rectangle<float>(248,43,276,274),8.f);
+        g.setColour(Theme::stroke.withAlpha(.46f));g.drawVerticalLine(244,57.f,309.f);
         g.setColour(Theme::stroke.brighter(.28f));g.drawRoundedRectangle(r,12.f,1.15f);
         g.setColour(tint.withAlpha(.52f));g.drawLine(16.f,2.f,r.getRight()-16.f,2.f,1.f);
         radar.drawBrand(g,{13,9,23,24});
         Theme::fittedText(g,"SKELL MATCH",{44,9,138,25},13.f,tint,true);
         g.setColour(Theme::muted.withAlpha(.72f));
-        for(int i=0;i<3;++i)for(int j=0;j<2;++j)g.fillEllipse(263.f+i*5,17.f+j*5,2.f,2.f);
+        for(int i=0;i<3;++i)for(int j=0;j<2;++j)g.fillEllipse(262.f+i*5,18.f+j*5,2.f,2.f);
         g.setColour(Theme::stroke.withAlpha(.72f));g.drawLine(13.f,40.f,523.f,40.f,.8f);
         const bool active=phase==Listening||phase==More||phase==Refining||phase==Reading;
         if(active)orb.draw(g,{14.f,57.f,222.f,222.f},rotation,smoothedEnergy,fraction,phase==Refining);

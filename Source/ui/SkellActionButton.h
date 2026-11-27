@@ -76,9 +76,8 @@ public:
         if(getComponentID()=="rack-hardware"&&caption=="MIC"){
             const bool active=getToggleState();
             const auto r=skellpreset::header::face(g,getLocalBounds().toFloat(),enabled,over,down,active,hasKeyboardFocus(true));
-            const auto c=r.getCentre();const auto disc=r.withSizeKeepingCentre(23.f,23.f);
-            g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.22f),disc.getTopLeft(),Theme::panelAlt.darker(.34f),disc.getBottomRight(),false));g.fillEllipse(disc);
-            g.setColour(Theme::stroke.withAlpha(.85f));g.drawEllipse(disc,.9f);
+            const auto disc=skellpreset::header::rackDisc(g,r,enabled,over,down);
+            const auto c=disc.getCentre();
             g.setColour(active||over?Theme::green:Theme::white.withAlpha(enabled?.88f:.35f));
             g.drawRoundedRectangle(c.x-2.5f,c.y-7.5f,5.f,10.f,2.5f,1.35f);
             juce::Path cradle;cradle.startNewSubPath(c.x-5.5f,c.y-1.5f);cradle.cubicTo(c.x-5.5f,c.y+6.5f,c.x+5.5f,c.y+6.5f,c.x+5.5f,c.y-1.5f);

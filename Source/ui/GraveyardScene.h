@@ -50,7 +50,7 @@ public:
             lastTheme=Theme::current;lastHorizon=skyline;
             juce::Graphics g(image);const float width=(float)w,height=(float)h;
             const float horizonY=skyline;
-            const auto sky=juce::Colour(0xff1c3342),stone=juce::Colour(0xff677773);
+            const auto sky=juce::Colour(0xff243f50),stone=juce::Colour(0xff74827c);
             const auto deep=juce::Colour(0xff070c12);
             const auto fog=juce::Colour(0xff9ab5b5);
             const auto disc=moonDisc(width,horizonY);
@@ -495,11 +495,11 @@ public:
             // Edge vignette draws the eye to the performer without crushing
             // the cemetery detail the way a heavy overlay would.
             g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(0.f),width*.5f,height*.44f,
-                                                   Theme::bg.withAlpha(.20f),0.f,height*.44f,true));
+                                                   Theme::bg.withAlpha(.11f),0.f,height*.44f,true));
             g.fillRect(0.f,0.f,width,height);
             // Re-lift the lower centre so the boards under the figure stay lit.
             g.setGradientFill(juce::ColourGradient(
-                Theme::bg.withAlpha(.16f),width*.5f,horizonY-30.f,
+                Theme::bg.withAlpha(.09f),width*.5f,horizonY-30.f,
                 Theme::bg.withAlpha(0.f),width*.5f,height,false));
             g.fillRect(0.f,horizonY-30.f,width,height-horizonY+30.f);
         }

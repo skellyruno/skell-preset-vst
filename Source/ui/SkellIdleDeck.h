@@ -283,18 +283,9 @@ public:
             juce::Graphics::ScopedSaveState venue(g);g.reduceClipRegion(stageBounds.toNearestInt());
             const float u=stage.scale;
             const float half=juce::jmin(stageBounds.getWidth()*.32f,340.f*u);
-            const float top=stageBounds.getY()+12.f*u;
-            const float lower=top+13.f*u;
+            const float lower=stageBounds.getY()+17.f*u;
             const auto metal=juce::Colour(0xff334044);
-            g.setColour(juce::Colour(0xff080d10));
-            g.fillRoundedRectangle(centreX-half,top-3.f*u,2.f*half,20.f*u,2.f*u);
-            g.setColour(metal.withAlpha(.85f));
-            g.drawLine(centreX-half,top,centreX+half,top,1.9f*u);
-            g.drawLine(centreX-half,lower,centreX+half,lower,1.9f*u);
-            for(int cell=0;cell<16;++cell) {
-                const float x0=centreX-half+2.f*half*cell/16.f,x1=centreX-half+2.f*half*(cell+1)/16.f;
-                g.drawLine(x0,cell%2?top:lower,x1,cell%2?lower:top,1.0f*u);
-            }
+            // Individual flown speaker and lamp mounts leave the sky open.
             // Rear light wall uses separate vertical panels, not a solid UI card.
             for(int side:{-1,1}) {
                 const auto tint=side<0?Theme::blue:accent;
@@ -315,6 +306,8 @@ public:
                 }
                 // Suspended line arrays with a slight curvature and grille detail.
                 const float arrayX=centreX+side*(half-17.f*u);
+                g.setColour(metal.withAlpha(.75f));
+                for(float offset:{-10.f,10.f})g.drawLine(arrayX+offset*u,stageBounds.getY(),arrayX+offset*u,lower+7.f*u,.8f*u);
                 for(int cab=0;cab<5;++cab) {
                     const float x=arrayX+side*(float)(cab*cab)*.32f*u;
                     const juce::Rectangle<float> r(x-15.f*u,lower+5.f*u+cab*17.f*u,30.f*u,16.f*u);
@@ -356,12 +349,14 @@ public:
                 g.setGradientFill(juce::ColourGradient(tint.withAlpha(.045f+.055f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));g.fillPath(core);
             }
-            // Rig housing and three lens lamps.
-            g.setColour(juce::Colour(0xff121719));
-            g.fillRoundedRectangle(centreX-104.f*stage.scale,rigY-5.f*stage.scale,
-                                   208.f*stage.scale,7.f*stage.scale,3.f*stage.scale);
+            // Three independent suspended moving-head fixtures.
+            const float fixtureScale=stage.scale;
             for(int lamp=0;lamp<3;++lamp) {
                 const float lx=centreX+(lamp-1)*92.f*stage.scale;
+                g.setColour(juce::Colour(0xff445358).withAlpha(.72f));g.drawLine(lx,stageBounds.getY(),lx,rigY-8.f*fixtureScale,.9f*fixtureScale);
+                const auto housing=juce::Rectangle<float>(lx-8.f*fixtureScale,rigY-10.f*fixtureScale,16.f*fixtureScale,12.f*fixtureScale);
+                g.setGradientFill(juce::ColourGradient(juce::Colour(0xff39484b),housing.getTopLeft(),juce::Colour(0xff101719),housing.getBottomRight(),false));g.fillRoundedRectangle(housing,3.f*fixtureScale);
+                g.setColour(juce::Colour(0xff73807c).withAlpha(.48f));g.drawRoundedRectangle(housing,3.f*fixtureScale,.7f*fixtureScale);
                 const int lit=juce::roundToInt(65+190*rigEnergy[(size_t)lamp]);
                 g.setColour(Theme::green.withAlpha(.10f));
                 g.fillEllipse(lx-9.f*stage.scale,rigY-3.f*stage.scale,
@@ -485,7 +480,7 @@ public:
                     for(auto& sprite:crowdSprites)sprite=juce::Image{};
                     crowdCacheTheme=Theme::current;crowdCacheDepth=depth;
                 }
-                const float idleSway=.16f+.84f*activity;
+                const float idleSway=.23f+.77f*activity;
                 for(int row=0;row<crowdLayers;++row) {
                     const float t=crowdLayers>1?(float)row/(float)(crowdLayers-1):0.f;
                     // Far rows are small and high, near rows large and cropped
@@ -496,7 +491,7 @@ public:
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.78f+.16f*t);
-                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.22f).withAlpha(.20f+.48f*t);
+                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.29f).withAlpha(.18f+.48f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
@@ -517,7 +512,7 @@ public:
                         const float base=pitTop+depth*(.09f+.56f*t)+figure.yJitter*depth*.19f+hgt;
                         const float ry=hgt*figure.headRatio;
                         const float rx=ry*(.67f+.19f*figure.turn);
-                        const auto rimColour=rowRim.withMultipliedAlpha(.72f+.38f*figure.turn);
+                        const auto rimColour=rowRim.interpolatedWith(Theme::green.withAlpha(rowRim.getFloatAlpha()),.06f+.10f*figure.turn).withMultipliedAlpha(.72f+.38f*figure.turn);
                         const float armW=juce::jmax(1.1f,hgt*.045f);
                         const float shoulderY=headY+ry*1.35f;
                         const float shoulderW=rx*(1.75f+.35f*figure.turn);
@@ -713,6 +708,7 @@ public:
                             juce::Path seam;seam.startNewSubPath(sutureX,localHeadY-ry);seam.lineTo(sutureX-rx*.12f,localHeadY-ry*.56f);seam.lineTo(sutureX+rx*.08f,localHeadY-ry*.28f);seam.lineTo(sutureX,localHeadY+ry*.08f);
                             art.setColour(bodyColour.withMultipliedAlpha(.58f));art.strokePath(seam,juce::PathStrokeType(.65f));
                             art.setColour(rimColour.withMultipliedAlpha(.21f));art.fillEllipse(localX-rx*.72f,localHeadY-ry*.65f,rx*.68f,ry*.48f);
+                            for(int pore=0;pore<6;++pore){const float px=localX+rx*((float)((pore*31+i*11)%19)/10.f-.9f),py=localHeadY+ry*((float)((pore*17+i*7)%17)/10.f-.8f);art.setColour(bodyColour.withMultipliedAlpha(.27f));art.fillEllipse(px,py,.65f,.5f);}
                         }
                         juce::Path crescent;
                         crescent.addCentredArc(localX,localHeadY,rx,ry,0.f,

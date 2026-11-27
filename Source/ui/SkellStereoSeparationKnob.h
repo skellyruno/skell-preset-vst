@@ -85,6 +85,18 @@ public:
             ? (float)juce::jlimit(0.,1.,(getValue()-getMinimum())/range) : .5f;
         const float start=1.2f*pi,end=2.8f*pi;
         const float angle=start+(end-start)*value;
+        if(compact){
+            const auto disc=skellpreset::header::rackDisc(g,face,isEnabled(),hovered,adjusting);
+            const auto c=disc.getCentre();const float rad=9.f;
+            const float mid=(start+end)*.5f;juce::Path rail,lit;
+            rail.addCentredArc(c.x,c.y,rad,rad,0.f,start,end,true);
+            g.setColour(Theme::muted.withAlpha(.46f));g.strokePath(rail,juce::PathStrokeType(1.1f));
+            if(percentFor(getValue())!=0){lit.addCentredArc(c.x,c.y,rad,rad,0.f,std::min(angle,mid),std::max(angle,mid),true);g.setColour(Theme::green);g.strokePath(lit,juce::PathStrokeType(1.65f));}
+            g.setColour(Theme::white.withAlpha(isEnabled()?.89f:.35f));
+            const float dx=std::sin(angle),dy=-std::cos(angle);g.drawLine(c.x+dx*2.f,c.y+dy*2.f,c.x+dx*6.7f,c.y+dy*6.7f,1.6f);
+            g.setColour(Theme::muted.withAlpha(.80f));g.fillEllipse(c.x-1.1f,c.y-1.1f,2.2f,2.2f);
+            return;
+        }
         // The centre tick is the audible detent: it reads brighter at neutral.
         const bool neutral=percentFor(getValue())==0;
         juce::Path track,fill;
