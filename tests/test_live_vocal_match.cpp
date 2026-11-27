@@ -67,6 +67,26 @@ int main(){
     Analyzer badAnalyzer;badAnalyzer.prepare(audio.rate);
     for(size_t i=0;i<badAudio.frames();++i)badAnalyzer.push(&badAudio.stereo[i*2],&badAudio.stereo[i*2+1],1);
     if(badAnalyzer.result().valid()||optimize(badAudio,badAnalyzer.result()).valid)return 21;
+    // Known native effect fixtures with changing voiced phrases and pauses.
+    Audio phrase;phrase.rate=44100.;
+    for(int i=0;i<8*phrase.rate;++i){const double t=i/phrase.rate,phase=std::fmod(t,1.);const double f=140+20*std::sin(3*t);
+        const float e=phase<.72?(float)(.15*(.4+.6*std::sin(3.14159*phase/.72))):0.f;
+        const float x=e*(float)(std::sin(2*3.14159*f*t)+.2*std::sin(2*3.14159*3*f*t)+.08*std::sin(2*3.14159*9*f*t));phrase.stereo.push_back(x);phrase.stereo.push_back(x);}
+    auto profile=[](const Audio& a){Analyzer z;z.prepare(a.rate);for(size_t i=0;i<a.frames()&&!z.finished();++i)z.push(&a.stereo[2*i],&a.stereo[2*i+1],1);return z.result();};
+    const auto pd=profile(phrase);
+    for(int mode=0;mode<4;++mode){auto recipe=fit(pd);recipe.output=0.f;
+        if(mode<2){recipe.modulation=mode+1;recipe.mod={.65f,{{.12f,.65f,.5f,1.f}}};}
+        if(mode==2)recipe.delay={.42f,{{.22f,.35f,.45f,.5f}}};
+        if(mode==3)recipe.room={.48f,{{.60f,.45f,.10f,.16f}}};
+        Audio ref;ref.rate=phrase.rate;NativeCandidate chain(phrase.rate,recipe);
+        for(size_t i=0;i<phrase.frames();++i){auto y=chain.process(phrase.stereo[2*i],phrase.stereo[2*i+1]);ref.stereo.insert(ref.stereo.end(),y.begin(),y.end());}
+        const auto pr=profile(ref);const auto found=optimize(phrase,pd,&pr,nullptr,nullptr,&ref);
+        std::cout<<"FX "<<mode<<" train "<<found.dryScore<<" -> "<<found.final<<" holdout "<<found.dryHoldout<<" -> "<<found.holdoutFinal<<" candidates "<<found.tested<<"\n";
+        if(!found.valid||found.tested>referenceBudget||found.holdoutFinal>=found.dryHoldout)return 22+mode;
+        if(mode<2&&(found.recipe.modulation!=mode+1||found.recipe.mod.wet<=0||found.recipe.delay.wet>0||found.recipe.room.wet>0))return 26+mode;
+        if(mode==2&&(found.recipe.delay.wet<=0||found.recipe.mod.wet>0||found.recipe.room.wet>0))return 28;
+        if(mode==3&&(found.recipe.room.wet<=0||found.recipe.mod.wet>0||found.recipe.delay.wet>0))return 29;
+    }
     std::atomic<bool> canceled{true};if(optimize(audio,dry,nullptr,&canceled).valid)return 12;
     std::cout<<"Live vocal match capture and bounded profile decisions passed at four sample rates\n";
 }

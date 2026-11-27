@@ -14,7 +14,13 @@ namespace skellpreset::liveMatch {
 struct Profile {
     float elapsed=0,active=0,rmsDb=-120,peak=0,lowDb=-120,highDb=-120,crest=0,clipped=0;
     float invalid=0,sideDb=-120,correlation=0;
+    // Detailed features are worker-only; live capture retains its original cost.
+    bool detailed=false;
+    std::array<float,6> bands{};
+    float envelopeContrast=0,quietDb=-120;
+    std::array<float,4> envelopeLag{};
     bool finite() const noexcept {
+        if(detailed){for(float b:bands)if(!std::isfinite(b))return false;if(!std::isfinite(envelopeContrast)||!std::isfinite(quietDb))return false;for(float v:envelopeLag)if(!std::isfinite(v))return false;}
         return std::isfinite(elapsed)&&std::isfinite(active)&&std::isfinite(rmsDb)&&std::isfinite(peak)&&std::isfinite(lowDb)&&std::isfinite(highDb)&&std::isfinite(crest)&&std::isfinite(clipped)&&std::isfinite(invalid)&&std::isfinite(sideDb)&&std::isfinite(correlation);
     }
     bool valid() const noexcept {
@@ -23,9 +29,11 @@ struct Profile {
 };
 class Analyzer {
 public:
-    void prepare(double rate) noexcept {
+    void prepare(double rate,bool detail=false) noexcept {
         *this=Analyzer{};
         sr=std::clamp(std::isfinite(rate)?rate:48000.,8000.,192000.);
+        detailed=detail;
+        if(detailed){constexpr std::array<double,5> hz{{150,400,1000,2500,6000}};for(size_t k=0;k<hz.size();++k)bandPole[k]=1.-std::exp(-6.283185307179586*std::min(hz[k],sr*.42)/sr);}
         window=std::max(1,(int)std::round(sr*.020));
         lo=1.-std::exp(-6.283185307179586*300./sr);
         hi=1.-std::exp(-6.283185307179586*3500./sr);
@@ -49,6 +57,11 @@ public:
             p.crest=std::max(0.f,db(peak*peak)-p.rmsDb);
             p.clipped=(float)((double)clipped/activeFrames);
             p.sideDb=db(sideEnergy/std::max(1.e-20,midEnergy));
+            p.detailed=detailed;
+            if(detailed){for(size_t k=0;k<p.bands.size();++k)p.bands[k]=db(bandEnergy[k]/std::max(1.e-20,activeEnergy));
+                const double mean=envSum/std::max(1u,envCount);p.envelopeContrast=(float)std::sqrt(std::max(0.,envSq/std::max(1u,envCount)-mean*mean));
+                unsigned cumulative=0;const unsigned goal=std::max(1u,envCount/4);for(size_t k=0;k<envelopeHistogram.size();++k){cumulative+=envelopeHistogram[k];if(cumulative>=goal){p.quietDb=std::clamp(-80.f+2.f*(float)k-p.rmsDb,-80.f,0.f);break;}}
+                for(size_t k=0;k<p.envelopeLag.size();++k)p.envelopeLag[k]=lagStats[k].correlation();}
             const double denom=std::sqrt(leftEnergy*rightEnergy);
             p.correlation=denom>1.e-20?(float)std::clamp(crossEnergy/denom,-1.,1.):0.f;
         }
@@ -63,18 +76,30 @@ private:
         winMid+=m*m;winSide+=s*s;winLeft+=x[0]*x[0];winRight+=x[1]*x[1];winCross+=x[0]*x[1];
         winPeak=std::max(winPeak,pk);if(pk>=.999)++winClip;
         for(size_t k=0;k<2;++k){low[k]+=lo*(x[k]-low[k]);high[k]+=hi*(x[k]-high[k]);const double h=x[k]-high[k];winEnergy+=.5*x[k]*x[k];winLow+=.5*low[k]*low[k];winHigh+=.5*h*h;}
+        if(detailed){for(size_t ch=0;ch<2;++ch){double previous=0;for(size_t k=0;k<5;++k){auto& z=bandState[ch][k];z+=bandPole[k]*(x[ch]-z);const double v=z-previous;winBands[k]+=.5*v*v;previous=z;}const double v=x[ch]-previous;winBands[5]+=.5*v*v;}}
         if(++winFrames>=window){
+            if(detailed){const double e=winEnergy/window;const double env=std::max(-80.f,db(e));envSum+=env;envSq+=env*env;++envCount;++envelopeHistogram[(size_t)std::clamp((int)((env+80.)*.5),0,40)];
+                constexpr std::array<unsigned,4> lags{{3,6,12,24}};for(size_t k=0;k<lags.size();++k)if(envCount>lags[k])lagStats[k].push(env,envRing[(envCount-1+envRing.size()-lags[k])%envRing.size()]);envRing[(envCount-1)%envRing.size()]=env;
+                if(e>=1.e-5){for(size_t k=0;k<6;++k)bandEnergy[k]+=winBands[k];}winBands.fill(0.); }
             if(winEnergy/window>=1.e-5){activeFrames+=winFrames;activeEnergy+=winEnergy;lowEnergy+=winLow;highEnergy+=winHigh;peak=std::max(peak,winPeak);clipped+=winClip;midEnergy+=winMid;sideEnergy+=winSide;leftEnergy+=winLeft;rightEnergy+=winRight;crossEnergy+=winCross;}
             winFrames=winClip=0;winEnergy=winLow=winHigh=winPeak=winMid=winSide=winLeft=winRight=winCross=0.;
         }
     }
+    bool detailed=false;std::array<double,5> bandPole{};std::array<std::array<double,5>,2> bandState{};std::array<double,6> winBands{},bandEnergy{};
+    struct Lag {double x=0,y=0,xx=0,yy=0,xy=0;unsigned n=0;void push(double a,double b) noexcept {x+=a;y+=b;xx+=a*a;yy+=b*b;xy+=a*b;++n;}float correlation() const noexcept {if(n<3)return 0;const double d=std::sqrt(std::max(0.,(xx-x*x/n)*(yy-y*y/n)));return d>1.e-9?(float)std::clamp((xy-x*y/n)/d,-1.,1.):0.f;}};
+    std::array<Lag,4> lagStats{};std::array<double,25> envRing{};std::array<unsigned,41> envelopeHistogram{};
+    double envSum=0,envSq=0;unsigned envCount=0;
     double sr=48000,lo=0,hi=0;int window=960,winFrames=0,winClip=0;
     std::uint64_t frames=0,activeFrames=0,clipped=0,bad=0;
     std::array<double,2> low{},high{};
     double winEnergy=0,winLow=0,winHigh=0,winPeak=0,activeEnergy=0,lowEnergy=0,highEnergy=0,peak=0;
     double winMid=0,winSide=0,winLeft=0,winRight=0,winCross=0,midEnergy=0,sideEnergy=0,leftEnergy=0,rightEnergy=0,crossEnergy=0;
 };
-struct Recipe {float low=0,high=0,threshold=-24,ratio=2,makeup=0;bool deess=false;float output=-3;};
+struct EffectChoice {float wet=0;std::array<float,4> p{{.5f,.5f,.5f,.5f}};};
+struct Recipe {float low=0,high=0,threshold=-24,ratio=2,makeup=0;bool deess=false;float output=-3;
+    int modulation=0; // 0 none, 1 chorus, 2 flanger
+    EffectChoice mod,delay,room;
+};
 struct Audio {double rate=48000.;std::vector<float> stereo;size_t frames() const noexcept {return stereo.size()/2;}};
 inline bool comparable(const Profile& dry,const Profile& ref) noexcept {
     return dry.valid()&&ref.valid()&&(std::abs(dry.lowDb-ref.lowDb)>1.5f||std::abs(dry.highDb-ref.highDb)>1.5f||std::abs(dry.crest-ref.crest)>2.f||std::abs(dry.rmsDb-ref.rmsDb)>2.f||std::abs(std::max(-60.f,dry.sideDb)-std::max(-60.f,ref.sideDb))>6.f||std::abs(dry.correlation-ref.correlation)>.35f);

@@ -2078,7 +2078,7 @@ juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
 juce::Result SkellPresetAudioProcessor::applyLiveMatch(const skellpreset::liveMatch::Profile& dry,const skellpreset::liveMatch::Profile* reference,const skellpreset::liveMatch::Recipe* optimized) {
     using namespace skellpreset::liveMatch;
     if(!dry.valid())return juce::Result::fail("Need more clean vocal audio.");
-    if(reference&&!comparable(dry,*reference))return juce::Result::fail("Choose a clearer, different isolated reference vocal.");
+    if(reference&&(!reference->valid()||(!optimized&&!comparable(dry,*reference))))return juce::Result::fail("Choose a clearer, different isolated reference vocal.");
     for(int s=0;s<slotCount;++s)if(slotType(s)==ExternalVST3)return juce::Result::fail("Save and remove hosted effects before replacing the rack.");
     const auto r=optimized?*optimized:fit(dry,reference);
     skellpreset::package::Document doc;
@@ -2091,6 +2091,10 @@ juce::Result SkellPresetAudioProcessor::applyLiveMatch(const skellpreset::liveMa
     auto& comp=doc.slots[1];comp.type=Compressor;comp.enabled=true;
     const auto cp=compControls(r);std::copy(cp.begin(),cp.end(),comp.params.begin());
     if(r.deess){auto& ds=doc.slots[2];ds.type=DeEsser;ds.enabled=true;ds.params[0]=.35f;ds.params[1]=.65f;ds.params[2]=.15f;ds.params[3]=.3f;}
+    int next=3;
+    auto add=[&](int type,const EffectChoice& choice){if(choice.wet<=0.f)return;auto& slot=doc.slots[(size_t)next++];slot.type=type;slot.enabled=true;slot.wet=choice.wet;std::copy(choice.p.begin(),choice.p.end(),slot.params.begin());};
+    if(r.modulation==1)add(VocalChorusFX,r.mod);else if(r.modulation==2)add(VocalFlangerFX,r.mod);
+    add(Delay,r.delay);add(VoxRackRoom,r.room);
     doc.outputDb=r.output;
     setReal("delta",0.f); // normal audition, never inherit delta-only output
     return applyValidatedPresetDocument(doc);
