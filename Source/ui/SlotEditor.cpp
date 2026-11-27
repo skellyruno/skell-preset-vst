@@ -1090,6 +1090,7 @@ void SlotEditor::applyTheme() {
         s->setColour(juce::Slider::textBoxBackgroundColourId,Theme::panelAlt);
         s->setColour(juce::Slider::textBoxOutlineColourId,Theme::stroke);
     }
+    layoutParameterControls(processor.slotType(slot));
     upgradeEq.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.18f));
     upgradeEq.setColour(juce::TextButton::textColourOffId,Theme::green);
     addEqNode.setColour(juce::TextButton::buttonColourId,Theme::green.withAlpha(.14f));
@@ -1923,6 +1924,11 @@ void SlotEditor::layoutParameterControls(int type){
         if(control.getTextBoxPosition()!=textPosition ||
            control.getTextBoxWidth()!=(paired?112:132) || control.getTextBoxHeight()!=26)
             control.setTextBoxStyle(textPosition,false,paired?112:132,26);
+        const auto ink=(type==SkellPresetAudioProcessor::Compressor || type==SkellPresetAudioProcessor::StudioCompressorFX)
+            ?(k<2?Theme::amber:Theme::blue)
+            :skellpreset::face::space(type)?Theme::blue
+            :skellpreset::face::saturator(type)?Theme::pink:Theme::green;
+        control.setColour(juce::Slider::rotarySliderFillColourId,ink);
         control.setBounds(parameterControlBounds(type,k,!limiterDetailsVisible));
     }
 }

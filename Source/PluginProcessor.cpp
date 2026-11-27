@@ -1242,7 +1242,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const bool genericKey=supportsEffectSidechain(c.type) && !supportsWetSidechain(c.type) && (c.duckOn || e.voiceDuck.currentGain()<1.f);
             const int ownLatency=c.type==Limiter || c.type==StudioLimiterFX?lookahead:
                 c.type==StudioPitchFormantFX?skellpreset::dsp::SpectralPitchFormant::latencySamples:0;
-            const bool observeWet=captureVisual && (c.type==Delay || c.type==StudioDelayFX || c.type==VoxRackRoom);
+            const bool observeWet=captureVisual && (c.type==Delay || c.type==StudioDelayFX || c.type==VoxRackRoom || c.type==Reverb);
             double wetEnergyL=0.,wetEnergyR=0.;
             std::array<float,2> observedEcho{};
             for(int n=0;n<frames;++n) {
@@ -1292,7 +1292,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case StudioCompressorFX: {
                         const auto y=e.studioComp.process(l,r);
-                        grMeter[(size_t)s]=std::max(grMeter[(size_t)s],e.studioComp.gainReductionDb());
+                        const float reduction=e.studioComp.gainReductionDb();
+                        grMeter[(size_t)s]=std::max(grMeter[(size_t)s],reduction);
+                        if(captureVisual)visualDynamics[(size_t)n]=reduction;
                         wetL=y[0];wetR=y[1];break;
                     }
                     case VocalFeelOptoFX: {
@@ -1451,6 +1453,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     }
                     case Reverb: {
                         const auto y=e.reverb[0].processFrame(l,r);
+                        if(observeWet)observedEcho=y; // FDN is configured fully wet
                         wetL=y[0];wetR=y[1];break;
                     }
                     case AdlibThrow:
@@ -1495,8 +1498,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 const float slotWet=slotWetSmooth[(size_t)s].getNextValue();
                 const float wet=genericKey?slotWet*duckGain:slotWet;
                 if(observeWet){
-                    const double a=(c.type==StudioDelayFX?observedEcho[0]:wetL)*wet;
-                    const double b=(c.type==StudioDelayFX?observedEcho[1]:wetR)*wet;
+                    // Classic FDN wet audio is attenuated by the actual key and rack mix.
+                    // Capture the isolated return, not the dry replacement from ducking.
+                    const double a=(c.type==Reverb?observedEcho[0]*duckGain:c.type==StudioDelayFX?observedEcho[0]:wetL)*wet;
+                    const double b=(c.type==Reverb?observedEcho[1]*duckGain:c.type==StudioDelayFX?observedEcho[1]:wetR)*wet;
                     wetEnergyL+=a*a;wetEnergyR+=b*b;
                     visualWetL[(size_t)n]=static_cast<float>(a);visualWetR[(size_t)n]=static_cast<float>(b);
                 }
@@ -1523,7 +1528,7 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                     slotVisual.captureReturn(visualWetL.data(),visualWetR.data(),frames);
                 }
                 skellcore::telemetry::SideInfo dynamics;
-                if(c.type==Compressor)dynamics.grDbPerSample=visualDynamics.data();
+                if(c.type==Compressor || c.type==StudioCompressorFX)dynamics.grDbPerSample=visualDynamics.data();
                 if(c.type==Gate)dynamics.gatePerSample=visualDynamics.data();
                 slotVisual.captureOutput(measuredOutput.getReadPointer(0),measuredOutput.getReadPointer(1),frames,dynamics);
             }

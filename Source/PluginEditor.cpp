@@ -501,6 +501,11 @@ public:
     }
     void showRoutingForScreenshot(){openRouting(processor.slotIdAt(0));}
     bool updateLiveVisualForScreenshot(){return slot.updateLiveVisualForScreenshot();}
+    void updateStageForScreenshot(double nowMs){
+        idle.setAudioFresh(processor.liveScopeSampleCount()>0);
+        idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());
+        idle.tickAnimation(nowMs,true);
+    }
     bool showHistoryForScreenshot(bool redoAvailable){
         undoStates.clear();redoStates.clear();pendingHistory.reset();updateHistoryButtons();
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
@@ -1808,6 +1813,7 @@ void SkellPresetAudioProcessorEditor::dockRackForScreenshot(bool right) {
 
 void SkellPresetAudioProcessorEditor::showRoutingForScreenshot(){canvas->showRoutingForScreenshot();}
 bool SkellPresetAudioProcessorEditor::updateLiveVisualForScreenshot(){return canvas->updateLiveVisualForScreenshot();}
+void SkellPresetAudioProcessorEditor::updateStageForScreenshot(double nowMs){canvas->updateStageForScreenshot(nowMs);}
 bool SkellPresetAudioProcessorEditor::showHistoryForScreenshot(bool redoAvailable){return canvas->showHistoryForScreenshot(redoAvailable);}
 void SkellPresetAudioProcessorEditor::showHomeForScreenshot() {
     canvas->showHomeForScreenshot();

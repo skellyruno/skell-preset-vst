@@ -12,7 +12,7 @@ public:
     bool update(P& p,int slot) {
         const int type=p.slotType(slot);
         const bool selectionChanged=slot!=lastSlot || type!=lastType;
-        if(selectionChanged){lastSlot=slot;lastType=type;reset();}
+        if(selectionChanged){lastSlot=slot;lastType=type;reset();lastRevision=0;}
         const auto oldTransfer=transfer;
         const auto oldComp=compressorCurve;
         const float oldDeess=deessHz,oldGate=gateDb,oldClose=gateCloseDb;
@@ -40,7 +40,8 @@ public:
         skellpreset::visual::SlotVisualCapture::Frame frame;
         const bool available=p.getSlotVisual(slot,frame);
         if(available && frame.revision!=lastRevision){
-            const float elapsed=lastSerial && frame.serial>lastSerial?(float)((frame.serial-lastSerial)/p.preparedAudioRate()):0.f;
+            const float elapsed=lastSerial && frame.serial>lastSerial?std::min(.25f,(float)((frame.serial-lastSerial)/p.preparedAudioRate())):1.f/30.f;
+            spectrumElapsed+=elapsed;spectrumClock+=elapsed;
             lastRevision=frame.revision;lastSerial=frame.serial;lastFrame=now;fresh=true;
             wetAvailable=frame.returnAvailable;tapMs=frame.tapMs;wetRms=frame.returnRms;
             if(wetAvailable && type==P::VoxRackRoom)tail.update(frame.inputRms,std::sqrt(.5f*(wetRms[0]*wetRms[0]+wetRms[1]*wetRms[1])),elapsed);
@@ -69,19 +70,32 @@ public:
             // Retain a fading actual prior capture instead of averaging unrelated samples.
             previousMid=mid;previousSide=side;mid=frame.mid;side=frame.side;
             shift(inputHistory,level(inputRms));shift(outputHistory,level(outputRms));
-            if(type==P::Compressor && sharedValid && grValid){
-                grHistory.fill(0.f);
-                for(size_t k=0;k<frame.slowCount;++k)
-                    grHistory[grHistory.size()-frame.slowCount+k]=std::clamp(frame.slow[k].grDbMax/24.f,0.f,1.f);
+            if(sharedValid && grValid && frame.slowCount>0 && (type==P::Compressor || type==P::StudioCompressorFX)){
+                // Input/output peak and GR share the same DSP-clock 20ms buckets.
+                inputHistory.fill(0.f);outputHistory.fill(0.f);grHistory.fill(0.f);
+                for(size_t k=0;k<frame.slowCount;++k){
+                    const auto& b=frame.slow[k];const size_t index=historySize-frame.slowCount+k;
+                    inputHistory[index]=level(std::max(std::abs(b.inMin),std::abs(b.inMax)));
+                    outputHistory[index]=level(std::max(std::abs(b.outMin),std::abs(b.outMax)));
+                    grHistory[index]=std::clamp(b.grDbMax/24.f,0.f,1.f);
+                }
             }else shift(grHistory,std::clamp(gr/24.f,0.f,1.f));
             shift(duckHistory,std::clamp(duck/24.f,0.f,1.f));
-            // Spectrum analysis is UI-only and throttled to ~15 Hz.
-            if((++ticks&1u)!=0 || ticks==1){
+            // Bounded analysis clocked by captured audio, not paint rate.
+            ++ticks;
+            const bool detailed=type==P::EQ || type==P::StudioEQFX || type==P::Saturator || type==P::StudioFastDistFX || type==P::Reverb || type==P::VoxRackRoom;
+            const float period=detailed?1.f/30.f:1.f/15.f;
+            if(spectrumClock>=period-1.e-5f || ticks==1){
+                const float dt=std::clamp(spectrumElapsed,1.f/120.f,.25f);spectrumElapsed=0.f;
+                // Preserve fractional cadence; discarding the remainder can
+                // halve a 30Hz analyzer at a 31Hz UI/audio update rate.
+                spectrumClock=ticks==1?0.f:std::fmod(spectrumClock,period);
                 const auto input=analyzer.analyze(frame.input,p.preparedAudioRate());
                 const auto output=analyzer.analyze(frame.output,p.preparedAudioRate());
                 for(size_t i=0;i<input.size();++i){
-                    inBands[i]=follow(inBands[i],level(input[i]));
-                    outBands[i]=follow(outBands[i],level(output[i]));
+                    inBands[i]=skellpreset::visual::followVisual(inBands[i],level(input[i]),dt);
+                    outBands[i]=skellpreset::visual::followVisual(outBands[i],level(output[i]),dt);
+                    deltaBands[i]=skellpreset::visual::followVisual(deltaBands[i],skellpreset::visual::spectralDeltaDb(input[i],output[i])/24.f,dt,.06f,.12f);
                 }
                 const bool isolated=frame.returnSpectrumReady;
                 if(isolated!=isolatedHistory){historyHead=historyCount=0;isolatedHistory=isolated;}
@@ -128,9 +142,10 @@ public:
                 area.lineTo(right,plot.getBottom());area.lineTo(left,plot.getBottom());area.closeSubPath();
                 g.setGradientFill(juce::ColourGradient(colour.withAlpha(.29f),plot.getCentreX(),plot.getY(),colour.withAlpha(.06f),plot.getCentreX(),plot.getBottom(),false));
                 g.fillPath(area);}
-            g.setColour(colour.withAlpha(.68f));g.strokePath(line,juce::PathStrokeType(1.35f));
+            g.setColour(colour.withAlpha(.10f));g.strokePath(line,juce::PathStrokeType(4.f));
+            g.setColour(colour.withAlpha(.86f));g.strokePath(line,juce::PathStrokeType(1.4f));
         };
-        draw(inBands,Theme::muted,false);draw(outBands,Theme::blue,true);
+        draw(inBands,Theme::muted,true);draw(outBands,Theme::blue,true);
     }
     void paintCompressorTransfer(juce::Graphics& g,juce::Rectangle<float> area,P& p,int slot,int type) const {
         Theme::panelBox(g,area,6.f);
@@ -152,9 +167,11 @@ public:
             const float y=plot.getBottom()-plot.getHeight()*juce::jlimit(0.f,1.f,(in+gain+60.f)/60.f);
             const float x=plot.getX()+plot.getWidth()*f;if(i==0)curve.startNewSubPath(x,y);else curve.lineTo(x,y);
         }
-        g.setColour(Theme::white);g.strokePath(curve,juce::PathStrokeType(1.5f));
+        g.setColour(Theme::blue.withAlpha(.14f));g.strokePath(curve,juce::PathStrokeType(5.f));
+        g.setColour(Theme::white);g.strokePath(curve,juce::PathStrokeType(1.7f));
         const float x=plot.getX()+plot.getWidth()*juce::jlimit(0.f,1.f,(threshold+60.f)/60.f);
-        g.setColour(Theme::amber.withAlpha(.7f));g.drawLine(x,plot.getY(),x,plot.getBottom(),.9f);
+        g.setColour(Theme::amber.withAlpha(.7f));
+        for(float y=plot.getY();y<plot.getBottom()-2.f;y+=5.f)g.drawLine(x,y,x,y+2.5f,.9f);
     }
     void paintHistory(juce::Graphics& g,juce::Rectangle<float> area,bool reduction) const {
         Theme::panelBox(g,area,6.f,true);
@@ -177,6 +194,7 @@ public:
         plot.removeFromTop(3.f);
         g.setColour(Theme::stroke.withAlpha(.45f));
         for(int i=0;i<=3;++i)g.drawHorizontalLine(static_cast<int>(plot.getY()+i*plot.getHeight()/3.f),plot.getX(),plot.getRight());
+        for(int i=1;i<8;++i)g.drawVerticalLine((int)(plot.getX()+i*plot.getWidth()/8.f),plot.getY(),plot.getBottom());
         auto draw=[&](const auto& values,juce::Colour colour,bool down){
             juce::Path line;for(size_t i=0;i<values.size();++i){
                 const float x=plot.getX()+plot.getWidth()*static_cast<float>(i)/static_cast<float>(values.size()-1);
@@ -184,10 +202,13 @@ public:
                 if(i==0)line.startNewSubPath(x,y);else line.lineTo(x,y);}
             auto fill=line;const float base=down?plot.getY():plot.getBottom();
             fill.lineTo(plot.getRight(),base);fill.lineTo(plot.getX(),base);fill.closeSubPath();
-            g.setColour(colour.withAlpha(.18f));g.fillPath(fill);
-            g.setColour(colour);g.strokePath(line,juce::PathStrokeType(1.5f));
+            g.setGradientFill(juce::ColourGradient(colour.withAlpha(down?.40f:.25f),plot.getCentreX(),plot.getY(),colour.withAlpha(.035f),plot.getCentreX(),plot.getBottom(),false));g.fillPath(fill);
+            g.setColour(colour.withAlpha(.10f));g.strokePath(line,juce::PathStrokeType(3.7f));
+            g.setColour(colour);g.strokePath(line,juce::PathStrokeType(1.35f));
         };
-        if(reduction && fresh){draw(outputHistory,Theme::blue,false);draw(grHistory,Theme::red,true);if(duck>0.f)draw(duckHistory,Theme::amber,true);}
+        if(reduction && fresh){draw(inputHistory,Theme::muted.withAlpha(.45f),false);draw(outputHistory,Theme::blue,false);draw(grHistory,Theme::red,true);
+            // Sidechain history has a different clock from DSP compressor buckets.
+            if(lastType!=P::Compressor && lastType!=P::StudioCompressorFX && duck>0.f)draw(duckHistory,Theme::amber,true);}
         else if(reduction)Theme::fittedText(g,"WAITING FOR AUDIO",plot.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);
         else if(fresh){draw(inputHistory,Theme::muted,false);draw(outputHistory,Theme::green,false);}
     }
@@ -195,7 +216,7 @@ public:
         Theme::panelBox(g,area,6.f,true);
         auto plot=area.reduced(10.f,7.f);
         auto title=plot.removeFromTop(15.f);
-        Theme::fittedText(g,isolatedHistory?"WET RETURN WATERFALL  /  80 Hz - 9 kHz":"OUTPUT WATERFALL  /  80 Hz - 9 kHz",title.toNearestInt(),9.5f,Theme::muted,true);
+        Theme::fittedText(g,isolatedHistory?"WET RETURN WATERFALL  /  80 Hz - 9 kHz":"OUTPUT WATERFALL  /  80 Hz - 9 kHz",title.toNearestInt(),10.f,Theme::muted,true);
         const auto legend=plot.removeFromBottom(12.f);
         Theme::fittedText(g,"LOW TO HIGH FREQUENCY / NEWEST IN FRONT",legend.toNearestInt(),8.f,Theme::muted);
         juce::Graphics::ScopedSaveState clipped(g);g.reduceClipRegion(plot.toNearestInt());
@@ -209,19 +230,19 @@ public:
             const size_t index=(historyHead+spectrumHistory.size()-historyCount+row)%spectrumHistory.size();
             const float depth=(float)(spectrumHistory.size()-historyCount+row+1)/(float)spectrumHistory.size();
             const float width=w*(.60f+.26f*depth),left=plot.getX()+w*(.32f-.28f*depth);
-            const float base=plot.getY()+h*(.42f+.53f*depth);
+            const float base=plot.getY()+h*(.30f+.64f*depth);
             juce::Path ridge;
             const auto& values=spectrumHistory[index];
             for(size_t band=0;band<values.size();++band){
                 const float f=(float)band/(float)(values.size()-1);
                 const float x=left+width*f;
-                const float y=base-values[band]*h*(.22f+.29f*depth)-h*.24f*f;
+                const float y=base-values[band]*h*(.22f+.40f*depth)-h*.10f*f;
                 if(band==0)ridge.startNewSubPath(x,y);else ridge.lineTo(x,y);
             }
-            auto fill=ridge;fill.lineTo(left+width,base-h*.24f);fill.lineTo(left,base);fill.closeSubPath();
+            auto fill=ridge;fill.lineTo(left+width,base-h*.10f);fill.lineTo(left,base);fill.closeSubPath();
             const auto ink=Theme::blue.interpolatedWith(Theme::green,.18f*depth);
-            g.setColour(Theme::bg.withAlpha(.38f));g.fillPath(fill);
-            g.setColour(ink.withAlpha(.055f+.10f*depth));g.fillPath(fill);
+            g.setColour(Theme::bg.withAlpha(.56f));g.fillPath(fill);
+            g.setGradientFill(juce::ColourGradient(ink.withAlpha(.19f+.26f*depth),left,base-h*.55f,ink.withAlpha(.025f),left,base,false));g.fillPath(fill);
             g.setColour(ink.withAlpha(.20f+.65f*depth));g.strokePath(ridge,juce::PathStrokeType(row+1==historyCount?1.7f:.75f));
         }
         if(!fresh)Theme::fittedText(g,"WAITING FOR AUDIO",plot.toNearestInt(),11.f,Theme::muted,true,juce::Justification::centred);
@@ -243,8 +264,7 @@ public:
             auto fill=line;const float base=centred?r.getCentreY():r.getBottom();fill.lineTo(r.getRight(),base);fill.lineTo(r.getX(),base);fill.closeSubPath();g.setColour(tint.withAlpha(.24f));g.fillPath(fill);g.setColour(tint.withAlpha(.88f));g.strokePath(line,juce::PathStrokeType(1.25f));
         };
         draw(inBands,upper,Theme::muted,false);draw(outBands,upper,rose,false);
-        std::array<float,Analyzer::bands> delta{};for(size_t i=0;i<delta.size();++i)delta[i]=std::clamp((outBands[i]-inBands[i])*3.f,-1.f,1.f);
-        draw(delta,inner,rose,true);
+        draw(deltaBands,inner,rose,true);
     }
     void paintHarmonicSpectrum(juce::Graphics& g,juce::Rectangle<float> area) const {
         if(!fresh)return;
@@ -537,12 +557,11 @@ private:
         return std::clamp((20.f*std::log10(std::max(0.00025119f,x))+72.f)/72.f,0.f,1.f);
     }
     static juce::String db(float x) {return x<.00025119f?juce::String("-INF"):juce::String(20.f*std::log10(x),1)+" dBFS";}
-    static float follow(float old,float next) noexcept {return old+(next-old)*(next>old?.82f:.32f);}
     template<size_t N>static void shift(std::array<float,N>& values,float x) noexcept {
         std::move(values.begin()+1,values.end(),values.begin());values.back()=x;
     }
     void reset() noexcept {
-        inBands.fill(0);outBands.fill(0);inputHistory.fill(0);outputHistory.fill(0);
+        inBands.fill(0);outBands.fill(0);deltaBands.fill(0);spectrumElapsed=spectrumClock=0.f;inputHistory.fill(0);outputHistory.fill(0);
         grHistory.fill(0);duckHistory.fill(0);wave.fill(0);inputWave.fill(0);
         leftHistory.fill(0);rightHistory.fill(0);mid.fill(0);side.fill(0);previousMid.fill(0);previousSide.fill(0);
         correlation=leftRms=rightRms=0.f;
@@ -561,8 +580,9 @@ private:
     std::array<float,2> wetRms{},tapMs{};
     bool wetAvailable=false,sharedValid=false,grValid=false;
     float gateMean=-1.f;
-    std::array<float,Analyzer::bands> inBands{},outBands{};
-    std::array<std::array<float,Analyzer::bands>,24> spectrumHistory{};
+    std::array<float,Analyzer::bands> inBands{},outBands{},deltaBands{};
+    float spectrumElapsed=0.f,spectrumClock=0.f;
+    std::array<std::array<float,Analyzer::bands>,32> spectrumHistory{};
     size_t historyHead=0,historyCount=0;
     bool isolatedHistory=false;
     std::array<float,historySize> inputHistory{},outputHistory{},grHistory{},duckHistory{};

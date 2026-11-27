@@ -32,9 +32,10 @@ constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
 int main(int argc, char** argv) {
-    bool quick4=true,extras=false,factorySlots=false,releaseAudit=false;
+    bool quick4=true,extras=false,factorySlots=false,releaseAudit=false,motionAudit=false;
     for(int i=1;i<argc;++i) {
         if(juce::String(argv[i])=="--full")quick4=false;
+        if(juce::String(argv[i])=="--motion-audit")motionAudit=true;
         if(juce::String(argv[i])=="--release-audit"){releaseAudit=true;quick4=false;}
         if(juce::String(argv[i])=="--quick4")quick4=true; // compatibility with older launchers
         if(juce::String(argv[i])=="--extras")extras=true;
@@ -708,8 +709,61 @@ int main(int argc, char** argv) {
                     processor.processBlock(probe,midi);
                     if(block%2==0)fresh=editor.updateLiveVisualForScreenshot();
                 }
+                skellpreset::visual::SlotVisualCapture::Frame measured;
+                const bool readable=processor.getSlotVisual(0,measured);
+                if(!readable || ((effect.second==SkellPresetAudioProcessor::Compressor || effect.second==SkellPresetAudioProcessor::StudioCompressorFX) &&
+                    (!(measured.sharedOutput.flags&skellcore::telemetry::kFlagGrValid) || measured.slowCount==0 ||
+                     std::none_of(measured.slow.begin(),measured.slow.begin()+measured.slowCount,[](const auto& b){return b.grDbMax>.1f;}))) ||
+                    (effect.second==SkellPresetAudioProcessor::Reverb && (!measured.returnSpectrumReady || !measured.returnAvailable ||
+                     measured.returnRms[0]+measured.returnRms[1]<=0.f))){
+                    std::fprintf(stderr,"Measured effect telemetry invalid: %s\n",effect.first);++failures;
+                }
                 const auto shot=skellcore::ui::headless::capture(editor,1168,688);
                 if(!fresh || !shot.image.isValid() || !skellcore::ui::headless::writePng(shot.image,folder.getChildFile(juce::String("measured-effect-")+effect.first+"-100.png"))){std::fprintf(stderr,"Measured effect capture failed: %s\n",effect.first);++failures;}
+            }
+            processor.requestSlotVisual(-1);processor.loadFactoryPreset(0);
+        }
+        // Local-only temporal evidence. Each frame is the real editor after
+        // 1536 new samples (32ms at 48k), not an interpolated screenshot.
+        if(motionAudit){
+            const std::pair<const char*,int> viewsToCapture[]={{"compressor",SkellPresetAudioProcessor::StudioCompressorFX},{"eq",SkellPresetAudioProcessor::EQ},{"drive",SkellPresetAudioProcessor::Saturator},{"reverb",SkellPresetAudioProcessor::Reverb},{"stage",SkellPresetAudioProcessor::Empty}};
+            for(const auto& view:viewsToCapture){
+                const bool stage=view.second==SkellPresetAudioProcessor::Empty;
+                const auto motionFolder=folder.getChildFile(juce::String("motion-")+view.first);
+                if(motionFolder.createDirectory().failed()){++failures;continue;}
+                processor.clearRackToEmpty();
+                if(!stage){processor.setSlotType(0,view.second);processor.setSlotOn(0,true);processor.setSlotParam(0,0,.25f);processor.setSlotParam(0,1,.72f);}
+                editor.configureForScreenshot(0,1,false);
+                if(stage){editor.showHomeForScreenshot();processor.requestSlotVisual(-1);}else editor.selectRackSlotForScreenshot(0,0);
+                juce::AudioBuffer<float> probe(2,512);juce::MidiBuffer midi;
+                std::uint64_t previousFingerprint=0;int changedFrames=0;
+                for(int frame=0;frame<64;++frame){
+                    for(int block=0;block<3;++block){
+                        if(!stage)processor.requestSlotVisual(0);
+                        for(int n=0;n<512;++n){
+                            const double t=((frame*3+block)*512+n)/48000.;
+                            const float phrase=(float)(.12+.42*(.5+.5*std::sin(13.*t)))*((frame/12)%3==2?.12f:1.f);
+                            const float x=phrase*(.54f*(float)std::sin(t*690.)+.25f*(float)std::sin(t*2349.)+.21f*(float)std::sin(t*8831.)*(float)(.5+.5*std::sin(t*4.1)));
+                            probe.setSample(0,n,x);probe.setSample(1,n,x*.82f);
+                        }
+                        processor.processBlock(probe,midi);
+                    }
+                    if(stage)editor.updateStageForScreenshot(frame*32.);else editor.updateLiveVisualForScreenshot();
+                    if(frame<24)continue; // warm the real analysis history before recording
+                    const auto shot=skellcore::ui::headless::capture(editor,1168,688);
+                    if(!shot.image.isValid() || !skellcore::ui::headless::writePng(shot.image,motionFolder.getChildFile(juce::String(frame-24).paddedLeft('0',3)+".png"))){++failures;continue;}
+                    // Sample the actual moving surface densely, not a sparse
+                    // whole-window fingerprint dominated by static chrome.
+                    std::uint64_t visualFingerprint=14695981039346656037ull;
+                    const int startY=stage?100:235,endY=stage?640:425;
+                    for(int yy=startY;yy<endY;yy+=3)for(int xx=280;xx<1100;xx+=3){
+                        visualFingerprint^=shot.image.getPixelAt(xx,yy).getARGB();visualFingerprint*=1099511628211ull;
+                    }
+                    if(previousFingerprint!=0 && previousFingerprint!=visualFingerprint)++changedFrames;
+                    previousFingerprint=visualFingerprint;
+                }
+                std::printf("Motion %s: %d/39 adjacent frames changed\n",view.first,changedFrames);
+                if(changedFrames<30)++failures;
             }
             processor.requestSlotVisual(-1);processor.loadFactoryPreset(0);
         }

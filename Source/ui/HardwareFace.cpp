@@ -64,8 +64,8 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         // comes from this slot's actual envelope, never a transfer-curve proxy.
         const bool measured=type==2 || type==36 || type==43;
         if(type==2 || type==36){
-            livePanel.paintCompressorTransfer(g,{42.f,158.f,270.f,161.f},processor,slot,type);
-            livePanel.paintHistory(g,{326.f,158.f,534.f,161.f},true);
+            livePanel.paintCompressorTransfer(g,{42.f,154.f,270.f,182.f},processor,slot,type);
+            livePanel.paintHistory(g,{326.f,154.f,534.f,182.f},true);
         }else livePanel.paintHistory(g,{548.f,169.f,306.f,88.f},measured);
         if(type==36)Theme::text(g,"SOFT KNEE",{430,107,116,20},11.5f,Theme::white,true);
     } else if(type==4 || type==29) {
@@ -82,7 +82,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         meter(g,{624.f,171.f,214.f,81.f},type==11?reduction/24.f:level,
               type==11?"REDUCTION":"OUTPUT",type==11?gr:output);
     } else if(space(type)) {
-        if(type==6)livePanel.paintSpace(g,{42.f,158.f,818.f,161.f});
+        if(type==6)livePanel.paintSpace(g,{42.f,154.f,818.f,182.f});
         else {livePanel.paintSpace(g,{344.f,166.f,493.f,109.f});
             meter(g,{66.f,478.f,215.f,37.f},level,"RETURN",output);}
     } else if(type==30) {
@@ -130,7 +130,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         const float drive=std::pow(10.f,(driveParam*24.f+10.f*(macroGrit-.5f))/20.f);
         const float blend=.5f+character;
         const float denom=std::max(.5f,drive*.6f);
-        const auto screen=juce::Rectangle<float>(42.f,158.f,270.f,161.f);
+        const auto screen=juce::Rectangle<float>(42.f,154.f,270.f,182.f);
         g.setGradientFill(juce::ColourGradient(
             juce::Colour(0xff070d0a),screen.getTopLeft(),
             juce::Colour(0xff020504),screen.getBottomRight(),false));
@@ -138,7 +138,7 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
         g.setColour(Theme::stroke.withAlpha(.55f));
         g.drawRoundedRectangle(screen,7.f,1.f);
         // Graticule plus the 1:1 reference diagonal.
-        const auto plot=juce::Rectangle<float>(54.f,183.f,246.f,124.f);
+        const auto plot=juce::Rectangle<float>(54.f,179.f,246.f,145.f);
         g.setColour(Theme::stroke.withAlpha(.22f));
         for(int line=1;line<4;++line) {
             const float f=(float)line/4.f;
@@ -181,8 +181,8 @@ void SlotEditor::paintHardware(juce::Graphics& g,int type) {
             g.setColour(Theme::white);
             g.fillEllipse(px-2.4f,py-2.4f,4.8f,4.8f);
         }
-        Theme::text(g,"TRANSFER / IN -> OUT",{54,163,246,16},10.f,Theme::muted,true);
-        livePanel.paintDriveSpectrum(g,{326.f,158.f,534.f,161.f});
+        Theme::text(g,"CORE TRANSFER / NORMALIZED",{54,159,246,16},10.f,Theme::muted,true);
+        livePanel.paintDriveSpectrum(g,{326.f,154.f,534.f,182.f});
     } else {
         // Dedicated central hardware instrument, with a live level ring and
         // a purpose-specific description. No generic frequency/XY graph.

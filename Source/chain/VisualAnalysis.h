@@ -6,6 +6,19 @@
 #include <cstdint>
 
 namespace skellpreset::visual {
+// UI-only, time-based ballistics and measured magnitude ratio.
+inline float followVisual(float old,float next,float elapsed,float attack=.035f,float release=.14f) noexcept {
+    if(!std::isfinite(old))old=0.f;
+    if(!std::isfinite(next))next=0.f;
+    if(!std::isfinite(elapsed)||elapsed<=0.f)return old;
+    return old+(next-old)*(-std::expm1(-std::min(elapsed,.25f)/std::max(.001f,next>old?attack:release)));
+}
+inline float spectralDeltaDb(float input,float output) noexcept {
+    constexpr float floor=.00025118864f;
+    if(!std::isfinite(input)||!std::isfinite(output)||std::max(input,output)<floor)return 0.f;
+    return std::clamp(20.f*std::log10(std::max(floor,output)/std::max(floor,input)),-24.f,24.f);
+}
+
 // UI-only pitch estimation on a real, box-filtered, downsampled history.
 // No pitch quantization or correction is performed by this measurement.
 class PitchHistory final {

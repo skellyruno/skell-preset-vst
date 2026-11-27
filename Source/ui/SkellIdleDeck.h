@@ -65,8 +65,8 @@ public:
         vocalActivity=followActivity(vocalActivity,juce::jlimit(0.f,1.f,inputMeter.level*3.f));
 
     }
-    void tickAnimation(double nowMs) {
-        if(!isShowing()){stageClock.pause();return;}
+    void tickAnimation(double nowMs,bool localCapture=false) {
+        if(!localCapture && !isShowing()){stageClock.pause();return;}
         crowdPhase=static_cast<float>(stageClock.tick(nowMs,hasAudibleOutput()?activityLevel:0.f));
         updateSpectrum();
         repaint();
@@ -371,7 +371,7 @@ public:
                     Theme::bg.withAlpha(0.f),centreX,pitTop+depth*.55f,true));
                 g.fillRect(stageBounds.getX(),pitTop,stageBounds.getWidth(),depth*.6f);
                 ensureCrowd();
-                const float idleSway=.22f+.78f*activity;
+                const float idleSway=.16f+.84f*activity;
                 for(int row=0;row<crowdLayers;++row) {
                     const float t=crowdLayers>1?(float)row/(float)(crowdLayers-1):0.f;
                     // Far rows are small and high, near rows large and cropped
@@ -381,8 +381,8 @@ public:
                     if(heightPix<6.f)continue;
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
-                    const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.72f+.20f*t);
-                    const auto rimColour=porcelain.interpolatedWith(Theme::blue,.16f).withAlpha(.10f+.25f*t);
+                    const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.78f+.16f*t);
+                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.26f).withAlpha(.07f+.31f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
@@ -400,10 +400,11 @@ public:
                             -std::abs(bob)*2.0f*unit;
                         const float base=headY+hgt;
                         const float ry=hgt*figure.headRatio;
-                        const float rx=ry*.78f;
+                        const float rx=ry*(.70f+.12f*figure.turn);
+                        const auto rimColour=rowRim.withMultipliedAlpha(.72f+.38f*figure.turn);
                         const float armW=juce::jmax(1.1f,hgt*.045f);
                         const float shoulderY=headY+ry*1.35f;
-                        const float shoulderW=rx*1.9f;
+                        const float shoulderW=rx*(1.75f+.35f*figure.turn);
                         // Distant silhouettes do not need sub-pixel anatomy,
                         // multiple stroked paths or a rotated graphics context.
                         // Near rows retain the full articulated skeleton art.
@@ -436,7 +437,9 @@ public:
                         const juce::Graphics::ScopedSaveState tilt(g);
                         g.addTransform(juce::AffineTransform::rotation(
                             figure.tilt*.06f*idleSway,x,headY+ry));
-                        // Raised arms behind the skull.
+                        // Raised arms behind the skull. Any visible phone must
+                        // be physically attached to the corresponding hand.
+                        float phoneX=0.f,phoneY=0.f;bool phoneHeld=false;
                         for(int side:{-1,1}) {
                             const float sign=(float)side;
                             const float sx=x+sign*rx*.80f;
@@ -451,16 +454,23 @@ public:
                             } else if(figure.pose==2) {
                                 ex=x+sign*rx*1.5f;ey=shoulderY+ry*.55f;
                                 hx=x+sign*rx*(.55f+std::abs(wave)*.55f);hy=ey-ry*.32f;
-                            } else {
+                            } else if(figure.pose==3) {
                                 ex=x+sign*rx*1.6f;ey=headY+ry*.45f;
                                 hx=ex+sign*rx*.20f;hy=ey-hgt*.18f;
+                            } else {
+                                ex=x+sign*rx*1.35f;ey=shoulderY+ry*1.8f;
+                                hx=ex-sign*rx*.20f;hy=ey+ry*1.75f;
                             }
                             g.setColour(bodyColour);
                             g.drawLine(sx,shoulderY,ex,ey,armW+2.2f);
                             g.drawLine(ex,ey,hx,hy,armW+2.2f);
                             g.setColour(rimColour.withMultipliedAlpha(.75f));
-                            g.drawLine(sx,shoulderY,ex,ey,armW*.7f);
-                            g.drawLine(ex,ey,hx,hy,armW*.7f);
+                            g.drawLine(sx,shoulderY,ex,ey,armW*.62f);
+                            g.drawLine(ex,ey,hx,hy,armW*.58f);
+                            g.setColour(rimColour.withMultipliedAlpha(.48f));
+                            g.drawLine(ex+sign*armW*.38f,ey,hx+sign*armW*.25f,hy,juce::jmax(.45f,armW*.19f));
+                            g.fillEllipse(ex-armW*.42f,ey-armW*.42f,armW*.84f,armW*.84f);
+                            if(figure.phone>0.f && ((side>0)==figure.phoneSide) && hy<headY+ry){phoneX=hx;phoneY=hy;phoneHeld=true;}
                             g.fillEllipse(hx-armW*.6f,hy-armW*.7f,armW*1.2f,armW*1.4f);
                             for(int finger=0;finger<3;++finger)g.drawLine(hx,hy,hx+(finger-1)*armW*.65f,hy-armW*1.65f,juce::jmax(.45f,armW*.23f));
                         }
@@ -481,7 +491,13 @@ public:
                         g.fillPath(body);
                         const float pelvisY=shoulderY+ry*3.7f;
                         g.fillEllipse(x-rx*.85f,pelvisY,rx*1.7f,ry*.85f);
-                        for(int side:{-1,1}){const float sign=(float)side;g.setColour(bodyColour);g.drawLine(x+sign*rx*.45f,pelvisY+ry*.5f,x+sign*rx*.72f,base,juce::jmax(1.f,rx*.30f));}
+                        for(int side:{-1,1}){
+                            const float sign=(float)side,hip=x+sign*rx*.45f;
+                            const float kneeX=hip+sign*rx*(.33f+.14f*wave),kneeY=pelvisY+(base-pelvisY)*.55f;
+                            const float footX=x+sign*rx*(.85f+.21f*figure.turn);
+                            g.setColour(bodyColour);g.drawLine(hip,pelvisY+ry*.5f,kneeX,kneeY,juce::jmax(1.f,rx*.42f));g.drawLine(kneeX,kneeY,footX,base,juce::jmax(1.f,rx*.30f));
+                            g.setColour(rimColour.withMultipliedAlpha(.38f));g.drawLine(hip,pelvisY+ry*.5f,kneeX,kneeY,juce::jmax(.5f,rx*.15f));g.drawLine(kneeX,kneeY,footX,base,juce::jmax(.5f,rx*.12f));
+                        }
                         // Near bodies show the rear skeleton rather than
                         // featureless black coats. No detail on subpixel heads.
                         if(ry>2.6f) {
@@ -528,6 +544,13 @@ public:
                         backSkull.closeSubPath();
                         g.setGradientFill(juce::ColourGradient(rimColour.withMultipliedAlpha(.62f),x-rx,headY-ry,bodyColour,x+rx,headY+ry,false));
                         g.fillPath(backSkull);
+                        if(ry>4.f){
+                            juce::Graphics::ScopedSaveState skullClip(g);g.reduceClipRegion(backSkull);
+                            const float sutureX=x+(figure.turn-.5f)*rx*.60f;
+                            juce::Path seam;seam.startNewSubPath(sutureX,headY-ry);seam.lineTo(sutureX-rx*.12f,headY-ry*.56f);seam.lineTo(sutureX+rx*.08f,headY-ry*.28f);seam.lineTo(sutureX,headY+ry*.08f);
+                            g.setColour(bodyColour.withMultipliedAlpha(.58f));g.strokePath(seam,juce::PathStrokeType(.65f));
+                            g.setColour(rimColour.withMultipliedAlpha(.21f));g.fillEllipse(x-rx*.72f,headY-ry*.65f,rx*.68f,ry*.48f);
+                        }
                         juce::Path crescent;
                         crescent.addCentredArc(x,headY,rx,ry,0.f,
                             juce::MathConstants<float>::pi*1.06f,
@@ -547,17 +570,14 @@ public:
                             }
                         }
                         // Concert phone lights: the brightest thing in the pit.
-                        if(figure.phone>0) {
-                            const float px=x+(figure.phoneSide?1.f:-1.f)*shoulderW*1.02f
-                                +wave*rx*.3f;
-                            const float py=headY-hgt*.20f-std::abs(bob)*hgt*.10f;
-                            const float glow=juce::jlimit(.18f,1.f,.30f+.70f*activity);
-                            g.setColour(accent.withAlpha(.05f*glow));
-                            g.fillEllipse(px-5.2f*unit,py-5.2f*unit,10.4f*unit,10.4f*unit);
-                            g.setColour(juce::Colours::white.withAlpha(.16f*glow));
-                            g.fillEllipse(px-3.f*unit,py-3.f*unit,6.f*unit,6.f*unit);
-                            g.setColour(juce::Colours::white.withAlpha(.20f+.40f*glow));
-                            g.fillEllipse(px-unit,py-unit,2.f*unit,2.f*unit);
+                        if(phoneHeld) {
+                            const float glow=juce::jlimit(.18f,1.f,.28f+.72f*activity);
+                            const float pw=juce::jmax(1.8f,rx*.48f),ph=pw*1.75f;
+                            const auto phone=juce::Rectangle<float>(phoneX-pw*.5f,phoneY-ph*.85f,pw,ph);
+                            g.setGradientFill(juce::ColourGradient(Theme::blue.withAlpha(.18f*glow),phone.getCentre(),Theme::blue.withAlpha(0.f),phone.getCentre().translated(ph*1.4f,0.f),true));
+                            g.fillEllipse(phone.expanded(ph));
+                            g.setColour(bodyColour);g.fillRoundedRectangle(phone,.5f);
+                            g.setColour(Theme::blue.withAlpha(.55f+.30f*glow));g.fillRoundedRectangle(phone.reduced(.3f),.35f);
                         }
                         if(row>=crowdLayers-2) {
                             g.setColour(edgeGlow);
@@ -671,7 +691,7 @@ private:
     // same figure keeps the same pose, depth and phone light across repaints.
     struct CrowdFigure {
         float x=0.f,height=26.f,headRatio=.115f,phase=0.f,rate=1.f,sizeJitter=1.f;
-        float yJitter=0.f,tilt=0.f;
+        float yJitter=0.f,tilt=0.f,turn=.5f;
         int layer=0,pose=0;
         float phone=0.f;
         bool phoneSide=false;
@@ -708,7 +728,8 @@ private:
                 f.sizeJitter=.69f+rnd(27)*.60f;
                 f.phase=rnd(37)*6.2831f;
                 f.rate=.86f+rnd(47)*.34f;
-                f.pose=(int)(rnd(57)*4.f)%4;
+                f.pose=(int)(rnd(57)*6.f)%6;
+                f.turn=rnd(97);
                 f.yJitter=rnd(91)-.5f;
                 f.tilt=(rnd(63)-.5f)*1.8f;
                 // Phone lights thin out with distance so the pit glitters

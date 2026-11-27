@@ -985,8 +985,9 @@ int studioSmoke() {
     }
     {
         using P=SkellPresetAudioProcessor;
+        for(int kind:{P::Compressor,P::StudioCompressorFX,P::Reverb}) {
         auto a=std::make_unique<P>();auto b=std::make_unique<P>();
-        a->clearRackToEmpty();a->setSlotType(0,P::Compressor);a->setSlotOn(0,true);
+        a->clearRackToEmpty();a->setSlotType(0,kind);a->setSlotOn(0,true);
         a->setSlotParam(0,0,0.f);a->setSlotParam(0,1,1.f);
         a->setPresentation(P::Presentation::Visual);
         juce::MemoryBlock saved;a->getStateInformation(saved);
@@ -1002,12 +1003,13 @@ int studioSmoke() {
             for(int ch=0;ch<2;++ch)for(int j=0;j<256;++j)if(x.getSample(ch,j)!=y.getSample(ch,j))return 169;
         }
         skellpreset::visual::SlotVisualCapture::Frame frame;
-        if(!a->getSlotVisual(0,frame) || !frame.sharedValid ||
-           !(frame.sharedOutput.flags&skellcore::telemetry::kFlagGrValid) || frame.sharedOutput.grDbMax<=0.f ||
-           frame.slowCount==0 || b->getSlotVisual(0,frame))return 170;
+        if(!a->getSlotVisual(0,frame) || !frame.sharedValid || frame.slowCount==0 || b->getSlotVisual(0,frame))return 170;
+        if(kind==P::Reverb){if(!frame.returnAvailable || !frame.returnSpectrumReady || frame.returnRms[0]+frame.returnRms[1]<=0.f)return 170;}
+        else if(!(frame.sharedOutput.flags&skellcore::telemetry::kFlagGrValid) || frame.sharedOutput.grDbMax<=0.f)return 170;
         a->requestSlotVisual(-1);if(a->getSlotVisual(0,frame))return 171;
         a->releaseResources();b->releaseResources();
-        std::puts("PASS: persistent presentation, shared compressor telemetry, bit-identical audio with tap on/off");
+        }
+        std::puts("PASS: persistent presentation, compressor and wet reverb telemetry, bit-identical audio with tap on/off");
     }
     if(const int limiterResult=limiterStateSmoke())return limiterResult;
     if(const int masterResult=masterSignalSmoke())return masterResult;

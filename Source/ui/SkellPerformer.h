@@ -539,6 +539,10 @@ public:
                     g.setColour((fleck%3==0?ink:ivory).withAlpha(.065f));
                     g.fillEllipse(x,y,.9f+(fleck%3)*.35f,.65f+(fleck%2)*.35f);
                 }
+                // Bone planes and porous weathering, not flat white plastic.
+                g.setGradientFill(juce::ColourGradient(juce::Colour(0xffb6a48e).withAlpha(.24f),142.f,20.f,ink.withAlpha(0.f),154.f,39.f,true));
+                g.fillRect(127.f,13.f,48.f,50.f);
+                for(int stain=0;stain<16;++stain){const float x=130.f+(float)((stain*19)%43),y=19.f+(float)((stain*13)%49);g.setColour(stone.withAlpha(.08f));g.fillEllipse(x,y,1.4f+(stain%3)*.4f,2.5f);}
                 // Temporal fossa shading pulls the cranium into a skull.
                 g.setGradientFill(juce::ColourGradient(
                     ink.withAlpha(.28f),127.f,42.f,
@@ -661,10 +665,10 @@ public:
             g.setColour(ivory.withAlpha(.28f));
             g.strokePath(chin,juce::PathStrokeType(1.1f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             // Sutures and the cold rim on the shadow side.
-            g.setColour(stone.withAlpha(.46f));
-            g.drawLine(143.f,17.f,141.f,27.f,.9f);
-            g.drawLine(141.f,27.f,144.f,34.f,.9f);
-            g.drawLine(168.f,23.f,164.f,33.f,.8f);
+            g.setColour(stone.withAlpha(.47f));
+            juce::Path suture;suture.startNewSubPath(143.f,14.f);suture.lineTo(142.f,19.f);suture.lineTo(144.f,22.f);suture.lineTo(141.f,26.f);suture.lineTo(143.f,30.f);suture.lineTo(141.f,34.f);
+            suture.startNewSubPath(169.f,22.f);suture.lineTo(165.f,26.f);suture.lineTo(166.f,29.f);suture.lineTo(163.f,34.f);
+            g.strokePath(suture,juce::PathStrokeType(.72f));
             g.setColour(cool.withAlpha(.10f+.09f*react));
             juce::Path rim;
             rim.startNewSubPath(127.f,38.f);

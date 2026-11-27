@@ -86,6 +86,16 @@ int main() {
     selected.request(-1);
     if(selected.read(4,frame) || selected.beginBlock()!=-1)return 34;
     std::puts("PASS: real spectrum, attenuation, silence, invalid samples, extreme values, six rates, Nyquist limits, selected slot capture and stereo RMS");
+    float a30=0.f,a60=0.f;
+    for(int i=0;i<30;++i)a30=followVisual(a30,.8f,1.f/30.f);
+    for(int i=0;i<60;++i)a60=followVisual(a60,.8f,1.f/60.f);
+    SKELL_REQUIRE(std::abs(a30-a60)<1.e-5f);
+    for(int i=0;i<30;++i)a30=followVisual(a30,0.f,1.f/30.f);
+    for(int i=0;i<60;++i)a60=followVisual(a60,0.f,1.f/60.f);
+    SKELL_REQUIRE(std::abs(a30-a60)<1.e-5f && a30<.001f);
+    SKELL_REQUIRE(std::abs(spectralDeltaDb(.5f,.25f)+6.0206f)<.001f);
+    SKELL_REQUIRE(spectralDeltaDb(0.f,0.f)==0.f && spectralDeltaDb(NAN,1.f)==0.f);
+    SKELL_REQUIRE(spectralDeltaDb(.01f,1.f)==24.f);
     PitchHistory history;history.reset();
     PitchHistory::Samples pitch{};
     for(double rate:{44100.,48000.,96000.,192000.}){

@@ -22,6 +22,7 @@ public:
     void dockRackForScreenshot(bool right);
     void showRoutingForScreenshot();
     bool updateLiveVisualForScreenshot();
+    void updateStageForScreenshot(double nowMs);
     bool showHistoryForScreenshot(bool redoAvailable);
     void showHomeForScreenshot();
     bool openRackContextMenuForScreenshot(int visualRow);

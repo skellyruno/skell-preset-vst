@@ -71,27 +71,44 @@ public:
     // Balanced, labelled hardware-style rotary control. The pointer and arc use
     // the same angle and share an exact centre to avoid off-axis visual wobble.
     void drawRotarySlider(juce::Graphics& g,int x,int y,int width,int height,
-                          float position,float startAngle,float endAngle,juce::Slider&) override {
+                          float position,float startAngle,float endAngle,juce::Slider& slider) override {
         if(width<=0||height<=0)return;
         position=std::isfinite(position)?juce::jlimit(0.f,1.f,position):0.f;
         const auto bounds=juce::Rectangle<float>((float)x,(float)y,(float)width,(float)height);
         const float cx=bounds.getCentreX(),cy=bounds.getCentreY();
         const float radius=juce::jmax(1.f,juce::jmin(bounds.getWidth(),bounds.getHeight())*.5f-4.5f);
-        const float trackRadius=radius*.91f,bodyRadius=radius*.72f;
+        const float trackRadius=radius*.91f,bodyRadius=radius*.76f;
+        const bool enabled=slider.isEnabled(),engaged=enabled && (slider.isMouseOverOrDragging() || slider.hasKeyboardFocus(true));
+        const auto accent=slider.findColour(juce::Slider::rotarySliderFillColourId);
+        const float detail=enabled?1.f:.40f;
         const float angle=startAngle+(endAngle-startAngle)*position;
         juce::Path track,active;
         track.addCentredArc(cx,cy,trackRadius,trackRadius,0.f,startAngle,endAngle,true);
         active.addCentredArc(cx,cy,trackRadius,trackRadius,0.f,startAngle,angle,true);
-        g.setColour(colours_.secondary.withAlpha(.30f));
-        g.strokePath(track,juce::PathStrokeType(2.3f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-        g.setColour(colours_.accent);
-        g.strokePath(active,juce::PathStrokeType(3.25f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        g.setColour(colours_.secondary.withAlpha(.26f*detail));
+        g.strokePath(track,juce::PathStrokeType(2.5f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        if(radius>19.f){
+            for(int tick=0;tick<=10;++tick){const float a=startAngle+(endAngle-startAngle)*tick/10.f;
+                const float sn=std::sin(a),cs=-std::cos(a);const float inner=radius*.99f,outer=radius*(tick%5==0?1.045f:1.02f);
+                g.setColour(colours_.foreground.withAlpha((tick%5==0?.34f:.17f)*detail));g.drawLine(cx+sn*inner,cy+cs*inner,cx+sn*outer,cy+cs*outer,.85f);}
+        }
+        if(position>.0001f){
+            g.setColour(accent.withAlpha((engaged?.22f:.10f)*detail));g.strokePath(active,juce::PathStrokeType(5.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            g.setColour(accent.withAlpha((engaged?1.f:.84f)*detail));g.strokePath(active,juce::PathStrokeType(2.55f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        }
         const auto knob=juce::Rectangle<float>(cx-bodyRadius,cy-bodyRadius,2.f*bodyRadius,2.f*bodyRadius);
-        g.setColour(colours_.background.withAlpha(.65f));g.fillEllipse(knob.expanded(1.f));
-        g.setGradientFill(juce::ColourGradient(colours_.surface.interpolatedWith(colours_.foreground,.23f),
-                         cx-bodyRadius*.38f,cy-bodyRadius*.62f,
-                         colours_.background.darker(.15f),cx+bodyRadius,cy+bodyRadius,true));
-        g.fillEllipse(knob);
+        g.setColour(colours_.background.withAlpha(.90f));g.fillEllipse(knob.expanded(2.f).translated(0.f,1.f));
+        auto metal=juce::ColourGradient(colours_.surface.interpolatedWith(colours_.foreground,.28f),knob.getTopLeft(),colours_.background,knob.getBottomRight(),false);
+        metal.addColour(.43,colours_.surface.brighter(.06f));metal.addColour(.67,colours_.background.brighter(.08f));
+        g.setGradientFill(metal);g.fillEllipse(knob);
+        if(bodyRadius>17.f){
+            for(int n=0;n<40;++n){const float a=juce::MathConstants<float>::twoPi*n/40.f;
+                const float sn=std::sin(a),cs=-std::cos(a);g.setColour(colours_.foreground.withAlpha((n%2?.10f:.18f)*detail));
+                g.drawLine(cx+sn*bodyRadius*.88f,cy+cs*bodyRadius*.88f,cx+sn*bodyRadius*.97f,cy+cs*bodyRadius*.97f,.7f);}
+        }
+        const auto cap=knob.reduced(juce::jmax(1.3f,bodyRadius*.13f));
+        g.setGradientFill(juce::ColourGradient(colours_.surface.interpolatedWith(colours_.foreground,.19f),cap.getCentreX()-bodyRadius*.32f,cap.getY(),colours_.background.brighter(.08f),cap.getCentreX()+bodyRadius*.50f,cap.getBottom(),true));g.fillEllipse(cap);
+        g.setColour(colours_.background.withAlpha(.65f));g.drawEllipse(cap,.85f);
         g.setColour(colours_.secondary.withAlpha(.35f));g.drawEllipse(knob,1.f);
         g.setColour(colours_.foreground.withAlpha(.23f));
         g.drawEllipse(knob.reduced(2.2f),.9f);
@@ -99,12 +116,14 @@ public:
         bevel.addCentredArc(cx,cy,bodyRadius*.89f,bodyRadius*.89f,0.f,4.65f,6.05f,true);
         g.setColour(colours_.foreground.withAlpha(.29f));
         g.strokePath(bevel,juce::PathStrokeType(1.1f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-        const float pointerRadius=bodyRadius*.57f;
-        const auto px=cx+std::sin(angle)*pointerRadius,py=cy-std::cos(angle)*pointerRadius;
-        g.setColour(colours_.foreground.interpolatedWith(colours_.accent,.55f));
-        g.drawLine(cx+std::sin(angle)*bodyRadius*.18f,cy-std::cos(angle)*bodyRadius*.18f,
-                   px,py,juce::jmax(1.7f,bodyRadius*.15f));
-        g.fillEllipse(px-1.5f,py-1.5f,3.f,3.f);
+        const float sn=std::sin(angle),cs=-std::cos(angle);
+        const float pointerRadius=bodyRadius*.73f;
+        const auto px=cx+sn*pointerRadius,py=cy+cs*pointerRadius;
+        const auto x0=cx+sn*bodyRadius*.34f,y0=cy+cs*bodyRadius*.34f;
+        g.setColour(colours_.background.withAlpha(.9f));g.drawLine(x0+.55f,y0+.7f,px+.55f,py+.7f,juce::jmax(1.6f,bodyRadius*.085f));
+        g.setColour(colours_.foreground.withAlpha(.90f*detail));
+        g.drawLine(x0,y0,px,py,juce::jmax(1.15f,bodyRadius*.052f));
+        if(engaged){g.setColour(accent.withAlpha(.48f));g.drawEllipse(knob.expanded(1.2f),.8f);}
     }
 private:
     Theme colours_;
