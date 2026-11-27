@@ -35,7 +35,14 @@ constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 
 int main(int argc, char** argv) {
     bool quick4=true,extras=false,factorySlots=false,releaseAudit=false,motionAudit=false;
+    juce::String argument="ui-screenshots";
     for(int i=1;i<argc;++i) {
+        if(juce::String(argv[i])=="--output"){
+            if(i+1>=argc || juce::String(argv[i+1]).startsWith("--")){
+                std::fprintf(stderr,"--output requires a directory\n");return 2;
+            }
+            argument=juce::String::fromUTF8(argv[++i]);continue;
+        }
         if(juce::String(argv[i])=="--full")quick4=false;
         if(juce::String(argv[i])=="--motion-audit")motionAudit=true;
         if(juce::String(argv[i])=="--release-audit"){releaseAudit=true;quick4=false;}
@@ -43,9 +50,7 @@ int main(int argc, char** argv) {
         if(juce::String(argv[i])=="--extras")extras=true;
         if(juce::String(argv[i])=="--factory-slots"){factorySlots=true;quick4=false;}
     }
-    const juce::String argument = argc >= 3 && juce::String(argv[1]) == "--output"
-        ? juce::String::fromUTF8(argv[2]) : juce::String("ui-screenshots");
-    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
+     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
     std::fprintf(stderr,"[Quick4] main entered; processor=%zu bytes editor=%zu bytes\\n",
                  sizeof(SkellPresetAudioProcessor),sizeof(SkellPresetAudioProcessorEditor));
     juce::ScopedJuceInitialiser_GUI gui;

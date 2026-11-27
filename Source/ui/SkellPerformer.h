@@ -187,7 +187,15 @@ public:
                 lowerArt.setGradientFill(juce::ColourGradient(
                     ivory.withAlpha(.80f),151.f+s*12.f,179.f,
                     stone.withAlpha(.54f),151.f+s*31.f,211.f,false));
-                lowerArt.fillPath(wing);
+                // Cut an anatomical obturator opening out of the bone, rather
+                // than painting a rounded black spot onto the wing.
+                juce::Path foramen;
+                foramen.startNewSubPath(151.f+s*11.f,198.f);
+                foramen.cubicTo(151.f+s*22.f,195.f,151.f+s*23.f,201.f,151.f+s*19.f,205.f);
+                foramen.cubicTo(151.f+s*15.f,211.f,151.f+s*10.f,208.f,151.f+s*11.f,198.f);
+                foramen.closeSubPath();
+                auto rim=wing;rim.addPath(foramen);rim.setUsingNonZeroWinding(false);
+                lowerArt.fillPath(rim);
                 juce::Path iliacFossa;
                 iliacFossa.startNewSubPath(151.f+s*10.f,182.f);
                 iliacFossa.cubicTo(151.f+s*20.f,177.f,151.f+s*28.f,184.f,151.f+s*25.f,191.f);
@@ -205,15 +213,8 @@ public:
                 lowerArt.setColour(ivory.withAlpha(.34f));
                 lowerArt.strokePath(crest,juce::PathStrokeType(2.f,
                     juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-                // Obturator foramen: a slot low on the wing, angled outward,
-                // which reads as pelvic anatomy instead of a round eye.
-                juce::Graphics::ScopedSaveState hole(lowerArt);
-                lowerArt.addTransform(juce::AffineTransform::rotation(
-                    s*.30f,151.f+s*17.f,204.f));
-                lowerArt.setColour(ink.withAlpha(.92f));
-                lowerArt.fillRoundedRectangle(151.f+s*13.f,199.f,9.f,12.f,4.f);
-                lowerArt.setColour(stone.withAlpha(.26f));
-                lowerArt.drawRoundedRectangle(151.f+s*13.f,199.f,9.f,12.f,4.f,.7f);
+                lowerArt.setColour(stone.withAlpha(.48f));
+                lowerArt.strokePath(foramen,juce::PathStrokeType(.8f));
             }
             // Sacrum recessed between the wings, plus the coccyx tip.
             juce::Path sacrum;
@@ -300,70 +301,55 @@ public:
                 juce::Colour(0xff020405),151.f,156.f,false));
             g.fillPath(cavity);
         }
-        const float ribReach[7]{30.f,35.f,38.f,38.f,34.f,29.f,24.f};
-        const float ribDrop[7]{6.1f,7.5f,9.2f,11.1f,12.5f,13.8f,15.1f};
+        // Seven true ribs: subdued posterior arcs, brighter descending
+        // anterior bone, and distinct cartilage at the sternum.
+        const float ribReach[7]{24.f,30.f,35.f,38.f,40.f,39.f,36.f};
         for(int r=0;r<7;++r){
-            const float ys=101.f+r*7.3f;
-            const float reach=ribReach[r]*(1.f+.020f*react);
-            const float drop=ribDrop[r];
+            const float y=101.f+r*6.f,reach=ribReach[r]*(1.f+.02f*react);
+            const float frontY=y+6.f+r*1.25f;
             for(int side:{-1,1}){
-                const float s=(float)side;
-                // Bony rib: spine -> lateral margin -> forward, ending in open
-                // space well short of the sternum.
-                juce::Path p;
-                const float sideY=ys+(side==1?1.1f:0.f);
-                p.startNewSubPath(151.f+s*4.f,sideY);
-                p.cubicTo(151.f+s*reach*.50f,sideY+drop*.10f,
-                          151.f+s*reach*.98f,ys+drop*.48f,
-                          151.f+s*reach,ys+drop*.74f);
-                p.cubicTo(151.f+s*reach*.84f,ys+drop*1.04f,
-                          151.f+s*reach*.52f,ys+drop*1.02f,
-                          151.f+s*(reach*.34f+9.f),ys+drop*.82f);
-                g.setColour(ink.withAlpha(.86f));
-                g.strokePath(p,juce::PathStrokeType(4.3f,
-                    juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-                g.setGradientFill(juce::ColourGradient(ivory.withAlpha(.90f-.035f*r),151.f+s*9.f,ys,stone.withAlpha(.78f),151.f+s*reach,ys+drop,false));
-                g.strokePath(p,juce::PathStrokeType(3.1f,
-                    juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-                g.setColour(alive.withAlpha(.03f+.08f*react));
-                g.strokePath(p,juce::PathStrokeType(.7f,
-                    juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-                // Costal cartilage: faint continuation into the sternum.
-                juce::Path cart;
-                cart.startNewSubPath(151.f+s*(reach*.34f+9.f),ys+drop*.82f);
-                cart.cubicTo(151.f+s*(reach*.24f+6.f),ys+drop*.92f,
-                             151.f+s*10.f,ys+drop*.86f,
-                             151.f+s*6.5f,ys+drop*.70f);
-                g.setColour(stone.withAlpha(.34f));
-                g.strokePath(cart,juce::PathStrokeType(1.5f,
-                    juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+                const float d=(float)side;
+                juce::Path rear;
+                rear.startNewSubPath(151.f+d*5.f,y-2.5f);
+                rear.cubicTo(151.f+d*reach*.45f,y-5.f,151.f+d*reach*.92f,y-1.f,151.f+d*reach,y+3.f);
+                g.setColour(stone.withAlpha(.42f));
+                g.strokePath(rear,juce::PathStrokeType(1.6f));
+                juce::Path front;
+                front.startNewSubPath(151.f+d*reach,y+2.f);
+                front.cubicTo(151.f+d*(reach-.5f),y+7.f,151.f+d*reach*.62f,frontY+2.f,151.f+d*12.f,frontY);
+                g.setColour(ink.withAlpha(.88f));
+                g.strokePath(front,juce::PathStrokeType(4.3f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+                g.setGradientFill(juce::ColourGradient(ivory.withAlpha(.92f),151.f+d*12.f,frontY,stone.brighter(.35f).withAlpha(.92f),151.f+d*reach,y+2.f,false));
+                g.strokePath(front,juce::PathStrokeType(3.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+                juce::Path cartilage;
+                cartilage.startNewSubPath(151.f+d*12.f,frontY);
+                cartilage.quadraticTo(151.f+d*8.f,frontY+.5f,151.f+d*5.5f,frontY-2.f);
+                g.setColour(stone.interpolatedWith(ivory,.32f).withAlpha(.72f));
+                g.strokePath(cartilage,juce::PathStrokeType(1.7f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
             }
         }
-        // Lower false and floating ribs. The upper seven pairs have their
-        // own anterior cartilage; pairs 8-10 converge into the costal arch,
-        // while 11-12 end laterally and never attach to the sternum.
+        // Three false ribs form the costal arch; two floating ribs stop short.
         for(int side:{-1,1}){
-            const float sign=(float)side;
+            const float d=(float)side;
+            const float widths[]{35.f,31.f,27.f,22.f,17.f};
             for(int r=0;r<5;++r){
-                const float y=151.f+r*4.3f;
-                const float reach=24.f-r*2.4f;
-                const float end=r<3?12.f+r*2.f:reach*.87f;
+                const float y=142.f+r*5.2f,reach=widths[r];
                 juce::Path rib;
-                rib.startNewSubPath(151.f+sign*4.f,y);
-                rib.cubicTo(151.f+sign*reach*.55f,y+.7f,
-                    151.f+sign*reach,y+4.1f,151.f+sign*reach,y+6.4f);
-                rib.quadraticTo(151.f+sign*reach*.95f,y+9.1f,151.f+sign*end,y+10.f);
-                g.setColour(ink.withAlpha(.85f));
-                g.strokePath(rib,juce::PathStrokeType(2.9f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
-                g.setGradientFill(juce::ColourGradient(stone.withAlpha(.74f),151.f,y,
-                    ivory.withAlpha(.74f-r*.07f),151.f+sign*reach,y+7.f,false));
-                g.strokePath(rib,juce::PathStrokeType(1.9f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+                rib.startNewSubPath(151.f+d*5.f,y);
+                rib.cubicTo(151.f+d*reach*.45f,y-3.f,151.f+d*reach,y+1.f,151.f+d*reach,y+6.f);
+                g.setColour(stone.withAlpha(.45f));
+                g.strokePath(rib,juce::PathStrokeType(1.5f));
+                juce::Path arc;
+                arc.startNewSubPath(151.f+d*reach,y+6.f);
+                arc.quadraticTo(151.f+d*reach*.78f,y+12.f,151.f+d*(r<3?11.f+r*3.f:reach*.87f),y+9.f);
+                g.setGradientFill(juce::ColourGradient(stone.withAlpha(.65f),151.f+d*reach,y+6.f,ivory.withAlpha(.78f-r*.08f),151.f+d*12.f,y+9.f,false));
+                g.strokePath(arc,juce::PathStrokeType(2.3f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
                 if(r<3){
-                    juce::Path cartilage;
-                    cartilage.startNewSubPath(151.f+sign*end,y+10.f);
-                    cartilage.quadraticTo(151.f+sign*9.f,y+7.f,151.f+sign*4.f,153.f+r*1.6f);
-                    g.setColour(stone.withAlpha(.38f));
-                    g.strokePath(cartilage,juce::PathStrokeType(1.1f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+                    juce::Path cart;
+                    cart.startNewSubPath(151.f+d*(11.f+r*3.f),y+9.f);
+                    cart.quadraticTo(151.f+d*(10.f+r*2.f),y+4.f,151.f+d*(5.f+r*3.f),151.f+r*2.f);
+                    g.setColour(stone.interpolatedWith(ivory,.2f).withAlpha(.53f));
+                    g.strokePath(cart,juce::PathStrokeType(1.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
                 }
             }
         }
@@ -552,7 +538,7 @@ public:
             juce::Graphics::ScopedSaveState head(g);
             g.addTransform(juce::AffineTransform::rotation(
                 (.018f+.048f*react)*std::sin(phase*.81f)+.015f*react*std::sin(phase*1.7f),151.f,70.f)
-                .followedBy(juce::AffineTransform::scale(.91f,.94f,151.f,79.f)));
+                .followedBy(juce::AffineTransform::scale(.90f,.86f,151.f,79.f)));
             juce::Path skull;
             skull.startNewSubPath(151.f,13.f);
             skull.cubicTo(134.f,11.f,125.5f,23.f,126.f,35.f);

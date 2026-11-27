@@ -46,15 +46,20 @@ public:
     void setPreview(bool show){preview=show;repaint();}
     bool releaseGesture(int dx,int dy){
         const int along=std::abs(verticalDrag?dy:dx),across=std::abs(verticalDrag?dx:dy);
-        if((along<=4&&across<=4)||(along>=10&&along>=across)){
-            if(onAction)onAction();return true;
-        }return false;
+        const bool correctDirection=!verticalDrag || (direction==Up?dy<0:dy>0);
+        if((along<=4&&across<=4)||(along>=10&&along>=across&&correctDirection)){
+            if(onAction)onAction();
+            return true;
+        }
+        return false;
     }
-    void mouseEnter(const juce::MouseEvent&)override{hover=true;repaint();}
+    void mouseEnter(const juce::MouseEvent& ev)override{hover=true;pointer=ev.getPosition();repaint();}
+    void mouseMove(const juce::MouseEvent& ev)override{pointer=ev.getPosition();repaint();}
     void mouseExit(const juce::MouseEvent&)override{hover=false;repaint();}
     void mouseDown(const juce::MouseEvent& ev)override{pressed=ev.mods.isLeftButtonDown();repaint();}
     void mouseUp(const juce::MouseEvent& ev)override{
-        if(!pressed)return;pressed=false;
+        if(!pressed)return;
+        pressed=false;
         releaseGesture(ev.getDistanceFromDragStartX(),ev.getDistanceFromDragStartY());repaint();
     }
     bool keyPressed(const juce::KeyPress& key)override{
@@ -65,7 +70,12 @@ public:
     void focusLost(FocusChangeType)override{pressed=false;repaint();}
     void paint(juce::Graphics& g)override{
         if(!(hover||pressed||always||preview||hasKeyboardFocus(false)))return;
-        auto r=getLocalBounds().toFloat().reduced(1.f);
+        const auto area=getLocalBounds().toFloat();
+        const float w=verticalDrag?juce::jmin(54.f,area.getWidth()):area.getWidth();
+        const float h=verticalDrag?area.getHeight():juce::jmin(44.f,area.getHeight());
+        const float cx=hover&&verticalDrag?juce::jlimit(w*.5f,area.getWidth()-w*.5f,(float)pointer.x):area.getCentreX();
+        const float cy=hover&&!verticalDrag?juce::jlimit(h*.5f,area.getHeight()-h*.5f,(float)pointer.y):area.getCentreY();
+        auto r=juce::Rectangle<float>(cx-w*.5f,cy-h*.5f,w,h).reduced(1.f);
         const bool active=hover||pressed||hasKeyboardFocus(false);
         g.setColour(Theme::panelAlt.withAlpha(active?.98f:.87f));g.fillRoundedRectangle(r,4.f);
         g.setColour(Theme::green.withAlpha(active?.80f:.38f));g.drawRoundedRectangle(r,4.f,.8f);
@@ -81,6 +91,7 @@ public:
         g.strokePath(arrow,juce::PathStrokeType(1.6f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
     }
 private:
+    juce::Point<int> pointer;
     Direction direction=Left;bool verticalDrag=false,always=false,preview=false,hover=false,pressed=false;
 };
 void setParam(SkellPresetAudioProcessor& p,const juce::String& id,float physical) {
@@ -1500,17 +1511,17 @@ public:
         routing.setBounds(workspace);
         const auto visuals=drawerVisible()?workspace.withTrimmedBottom(212):workspace;
         idle.setBounds(visuals);focusVisual.setBounds(visuals.reduced(18,12).withTrimmedTop(34));
-        rackOuterEdge.setBounds(rackOnRight?1155:0,workspace.getCentreY()-26,13,52);
-        rackInnerEdge.setBounds(rackOnRight?921:230,workspace.getCentreY()-26,16,52);
+        rackOuterEdge.setBounds(rackOnRight?1155:0,workspace.getY(),13,workspace.getHeight());
+        rackInnerEdge.setBounds(rackOnRight?923:231,workspace.getY(),12,workspace.getHeight());
         rackOuterEdge.configure(rackHidden?(rackOnRight?WorkspaceEdge::Left:WorkspaceEdge::Right):
             (rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left),rackHidden,rackHidden?"Show effect rack":"Hide effect rack");
         rackInnerEdge.configure(rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left,false,"Hide effect rack");
         rackInnerEdge.setVisible(!rackHidden);
-        visualLeftEdge.setBounds(workspace.getX()+2,visuals.getCentreY()-68,15,46);
-        visualRightEdge.setBounds(workspace.getRight()-17,visuals.getCentreY()-68,15,46);
+        visualLeftEdge.setBounds(workspace.getX()+2,visuals.getY()+36,15,juce::jmax(44,visuals.getHeight()-52));
+        visualRightEdge.setBounds(workspace.getRight()-17,visuals.getY()+36,15,juce::jmax(44,visuals.getHeight()-52));
         visualLeftEdge.configure(routing.isVisible()?WorkspaceEdge::Left:WorkspaceEdge::Right,routing.isVisible(),"Click or drag: sidechain");
         visualRightEdge.configure(routing.isVisible()?WorkspaceEdge::Right:WorkspaceEdge::Left,routing.isVisible(),"Click or drag: sidechain");
-        drawerEdge.setBounds(workspace.getCentreX()-27,drawerVisible()?visuals.getBottom()-6:workspace.getBottom()-13,54,14);
+        drawerEdge.setBounds(workspace.getX()+18,drawerVisible()?visuals.getBottom()-6:workspace.getBottom()-13,workspace.getWidth()-36,14);
         drawerEdge.configure(drawerVisible()?WorkspaceEdge::Down:WorkspaceEdge::Up,drawerVisible(),"Click or drag vertically: sound controls");
         drawerEdge.setVisible(!routing.isVisible()&&(editingIdle||nativeVisualAvailable()));
         for(auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})edge->setPreview(edgePreview);
@@ -1749,7 +1760,9 @@ public:
             ok &= rackOuterEdge.releaseGesture(0,0)&&!rackHidden&&chain.isVisible();
             ok &= visualLeftEdge.releaseGesture(22,0)&&routing.isVisible();
             ok &= visualRightEdge.releaseGesture(-22,0)&&!routing.isVisible();
+            ok &= !drawerEdge.releaseGesture(0,26)&&!drawerVisible();
             ok &= drawerEdge.releaseGesture(0,-26)&&drawerVisible();
+            ok &= !drawerEdge.releaseGesture(0,-26)&&drawerVisible();
             ok &= drawerEdge.releaseGesture(0,26)&&!drawerVisible();
         }
         editingIdle=false;macroOpen=false;refresh();

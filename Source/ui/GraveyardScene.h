@@ -50,8 +50,8 @@ public:
             lastTheme=Theme::current;lastHorizon=skyline;
             juce::Graphics g(image);const float width=(float)w,height=(float)h;
             const float horizonY=skyline;
-            const auto sky=juce::Colour(0xff0c171f),stone=juce::Colour(0xff52615b);
-            const auto deep=juce::Colour(0xff05090f);
+            const auto sky=juce::Colour(0xff162530),stone=juce::Colour(0xff52615b);
+            const auto deep=juce::Colour(0xff070c12);
             const auto fog=juce::Colour(0xff8aa6a6);
             const auto disc=moonDisc(width,horizonY);
             const float moonX=disc.getCentreX(),moonY=disc.getCentreY(),moonR=disc.getWidth()*.5f;
@@ -392,19 +392,19 @@ public:
             for(int bank=0;bank<13;++bank) {
                 const float y=horizonY-64.f+bank*11.f;
                 g.setGradientFill(juce::ColourGradient(
-                    fog.withAlpha(.028f+(bank%3)*.012f),width*.20f,y,
+                    fog.withAlpha(.048f+(bank%3)*.016f),width*.20f,y,
                     juce::Colour(0xff0a1218).withAlpha(0.f),width*.96f,y,true));
                 g.fillEllipse(-width*.18f,y,width*1.36f,24.f+bank*2.f);
             }
             // Cold moonlight wash across the near graves so the stones are
             // readable instead of sinking into the black.
             g.setGradientFill(juce::ColourGradient(
-                juce::Colour(0xff9fc4c0).withAlpha(.10f),moonX,horizonY-40.f,
+                juce::Colour(0xff9fc4c0).withAlpha(.16f),moonX,horizonY-40.f,
                 juce::Colour(0xff9fc4c0).withAlpha(0.f),moonX,horizonY+14.f,false));
             g.fillRect(0.f,horizonY-52.f,width,72.f);
 
             // --- Raised boards in perspective with plank seams and lip light.
-            g.setGradientFill(juce::ColourGradient(juce::Colour(0xff1e2724),width*.5f,horizonY-4.f,
+            g.setGradientFill(juce::ColourGradient(juce::Colour(0xff24312e),width*.5f,horizonY-4.f,
                                                    Theme::bg,width*.5f,height,false));
             g.fillRect(0.f,horizonY,width,height-horizonY);
             // Broken slate seams and irregular, fine-grain mottling replace
@@ -413,7 +413,7 @@ public:
                 const float t=(float)(tile+1)/12.f;
                 const float y=horizonY+(height-horizonY)*t*t;
                 const float next=horizonY+(height-horizonY)*std::pow((float)(tile+2)/12.f,2.f);
-                g.setColour(stone.withAlpha(.040f+.025f*t));
+                g.setColour(stone.withAlpha(.070f+.045f*t));
                 g.drawLine(0.f,y,width,y+hash01(tile*91)*2.f,.7f);
                 const float span=40.f+130.f*t;
                 for(float x=-span+hash01(tile*72)*span;x<width;x+=span){
@@ -473,7 +473,7 @@ public:
                 slab.lineTo(x+wide*.52f,base);slab.closeSubPath();
                 g.setGradientFill(juce::ColourGradient(stone.withAlpha(.72f),x-wide*.55f,base-tall,
                     deep,x+wide*.52f,base,false));g.fillPath(slab);
-                g.setColour(fog.withAlpha(.13f));g.strokePath(slab,juce::PathStrokeType(.9f));
+                g.setColour(fog.withAlpha(.22f));g.strokePath(slab,juce::PathStrokeType(.9f));
                 g.setColour(deep.withAlpha(.67f));
                 g.fillRoundedRectangle(x-wide*.65f,base-4.f,wide*1.3f,8.f,1.3f);
                 for(int line=0;line<4;++line){
@@ -486,7 +486,7 @@ public:
             // Edge vignette draws the eye to the performer without crushing
             // the cemetery detail the way a heavy overlay would.
             g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(0.f),width*.5f,height*.44f,
-                                                   Theme::bg.withAlpha(.28f),0.f,height*.44f,true));
+                                                   Theme::bg.withAlpha(.20f),0.f,height*.44f,true));
             g.fillRect(0.f,0.f,width,height);
             // Re-lift the lower centre so the boards under the figure stay lit.
             g.setGradientFill(juce::ColourGradient(

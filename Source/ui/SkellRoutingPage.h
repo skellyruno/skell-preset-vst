@@ -220,7 +220,8 @@ private:
         }
         const int rows=juce::jlimit(1,8,(count+1)/2);
         const int col=displayIndex/rows,row=displayIndex%rows;
-        return {318+col*284,140+row*43,266,37};
+        const int columnWidth=juce::jmax(266,(getWidth()-318-24-18)/2);
+        return {318+col*(columnWidth+18),140+row*43,columnWidth,37};
     }
     int committedSource(int id) const {
         const auto prefix=slotPrefix(id);
