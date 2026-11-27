@@ -69,7 +69,7 @@ inline Profile measure(const Audio& a,Segment s,const Recipe* r,const std::atomi
     }
     return analyzer.result();
 }
-inline bool usableSegment(const Profile& p) noexcept {return p.active>=.65f&&p.rmsDb>=-50.f&&p.peak>0.f&&p.clipped<.005f;}
+inline bool usableSegment(const Profile& p) noexcept {return p.finite()&&p.invalid==0.f&&p.active>=.65f&&p.rmsDb>=-50.f&&p.peak>0.f&&p.clipped<.005f;}
 struct Target {float low,high,crest,level;};
 inline Target targetFor(const Profile& dry,const Profile* ref) noexcept {
     return {ref?std::clamp(ref->lowDb,dry.lowDb-5.f,dry.lowDb+5.f):std::clamp(-8.f,dry.lowDb-4.f,dry.lowDb+3.f),
@@ -82,10 +82,19 @@ inline float loss(const Profile& p,const Target& t) noexcept {
     // Weighted feature deviation in dB, not a perceptual similarity percent.
     return .32f*std::abs(p.lowDb-t.low)+.32f*std::abs(p.highDb-t.high)+.20f*std::abs(p.crest-t.crest)+.16f*std::abs(p.rmsDb-t.level)+4.f*std::max(0.f,p.peak-.89f);
 }
+// Independent acceptance gates: a low aggregate score cannot hide wrong level,
+// broad spectral balance or stereo phase/width. Mono floors avoid unstable ratios.
+inline bool referencePass(const Profile& p,const Profile& ref) noexcept {
+    return usableSegment(p)&&ref.valid()&&std::abs(p.rmsDb-ref.rmsDb)<=2.f
+        &&std::abs(p.lowDb-ref.lowDb)<=4.5f&&std::abs(p.highDb-ref.highDb)<=4.5f
+        &&std::abs(p.crest-ref.crest)<=5.f
+        &&std::abs(std::max(-60.f,p.sideDb)-std::max(-60.f,ref.sideDb))<=6.f
+        &&std::abs(p.correlation-ref.correlation)<=.35f;
+}
 struct Optimization {
     Recipe recipe{};
     float initial=1.e6f,final=1.e6f,holdoutInitial=1.e6f,holdoutFinal=1.e6f,dryScore=1.e6f,dryHoldout=1.e6f;
-    int tested=0,accepted=0;bool valid=false;
+    int tested=0,accepted=0;bool valid=false,referenceRejected=false;
 };
 inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* ref=nullptr,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr) noexcept {
     Optimization o;
@@ -97,8 +106,9 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
     o.dryScore=loss(d1,t1);o.dryHoldout=loss(d2,t2);
     o.recipe=fit(dry,ref);
     auto evaluate=[&](const Recipe& r){++o.tested;if(progress)progress->store(o.tested,std::memory_order_relaxed);return loss(measure(a,train,&r,cancel),t1);};
-    auto validate=[&](const Recipe& r){return loss(measure(a,hold,&r,cancel),t2);};
-    o.initial=o.final=evaluate(o.recipe);o.holdoutInitial=o.holdoutFinal=validate(o.recipe);
+    auto validate=[&](const Recipe& r){return measure(a,hold,&r,cancel);};
+    o.initial=o.final=evaluate(o.recipe);
+    const auto starterHold=validate(o.recipe);o.holdoutInitial=o.holdoutFinal=loss(starterHold,t2);
     // Only train selects parameters. Holdout is evaluated once, after search.
     // Two coordinate passes; bounded finite candidate count.
     for(float scale:{1.f,.45f}){
@@ -120,13 +130,16 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
         }
     }
     if(cancel&&cancel->load(std::memory_order_relaxed))return {};
-    o.holdoutFinal=validate(o.recipe);
+    auto finalHold=validate(o.recipe);o.holdoutFinal=loss(finalHold,t2);
     // Reject a trained winner that regresses on unseen material or cannot
     // improve on dry input. Keep the starter only if it independently wins.
-    if(o.holdoutFinal>o.holdoutInitial+.025f){
-        o.recipe=fit(dry,ref);o.final=o.initial;o.holdoutFinal=o.holdoutInitial;o.accepted=0;
+    if(o.holdoutFinal>o.holdoutInitial+.025f||o.holdoutFinal+.025f>=o.dryHoldout||
+       (ref&&!referencePass(finalHold,*ref))){
+        o.recipe=fit(dry,ref);o.final=o.initial;o.holdoutFinal=o.holdoutInitial;o.accepted=0;finalHold=starterHold;
     }
-    o.valid=o.final<1.e5f&&o.holdoutFinal<1.e5f&&o.final+.025f<o.dryScore&&o.holdoutFinal+.025f<o.dryHoldout;
+    if(cancel&&cancel->load(std::memory_order_relaxed))return {};
+    o.referenceRejected=ref&&!referencePass(finalHold,*ref);
+    o.valid=!o.referenceRejected&&o.final<1.e5f&&o.holdoutFinal<1.e5f&&o.final+.025f<o.dryScore&&o.holdoutFinal+.025f<o.dryHoldout;
     return o;
 }
 }

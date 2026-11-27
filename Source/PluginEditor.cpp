@@ -2008,11 +2008,12 @@ private:
         return true;
     }
     void closeMatch(){
+        ++matchSession;
         processor.cancelLiveMatch();matchListening=false;
         if(matchFile)matchFile->cancel.store(true,std::memory_order_relaxed);
         matchFile.reset();
         if(matchOptimization)matchOptimization->cancel.store(true,std::memory_order_relaxed);
-        matchOptimization.reset();matchAudio.reset();
+        matchOptimization.reset();matchAudio.reset();matchDry={};
         matchPanel.setVisible(false);matchButton.setToggleState(false,juce::dontSendNotification);
     }
     void beginMatch(){
@@ -2031,11 +2032,13 @@ private:
     void finishMatch(const skellpreset::liveMatch::Profile& profile,bool reference,std::shared_ptr<skellpreset::liveMatch::Audio> audio={}){
         processor.cancelLiveMatch();matchListening=false;
         if(!profile.valid()){
+            if(!reference){matchDry={};matchAudio.reset();}
+            if(profile.invalid>0.f){matchPanel.update(SkellMatchPanel::Problem,"Invalid audio samples detected. Choose a clean recording or retry.",0.f,0.f,matchDry.valid());return;}
             matchPanel.update(SkellMatchPanel::Problem,"Not enough clean audio. Use at least 6 seconds with 4 seconds of audible vocals; avoid clipping.",0.f,0.f,matchDry.valid());return;
         }
-        if(!reference){matchDry=profile;matchAudio=std::move(audio);}
+        if(!reference){matchDry=audio?profile:skellpreset::liveMatch::Profile{};matchAudio=std::move(audio);}
         if(reference&&!skellpreset::liveMatch::comparable(matchDry,profile)){
-            matchPanel.update(SkellMatchPanel::Problem,"Reference is too similar in tone and dynamics. Choose a clearer, different isolated vocal.",1.f,0.f,matchDry.valid());return;
+            matchPanel.update(SkellMatchPanel::Problem,"Reference is already similar in measured tone, level and dynamics. Try another isolated vocal.",1.f,0.f,matchDry.valid());return;
         }
         if(!matchAudio){matchPanel.update(SkellMatchPanel::Problem,"No usable dry sample. Retry or choose a dry file.",0.f,0.f,false);return;}
         auto job=std::make_shared<MatchOptimizationResult>();job->reference=reference;job->target=profile;
@@ -2049,7 +2052,7 @@ private:
     }
     void applyOptimizedMatch(const MatchOptimizationResult& job){
         const auto& o=job.result;
-        if(!o.valid){matchPanel.update(SkellMatchPanel::Problem,"No verified improvement on both vocal phrases. Try a longer or clearer dry vocal.",1.f,0.f,matchDry.valid());return;}
+        if(!o.valid){matchPanel.update(SkellMatchPanel::Problem,o.referenceRejected?"Reference level, tone or stereo character is outside this rack match. Your rack is unchanged.":"No verified improvement on both vocal phrases. Try a longer or clearer dry vocal.",1.f,0.f,matchDry.valid());return;}
         prepareHistory();
         if(!pendingHistory){matchPanel.update(SkellMatchPanel::Problem,"Save and remove hosted effects before replacing this rack.",0.f,0.f,matchDry.valid());return;}
         const auto result=processor.applyLiveMatch(matchDry,job.reference?&job.target:nullptr,&o.recipe);
@@ -2085,14 +2088,18 @@ private:
     void chooseMatchFile(bool reference){
         if(reference&&!matchDry.valid())return;
         matchChooser=std::make_unique<juce::FileChooser>(reference?"Choose isolated reference vocal":"Choose dry isolated vocal",juce::File{},"*.wav;*.aif;*.aiff;*.flac");
+        const auto session=matchSession;
         matchChooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
-            [safe=juce::Component::SafePointer<Canvas>(this),reference](const juce::FileChooser& chooser){
-                if(auto* self=safe.getComponent()){auto file=chooser.getResult();if(file.existsAsFile()&&self->matchPanel.isVisible())self->analyzeMatchFile(file,reference);}
+            [safe=juce::Component::SafePointer<Canvas>(this),reference,session](const juce::FileChooser& chooser){
+                if(auto* self=safe.getComponent()){auto file=chooser.getResult();if(file.existsAsFile()&&self->matchPanel.isVisible()&&self->matchSession==session)self->analyzeMatchFile(file,reference);}
             });
     }
     void analyzeMatchFile(juce::File file,bool reference){
         processor.cancelLiveMatch();matchListening=false;
         if(matchFile)matchFile->cancel.store(true,std::memory_order_relaxed);
+        if(matchOptimization)matchOptimization->cancel.store(true,std::memory_order_relaxed);
+        matchOptimization.reset();
+        if(!reference){matchDry={};matchAudio.reset();}
         auto task=std::make_shared<MatchFileResult>();task->reference=reference;matchFile=task;
         matchPanel.update(SkellMatchPanel::Reading,"Reading up to 20 seconds locally. No audio is uploaded.",0.f,0.f,matchDry.valid());
         matchPool.addJob(std::function<void()>([file,task]{
@@ -2181,6 +2188,7 @@ private:
     SkellActionButton preset,matchButton,undo,redo,record,micButton;
     SkellMatchPanel matchPanel;
     std::unique_ptr<juce::FileChooser> matchChooser;
+    std::uint64_t matchSession=0;
     struct MatchFileResult {std::atomic<bool> cancel{false},done{false};skellpreset::liveMatch::Profile profile;std::shared_ptr<skellpreset::liveMatch::Audio> audio;bool reference=false;};
     std::shared_ptr<MatchOptimizationResult> matchOptimization;
     std::shared_ptr<skellpreset::liveMatch::Audio> matchAudio;

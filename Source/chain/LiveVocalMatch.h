@@ -13,8 +13,12 @@ namespace skellpreset::liveMatch {
 // inference in the callback. Active-window energy is not a vocal classifier.
 struct Profile {
     float elapsed=0,active=0,rmsDb=-120,peak=0,lowDb=-120,highDb=-120,crest=0,clipped=0;
+    float invalid=0,sideDb=-120,correlation=0;
+    bool finite() const noexcept {
+        return std::isfinite(elapsed)&&std::isfinite(active)&&std::isfinite(rmsDb)&&std::isfinite(peak)&&std::isfinite(lowDb)&&std::isfinite(highDb)&&std::isfinite(crest)&&std::isfinite(clipped)&&std::isfinite(invalid)&&std::isfinite(sideDb)&&std::isfinite(correlation);
+    }
     bool valid() const noexcept {
-        return std::isfinite(elapsed)&&std::isfinite(active)&&std::isfinite(rmsDb)&&std::isfinite(peak)&&std::isfinite(lowDb)&&std::isfinite(highDb)&&std::isfinite(crest)&&std::isfinite(clipped)&&elapsed>=5.99f&&active>=3.99f&&rmsDb>=-50.f&&rmsDb<=-.5f&&peak>0.f&&clipped>=0.f&&clipped<.005f;
+        return finite()&&invalid==0.f&&elapsed>=5.99f&&active>=3.99f&&rmsDb>=-50.f&&rmsDb<=-.5f&&peak>0.f&&clipped>=0.f&&clipped<.005f;
     }
 };
 class Analyzer {
@@ -37,13 +41,16 @@ public:
     std::uint64_t frameCount() const noexcept {return frames;}
     unsigned windowCount() const noexcept {return (unsigned)(frames/(std::uint64_t)window);}
     Profile result() const noexcept {
-        Profile p;p.elapsed=(float)(frames/sr);p.active=(float)(activeFrames/sr);
+        Profile p;p.elapsed=(float)(frames/sr);p.active=(float)(activeFrames/sr);p.invalid=(float)bad;
         if(activeFrames){
             p.rmsDb=db(activeEnergy/activeFrames);p.peak=(float)peak;
             p.lowDb=db(lowEnergy/std::max(1.e-20,activeEnergy));
             p.highDb=db(highEnergy/std::max(1.e-20,activeEnergy));
             p.crest=std::max(0.f,db(peak*peak)-p.rmsDb);
-            p.clipped=(float)((double)(clipped+bad)/activeFrames);
+            p.clipped=(float)((double)clipped/activeFrames);
+            p.sideDb=db(sideEnergy/std::max(1.e-20,midEnergy));
+            const double denom=std::sqrt(leftEnergy*rightEnergy);
+            p.correlation=denom>1.e-20?(float)std::clamp(crossEnergy/denom,-1.,1.):0.f;
         }
         return p;
     }
@@ -52,22 +59,25 @@ private:
     void sample(float l,float r) noexcept {
         ++frames;const std::array<double,2> x{{l,r}};
         const double pk=std::max(std::abs(x[0]),std::abs(x[1]));
+        const double m=.5*(x[0]+x[1]),s=.5*(x[0]-x[1]);
+        winMid+=m*m;winSide+=s*s;winLeft+=x[0]*x[0];winRight+=x[1]*x[1];winCross+=x[0]*x[1];
         winPeak=std::max(winPeak,pk);if(pk>=.999)++winClip;
         for(size_t k=0;k<2;++k){low[k]+=lo*(x[k]-low[k]);high[k]+=hi*(x[k]-high[k]);const double h=x[k]-high[k];winEnergy+=.5*x[k]*x[k];winLow+=.5*low[k]*low[k];winHigh+=.5*h*h;}
         if(++winFrames>=window){
-            if(winEnergy/window>=1.e-5){activeFrames+=winFrames;activeEnergy+=winEnergy;lowEnergy+=winLow;highEnergy+=winHigh;peak=std::max(peak,winPeak);clipped+=winClip;}
-            winFrames=winClip=0;winEnergy=winLow=winHigh=winPeak=0.;
+            if(winEnergy/window>=1.e-5){activeFrames+=winFrames;activeEnergy+=winEnergy;lowEnergy+=winLow;highEnergy+=winHigh;peak=std::max(peak,winPeak);clipped+=winClip;midEnergy+=winMid;sideEnergy+=winSide;leftEnergy+=winLeft;rightEnergy+=winRight;crossEnergy+=winCross;}
+            winFrames=winClip=0;winEnergy=winLow=winHigh=winPeak=winMid=winSide=winLeft=winRight=winCross=0.;
         }
     }
     double sr=48000,lo=0,hi=0;int window=960,winFrames=0,winClip=0;
     std::uint64_t frames=0,activeFrames=0,clipped=0,bad=0;
     std::array<double,2> low{},high{};
     double winEnergy=0,winLow=0,winHigh=0,winPeak=0,activeEnergy=0,lowEnergy=0,highEnergy=0,peak=0;
+    double winMid=0,winSide=0,winLeft=0,winRight=0,winCross=0,midEnergy=0,sideEnergy=0,leftEnergy=0,rightEnergy=0,crossEnergy=0;
 };
 struct Recipe {float low=0,high=0,threshold=-24,ratio=2,makeup=0;bool deess=false;float output=-3;};
 struct Audio {double rate=48000.;std::vector<float> stereo;size_t frames() const noexcept {return stereo.size()/2;}};
 inline bool comparable(const Profile& dry,const Profile& ref) noexcept {
-    return dry.valid()&&ref.valid()&&(std::abs(dry.lowDb-ref.lowDb)>1.5f||std::abs(dry.highDb-ref.highDb)>1.5f||std::abs(dry.crest-ref.crest)>2.f);
+    return dry.valid()&&ref.valid()&&(std::abs(dry.lowDb-ref.lowDb)>1.5f||std::abs(dry.highDb-ref.highDb)>1.5f||std::abs(dry.crest-ref.crest)>2.f||std::abs(dry.rmsDb-ref.rmsDb)>2.f||std::abs(std::max(-60.f,dry.sideDb)-std::max(-60.f,ref.sideDb))>6.f||std::abs(dry.correlation-ref.correlation)>.35f);
 }
 inline Recipe fit(const Profile& dry,const Profile* ref=nullptr) noexcept {
     Recipe r;
@@ -109,7 +119,7 @@ public:
         const auto win=analyzer.windowCount();
         if(win==lastWindow&&!analyzer.finished())return;
         lastWindow=win;const auto p=analyzer.result();
-        const std::array<float,8> data{{p.elapsed,p.active,p.rmsDb,p.peak,p.lowDb,p.highDb,p.crest,p.clipped}};
+        const std::array<float,11> data{{p.elapsed,p.active,p.rmsDb,p.peak,p.lowDb,p.highDb,p.crest,p.clipped,p.invalid,p.sideDb,p.correlation}};
         for(size_t k=0;k<data.size();++k)values[k].store(data[k],std::memory_order_relaxed);
         published.store(n,std::memory_order_release);
         if(analyzer.finished()){completedRate=rate;completedFrames=(size_t)after;finished.store(n,std::memory_order_release);}
@@ -118,8 +128,8 @@ public:
         const auto n=command.load(std::memory_order_acquire);
         done=false;if(!(n&1u)||published.load(std::memory_order_acquire)!=n){p={};return false;}
         done=finished.load(std::memory_order_acquire)==n;
-        std::array<float,8> v{};for(size_t k=0;k<v.size();++k)v[k]=values[k].load(std::memory_order_relaxed);
-        p={v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7]};return true;
+        std::array<float,11> v{};for(size_t k=0;k<v.size();++k)v[k]=values[k].load(std::memory_order_relaxed);
+        p={v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],v[9],v[10]};return true;
     }
 private:
     static_assert(std::atomic<float>::is_always_lock_free,"Match snapshots require lock-free float atomics");
@@ -127,6 +137,6 @@ private:
     std::unique_ptr<float[]> pcm;size_t completedFrames=0;double completedRate=48000.;
     Analyzer analyzer;unsigned seen=0,lastWindow=0;double lastRate=0;
     std::atomic<unsigned> command{0},published{0},finished{0};
-    std::array<std::atomic<float>,8> values{};
+    std::array<std::atomic<float>,11> values{};
 };
 }

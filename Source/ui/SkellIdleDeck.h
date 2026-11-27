@@ -368,7 +368,7 @@ public:
         }
         // Feather the low mist on both axes instead of drawing a strip
         // with a visible straight top or bottom edge.
-        skellpreset::stage::Backdrop::softMist(g,centreX,feetY-16.f*stage.scale,
+        lowMist.draw(g,centreX,feetY-16.f*stage.scale,
             stageBounds.getWidth()*.52f,33.f*stage.scale,Theme::muted,.045f+.035f*activity);
         // Restrained floor reflections and soft contact shadow.
         // Static set dressing, with brightness driven by real audio.
@@ -399,8 +399,9 @@ public:
         // Soft spotlight pool on the boards beneath the performer. It is the
         // brightest floor element and gives the figure real stage presence.
         {
-            const float poolW=195.f*stage.scale,poolH=(.28f+.10f*activity)*poolW;
-            skellpreset::stage::Backdrop::softMist(g,centreX,feetY+poolH*.16f,
+            const int poolStep=juce::jlimit(0,8,juce::roundToInt(activity*8.f));
+            const float poolW=195.f*stage.scale,poolH=(.28f+.10f*poolStep/8.f)*poolW;
+            floorMist[(size_t)poolStep].draw(g,centreX,feetY+poolH*.16f,
                 poolW,poolH*.68f,Theme::blue.interpolatedWith(accent,.3f),.055f+.25f*lightEnergy);
             // Mirrored figure glint, kept subtle and tied to measured peak.
             g.setGradientFill(juce::ColourGradient(
@@ -795,6 +796,22 @@ private:
         micMatch.setVisible(stage.valid);
         if(stage.valid)micMatch.setBounds(skellpreset::stage::Performer::microphoneHitBounds(stage.originX,stage.originY,stage.scale,hasAudibleOutput()?activityLevel:0.f,crowdPhase).getIntersection(getLocalBounds()));
     }
+    // Native-size fog plates avoid repainting two highly flattened gradients
+    // each frame. The floor pool uses nine bounded height steps; opacity stays live.
+    struct MistPlate {
+        juce::Image plate;juce::Colour tint;
+        void draw(juce::Graphics& g,float cx,float cy,float rx,float ry,juce::Colour colour,float opacity){
+            if(rx<=0.f||ry<=0.f||opacity<=0.f)return;
+            const int w=juce::jmax(1,juce::roundToInt(2.f*rx)),h=juce::jmax(1,juce::roundToInt(2.f*ry));
+            if(plate.getWidth()!=w||plate.getHeight()!=h||tint!=colour){
+                tint=colour;plate=juce::Image(juce::Image::ARGB,w,h,true);juce::Graphics art(plate);
+                skellpreset::stage::Backdrop::softMist(art,w*.5f,h*.5f,w*.5f,h*.5f,tint,1.f);
+            }
+            juce::Graphics::ScopedSaveState state(g);g.setOpacity(opacity);
+            g.drawImageAt(plate,juce::roundToInt(cx-w*.5f),juce::roundToInt(cy-h*.5f));
+        }
+    };
+    MistPlate lowMist;std::array<MistPlate,9> floorMist;
     SkellStageBeam softBeam;
     juce::Image floorPlate;
     juce::Rectangle<float> floorGeometry;
