@@ -1,6 +1,7 @@
 #include "PresetBrowser.h"
 #include "Theme.h"
 #include "PresetCoverArt.h"
+#include <cstdio>
 #include "../chain/AlchemistNativePreset.h"
 
 void PresetBrowser::setListView(bool list,bool persist) {
@@ -95,8 +96,10 @@ void PresetBrowser::paintPresetGrid(juce::Graphics& g,const std::vector<int>& en
             g.setColour(Theme::green.withAlpha(.6f));g.drawRoundedRectangle(card.toFloat().reduced(.7f),7.f,1.3f);
         }
     }
-    Theme::text(g,juce::String(scroll+1)+"-"+juce::String(juce::jmin((int)entries.size(),scroll+pageCapacity()))+
-                " / "+juce::String(entries.size()),{207,getHeight()-27,getWidth()-227,18},10.f,Theme::muted);
+    // The vocal tabs own this footer on artist/genre leaves, just as in list view.
+    if(!showVocalTabs())
+        Theme::text(g,juce::String(scroll+1)+"-"+juce::String(juce::jmin((int)entries.size(),scroll+pageCapacity()))+
+                    " / "+juce::String(entries.size()),{207,getHeight()-27,getWidth()-227,18},10.f,Theme::muted);
 }
 bool PresetBrowser::testViewSwitchForTest() {
     const bool savedMode=listMode,savedReadOnly=preferencesReadOnly;
@@ -111,13 +114,16 @@ bool PresetBrowser::testViewSwitchForTest() {
         resultAt({row.getX(),row.getBottom()+2})==-1 &&
         bank==oldBank && artistTierFilter.getSelectedId()==tier && artistFilter.getSelectedId()==artist &&
         genreFilter.getSelectedId()==genre && typeFilter.getSelectedId()==type && search.getText()==query;
+    if(!ok)std::fprintf(stderr,"Browser view switch: card geometry, hit testing or filters changed\n");
     // Render the same factory motif in two sizes on the real graphics path.
     // Artwork must have spatial variation and different seeds must remain
     // distinguishable; a blank or identical placeholder fails this check.
     auto sampleCover=[](int seed,int w,int h){
-        juce::Image img(juce::Image::ARGB,w,h,true);
-        juce::Graphics g(img);
-        skellpreset::art::paintCover(g,img.getBounds().toFloat(),seed,Theme::green);
+        // This is a pixel-content test, not a GPU/backend test. Render to a
+        // software surface and end the graphics lifetime before readback.
+        juce::Image img(juce::Image::ARGB,w,h,true,juce::SoftwareImageType{});
+        {juce::Graphics g(img);
+         skellpreset::art::paintCover(g,img.getBounds().toFloat(),seed,Theme::green); }
         return img;
     };
     const auto first=sampleCover(1,65,46),second=sampleCover(2,65,46);
@@ -128,11 +134,12 @@ bool PresetBrowser::testViewSwitchForTest() {
         if(first.getPixelAt(x,y)!=second.getPixelAt(x,y))++distinct;
         if(first.getPixelAt(x,y)!=corner)++nonUniform;
     }
-    ok=ok && distinct>100 && nonUniform>100 &&
-        large.getPixelAt(130,52).getAlpha()>0;
+    const bool motifOk=distinct>100 && nonUniform>100 && large.getPixelAt(130,52).getAlpha()>0;
+    if(!motifOk)std::fprintf(stderr,"Browser motif: distinct=%d nonuniform=%d alpha=%d\n",distinct,nonUniform,(int)large.getPixelAt(130,52).getAlpha());
+    ok=ok && motifOk;
     // Exercise real image decoding, shared cache reuse and cinematic row paint
     // with a synthetic QA texture. Never misrepresent it as artist artwork.
-    juce::Image source(juce::Image::RGB,128,128,true);
+    juce::Image source(juce::Image::RGB,128,128,true,juce::SoftwareImageType{});
     {
         juce::Graphics graphics(source);
         graphics.setGradientFill(juce::ColourGradient(juce::Colours::cyan,0.f,0.f,
@@ -152,6 +159,7 @@ bool PresetBrowser::testViewSwitchForTest() {
     juce::var bankVar(artworkBank);
     artworkBank->setProperty("artwork",juce::Array<juce::var>{rowVar});
     const auto cache=skellpreset::artistart::decode(bankVar,{});
+    if(!written || cache.size()!=1)std::fprintf(stderr,"Browser artwork: PNG encode/decode or digest rejected\n");
     ok=ok && written && cache.size()==1;
     if(cache.size()==1){
         const auto& artwork=cache.begin()->second;
@@ -159,13 +167,18 @@ bool PresetBrowser::testViewSwitchForTest() {
         ok=ok && artwork.portrait.getWidth()==192 && artwork.soft.getWidth()==160 &&
             again.size()==1 && again.begin()->second.digest==digest;
         for(int w:{396,776}){
-            juce::Image canvas(juce::Image::ARGB,w,56,true);juce::Graphics g(canvas);
-            skellpreset::artistart::cinematic(g,canvas.getBounds().toFloat(),artwork,
-                Theme::panelAlt,Theme::green,false);
+            // Native Direct2D may defer drawing until Graphics is destroyed.
+            // The assertions below read completed pixels, never an active target.
+            juce::Image canvas(juce::Image::ARGB,w,56,true,juce::SoftwareImageType{});
+            {juce::Graphics g(canvas);
+             skellpreset::artistart::cinematic(g,canvas.getBounds().toFloat(),artwork,
+                 Theme::panelAlt,Theme::green,false); }
             const auto portrait=skellpreset::artistart::portraitBounds(canvas.getBounds().toFloat());
             const auto dark=canvas.getPixelAt(20,28),bright=canvas.getPixelAt((int)portrait.getCentreX(),28);
-            ok=ok && portrait.getX()>155.f && portrait.getRight()<=w-76 &&
+            const bool rowOk=portrait.getX()>155.f && portrait.getRight()<=w-76 &&
                 dark.getBrightness()<.35f && bright.getBrightness()>dark.getBrightness()+.2f;
+            if(!rowOk)std::fprintf(stderr,"Browser cinematic row: width=%d dark=%.3f bright=%.3f\n",w,(double)dark.getBrightness(),(double)bright.getBrightness());
+            ok=ok && rowOk;
         }
     }
     artRow->setProperty("sha256",juce::String::repeatedString("0",64));

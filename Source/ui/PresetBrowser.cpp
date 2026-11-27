@@ -2257,11 +2257,11 @@ void PresetBrowser::paint(juce::Graphics&g) {
         Theme::text(g,"VOCAL TYPE",{207,190,310,20},11.f,Theme::muted,true);
         Theme::text(g,"MAIN / ADLIB PAIRING",{207,257,310,20},11.f,Theme::muted,true);
         Theme::fittedText(g,"Save a preset first. Assign its artist on the left.",
-            {207,416,getWidth()-230,24},11.f,Theme::muted);
+            {207,448,getWidth()-230,18},11.f,Theme::muted);
         Theme::fittedText(g,"Use the same pairing name on complementary sounds.",
-            {207,442,getWidth()-230,24},11.f,Theme::muted);
+            {207,469,getWidth()-230,18},11.f,Theme::muted);
         if(saveStatus.isNotEmpty())
-            Theme::fittedText(g,saveStatus,{207,474,getWidth()-230,20},
+            Theme::fittedText(g,saveStatus,{207,493,getWidth()-230,20},
                 10.5f,saveStatus.startsWith("SAVE FAILED")?Theme::red:Theme::green,
                 true,juce::Justification::centredLeft);
     }
