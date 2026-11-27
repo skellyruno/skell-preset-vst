@@ -50,7 +50,7 @@ public:
             lastTheme=Theme::current;lastHorizon=skyline;
             juce::Graphics g(image);const float width=(float)w,height=(float)h;
             const float horizonY=skyline;
-            const auto sky=juce::Colour(0xff243f50),stone=juce::Colour(0xff74827c);
+            const auto sky=juce::Colour(0xff192b39),stone=juce::Colour(0xff64766f);
             const auto deep=juce::Colour(0xff070c12);
             const auto fog=juce::Colour(0xff9ab5b5);
             const auto disc=moonDisc(width,horizonY);
@@ -199,7 +199,7 @@ public:
             // saturated colour in the scene, plus a broken bell tower.
             {
                 const float x=width*.855f,base=horizonY-10.f,s=.62f;
-                const auto wall=juce::Colour(0xff131c1d);
+                const auto wall=juce::Colour(0xff1d2c30);
                 g.setColour(wall);
                 g.fillRect(x-54.f*s,base-104.f*s,108.f*s,104.f*s);
                 juce::Path roof;
@@ -226,8 +226,8 @@ public:
                     g.drawLine(bx+7.5f*s,base-70.f*s,bx+7.5f*s,base-39.f*s,.8f);
                 }
                 // Individually staggered masonry lines and lit buttresses.
-                for(int row=0;row<8;++row){const float yy=base-(row+1)*11.f*s;g.setColour(stone.withAlpha(.17f));g.drawLine(x-51.f*s,yy,x+51.f*s,yy,.65f);for(int col=0;col<5;++col){const float xx=x-48.f*s+col*20.f*s+(row%2)*9.f*s;if(xx<x+50.f*s)g.drawLine(xx,yy,xx,yy+11.f*s,.55f);}}
-                g.setColour(fog.withAlpha(.19f));g.drawLine(x-54.f*s,base-104.f*s,x-54.f*s,base,1.f);g.drawLine(x-64.f*s,base-100.f*s,x,base-150.f*s,1.f);
+                for(int row=0;row<8;++row){const float yy=base-(row+1)*11.f*s;g.setColour(stone.withAlpha(.23f));g.drawLine(x-51.f*s,yy,x+51.f*s,yy,.65f);for(int col=0;col<5;++col){const float xx=x-48.f*s+col*20.f*s+(row%2)*9.f*s;if(xx<x+50.f*s)g.drawLine(xx,yy,xx,yy+11.f*s,.55f);}}
+                g.setColour(fog.withAlpha(.32f));g.drawLine(x-54.f*s,base-104.f*s,x-54.f*s,base,1.f);g.drawLine(x-64.f*s,base-100.f*s,x,base-150.f*s,1.f);
                 // Door arch and stonework shadows.
                 g.setColour(juce::Colour(0xff04080a));
                 juce::Path door;
@@ -257,7 +257,8 @@ public:
                 trunk.cubicTo(x+9.f,base-56.f,x-21.f,base-102.f,x+dir*15.f,base-168.f);
                 trunk.cubicTo(x-3.f,base-112.f,x+16.f,base-58.f,x+9.f,base);
                 trunk.closeSubPath();
-                g.setColour(juce::Colour(0xff070c0d));g.fillPath(trunk);
+                g.setGradientFill(juce::ColourGradient(juce::Colour(0xff2d3e3e),x-10.f,base-80.f,juce::Colour(0xff070c0d),x+9.f,base-80.f,false));g.fillPath(trunk);
+                juce::Path bark;bark.startNewSubPath(x-5.f,base);bark.cubicTo(x+2.f,base-48.f,x-12.f,base-93.f,x+dir*10.f,base-152.f);g.setColour(stone.withAlpha(.23f));g.strokePath(bark,juce::PathStrokeType(.9f));
                 for(int branch=0;branch<8;++branch) {
                     const float y=base-34.f-branch*13.f;
                     const float bdir=(branch%2==0?-dir:dir);
@@ -346,7 +347,7 @@ public:
                     g.setColour(Theme::bg.withAlpha(.72f));
                     g.fillEllipse(x-tw*.95f,base-2.f,tw*1.9f,8.f*s);
                     // Soft moonlit top edge on every stone.
-                    const auto topLight=juce::Colours::white.withAlpha(.12f+.04f*layer);
+                    const auto topLight=fog.withAlpha(.20f+.06f*layer);
                     if(kind==0) { // Rounded headstone
                         const auto r=juce::Rectangle<float>(x-tw*.5f,base-th,tw,th);
                         g.setColour(shade);g.fillRoundedRectangle(r,tw*.44f);
@@ -482,7 +483,8 @@ public:
                 slab.lineTo(x+wide*.52f,base);slab.closeSubPath();
                 g.setGradientFill(juce::ColourGradient(stone.withAlpha(.72f),x-wide*.55f,base-tall,
                     deep,x+wide*.52f,base,false));g.fillPath(slab);
-                g.setColour(fog.withAlpha(.22f));g.strokePath(slab,juce::PathStrokeType(.9f));
+                g.setColour(fog.withAlpha(.32f));g.strokePath(slab,juce::PathStrokeType(.9f));
+                {juce::Graphics::ScopedSaveState stoneClip(g);g.reduceClipRegion(slab);for(int grain=0;grain<42;++grain){const float px=x-wide*.5f+wide*hash01(grain*47+side*17),py=base-tall*hash01(grain*71+side*29);g.setColour((grain%4?deep:fog).withAlpha(.09f+.08f*hash01(grain*13)));g.fillEllipse(px,py,.9f+hash01(grain*31),.7f);}}
                 g.setColour(deep.withAlpha(.67f));
                 g.fillRoundedRectangle(x-wide*.65f,base-4.f,wide*1.3f,8.f,1.3f);
                 for(int line=0;line<4;++line){
@@ -503,6 +505,8 @@ public:
                 Theme::bg.withAlpha(0.f),width*.5f,height,false));
             g.fillRect(0.f,horizonY-30.f,width,height-horizonY+30.f);
         }
+        juce::Graphics::ScopedSaveState opaquePlate(target);
+        target.setOpacity(1.f);
         target.drawImageAt(image,(int)bounds.getX(),(int)bounds.getY());
     }
 

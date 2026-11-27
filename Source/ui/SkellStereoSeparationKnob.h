@@ -91,10 +91,19 @@ public:
             const float mid=(start+end)*.5f;juce::Path rail,lit;
             rail.addCentredArc(c.x,c.y,rad,rad,0.f,start,end,true);
             g.setColour(Theme::muted.withAlpha(.46f));g.strokePath(rail,juce::PathStrokeType(1.1f));
+            for(int tick=0;tick<=6;++tick){
+                const float theta=start+(end-start)*tick/6.f;
+                const float dx=std::sin(theta),dy=-std::cos(theta);
+                g.setColour((tick==3?Theme::white:Theme::muted).withAlpha(tick==3?.65f:.30f));
+                g.drawLine(c.x+dx*7.6f,c.y+dy*7.6f,c.x+dx*9.7f,c.y+dy*9.7f,.75f);
+            }
             if(percentFor(getValue())!=0){lit.addCentredArc(c.x,c.y,rad,rad,0.f,std::min(angle,mid),std::max(angle,mid),true);g.setColour(Theme::green);g.strokePath(lit,juce::PathStrokeType(1.65f));}
             g.setColour(Theme::white.withAlpha(isEnabled()?.89f:.35f));
-            const float dx=std::sin(angle),dy=-std::cos(angle);g.drawLine(c.x+dx*2.f,c.y+dy*2.f,c.x+dx*6.7f,c.y+dy*6.7f,1.6f);
-            g.setColour(Theme::muted.withAlpha(.80f));g.fillEllipse(c.x-1.1f,c.y-1.1f,2.2f,2.2f);
+            const float dx=std::sin(angle),dy=-std::cos(angle);
+            g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.33f),c.x-5.f,c.y-5.f,Theme::bg,c.x+5.f,c.y+5.f,false));g.fillEllipse(c.x-6.7f,c.y-6.7f,13.4f,13.4f);
+            g.setColour(Theme::stroke.brighter(.18f));g.drawEllipse(c.x-6.7f,c.y-6.7f,13.4f,13.4f,.65f);
+            g.setColour((percentFor(getValue())?Theme::green:Theme::white).withAlpha(isEnabled()?.94f:.35f));
+            juce::Path marker;marker.startNewSubPath(c.x+dx*2.1f-dy*.85f,c.y+dy*2.1f+dx*.85f);marker.lineTo(c.x+dx*5.6f,c.y+dy*5.6f);marker.lineTo(c.x+dx*2.1f+dy*.85f,c.y+dy*2.1f-dx*.85f);marker.closeSubPath();g.fillPath(marker);
             return;
         }
         // The centre tick is the audible detent: it reads brighter at neutral.

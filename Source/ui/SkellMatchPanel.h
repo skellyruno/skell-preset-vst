@@ -34,7 +34,7 @@ public:
         // Explicit half-up rounding: JUCE roundToInt rounds 412.5 to 412 on some targets.
         const int w=juce::jmin(limits.getWidth(),(int)std::round(536.f*s)),h=juce::jmin(limits.getHeight(),(int)std::round(330.f*s));
         if(w<=0||h<=0)return;
-        if(!moved){const auto c=available.getCentre();setBounds(c.x-w/2,c.y-h/2,w,h);}
+        if(!moved){setBounds(juce::Rectangle<int>(openingPosition(available,w,h).x,openingPosition(available,w,h).y,w,h));}
         else setSize(w,h);
         clampPosition(getPosition());
     }
@@ -50,7 +50,7 @@ public:
     }
     bool testPlacement(){
         if(limits.isEmpty()||!limits.contains(getBounds()))return false;
-        if(!moved&&(getBounds().getCentre().getDistanceFrom(limits.getCentre())>1||!getParentComponent()||getBounds().getCentre().getDistanceFrom(getParentComponent()->getLocalBounds().getCentre())>1))return false;
+        if(!moved&&(!getParentComponent()||getPosition()!=openingPosition(getParentComponent()->getLocalBounds(),getWidth(),getHeight())))return false;
         if(limits.getWidth()>=603&&limits.getHeight()>=371&&(getWidth()!=603||getHeight()!=371))return false;
         const auto previous=getPosition();const bool wasMoved=moved;
         clampPosition({limits.getRight()+100,limits.getBottom()+100});
@@ -144,6 +144,14 @@ public:
         }else Theme::fittedText(g,phase==Done?"RACK APPLIED / UNDO AVAILABLE":"LOCAL ANALYSIS / VOCALS ONLY",{263,215,249,18},10.5f,Theme::muted,true);
     }
 private:
+    // Shift the full-canvas opening point toward the visual workspace.
+    // At 1168 logical pixels this is 58 pixels right, independent of DPI.
+    static juce::Point<int> openingPosition(juce::Rectangle<int> available,int w,int h) noexcept {
+        const auto safe=available.reduced(12);
+        const auto c=available.getCentre();
+        return {juce::jlimit(safe.getX(),juce::jmax(safe.getX(),safe.getRight()-w),c.x-w/2+juce::roundToInt(available.getWidth()*.05f)),
+                juce::jlimit(safe.getY(),juce::jmax(safe.getY(),safe.getBottom()-h),c.y-h/2)};
+    }
     float layoutScale() const noexcept {return getHeight()/330.f;}
     juce::Rectangle<int> scaled(juce::Rectangle<int> b) const noexcept {return b.toFloat().transformedBy(juce::AffineTransform::scale(getWidth()/536.f,getHeight()/330.f)).toNearestInt();}
     void advanceAnimation(float seconds){

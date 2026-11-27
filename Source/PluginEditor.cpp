@@ -1526,11 +1526,13 @@ public:
         Theme::select(selectedTheme);
         g.fillAll(Theme::bg);
         // Keep the working canvas black. Preset artwork belongs in cards.
-        g.setGradientFill(juce::ColourGradient(
-            Theme::panel,0.f,0.f,
-            Theme::bg,0.f,76.f,false));
         const auto header=juce::Rectangle<float>(14.f,5.f,(float)Theme::width-28.f,69.f);
-        g.fillRoundedRectangle(header,9.f);Theme::workspaceFrame(g,header);
+        Theme::panelBox(g,header,9.f);
+        // Layer the same workspace contour over a restrained satin face.
+        // Keep the border continuous around the logo and rightmost switch.
+        Theme::workspaceFrame(g,header);
+        g.setColour(Theme::bg.withAlpha(.44f));g.drawRoundedRectangle(header.reduced(3.f),6.f,.75f);
+        g.setColour(Theme::white.withAlpha(.08f));g.drawHorizontalLine(8,header.getX()+12.f,header.getRight()-12.f);
         // One typographic run avoids the clipped hyphen and inconsistent gaps.
         // PRESET stays neon green in the main Obsidian skin.
         juce::AttributedString brand;

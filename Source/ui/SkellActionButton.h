@@ -78,10 +78,12 @@ public:
             const auto r=skellpreset::header::face(g,getLocalBounds().toFloat(),enabled,over,down,active,hasKeyboardFocus(true));
             const auto disc=skellpreset::header::rackDisc(g,r,enabled,over,down);
             const auto c=disc.getCentre();
-            g.setColour(active||over?Theme::green:Theme::white.withAlpha(enabled?.88f:.35f));
-            g.drawRoundedRectangle(c.x-2.5f,c.y-7.5f,5.f,10.f,2.5f,1.35f);
-            juce::Path cradle;cradle.startNewSubPath(c.x-5.5f,c.y-1.5f);cradle.cubicTo(c.x-5.5f,c.y+6.5f,c.x+5.5f,c.y+6.5f,c.x+5.5f,c.y-1.5f);
-            g.strokePath(cradle,juce::PathStrokeType(1.35f));g.drawLine(c.x,c.y+5.f,c.x,c.y+8.f,1.25f);g.drawLine(c.x-3.5f,c.y+8.f,c.x+3.5f,c.y+8.f,1.25f);
+            const auto ink=(active?Theme::green:Theme::white).withAlpha(enabled?.90f:.35f);
+            g.setColour(ink.withMultipliedAlpha(.18f));g.fillRoundedRectangle(c.x-3.f,c.y-8.f,6.f,11.f,3.f);
+            g.setColour(ink);g.drawRoundedRectangle(c.x-3.f,c.y-8.f,6.f,11.f,3.f,1.15f);
+            for(int row=0;row<3;++row)g.drawLine(c.x-1.7f,c.y-5.5f+row*2.f,c.x+1.7f,c.y-5.5f+row*2.f,.7f);
+            juce::Path cradle;cradle.startNewSubPath(c.x-5.5f,c.y-1.f);cradle.cubicTo(c.x-5.5f,c.y+6.f,c.x+5.5f,c.y+6.f,c.x+5.5f,c.y-1.f);
+            g.strokePath(cradle,juce::PathStrokeType(1.25f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));g.drawLine(c.x,c.y+4.7f,c.x,c.y+8.f,1.2f);g.drawLine(c.x-3.4f,c.y+8.f,c.x+3.4f,c.y+8.f,1.2f);
             return;
         }
         const bool active=getToggleState();

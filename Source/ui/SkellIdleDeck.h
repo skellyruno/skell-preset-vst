@@ -273,9 +273,13 @@ public:
             }
         }
         // Restrained moving key light leaves the static environment cached.
-        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.28f+.18f*activity),
-            centreX-65.f,feetY-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,feetY-70.f,true));
-        g.fillEllipse(centreX-175.f*stage.scale,feetY-365.f*stage.scale,350.f*stage.scale,365.f*stage.scale);
+        {
+            juce::Graphics::ScopedSaveState keyLight(g);g.reduceClipRegion(stageBounds.toNearestInt());
+            const float lx=centreX-22.f*stage.scale,ly=feetY-238.f*stage.scale,radius=220.f*stage.scale;
+            juce::ColourGradient glow(Theme::white.withAlpha(.16f+.15f*activity),lx,ly,Theme::white.withAlpha(0.f),lx+radius,ly,true);
+            glow.addColour(.42,Theme::blue.withAlpha(.065f+.05f*activity));
+            g.setGradientFill(glow);g.fillEllipse(lx-radius,ly-radius,2.f*radius,2.f*radius);
+        }
         // Concert architecture: low-profile truss, line arrays and a segmented
         // rear light wall. Keep the moon and chapel visible outside the rig.
         // All measured intensity comes from the existing GUI spectrum snapshot.
@@ -295,7 +299,7 @@ public:
                     const float h=juce::jmax(8.f,horizon-y+8.f*u);
                     const float v=live?stageBands[(size_t)(side<0?column*3:35-column*3)]:0.f;
                     const juce::Rectangle<float> panel(x-8.f*u,y,16.f*u,h);
-                    g.setColour(juce::Colour(0xff0b1316).withAlpha(.86f));g.fillRoundedRectangle(panel,2.f*u);
+                    g.setColour(juce::Colour(0xff0b1316).withAlpha(.63f));g.fillRoundedRectangle(panel,2.f*u);
                     g.setColour(tint.withAlpha(.12f+.27f*v));g.drawRoundedRectangle(panel,2.f*u,.9f*u);
                     for(int k=0;k<9;++k) {
                         const float f=(float)(9-k)/9.f;
