@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "Theme.h"
+#include "SkellHeaderFace.h"
 #include <cmath>
 #include <functional>
 
@@ -71,17 +72,14 @@ public:
     void paint(juce::Graphics& g) override {
         if(themeSource)Theme::selectFor(*themeSource);
         const bool compact=getHeight()<48;
-        const auto face=getLocalBounds().toFloat().reduced(.65f);
-        g.setGradientFill(juce::ColourGradient(Theme::panelAlt.brighter(.10f),face.getTopLeft(),Theme::panelAlt.darker(.18f),face.getBottomLeft(),false));
-        g.fillRoundedRectangle(face,5.6f);
-        g.setColour((hovered||adjusting?Theme::green:Theme::stroke).withAlpha(.75f));g.drawRoundedRectangle(face.reduced(.5f),5.6f,1.05f);
+        const auto face=skellpreset::header::face(g,getLocalBounds().toFloat(),isEnabled(),hovered,adjusting,percentFor(getValue())!=0,hasKeyboardFocus(true));
         auto area=face.reduced(2.f);
         if (area.getWidth()<15.f || area.getHeight()<15.f) return;
         constexpr float pi=juce::MathConstants<float>::pi;
         const float centreX=area.getCentreX(),centreY=area.getCentreY();
         const float dial=std::min(area.getWidth(),area.getHeight())*.5f-(compact?2.f:7.f);
-        const float rim=dial*.77f;
-        const float body=dial*.67f;
+        const float rim=compact?11.5f:dial*.77f;
+        const float body=compact?9.6f:dial*.67f;
         const double range=getMaximum()-getMinimum();
         const float value=range>0.
             ? (float)juce::jlimit(0.,1.,(getValue()-getMinimum())/range) : .5f;
@@ -137,7 +135,7 @@ public:
         // Bone-white pointer, the same machined marker as the macro knobs.
         const float theta=angle;
         const float dx=std::sin(theta),dy=-std::cos(theta);
-        g.setColour(Theme::white.withAlpha(.93f));
+        g.setColour((neutral?Theme::white:Theme::green).withAlpha(.93f));
         g.drawLine(centreX+dx*body*.30f,centreY+dy*body*.30f,
                    centreX+dx*body*.80f,centreY+dy*body*.80f,2.1f);
         g.setColour(Theme::white.withAlpha(.16f));

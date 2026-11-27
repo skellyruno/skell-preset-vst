@@ -35,3 +35,5 @@
 - Owner correction: visual navigation chevrons are hover-only, restricted to the stage and expanded live visual bounds. Ordinary effect faces and routing pages must have no visual arrow hit targets. Rack hide/restore remains independent of the active editor, on both actual physical borders, without covering the rack scrollbar. Test real component hit targets and hover pixels.
 
 - Owner 2026-11-27: unified header faces and alignment; order preset / Match / undo / redo / settings / power. Match runs as a compact overlay on the actual live stage. Analyze dry input locally, preserve rack until sufficient audio, add an undo snapshot before applying, support isolated dry/reference files and retry. Do not claim voice/stem classification or exact vendor/artist matching from coarse measured statistics.
+
+- Owner 2026-11-27: Match must be draggable, use the same original Hub radar/artwork as SkellyMotion, retain a visible stage performer and compact actions. Align IN/OUT meters with the header switches and unify rack MIC/stereo hardware. Preserve approved audience composition and keep all stage animation on the UI thread; no generated mockups.

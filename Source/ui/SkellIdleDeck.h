@@ -374,7 +374,7 @@ public:
         // A broad raised deck with a faceted apron grounds the headliner.
         {
             juce::Graphics::ScopedSaveState boards(g);g.reduceClipRegion(stageBounds.toNearestInt());
-            const float u=stage.scale,half=juce::jmin(stageBounds.getWidth()*.37f,350.f*u);
+            const float u=stage.scale,half=juce::jmin(stageBounds.getWidth()*.39f,350.f*u);
             const float back=feetY-39.f*u,front=feetY+5.f*u;
             juce::Path deck;deck.startNewSubPath(centreX-half*.74f,back);deck.lineTo(centreX+half*.74f,back);
             deck.lineTo(centreX+half,front);deck.lineTo(centreX-half,front);deck.closeSubPath();
@@ -403,6 +403,20 @@ public:
         g.setColour(Theme::bg.withAlpha(.90f));
         g.fillEllipse(centreX-105.f*stage.scale,feetY-4.f*stage.scale,
                       210.f*stage.scale,10.f*stage.scale);
+        // Side-wing floor lights provide separation from the graveyard and
+        // make the venue read as a real stage. Drive only from existing bands.
+        if(stageBounds.getHeight()>235.f){
+            juce::Graphics::ScopedSaveState wings(g);g.reduceClipRegion(stageBounds.toNearestInt());
+            for(int side:{-1,1}){
+                const float x=centreX+side*stageBounds.getWidth()*.31f,y=feetY-8.f*stage.scale;
+                const float r=15.f*stage.scale;const auto tint=side<0?Theme::blue:accent;
+                const float power=.09f+.20f*rigEnergy[(size_t)(side<0?0:2)];
+                g.setGradientFill(juce::ColourGradient(tint.withAlpha(power),x,y,tint.withAlpha(0.f),x,y-104.f*stage.scale,true));
+                juce::Path light;light.startNewSubPath(x-r,y);light.lineTo(x+r,y);light.lineTo(x+49.f*stage.scale,y-118.f*stage.scale);light.lineTo(x-49.f*stage.scale,y-118.f*stage.scale);light.closeSubPath();g.fillPath(light);
+                g.setColour(juce::Colour(0xff182124));g.fillRoundedRectangle(x-r,y-4.f*stage.scale,r*2.f,7.f*stage.scale,2.f*stage.scale);
+                g.setColour(tint.withAlpha(.52f+power));g.drawLine(x-r*.6f,y-2.f*stage.scale,x+r*.6f,y-2.f*stage.scale,1.2f);
+            }
+        }
         // Soft spotlight pool on the boards beneath the performer. It is the
         // brightest floor element and gives the figure real stage presence.
         {

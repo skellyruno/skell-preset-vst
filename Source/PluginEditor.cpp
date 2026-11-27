@@ -222,6 +222,7 @@ public:
         matchPanel.onUpload=[this]{chooseMatchFile(false);};
         matchPanel.onReference=[this]{chooseMatchFile(true);};
         micButton.setButtonText("MIC");
+        micButton.setComponentID("rack-hardware");
         micButton.setTooltip("Open dedicated input microphone modeling panel");
         style(micButton);addAndMakeVisible(micButton);
         micButton.onClick=[this] {
@@ -581,7 +582,7 @@ public:
         const auto original=processor.presetName();
         if(scene==0){if(!idle.testMicrophoneMatchTarget())return false;}else if(matchButton.onClick)matchButton.onClick();
         if(!matchPanel.isVisible()||!editingIdle||processor.presetName()!=original)return false;
-        if(scene==0)return true;
+        if(scene==0)return matchPanel.testPlacement();
         processor.prepareToPlay(48000.,512);
         juce::MidiBuffer midi;juce::AudioBuffer<float> b(2,512);
         const int blocks=scene==1?1900:660;
@@ -784,7 +785,7 @@ public:
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
                     issues.add("Overlapping top-bar controls " + juce::String((int)i)
                                + " / " + juce::String((int)j));
-        if(headerMeterBounds().getX()<stageButton.getRight() || headerMeterBounds().getRight()>preset.getX() ||
+        if(headerMeterBounds().getCentreY()!=preset.getBounds().getCentreY() || headerMeterBounds().getX()<stageButton.getRight() || headerMeterBounds().getRight()>preset.getX() ||
            headerMeterBounds().getBottom()>75 || headerMeterBounds().getWidth()<meterWidth)
             issues.add("Header meters overlap controls or leave the header");
         if(powerButton.getX()<=settings.getRight() ||
@@ -893,7 +894,7 @@ public:
         return juce::jlimit(0,12,
             (int)std::ceil((20.f*std::log10(safe)+60.f)/5.f));
     }
-    static juce::Rectangle<int> headerMeterBounds() noexcept {return {315,16,292,48};}
+    static juce::Rectangle<int> headerMeterBounds() noexcept {return {315,26,292,34};}
     static constexpr int meterWidth=238;
     static int meterPixels(float amplitude) noexcept {
         if(!std::isfinite(amplitude) || amplitude<=.001f)return 0;
@@ -914,7 +915,7 @@ public:
         const auto region=headerMeterBounds();
         const float x=(float)region.getX()+38.f;
         const auto draw=[&](const char* label,float y,float value){
-            Theme::fittedText(g,label,{region.getX(),(int)y-3,34,14},10.5f,Theme::white.withAlpha(.78f),true);
+            Theme::fittedText(g,label,{region.getX(),(int)y-3,30,14},10.5f,Theme::white.withAlpha(.84f),true,juce::Justification::centredRight);
             const juce::Rectangle<float> track(x,y,(float)meterWidth,8.f);
             g.setColour(Theme::panelAlt);g.fillRoundedRectangle(track,2.f);
             g.setColour(Theme::stroke.withAlpha(.70f));g.drawRoundedRectangle(track,2.f,.75f);
@@ -933,8 +934,8 @@ public:
             g.fillRoundedRectangle(x+meterWidth+4.f,y,5.f,8.f,1.5f);
         };
         // Keep true logarithmic ballistics but no printed units or numeric scale.
-        draw("IN",(float)region.getY()+8.f,displayedInputPeak);
-        draw("OUT",(float)region.getY()+26.f,displayedOutputPeak);
+        draw("IN",(float)region.getCentreY()-12.f,displayedInputPeak);
+        draw("OUT",(float)region.getCentreY()+4.f,displayedOutputPeak);
     }
     static bool isMeterOverloaded(float amplitude) noexcept {
         return std::isfinite(amplitude) && amplitude>=1.f;
@@ -1704,7 +1705,7 @@ public:
         if(browser.isVisible())browser.toFront(false);
         if(settingsPanel.isVisible())settingsPanel.toFront(false);
         if(micPanel.isVisible())micPanel.toFront(false);
-        matchPanel.setBounds(workspace.withSizeKeepingCentre(432,278));
+        matchPanel.placeWithin(visuals,rackOnRight);
         if(matchPanel.isVisible())matchPanel.toFront(false);
     }
     void refresh(){
@@ -2046,7 +2047,7 @@ private:
         const auto result=processor.applyLiveMatch(matchDry,job.reference?&job.target:nullptr,&o.recipe);
         if(result.failed()){pendingHistory.reset();matchPanel.update(SkellMatchPanel::Problem,result.getErrorMessage(),0.f,0.f,matchDry.valid());return;}
         commitHistory();refresh();
-        const auto detail=juce::String(o.tested)+" candidates / held-out error "+juce::String(o.dryHoldout,1)+" -> "+juce::String(o.holdoutFinal,1)+" dB. Play your vocal to audition.";
+        const auto detail="Validated "+juce::String(o.tested)+" candidates. Error "+juce::String(o.dryHoldout,1)+" to "+juce::String(o.holdoutFinal,1)+" dB. Audition in your DAW.";
         matchPanel.update(SkellMatchPanel::Done,detail,1.f,0.f,true);
         matchPanel.toFront(true);
     }

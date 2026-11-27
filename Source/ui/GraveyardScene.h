@@ -50,9 +50,9 @@ public:
             lastTheme=Theme::current;lastHorizon=skyline;
             juce::Graphics g(image);const float width=(float)w,height=(float)h;
             const float horizonY=skyline;
-            const auto sky=juce::Colour(0xff162530),stone=juce::Colour(0xff52615b);
+            const auto sky=juce::Colour(0xff152c39),stone=juce::Colour(0xff596861);
             const auto deep=juce::Colour(0xff070c12);
-            const auto fog=juce::Colour(0xff8aa6a6);
+            const auto fog=juce::Colour(0xff9ab5b5);
             const auto disc=moonDisc(width,horizonY);
             const float moonX=disc.getCentreX(),moonY=disc.getCentreY(),moonR=disc.getWidth()*.5f;
 
@@ -66,6 +66,14 @@ public:
                 juce::Colour(0xff0a1218).withAlpha(0.f),moonX,horizonY*1.10f,true));
             g.fillRect(0.f,0.f,width,horizonY);
 
+            // A cool aurora behind the ruined skyline, layered into the
+            // cached plate, never evaluated in the audio callback.
+            for(int band=0;band<3;++band){
+                juce::Path veil;veil.startNewSubPath(0.f,horizonY*(.36f+band*.08f));
+                veil.cubicTo(width*.22f,horizonY*.03f,width*.50f,horizonY*.54f,width,horizonY*(.15f+band*.08f));
+                veil.cubicTo(width*.77f,horizonY*.66f,width*.38f,horizonY*.16f,0.f,horizonY*(.47f+band*.08f));veil.closeSubPath();
+                g.setGradientFill(juce::ColourGradient(juce::Colour(0xff527b78).withAlpha(.055f-band*.012f),width*.48f,horizonY*.36f,juce::Colour(0xff112020).withAlpha(0.f),width*.92f,horizonY*.17f,false));g.fillPath(veil);
+            }
             // Deterministic depth layers cached with the static environment.
             for(int layer=0;layer<3;++layer){
                 const float baseline=horizonY*(.73f+.095f*layer);

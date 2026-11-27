@@ -7,12 +7,12 @@ namespace skellpreset::stage {
 // Model coordinates remain 345 x 372; only presentation changes.
 class Performer {
     using P=juce::Point<float>;using Path=juce::Path;using C=juce::Colour;
-    const C bone{0xffe9dfc8}, shade{0xff625f53}, dark{0xff161b1c};
+    const C bone{0xffd7d6c9}, shade{0xff515951}, dark{0xff101719};
     static Path poly(std::initializer_list<P> pts){Path p;bool first=true;for(auto v:pts){if(first){p.startNewSubPath(v);first=false;}else p.lineTo(v);}p.closeSubPath();return p;}
     void line(juce::Graphics& g,const Path& p,float w,C c)const{g.setColour(c);g.strokePath(p,juce::PathStrokeType(w,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
     void solid(juce::Graphics& g,const Path& p,P a,P b,float light=1.f)const{
         juce::ColourGradient grad(bone.interpolatedWith(shade,1.f-light),a,shade.interpolatedWith(dark,.18f),b,false);
-        grad.addColour(.36,bone.interpolatedWith(shade,1.f-light*.94f));grad.addColour(.72,bone.interpolatedWith(shade,.57f));g.setGradientFill(grad);g.fillPath(p);line(g,p,.60f,dark.withAlpha(.86f));
+        grad.addColour(.22,bone.interpolatedWith(shade,1.f-light*.98f));grad.addColour(.48,bone.interpolatedWith(shade,.28f));grad.addColour(.78,bone.interpolatedWith(shade,.68f));g.setGradientFill(grad);g.fillPath(p);line(g,p,.60f,dark.withAlpha(.86f));
     }
     void limb(juce::Graphics& g,P a,P b,float ra,float rb,float light=1.f,float bend=0.f)const{
         const P d=b-a;const float len=juce::jmax(1.f,d.getDistanceFromOrigin());const P u=d/len,n{-u.y,u.x},m=(a+b)*.5f+n*bend;const float w=(ra+rb)*.27f;
@@ -37,18 +37,20 @@ class Performer {
         Path cl;cl.startNewSubPath(155,96);cl.cubicTo(140,88,119,85,107,94);cl.cubicTo(123,91,140,99,155,102);cl.closeSubPath();solid(g,cl,{110,88},{155,104});Path cr;cr.startNewSubPath(158,94);cr.cubicTo(172,86,181,84,192,88);cr.cubicTo(180,91,168,101,158,101);cr.closeSubPath();solid(g,cr,{161,86},{192,102},.79f);
     }
     void skull(juce::Graphics& g,float jaw,float turn,float react)const{
-        juce::Graphics::ScopedSaveState pose(g);g.addTransform(juce::AffineTransform::rotation(turn,150,65));
+        juce::Graphics::ScopedSaveState pose(g);g.addTransform(juce::AffineTransform::scale(.90f,.94f,150.f,65.f).followedBy(juce::AffineTransform::rotation(turn,150,65)));
         Path cr;cr.startNewSubPath(126,40);cr.cubicTo(119,28,126,14,139,10);cr.cubicTo(154,5,169,12,174,23);cr.cubicTo(179,33,175,42,173,47);cr.quadraticTo(178,50,172,54);cr.lineTo(169,57);cr.quadraticTo(168,61,166,64);cr.lineTo(151,66);cr.quadraticTo(143,60,139,56);cr.cubicTo(129,57,124,49,126,40);cr.closeSubPath();solid(g,cr,{133,13},{174,60});
         {juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(cr);g.setGradientFill(juce::ColourGradient(bone.withAlpha(.48f),136,17,bone.withAlpha(0.f),158,34,true));g.fillEllipse(123,7,45,38);g.setGradientFill(juce::ColourGradient(shade.withAlpha(.58f),125,44,shade.withAlpha(0.f),145,23,true));g.fillRect(119.f,9.f,48.f,49.f);Path suture;suture.startNewSubPath(139,10);suture.lineTo(141,14);suture.lineTo(138,18);suture.lineTo(140,21);suture.lineTo(138,25);suture.lineTo(140,29);line(g,suture,.65f,shade.withAlpha(.40f));for(int k=0;k<90;++k){float x=124.f+(float)((k*47)%51),y=9.f+(float)((k*31)%58);g.setColour((k%4?shade:bone).withAlpha(.12f));g.fillEllipse(x,y,.65f+(k%3)*.2f,.55f);}}
-        Path orbit;orbit.startNewSubPath(145,36);orbit.cubicTo(148,30,158,29,161,34);orbit.cubicTo(164,39,159,46,154,47);orbit.cubicTo(147,47,143,42,145,36);orbit.closeSubPath();Path far;far.startNewSubPath(168,34);far.quadraticTo(174,32,175,37);far.cubicTo(174,43,171,45,168,44);far.quadraticTo(165,40,168,34);far.closeSubPath();for(const auto* hole:{&orbit,&far}){auto b=hole->getBounds();g.setGradientFill(juce::ColourGradient(dark.darker(.8f),b.getCentreX(),b.getY(),shade.darker(.65f),b.getCentreX(),b.getBottom(),false));g.fillPath(*hole);line(g,*hole,.6f,shade);}
+        Path orbit;orbit.startNewSubPath(145,36);orbit.cubicTo(148,30,158,29,161,34);orbit.cubicTo(164,39,159,46,154,47);orbit.cubicTo(147,47,143,42,145,36);orbit.closeSubPath();Path far;far.startNewSubPath(168,34);far.quadraticTo(174,32,175,37);far.cubicTo(174,43,171,45,168,44);far.quadraticTo(165,40,168,34);far.closeSubPath();for(const auto* hole:{&orbit,&far}){auto b=hole->getBounds();g.setGradientFill(juce::ColourGradient(dark.darker(.8f),b.getCentreX(),b.getY(),shade.darker(.65f),b.getCentreX(),b.getBottom(),false));g.fillPath(*hole);line(g,*hole,.85f,shade.darker(.28f));}
         Path temple;temple.startNewSubPath(128,37);temple.cubicTo(134,32,140,37,139,45);temple.quadraticTo(133,52,128,47);temple.closeSubPath();g.setGradientFill(juce::ColourGradient(dark.withAlpha(.50f),128,44,dark.withAlpha(.03f),141,33,false));g.fillPath(temple);
         Path cheek;cheek.startNewSubPath(132,48);cheek.quadraticTo(143,44,150,48);cheek.quadraticTo(157,50,155,54);cheek.quadraticTo(145,53,138,56);cheek.closeSubPath();solid(g,cheek,{137,47},{151,56},.94f);Path nose;nose.startNewSubPath(164,42);nose.cubicTo(160,46,157,51,160,54);nose.quadraticTo(163,56,165,52);nose.quadraticTo(169,55,170,51);nose.quadraticTo(168,45,164,42);nose.closeSubPath();g.setColour(dark.darker(.7f));g.fillPath(nose);
-        Path brow;brow.startNewSubPath(143,34);brow.quadraticTo(151,27,161,32);brow.startNewSubPath(167,31);brow.quadraticTo(171,29,175,33);line(g,brow,1.65f,bone.brighter(.12f));
+        Path brow;brow.startNewSubPath(143,34);brow.quadraticTo(151,27,161,32);brow.startNewSubPath(167,31);brow.quadraticTo(171,29,175,33);line(g,brow,1.25f,bone.brighter(.08f));
         // Jaw rotates around condyle, teeth retain dimensions at every level.
         const float gape=.014f+.25f*std::sqrt(jaw);auto mouth=poly({{146,55},{170,55},{170,65+jaw*5},{153,71+jaw*6},{140,56}});g.setColour(dark.darker(.7f));g.fillPath(mouth);
         for(int k=0;k<8;++k){const float x=150.f+k*2.45f,y=59.4f-std::sin(k*.29f)*1.6f;Path t;t.addRoundedRectangle(x,y,2.15f,4.f-(k>5?.6f:0.f),.55f);solid(g,t,{x,y},{x+2,y+4},.97f);}
         {juce::Graphics::ScopedSaveState mandible(g);g.addTransform(juce::AffineTransform::rotation(gape,138,48));Path lower;lower.startNewSubPath(136,47);lower.quadraticTo(141,47,142,53);lower.lineTo(144,63);lower.quadraticTo(151,69,165,66);lower.lineTo(171,63);lower.quadraticTo(174,70,164,73);lower.cubicTo(151,77,139,69,137,61);lower.closeSubPath();solid(g,lower,{141,51},{169,75},.90f);for(int k=0;k<7;++k){float x=151.f+k*2.45f,y=64.2f-std::sin(k*.3f)*1.6f;Path t;t.addRoundedRectangle(x,y,2.1f,3.2f,.4f);solid(g,t,{x,y},{x+2,y+3},.88f);}}
         g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.06f+.19f*react),153,39,Theme::green.withAlpha(0.f),160,42,true));g.fillEllipse(146,32,15,15);
+        // Small rim glints make the head read as lit bone, not a flat cartoon.
+        Path edge;edge.startNewSubPath(128,30);edge.cubicTo(128,16,143,10,153,12);line(g,edge,.8f,C(0xffa9c6c0).withAlpha(.64f));
     }
     void arms(juce::Graphics& g,float activity,float phase)const{
         const float sway=std::sin(phase*.68f)*activity;
