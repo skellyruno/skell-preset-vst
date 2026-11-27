@@ -596,7 +596,7 @@ public:
         }
         tickMatch();
         if(scene==1)return matchPanel.isVisible()&&processor.presetName()==original;
-        if(scene==4){matchPanel.advanceAnimationForScreenshot(1.8f);return matchListening&&matchPanel.isVisible()&&processor.presetName()==original;}
+        if(scene==4){matchPanel.advanceAnimationForScreenshot(1.8f);const auto p95=matchPanel.benchmarkOrbForScreenshot();return std::isfinite(p95)&&p95<33.33&&matchListening&&matchPanel.isVisible()&&processor.presetName()==original;}
         // Only the headless test waits for the owned optimizer. Normal UI
         // polls asynchronously and never blocks the message thread.
         for(int i=0;matchOptimization&&i<3000;++i){juce::Thread::sleep(10);tickMatch();}
