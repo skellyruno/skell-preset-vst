@@ -45,7 +45,10 @@ inline Optimization optimizeAutoMix(const Audio& a,const Profile& dry,MixStyle s
         ++o.tested;if(progress)progress->store(o.tested,std::memory_order_relaxed);
         r.output=0;const auto measured=measure(a,train,&r,cancel,true);
         if(!usableSegment(measured)||canceled())return 1.e6f;
-        r.output=std::clamp(std::min(t1.level-measured.rmsDb,20.f*std::log10(.90f/std::max(measured.peak,1.e-8f))),-12.f,12.f);
+        // Short captures have less evidence about loud syllables. Reserve
+        // extra peak headroom before holdout validation, not after it.
+        const float peakCap=a.frames()<a.rate*9.? .65f : .90f;
+        r.output=std::clamp(std::min(t1.level-measured.rmsDb,20.f*std::log10(peakCap/std::max(measured.peak,1.e-8f))),-12.f,12.f);
         return styleLoss(measure(a,train,&r,cancel,true),d1,t1,r,guide);
     };
     auto offer=[&](Recipe r){const auto score=evaluate(r);if(score+.015f<o.final){o.recipe=r;o.final=score;++o.accepted;}};
