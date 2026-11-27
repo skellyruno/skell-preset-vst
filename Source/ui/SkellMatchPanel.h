@@ -28,9 +28,9 @@ public:
     void placeWithin(juce::Rectangle<int> available,bool /*left*/){
         limits=available.reduced(12);
         if(limits.isEmpty())return;
-        // Landscape console, similar area to the previous square panel.
-        // Center on opening, retain manual drag and fit compact stages.
-        const float s=std::min({1.f,limits.getWidth()/536.f,limits.getHeight()/330.f});
+        // 25% larger in both dimensions; center on the entire plugin canvas.
+        // Retain manual drag and fit compact bounds.
+        const float s=std::min({1.25f,limits.getWidth()/536.f,limits.getHeight()/330.f});
         const int w=juce::roundToInt(536.f*s),h=juce::roundToInt(330.f*s);
         if(w<=0||h<=0)return;
         if(!moved)setBounds(limits.withSizeKeepingCentre(w,h));
@@ -40,16 +40,17 @@ public:
     void advanceAnimationForScreenshot(float seconds) {advanceAnimation(seconds);}
     double benchmarkOrbForScreenshot(){
         if(themeSource)Theme::selectFor(*themeSource);
-        juce::Image image(juce::Image::ARGB,536,330,true);juce::Graphics g(image);
+        juce::Image image(juce::Image::ARGB,670,413,true);juce::Graphics g(image);
+        g.addTransform(juce::AffineTransform::scale(1.25f));
         std::array<double,120> times{};
-        for(size_t i=0;i<times.size();++i){const auto start=juce::Time::getMillisecondCounterHiRes();orb.draw(g,{14,57,222,222},(float)i*.035f,.25f,.5f,false);times[i]=juce::Time::getMillisecondCounterHiRes()-start;}
+        for(size_t i=0;i<times.size();++i){image.clear(image.getBounds());const auto start=juce::Time::getMillisecondCounterHiRes();orb.draw(g,{14,57,222,222},(float)i*.035f,.25f,.5f,false);times[i]=juce::Time::getMillisecondCounterHiRes()-start;}
         std::sort(times.begin(),times.end());
         const double p95=times[113];std::fprintf(stderr,"Match orb software paint: median %.3f ms, p95 %.3f ms (120 frames)\n",times[60],p95);return p95;
     }
     bool testPlacement(){
         if(limits.isEmpty()||!limits.contains(getBounds()))return false;
-        if(!moved&&getBounds().getCentre().getDistanceFrom(limits.getCentre())>1)return false;
-        if(limits.getWidth()>=536&&limits.getHeight()>=330&&(getWidth()!=536||getHeight()!=330))return false;
+        if(!moved&&(getBounds().getCentre().getDistanceFrom(limits.getCentre())>1||!getParentComponent()||getBounds().getCentre().getDistanceFrom(getParentComponent()->getLocalBounds().getCentre())>1))return false;
+        if(limits.getWidth()>=670&&limits.getHeight()>=413&&(getWidth()!=670||getHeight()!=413))return false;
         const auto previous=getPosition();const bool wasMoved=moved;
         clampPosition({limits.getRight()+100,limits.getBottom()+100});
         const bool bottom=limits.contains(getBounds())&&getRight()==limits.getRight()&&getBottom()==limits.getBottom();
@@ -106,11 +107,11 @@ public:
         const auto tint=phase==Problem?Theme::amber:Theme::green;
         // Translucent smoked glass: retain the real venue, not a fake
         // background screenshot. The text side has extra dark backing.
-        g.setGradientFill(juce::ColourGradient(Theme::panelAlt.withAlpha(.86f),r.getTopLeft(),Theme::bg.withAlpha(.72f),r.getBottomRight(),false));
+        g.setGradientFill(juce::ColourGradient(Theme::panelAlt.withAlpha(.90f),r.getTopLeft(),Theme::bg.withAlpha(.78f),r.getBottomRight(),false));
         g.fillRoundedRectangle(r,12.f);
         g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(.26f),250.f,43.f,Theme::bg.withAlpha(.78f),524.f,310.f,false));
         g.fillRoundedRectangle(juce::Rectangle<float>(248,43,276,274),8.f);
-        g.setColour(Theme::stroke.brighter(.22f));g.drawRoundedRectangle(r,12.f,1.f);
+        g.setColour(Theme::stroke.brighter(.28f));g.drawRoundedRectangle(r,12.f,1.15f);
         g.setColour(tint.withAlpha(.52f));g.drawLine(16.f,2.f,r.getRight()-16.f,2.f,1.f);
         radar.drawBrand(g,{13,9,23,24});
         Theme::fittedText(g,"SKELL MATCH",{44,9,138,25},13.f,tint,true);
@@ -128,7 +129,9 @@ public:
         Theme::fittedText(g,active?"ANALYZING SIGNAL":phase==Done?"MATCH COMPLETE":"INPUT REQUIRED",{14,287,222,22},11.f,tint,true,juce::Justification::centred);
         const char* title=phase==Done?"Your preset is ready":phase==Problem?"More information needed":phase==Refining?"Refining your preset":phase==Reading?"Analyzing vocal file":phase==More?"Keep playing your vocals":"Listening to your dry vocals";
         g.setColour(Theme::white);g.setFont(Theme::font(20.f,true));g.drawFittedText(title,{263,54,249,55},juce::Justification::centredLeft,2,.84f);
-        g.setColour(Theme::white);g.setFont(Theme::font(13.5f));g.drawFittedText(message,{263,116,249,80},juce::Justification::topLeft,4,.84f);
+        g.setColour(Theme::white);g.setFont(Theme::font(13.5f));g.drawFittedText(message,{263,116,249,60},juce::Justification::topLeft,4,.84f);
+        Theme::fittedText(g,phase==Done?"COMPLETE":phase==Problem?"CHECK INPUT":phase==Refining?"VALIDATING":phase==Reading?"READING FILE":"CAPTURING",{263,180,158,18},10.5f,tint,true);
+        if(phase!=Problem&&phase!=Reading)Theme::fittedText(g,juce::String(juce::roundToInt(fraction*100.f))+"%",{429,180,83,18},11.f,tint,true,juce::Justification::centredRight);
         const auto bar=juce::Rectangle<float>(263.f,204.f,249.f,5.f);
         g.setColour(Theme::stroke);g.fillRoundedRectangle(bar,2.5f);g.setColour(tint);if(fraction>0.f)g.fillRoundedRectangle(bar.withWidth(bar.getWidth()*fraction),2.5f);
         if(phase==Listening||phase==More){

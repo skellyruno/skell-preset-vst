@@ -286,7 +286,8 @@ int ChainPanel::rowAt(int y) const {
 }
 void ChainPanel::paint(juce::Graphics& g) {
     Theme::selectFor(processor.state);
-    Theme::panelBox(g,getLocalBounds().toFloat());
+    Theme::panelBox(g,getLocalBounds().toFloat(),9.f);
+    Theme::workspaceFrame(g,getLocalBounds().toFloat());
     // Hardware rack rails are deliberately outside the draggable module faces.
     g.setColour(Theme::stroke.withAlpha(.40f));
     g.drawLine(5.f,42.f,5.f,467.f,.8f);

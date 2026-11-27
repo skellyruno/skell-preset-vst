@@ -79,6 +79,14 @@ inline void panelBox(juce::Graphics& g,juce::Rectangle<float> box,float radius=1
         }
     }
 }
+// A little more definition on the two main workspace frames, not on
+// every small knob or control. Keep the neutral hardware finish.
+inline void workspaceFrame(juce::Graphics& g,juce::Rectangle<float> box,float radius=9.f) {
+    g.setColour(stroke.brighter(.18f).withAlpha(.88f));
+    g.drawRoundedRectangle(box.reduced(1.0f),radius,1.55f);
+    g.setColour(white.withAlpha(.065f));
+    g.drawLine(box.getX()+radius+3.f,box.getY()+2.5f,box.getRight()-radius-3.f,box.getY()+2.5f,.65f);
+}
 inline juce::Font font(float size,bool bold=false) {
     return juce::Font(juce::FontOptions(size).withStyle(bold?"Bold":"Regular"));
 }

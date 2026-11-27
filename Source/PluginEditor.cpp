@@ -596,7 +596,7 @@ public:
         }
         tickMatch();
         if(scene==1)return matchPanel.isVisible()&&processor.presetName()==original;
-        if(scene==4){matchPanel.advanceAnimationForScreenshot(1.8f);const auto p95=matchPanel.benchmarkOrbForScreenshot();return std::isfinite(p95)&&p95<33.33&&matchListening&&matchPanel.isVisible()&&processor.presetName()==original;}
+        if(scene==4){updateHeaderMeters(true);idle.setAudioFresh(processor.liveScopeSampleCount()>0);idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());idle.tickAnimation(juce::Time::getMillisecondCounterHiRes(),true);matchPanel.advanceAnimationForScreenshot(1.8f);const auto p95=matchPanel.benchmarkOrbForScreenshot();return std::isfinite(p95)&&p95<33.33&&matchListening&&matchPanel.isVisible()&&processor.presetName()==original;}
         // Only the headless test waits for the owned optimizer. Normal UI
         // polls asynchronously and never blocks the message thread.
         for(int i=0;matchOptimization&&i<3000;++i){juce::Thread::sleep(10);tickMatch();}
@@ -1558,7 +1558,8 @@ public:
         paintHeaderMeters(g);
         if(focusVisible()){
             const auto deck=workspaceBounds();
-            Theme::panelBox(g,(drawerVisible()?deck.withTrimmedBottom(212):deck).toFloat(),9.f);
+            const auto frame=(drawerVisible()?deck.withTrimmedBottom(212):deck).toFloat();
+            Theme::panelBox(g,frame,9.f);Theme::workspaceFrame(g,frame);
             Theme::fittedText(g,"SLOT "+juce::String(slot.selectedSlot()+1).paddedLeft('0',2),
                 {deck.getX()+23,deck.getY()+12,92,22},11.f,Theme::muted,true);
             Theme::fittedText(g,processor.moduleDisplayName(processor.slotType(slot.selectedSlot())),
@@ -1706,7 +1707,7 @@ public:
         if(browser.isVisible())browser.toFront(false);
         if(settingsPanel.isVisible())settingsPanel.toFront(false);
         if(micPanel.isVisible())micPanel.toFront(false);
-        matchPanel.placeWithin(visuals,rackOnRight);
+        matchPanel.placeWithin(getLocalBounds(),rackOnRight);
         if(matchPanel.isVisible())matchPanel.toFront(false);
     }
     void refresh(){

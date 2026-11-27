@@ -50,7 +50,7 @@ public:
             lastTheme=Theme::current;lastHorizon=skyline;
             juce::Graphics g(image);const float width=(float)w,height=(float)h;
             const float horizonY=skyline;
-            const auto sky=juce::Colour(0xff152c39),stone=juce::Colour(0xff596861);
+            const auto sky=juce::Colour(0xff1c3342),stone=juce::Colour(0xff677773);
             const auto deep=juce::Colour(0xff070c12);
             const auto fog=juce::Colour(0xff9ab5b5);
             const auto disc=moonDisc(width,horizonY);
@@ -113,7 +113,7 @@ public:
             for(int band=0;band<8;++band) {
                 const float y=horizonY*(.04f+.082f*band);
                 const float drift=-width*.12f+hash01(band*61)*width*.3f;
-                const float a=.20f-.014f*band;
+                const float a=.29f-.019f*band;
                 for(int puff=0;puff<7;++puff) {
                     const float px=drift+width*(.06f*puff+.09f*hash01(band*211+puff));
                     const float pw=width*(.14f+.10f*hash01(band*97+puff*13));
@@ -121,10 +121,22 @@ public:
                     g.setGradientFill(juce::ColourGradient(
                         juce::Colour(0xff2b4046).withAlpha(a),px,y,
                         juce::Colour(0xff0a1218).withAlpha(0.f),px+pw*.5f,y+ph,true));
-                    g.fillEllipse(px,y,px+pw>width?width-px:pw,ph);
+                    g.fillEllipse(px,y,pw,ph);
                 }
             }
 
+            // Broken silver cloud edges and high-altitude wisps. Cached
+            // geometry gives the sky a textured depth without repaint cost.
+            for(int layer=0;layer<4;++layer){
+                const float y=horizonY*(.16f+layer*.115f);
+                for(int n=0;n<6;++n){
+                    const float x=width*(hash01(layer*321+n*27)*1.1f-.10f);
+                    const float span=width*(.12f+.15f*hash01(layer*513+n*41));
+                    const float h=10.f+12.f*hash01(layer*112+n*17);
+                    g.setGradientFill(juce::ColourGradient(fog.withAlpha(.085f),x+span*.45f,y, fog.withAlpha(0.f),x+span*.9f,y+h,true));
+                    g.fillEllipse(x,y,span,h);
+                }
+            }
             // --- Moon: heavy silver disc with layered halo, craters and a
             // green rim from the fog.
             const float halo=moonR*3.4f;
@@ -213,6 +225,9 @@ public:
                     g.drawLine(bx,base-56.f*s,bx+15.f*s,base-56.f*s,.8f);
                     g.drawLine(bx+7.5f*s,base-70.f*s,bx+7.5f*s,base-39.f*s,.8f);
                 }
+                // Individually staggered masonry lines and lit buttresses.
+                for(int row=0;row<8;++row){const float yy=base-(row+1)*11.f*s;g.setColour(stone.withAlpha(.17f));g.drawLine(x-51.f*s,yy,x+51.f*s,yy,.65f);for(int col=0;col<5;++col){const float xx=x-48.f*s+col*20.f*s+(row%2)*9.f*s;if(xx<x+50.f*s)g.drawLine(xx,yy,xx,yy+11.f*s,.55f);}}
+                g.setColour(fog.withAlpha(.19f));g.drawLine(x-54.f*s,base-104.f*s,x-54.f*s,base,1.f);g.drawLine(x-64.f*s,base-100.f*s,x,base-150.f*s,1.f);
                 // Door arch and stonework shadows.
                 g.setColour(juce::Colour(0xff04080a));
                 juce::Path door;
@@ -450,20 +465,6 @@ public:
                 Theme::bg.withAlpha(0.f),width*.5f,horizonY+70.f,false));
             g.fillRect(0.f,horizonY,width,70.f);
 
-            // Crows wheeling over the graves, small enough to read as motion
-            // even in a still frame.
-            for(int crow=0;crow<9;++crow) {
-                const float cx=width*(.14f+.10f*crow)+40.f*hash01(crow*57);
-                const float cy=horizonY*(.24f+.060f*(crow%4));
-                const float s=1.5f+.9f*hash01(crow*91);
-                juce::Path bird;
-                bird.startNewSubPath(cx-s*4.f,cy);
-                bird.quadraticTo(cx-s*1.6f,cy-s*2.6f,cx,cy-s*.3f);
-                bird.quadraticTo(cx+s*1.6f,cy-s*2.6f,cx+s*4.f,cy);
-                g.setColour(juce::Colour(0xff05090b).withAlpha(.86f));
-                g.strokePath(bird,juce::PathStrokeType(1.05f));
-            }
-
             // Two asymmetrical foreground gravestones flank the boards.
             // Their chipped outlines, side faces and damp stone highlights
             // establish scale between the distant cemetery and the singer.
@@ -543,13 +544,24 @@ public:
             g.setColour(Theme::blue.withAlpha(pulse*.19f));g.strokePath(bolt,juce::PathStrokeType(3.1f));
             g.setColour(Theme::blue.withAlpha(pulse*.62f));g.strokePath(bolt,juce::PathStrokeType(.75f));
         }
+        // Small distant birds traverse the sky with a slow wingbeat; no
+        // static repeated glyphs. Screen-space placement stays outside audio.
+        for(int i=0;i<7;++i){
+            const float u=std::fmod(.12f*i+.14f*hash01(i*81)+phase*(.007f+.001f*(i%3)),1.12f);
+            const float x=bounds.getX()+width*u-width*.06f;
+            const float y=bounds.getY()+(worldSkyline-bounds.getY())*(.20f+.09f*(i%4)) + 3.f*std::sin(phase*.63f+i);
+            const float s=1.1f+.9f*hash01(i*97);
+            const float flap=(.75f+1.1f*std::sin(phase*2.1f+i*1.7f))*s;
+            juce::Path bird;bird.startNewSubPath(x-4.f*s,y-flap);bird.quadraticTo(x-1.7f*s,y-2.f*s,x,y);bird.quadraticTo(x+1.7f*s,y-2.f*s,x+4.f*s,y-flap);
+            g.setColour(juce::Colour(0xff070b0e).withAlpha(.74f));g.strokePath(bird,juce::PathStrokeType(.9f));
+        }
         // Drifting mist: three soft bands moving at different speeds.
         const auto mist=juce::Colour(0xff8aa6a6);
         for(int band=0;band<3;++band) {
             const float speed=.055f+.028f*band;
             const float offset=std::fmod(phase*speed*width*.30f+band*width*.42f,width*1.5f);
-            const float y=worldSkyline-70.f+band*26.f;
-            const float a=.045f+.018f*band;
+            const float y=worldSkyline-70.f+band*26.f+4.f*std::sin(phase*.31f+band);
+            const float a=.075f+.021f*band;
             g.setGradientFill(juce::ColourGradient(
                 mist.withAlpha(0.f),bounds.getX()+offset-width*.7f,y,
                 mist.withAlpha(a),bounds.getX()+offset-width*.2f,y+14.f,false));

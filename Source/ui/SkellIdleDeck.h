@@ -233,6 +233,7 @@ public:
         const auto stage=layoutFor(getWidth(),getHeight());
         if(!stage.valid)return;
         Theme::panelBox(g,getLocalBounds().toFloat(),9.f);
+        Theme::workspaceFrame(g,getLocalBounds().toFloat());
         const bool live=hasAudibleOutput();
         const float activity=live?activityLevel:0.f;
         const auto accent=Theme::green;
@@ -336,19 +337,19 @@ public:
             const float spread=.55f+.10f*activity;
             for(int beam=0;beam<3;++beam) {
                 const float rigX=centreX+(beam-1)*92.f*stage.scale;
-                const float targetX=centreX+(beam-1)*205.f*spread+std::sin(crowdPhase*.39f+beam*1.8f)*32.f*stage.scale*activity;
+                const float targetX=centreX+(beam-1)*205.f*spread+std::sin(crowdPhase*.39f+beam*1.8f)*stage.scale*(8.f+32.f*activity);
                 const float targetY=feetY+6.f;
-                juce::Path wedge;
-                wedge.startNewSubPath(rigX-3.f,rigY);
-                wedge.lineTo(rigX+3.f,rigY);
-                wedge.lineTo(targetX+70.f*stage.scale,targetY);
-                wedge.lineTo(targetX-70.f*stage.scale,targetY);
-                wedge.closeSubPath();
                 const auto tint=(beam==1?accent:Theme::blue);
-                g.setGradientFill(juce::ColourGradient(
-                    tint.withAlpha(.25f+.32f*rigEnergy[(size_t)beam]),rigX,rigY,
-                    tint.withAlpha(0.f),targetX,targetY,false));
-                g.fillPath(wedge);
+                // Nested low-opacity shafts soften the formerly flat triangle
+                // edges; side-to-side motion continues gently at idle.
+                for(int layer=0;layer<5;++layer){
+                    const float spreadWidth=(86.f-13.f*layer)*stage.scale;
+                    juce::Path wedge;
+                    wedge.startNewSubPath(rigX-2.f,rigY);wedge.lineTo(rigX+2.f,rigY);
+                    wedge.lineTo(targetX+spreadWidth,targetY);wedge.lineTo(targetX-spreadWidth,targetY);wedge.closeSubPath();
+                    g.setGradientFill(juce::ColourGradient(tint.withAlpha(.038f+.064f*rigEnergy[(size_t)beam]),rigX,rigY,tint.withAlpha(0.f),targetX,targetY,false));
+                    g.fillPath(wedge);
+                }
                 juce::Path core;
                 core.startNewSubPath(rigX-1.4f,rigY);core.lineTo(rigX+1.4f,rigY);
                 core.lineTo(targetX+24.f*stage.scale,targetY);core.lineTo(targetX-24.f*stage.scale,targetY);core.closeSubPath();
@@ -379,7 +380,11 @@ public:
             juce::Path deck;deck.startNewSubPath(centreX-half*.74f,back);deck.lineTo(centreX+half*.74f,back);
             deck.lineTo(centreX+half,front);deck.lineTo(centreX-half,front);deck.closeSubPath();
             g.setGradientFill(juce::ColourGradient(juce::Colour(0xff283339),centreX,back,juce::Colour(0xff0b1114),centreX,front,false));g.fillPath(deck);
-            g.setColour(juce::Colour(0xff526361).withAlpha(.6f));g.strokePath(deck,juce::PathStrokeType(.8f*u));
+            g.setColour(juce::Colour(0xff526361).withAlpha(.78f));g.strokePath(deck,juce::PathStrokeType(1.05f*u));
+            // Thin stage apron and inset bolts make the floor a physical deck.
+            g.setGradientFill(juce::ColourGradient(juce::Colour(0xff344047),centreX,front,juce::Colour(0xff080e12),centreX,front+9.f*u,false));
+            g.fillRect(centreX-half,front,half*2.f,8.f*u);
+            for(int i=0;i<9;++i){const float x=centreX-half+(i+.5f)*half*2.f/9.f;g.setColour(juce::Colour(0xff74847e).withAlpha(.47f));g.fillEllipse(x-1.1f*u,front+2.9f*u,2.2f*u,2.2f*u);}
             for(int k=-4;k<=4;++k){g.setColour(Theme::white.withAlpha(.055f));g.drawLine(centreX+k*half*.16f,back,centreX+k*half*.22f,front,.8f*u);}
             for(int i=0;i<18;++i){
                 const float x=centreX-half+(i+.5f)*2.f*half/18.f;
