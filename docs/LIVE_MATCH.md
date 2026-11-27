@@ -6,3 +6,5 @@
 - Follow-up: independently measured real vocal A/B, existing Sound Match solver integration, calibrated multiband FFT/voice activity, source/reference alignment, gain-matched audition, stem separation, explicit user approval for major rack topology changes, local Quick4 listening/done capture. Preserve old parameter/program identities.
 
 Local native renderer `--extras` exercises actual Match controls, dry callback, silence rejection, applying the generated rack, and undo/redo, with real editor PNGs. These test stimuli are synthetic, not listening-test recordings.
+
+The performer microphone is also a real Match button. Its accessible hit target follows the same microphone rotation and body lean as the visible artwork. The separate rack MIC control retains microphone modeling. The extras renderer uses the actual stage microphone target for the listening scene; other Match tests retain the header trigger.

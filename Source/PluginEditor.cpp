@@ -214,6 +214,7 @@ public:
         for(auto* b:std::array<juce::Component*,6>{{&preset,&matchButton,&undo,&redo,&settings,&powerButton}})b->setComponentID("header-control");
         addChildComponent(matchPanel);
         matchButton.onClick=[this]{if(matchPanel.isVisible())closeMatch();else beginMatch();};
+        idle.onMicrophoneMatch=[this]{if(!matchPanel.isVisible())beginMatch();};
         matchPanel.onClose=[this]{closeMatch();};
         matchPanel.onRetry=[this]{beginMatch();};
         matchPanel.onListen=[this]{closeMatch();if(chain.onSelection)chain.onSelection(processor.slotIdAt(0));};
@@ -575,7 +576,8 @@ public:
     bool smartMatchForScreenshot(int scene){
         processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
         configureForScreenshot(0,1,false);
-        const auto original=processor.presetName();if(matchButton.onClick)matchButton.onClick();
+        const auto original=processor.presetName();
+        if(scene==0){if(!idle.testMicrophoneMatchTarget())return false;}else if(matchButton.onClick)matchButton.onClick();
         if(!matchPanel.isVisible()||!editingIdle||processor.presetName()!=original)return false;
         if(scene==0)return true;
         processor.prepareToPlay(48000.,512);

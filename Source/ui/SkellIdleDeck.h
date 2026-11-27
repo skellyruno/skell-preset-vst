@@ -15,7 +15,22 @@
 class SkellIdleDeck final : public juce::Component {
 public:
     explicit SkellIdleDeck(SkellPresetAudioProcessor& p):processor(p) {
-        setInterceptsMouseClicks(true,false);
+        setInterceptsMouseClicks(true,true);
+        addAndMakeVisible(micMatch);
+        micMatch.setTitle("Match from the stage microphone");
+        micMatch.setTooltip("Analyze your dry vocal and build a matching preset");
+        micMatch.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+        micMatch.setWantsKeyboardFocus(true);
+        micMatch.onClick=[this]{if(onMicrophoneMatch)onMicrophoneMatch();};
+    }
+    std::function<void()> onMicrophoneMatch;
+    void resized() override {updateMicMatchBounds();}
+    bool testMicrophoneMatchTarget(){
+        updateMicMatchBounds();
+        const auto b=micMatch.getBounds();
+        if(b.isEmpty()||!getLocalBounds().contains(b)||getComponentAt(b.getCentre())!=&micMatch||getComponentAt(2,2)==&micMatch)return false;
+        if(micMatch.onClick)micMatch.onClick();
+        return true;
     }
     // The waveform is a post-FX snapshot. Its last frame must not remain
     // marked LIVE after the host stops sending audio. Called only by the UI
@@ -69,6 +84,7 @@ public:
         if(!localCapture && !isShowing()){stageClock.pause();return;}
         crowdPhase=static_cast<float>(stageClock.tick(nowMs,hasAudibleOutput()?activityLevel:0.f));
         updateSpectrum();
+        updateMicMatchBounds();
         repaint();
     }
     void updateSpectrum() {
@@ -804,6 +820,23 @@ public:
 
     }
 private:
+    // Transparent, keyboard-accessible hit target. The mic artwork remains
+    // the actual performer; hover/focus adds only a subtle local halo.
+    class MicMatchTarget final:public juce::Button {
+    public:
+        MicMatchTarget():juce::Button("Stage microphone — Match"){}
+        void paintButton(juce::Graphics& g,bool over,bool down)override{
+            if(!over&&!down&&!hasKeyboardFocus(true))return;
+            const auto r=getLocalBounds().toFloat().reduced(1.f);
+            g.setColour(Theme::green.withAlpha(down?.20f:.09f));g.fillRoundedRectangle(r,6.f);
+            g.setColour(Theme::green.withAlpha(.75f));g.drawRoundedRectangle(r,6.f,1.f);
+        }
+    } micMatch;
+    void updateMicMatchBounds(){
+        const auto stage=layoutFor(getWidth(),getHeight());
+        micMatch.setVisible(stage.valid);
+        if(stage.valid)micMatch.setBounds(skellpreset::stage::Performer::microphoneHitBounds(stage.originX,stage.originY,stage.scale,hasAudibleOutput()?activityLevel:0.f,crowdPhase).getIntersection(getLocalBounds()));
+    }
     skellpreset::stage::Backdrop backdrop;
     skellpreset::stage::Performer performer;
     SkellPresetAudioProcessor& processor;

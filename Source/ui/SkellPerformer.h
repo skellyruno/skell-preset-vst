@@ -60,12 +60,24 @@ class Performer {
         Path cable;cable.startNewSubPath(196,92);cable.cubicTo(229,136,236,222,237,307);cable.quadraticTo(236,366,270,367);line(g,cable,1.7f,dark);line(g,cable,.55f,shade.withAlpha(.63f));
     }
 public:
+    static juce::AffineTransform bodyLean(float activity,float phase) noexcept {
+        const float lean=(.012f*std::sin(phase*.41f)+.028f*std::sin(phase*.71f))*juce::jlimit(0.f,1.f,activity);
+        return juce::AffineTransform::rotation(lean,151.f,365.f);
+    }
+    // Same microphone geometry, pose and transforms as arms(), not an
+    // unrelated fixed rectangle over the character or its neighbours.
+    static juce::Rectangle<int> microphoneHitBounds(float x,float y,float scale,float activity,float phase) noexcept {
+        return juce::Rectangle<float>(183.f,49.f,16.f,44.f)
+            .transformedBy(juce::AffineTransform::rotation(-.48f,191.f,83.f)
+                .followedBy(bodyLean(activity,phase))
+                .followedBy(juce::AffineTransform::scale(scale).translated(x,y)))
+            .expanded(5.f).toNearestInt();
+    }
     void draw(juce::Graphics& g,float x,float y,float scale,float activity,float phase,float vocal=-1.f)const{
         const float react=juce::jlimit(0.f,1.f,activity),voice=juce::jlimit(0.f,1.f,vocal<0.f?react:vocal);juce::Graphics::ScopedSaveState state(g);g.addTransform(juce::AffineTransform::scale(scale).translated(x,y));
         g.setGradientFill(juce::ColourGradient(dark.withAlpha(.86f),151,365,dark.withAlpha(0.f),151,377,false));g.fillEllipse(85,359,155,15);
         if(!body.isValid()||cachedTheme!=Theme::current){body=juce::Image(juce::Image::ARGB,690,744,true);cachedTheme=Theme::current;juce::Graphics art(body);art.addTransform(juce::AffineTransform::scale(2.f));bodyArt(art);}// Small coherent body lean pivots at the feet; jaw and hands move with the torso.
-        const float lean=(.012f*std::sin(phase*.41f)+.028f*std::sin(phase*.71f))*react;
-        g.addTransform(juce::AffineTransform::rotation(lean,151.f,365.f));
+        g.addTransform(bodyLean(react,phase));
         g.drawImageTransformed(body,juce::AffineTransform::scale(.5f));arms(g,react,phase);skull(g,voice,-.075f+.075f*std::sin(phase*.73f)*react,react);
     }
 private: mutable juce::Image body;mutable int cachedTheme=-1;
