@@ -224,6 +224,7 @@ public:
         const auto shadow=Theme::bg;
         auto bandEnergy=[&](int first,int last){float sum=0.f;for(int i=first;i<last;++i)sum+=stageBands[(size_t)i];return sum/(last-first);};
         const std::array<float,3> rigEnergy{{bandEnergy(0,12),bandEnergy(12,24),bandEnergy(24,36)}};
+        const float crowdEnergy=juce::jlimit(0.f,1.f,.52f*activity+.30f*rigEnergy[1]+.18f*rigEnergy[2]);
 
         // Minimal midnight performance stage. All lighting is drawn in the
         // native editor; reactive intensity is measured from actual audio.
@@ -258,17 +259,68 @@ public:
         g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.19f+.12f*activity),
             centreX-65.f,feetY-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,feetY-70.f,true));
         g.fillEllipse(centreX-175.f*stage.scale,feetY-365.f*stage.scale,350.f*stage.scale,365.f*stage.scale);
+        // Concert architecture: low-profile truss, line arrays and a segmented
+        // rear light wall. Keep the moon and chapel visible outside the rig.
+        // All measured intensity comes from the existing GUI spectrum snapshot.
+        if(stageBounds.getWidth()>=480.f && stageBounds.getHeight()>235.f) {
+            juce::Graphics::ScopedSaveState venue(g);g.reduceClipRegion(stageBounds.toNearestInt());
+            const float u=stage.scale;
+            const float half=juce::jmin(stageBounds.getWidth()*.32f,340.f*u);
+            const float top=stageBounds.getY()+12.f*u;
+            const float lower=top+13.f*u;
+            const auto metal=juce::Colour(0xff334044);
+            g.setColour(juce::Colour(0xff080d10));
+            g.fillRoundedRectangle(centreX-half,top-3.f*u,2.f*half,20.f*u,2.f*u);
+            g.setColour(metal.withAlpha(.85f));
+            g.drawLine(centreX-half,top,centreX+half,top,1.9f*u);
+            g.drawLine(centreX-half,lower,centreX+half,lower,1.9f*u);
+            for(int cell=0;cell<16;++cell) {
+                const float x0=centreX-half+2.f*half*cell/16.f,x1=centreX-half+2.f*half*(cell+1)/16.f;
+                g.drawLine(x0,cell%2?top:lower,x1,cell%2?lower:top,1.0f*u);
+            }
+            // Rear light wall uses separate vertical panels, not a solid UI card.
+            for(int side:{-1,1}) {
+                const auto tint=side<0?Theme::blue:accent;
+                for(int column=0;column<5;++column) {
+                    const float x=centreX+side*(91.f+column*24.f)*u;
+                    const float y=horizon-(103.f-column*8.f)*u;
+                    const float h=juce::jmax(8.f,horizon-y+8.f*u);
+                    const float v=live?stageBands[(size_t)(side<0?column*3:35-column*3)]:0.f;
+                    const juce::Rectangle<float> panel(x-8.f*u,y,16.f*u,h);
+                    g.setColour(juce::Colour(0xff0b1316).withAlpha(.86f));g.fillRoundedRectangle(panel,2.f*u);
+                    g.setColour(tint.withAlpha(.12f+.27f*v));g.drawRoundedRectangle(panel,2.f*u,.9f*u);
+                    for(int k=0;k<9;++k) {
+                        const float f=(float)(9-k)/9.f;
+                        const float brightness=.09f+(v>=f?.56f*v:0.f);
+                        g.setColour(tint.withAlpha(brightness));
+                        g.fillRoundedRectangle(x-5.f*u,y+h*(k+.28f)/9.f,10.f*u,juce::jmax(.8f,h*.053f),.65f*u);
+                    }
+                }
+                // Suspended line arrays with a slight curvature and grille detail.
+                const float arrayX=centreX+side*(half-17.f*u);
+                for(int cab=0;cab<5;++cab) {
+                    const float x=arrayX+side*(float)(cab*cab)*.32f*u;
+                    const juce::Rectangle<float> r(x-15.f*u,lower+5.f*u+cab*17.f*u,30.f*u,16.f*u);
+                    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff293236),r.getX(),r.getY(),juce::Colour(0xff090e10),r.getRight(),r.getBottom(),false));
+                    g.fillRoundedRectangle(r,2.2f*u);
+                    g.setColour(metal);g.drawRoundedRectangle(r,2.2f*u,.7f*u);
+                    g.setColour(juce::Colour(0xff080d10));g.fillRoundedRectangle(r.reduced(3.f*u),1.4f*u);
+                    for(int line=0;line<4;++line){g.setColour(metal.withAlpha(.65f));g.drawLine(r.getX()+5.f*u,r.getY()+(4.f+line*2.3f)*u,r.getRight()-5.f*u,r.getY()+(4.f+line*2.3f)*u,.5f*u);}
+                    g.setColour(tint.withAlpha(.24f+.52f*rigEnergy[0]));g.fillEllipse(r.getRight()-4.f*u,r.getY()+2.f*u,1.8f*u,1.8f*u);
+                }
+            }
+        }
         // Volumetric stage beams from the rig above the performer. These are
         // soft screen-blended wedges, not textured sprites, and breathe with
         // measured output so the rig feels alive without ever lying about audio.
         {
             juce::Graphics::ScopedSaveState beams(g);
             g.reduceClipRegion(stageBounds.toNearestInt());
-            const float rigY=stageBounds.getY()+7.f;
+            const float rigY=stageBounds.getY()+(stageBounds.getWidth()>=480.f && stageBounds.getHeight()>235.f?31.f*stage.scale:7.f);
             const float spread=.55f+.10f*activity;
             for(int beam=0;beam<3;++beam) {
                 const float rigX=centreX+(beam-1)*92.f*stage.scale;
-                const float targetX=centreX+(beam-1)*205.f*spread;
+                const float targetX=centreX+(beam-1)*205.f*spread+std::sin(crowdPhase*.39f+beam*1.8f)*32.f*stage.scale*activity;
                 const float targetY=feetY+6.f;
                 juce::Path wedge;
                 wedge.startNewSubPath(rigX-3.f,rigY);
@@ -278,7 +330,7 @@ public:
                 wedge.closeSubPath();
                 const auto tint=(beam==1?accent:Theme::blue);
                 g.setGradientFill(juce::ColourGradient(
-                    tint.withAlpha(.15f+.18f*rigEnergy[(size_t)beam]),rigX,rigY,
+                    tint.withAlpha(.21f+.25f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));
                 g.fillPath(wedge);
                 juce::Path core;
@@ -289,7 +341,7 @@ public:
             }
             // Rig housing and three lens lamps.
             g.setColour(juce::Colour(0xff121719));
-            g.fillRoundedRectangle(centreX-104.f*stage.scale,stageBounds.getY()+2.f,
+            g.fillRoundedRectangle(centreX-104.f*stage.scale,rigY-5.f*stage.scale,
                                    208.f*stage.scale,7.f*stage.scale,3.f*stage.scale);
             for(int lamp=0;lamp<3;++lamp) {
                 const float lx=centreX+(lamp-1)*92.f*stage.scale;
@@ -301,6 +353,22 @@ public:
                     juce::jlimit(.18f,.98f,(float)lit/255.f)));
                 g.fillEllipse(lx-3.2f*stage.scale,rigY-1.f*stage.scale,
                               6.4f*stage.scale,4.2f*stage.scale);
+            }
+        }
+        // A broad raised deck with a faceted apron grounds the headliner.
+        {
+            juce::Graphics::ScopedSaveState boards(g);g.reduceClipRegion(stageBounds.toNearestInt());
+            const float u=stage.scale,half=juce::jmin(stageBounds.getWidth()*.37f,350.f*u);
+            const float back=feetY-39.f*u,front=feetY+5.f*u;
+            juce::Path deck;deck.startNewSubPath(centreX-half*.74f,back);deck.lineTo(centreX+half*.74f,back);
+            deck.lineTo(centreX+half,front);deck.lineTo(centreX-half,front);deck.closeSubPath();
+            g.setGradientFill(juce::ColourGradient(juce::Colour(0xff283339),centreX,back,juce::Colour(0xff0b1114),centreX,front,false));g.fillPath(deck);
+            g.setColour(juce::Colour(0xff526361).withAlpha(.6f));g.strokePath(deck,juce::PathStrokeType(.8f*u));
+            for(int k=-4;k<=4;++k){g.setColour(Theme::white.withAlpha(.055f));g.drawLine(centreX+k*half*.16f,back,centreX+k*half*.22f,front,.8f*u);}
+            for(int i=0;i<18;++i){
+                const float x=centreX-half+(i+.5f)*2.f*half/18.f;
+                const float v=live?stageBands[(size_t)(i*2)]:0.f;
+                g.setColour(accent.withAlpha(.18f+.72f*v));g.fillRoundedRectangle(x-4.f*u,front-2.f*u,8.f*u,2.f*u,1.f*u);
             }
         }
         // Low mist is a soft gradient, not a large animated texture.
@@ -388,12 +456,12 @@ public:
                     // Far rows are small and high, near rows large and cropped
                     // by the bottom of the stage. The pit starts narrow so the
                     // cemetery keeps its own band of picture above the crowd.
-                    const float heightPix=depth*(.32f+.66f*t*t);
+                    const float heightPix=depth*(.39f+.88f*t*t);
                     if(heightPix<6.f)continue;
                     // Near figures are only slightly lighter than far ones, so
                     // depth comes from size and overlap rather than brightness.
                     const auto bodyColour=juce::Colour(0xff04070a).withAlpha(.78f+.16f*t);
-                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.26f).withAlpha(.09f+.34f*t);
+                    const auto rowRim=porcelain.interpolatedWith(Theme::blue,.26f).withAlpha(.14f+.42f*t);
                     const auto edgeGlow=accent.withAlpha(.025f+.07f*activity);
                     for(int i=0;i<crowdCount;++i) {
                         const auto& figure=crowd[(size_t)i];
@@ -406,10 +474,10 @@ public:
                         const float hgt=heightPix*figure.sizeJitter;
                         const float unit=hgt/figure.height;
                         const float x=stageBounds.getX()+stageBounds.getWidth()*figure.x
-                            +wave*2.6f*unit;
+                            +wave*(3.2f+2.4f*crowdEnergy)*unit;
                         // Vertical jitter inside the row prevents ruled lines.
                         const float headY=pitTop+depth*(.09f+.56f*t)+figure.yJitter*depth*.19f
-                            -std::abs(bob)*2.0f*unit;
+                            -std::abs(bob)*(2.2f+2.4f*crowdEnergy)*unit;
                         // Feet stay at the ground depth while the knees absorb the body bob.
                         const float base=pitTop+depth*(.09f+.56f*t)+figure.yJitter*depth*.19f+hgt;
                         const float ry=hgt*figure.headRatio;
@@ -720,7 +788,7 @@ public:
             g.setColour(accent.withAlpha(.62f));g.strokePath(trace,juce::PathStrokeType(1.f));
         }
         const auto status=juce::Rectangle<float>(stageBounds.getX()+15.f,
-            stageBounds.getY()+13.f,90.f,24.f);
+            stageBounds.getY()+13.f,118.f,24.f);
         g.setColour(Theme::bg.withAlpha(.84f));
         g.fillRoundedRectangle(status,6.f);
         const auto lamp=bypassed?Theme::amber:live?accent:Theme::muted;
@@ -730,9 +798,9 @@ public:
         }
         g.setColour(lamp);
         g.fillEllipse(status.getX()+10.f,status.getCentreY()-3.f,6.f,6.f);
-        Theme::text(g,bypassed?"BYPASS":live?"LIVE":"IDLE",
+        Theme::text(g,bypassed?"BYPASS":live?"LIVE SET":"STANDBY",
             {juce::roundToInt(status.getX()+23.f),juce::roundToInt(status.getY()),
-             66,24},10.7f,lamp,true);
+             92,24},10.7f,lamp,true);
 
     }
 private:

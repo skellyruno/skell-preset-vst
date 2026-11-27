@@ -51,7 +51,9 @@ class Performer {
         g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.06f+.19f*react),153,39,Theme::green.withAlpha(0.f),160,42,true));g.fillEllipse(146,32,15,15);
     }
     void arms(juce::Graphics& g,float activity,float phase)const{
-        const float sway=std::sin(phase*.68f)*activity;const P sh{107,95},el{77,143+sway*3},wr{47-sway*4,172-sway*8};joint(g,sh,5.6f,5.2f);limb(g,sh,el,6.3f,4.8f,.96f,-2);joint(g,el,4.3f,4.2f);limb(g,el+P{1,1},wr,3.4f,2.6f,.92f);limb(g,el+P{5,1},wr+P{4,3},2.4f,2.1f,.79f);joint(g,wr,3.3f,2.9f);for(int k=0;k<4;++k){const P a=wr+P{-4.f,((float)k-1.5f)*2.2f},b=wr+P{-12.f,((float)k-1.5f)*3.1f+7.f};limb(g,wr,a,1.35f,1.2f,.97f);limb(g,a,b,1.1f,.85f,.92f);limb(g,b,b+P{-3,3},.85f,.65f,.88f);}limb(g,wr+P{1,3},wr+P{-4,9},1.4f,1,.93f);
+        const float sway=std::sin(phase*.68f)*activity;
+        const float lift=(.5f+.5f*std::sin(phase*.46f+1.2f))*activity;
+        const P sh{107,95},el{77-9.f*lift,143+sway*5-9.f*lift},wr{47-sway*7-9.f*lift,172-sway*12-37.f*lift};joint(g,sh,5.6f,5.2f);limb(g,sh,el,6.3f,4.8f,.96f,-2);joint(g,el,4.3f,4.2f);limb(g,el+P{1,1},wr,3.4f,2.6f,.92f);limb(g,el+P{5,1},wr+P{4,3},2.4f,2.1f,.79f);joint(g,wr,3.3f,2.9f);for(int k=0;k<4;++k){const P a=wr+P{-4.f,((float)k-1.5f)*2.2f},b=wr+P{-12.f,((float)k-1.5f)*3.1f+7.f};limb(g,wr,a,1.35f,1.2f,.97f);limb(g,a,b,1.1f,.85f,.92f);limb(g,b,b+P{-3,3},.85f,.65f,.88f);}limb(g,wr+P{1,3},wr+P{-4,9},1.4f,1,.93f);
         const P rs{191,89},re{213,139},rw{191,83};joint(g,rs,5.2f,4.8f,.77f);limb(g,rs,re,5.7f,4.5f,.77f,2);joint(g,re,4.4f,4.1f,.75f);limb(g,re,rw,3.8f,2.9f,.88f);limb(g,re+P{4,-1},rw+P{4,1},2.5f,2.1f,.71f);
         {juce::Graphics::ScopedSaveState mic(g);g.addTransform(juce::AffineTransform::rotation(-.48f,191,83));g.setGradientFill(juce::ColourGradient(C(0xffa5aaa4),187,75,C(0xff232a2b),195,75,false));g.fillRoundedRectangle(187,61,8,32,2);g.setColour(Theme::green.withAlpha(.42f+.42f*activity));g.fillRect(187,67,8,2);g.setGradientFill(juce::ColourGradient(C(0xffe0ded1),187,54,C(0xff323c3c),196,65,false));g.fillEllipse(183,49,16,19);Path cap;cap.addEllipse(183,49,16,19);g.reduceClipRegion(cap);g.setColour(dark.withAlpha(.68f));for(int k=0;k<12;++k){g.drawLine(180.f+k*2,49,188.f+k*2,68,.55f);g.drawLine(180.f+k*2,68,188.f+k*2,49,.55f);}}
         for(int k=0;k<4;++k){const P a{187.f+k*.8f,77.f+k*3.1f};limb(g,a,a+P{8,1.7f},1.45f,1.05f,.96f);limb(g,a+P{8,1.7f},a+P{9,4},1.05f,.8f,.82f);}
@@ -61,7 +63,10 @@ public:
     void draw(juce::Graphics& g,float x,float y,float scale,float activity,float phase,float vocal=-1.f)const{
         const float react=juce::jlimit(0.f,1.f,activity),voice=juce::jlimit(0.f,1.f,vocal<0.f?react:vocal);juce::Graphics::ScopedSaveState state(g);g.addTransform(juce::AffineTransform::scale(scale).translated(x,y));
         g.setGradientFill(juce::ColourGradient(dark.withAlpha(.86f),151,365,dark.withAlpha(0.f),151,377,false));g.fillEllipse(85,359,155,15);
-        if(!body.isValid()||cachedTheme!=Theme::current){body=juce::Image(juce::Image::ARGB,690,744,true);cachedTheme=Theme::current;juce::Graphics art(body);art.addTransform(juce::AffineTransform::scale(2.f));bodyArt(art);}g.drawImageTransformed(body,juce::AffineTransform::scale(.5f));arms(g,react,phase);skull(g,voice,-.075f+.035f*std::sin(phase*.73f)*react,react);
+        if(!body.isValid()||cachedTheme!=Theme::current){body=juce::Image(juce::Image::ARGB,690,744,true);cachedTheme=Theme::current;juce::Graphics art(body);art.addTransform(juce::AffineTransform::scale(2.f));bodyArt(art);}// Small coherent body lean pivots at the feet; jaw and hands move with the torso.
+        const float lean=(.012f*std::sin(phase*.41f)+.028f*std::sin(phase*.71f))*react;
+        g.addTransform(juce::AffineTransform::rotation(lean,151.f,365.f));
+        g.drawImageTransformed(body,juce::AffineTransform::scale(.5f));arms(g,react,phase);skull(g,voice,-.075f+.075f*std::sin(phase*.73f)*react,react);
     }
 private: mutable juce::Image body;mutable int cachedTheme=-1;
 };

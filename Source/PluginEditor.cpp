@@ -1513,8 +1513,10 @@ public:
             const int x=deck.getX(),y=deck.getBottom()-206,w=deck.getWidth();
             Theme::panelBox(g,juce::Rectangle<float>((float)x,(float)y,(float)w,206.f),8.f,true);
             Theme::fittedText(g,"SOUND CONTROLS",{x+16,y+8,w-32,20},12.f,Theme::white,true);
+            Theme::fittedText(g,"MACROS     /     MASTER",{x+w-220,y+8,204,20},10.f,Theme::muted,true,juce::Justification::centredRight);
             g.setColour(Theme::stroke.withAlpha(.60f));
             g.drawHorizontalLine(y+34,(float)x+16.f,(float)(x+w-16));
+            g.setColour(Theme::green.withAlpha(.45f));g.fillRect((float)x+16.f,(float)y+33.f,38.f,1.5f);
             const char* labels[]{"TONE","PUNCH","SPACE","GRIT","INPUT","MIX","OUTPUT"};
             for(int k=0;k<7;++k){
                 const int left=x+10+k*(w-20)/7,right=x+10+(k+1)*(w-20)/7;
@@ -1524,6 +1526,7 @@ public:
                     const auto raw=processor.state.getRawParameterValue("macro"+juce::String(k+1));
                     Theme::fittedText(g,juce::String(juce::roundToInt(100.f*raw->load()))+"%",
                         {left,y+160,right-left,24},17.f,active?Theme::green:Theme::muted,true,juce::Justification::centred);
+                    if(!active)Theme::text(g,"UNASSIGNED",{left,y+184,right-left,12},8.5f,Theme::muted,true,juce::Justification::centred);
                 }
             }
             g.setColour(Theme::stroke.withAlpha(.6f));

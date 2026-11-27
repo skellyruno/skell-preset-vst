@@ -227,7 +227,7 @@ public:
     void paint(juce::Graphics& g) override {
         Theme::selectFor(processor.state);
         const float W=(float)getWidth(),H=(float)getHeight();
-        g.setColour(Theme::panel);
+        g.setGradientFill(juce::ColourGradient(Theme::panelAlt,0.f,0.f,Theme::panel,0.f,H,false));
         g.fillRoundedRectangle({0.f,0.f,W,H},9.f);
         g.setColour(Theme::stroke);
         g.drawRoundedRectangle({1.f,1.f,W-2.f,H-2.f},9.f,1.2f);
@@ -279,10 +279,11 @@ public:
             const auto group=category(type);
             const auto colour=group=="Dynamics"?Theme::amber:group=="Space"?Theme::blue:
                 group=="Motion"?Theme::pink:Theme::green;
-            Theme::fittedText(g,group.toUpperCase(),
-                        {getWidth()-130,y+7,100,17},10.6f,
-                        active?Theme::green:colour.withAlpha(.82f),false,
-                        juce::Justification::centredRight);
+            const auto chip=juce::Rectangle<float>(W-124.f,(float)y+7.f,94.f,20.f);
+            g.setColour(colour.withAlpha(active?.18f:.085f));g.fillRoundedRectangle(chip,4.f);
+            g.setColour(colour.withAlpha(.36f));g.drawRoundedRectangle(chip.reduced(.5f),4.f,.8f);
+            Theme::fittedText(g,group.toUpperCase(),{getWidth()-122,y+8,90,18},10.6f,
+                active?Theme::green:colour.withAlpha(.94f),true,juce::Justification::centred);
         }
         const int foot=getHeight()-26;
         if(results.empty())
