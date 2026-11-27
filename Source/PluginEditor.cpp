@@ -13,6 +13,7 @@
 #include "ui/SkellStereoSeparationKnob.h"
 #include "ui/SkellSettingsPanel.h"
 #include "ui/SkellIdleDeck.h"
+#include "ui/SkellMatchPanel.h"
 #include "chain/AlchemistNativePreset.h"
 #include "chain/NativeSoundMatchTrials.h"
 // Select the bundled UI implementation before headers-only dependency snapshots.
@@ -160,6 +161,7 @@ public:
         chain.onDockRequest=[this](bool right){dockRack(right);};
 
         chain.onSelection=[this](int s){
+            if(matchPanel.isVisible())closeMatch();
             if(routing.isVisible()){routing.selectTarget(s);chain.setSelectedSlot(s);return;}
             editingIdle=false;macroOpen=false;
             micPanel.setVisible(false); // effect editor must never sit behind MIC
@@ -181,6 +183,7 @@ public:
         };
         slot.onBackgroundClick=[this] { if(chain.onClearSelection)chain.onClearSelection(); };
         chain.onReplaceRequest=[this](int s){
+            if(matchPanel.isVisible())closeMatch();
             routing.setVisible(false);editingIdle=false;macroOpen=false;rackHidden=false;idle.setVisible(false);
             micPanel.setVisible(false);
             slot.select(s);
@@ -195,15 +198,26 @@ public:
         redo.setTooltip("Redo preset load, native rack removal or routing (Ctrl+Y or Ctrl+Shift+Z)");
         style(undo);style(redo);
         addAndMakeVisible(undo);addAndMakeVisible(redo);
-        undo.onClick=[this]{restoreHistory(undoStates,redoStates);};
-        redo.onClick=[this]{restoreHistory(redoStates,undoStates);};
+        undo.onClick=[this]{if(matchPanel.isVisible())closeMatch();restoreHistory(undoStates,redoStates);};
+        redo.onClick=[this]{if(matchPanel.isVisible())closeMatch();restoreHistory(redoStates,undoStates);};
         updateHistoryButtons();
         preset.setButtonText(p.presetName().toUpperCase()+"  ▼");
         preset.onClick=[this]{
+            if(matchPanel.isVisible())closeMatch();
             micPanel.setVisible(false);
             if(browser.isVisible())browser.setVisible(false);else {slot.setHostedEditorPresentation(false);browser.open();}
         };
         style(preset);addAndMakeVisible(preset);
+        matchButton.setButtonText("MATCH");matchButton.setTooltip("Analyze isolated dry vocals and create an undoable native rack preset");
+        style(matchButton);addAndMakeVisible(matchButton);
+        for(auto* b:std::array<juce::Component*,6>{{&preset,&matchButton,&undo,&redo,&settings,&powerButton}})b->setComponentID("header-control");
+        addChildComponent(matchPanel);
+        matchButton.onClick=[this]{if(matchPanel.isVisible())closeMatch();else beginMatch();};
+        matchPanel.onClose=[this]{closeMatch();};
+        matchPanel.onRetry=[this]{beginMatch();};
+        matchPanel.onListen=[this]{closeMatch();if(chain.onSelection)chain.onSelection(processor.slotIdAt(0));};
+        matchPanel.onUpload=[this]{chooseMatchFile(false);};
+        matchPanel.onReference=[this]{chooseMatchFile(true);};
         micButton.setButtonText("MIC");
         micButton.setTooltip("Open dedicated input microphone modeling panel");
         style(micButton);addAndMakeVisible(micButton);
@@ -222,6 +236,7 @@ public:
         // One workspace; the former mode automation remains for saved sessions.
         style(powerButton);addAndMakeVisible(powerButton);
         powerButton.onClick=[this] {
+            if(matchPanel.isVisible())closeMatch();
             browser.setVisible(false);micPanel.setVisible(false);
             const int current=juce::jlimit(0,3,
                 (int)processor.state.getRawParameterValue("mode")->load());
@@ -479,7 +494,7 @@ public:
         return {Theme::green,Theme::panel,Theme::white,Theme::muted,
                 juce::Colour(0xd9000000)};
     }
-    ~Canvas()override {stopTimer();processor.closeHostedVST3Editors();setLookAndFeel(nullptr);}
+    ~Canvas()override {stopTimer();closeMatch();processor.closeHostedVST3Editors();setLookAndFeel(nullptr);}
     struct BypassShade final:juce::Component {
         void paint(juce::Graphics& g)override {
             g.setColour(Theme::bg.withAlpha(.57f));g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
@@ -498,8 +513,8 @@ public:
         skin=std::make_unique<skellcore::ui::LookAndFeel>(skellcore::ui::Theme{
             Theme::bg,Theme::panel,Theme::green,Theme::white,Theme::muted});
         setLookAndFeel(skin.get());
-        for(juce::TextButton* b:std::array<juce::TextButton*,7>{{
-            &preset,&undo,&redo,&powerButton,&settings,&record,&micButton}})
+        for(juce::TextButton* b:std::array<juce::TextButton*,8>{{
+            &preset,&matchButton,&undo,&redo,&powerButton,&settings,&record,&micButton}})
             style(*b);
         for(auto& s:macro){
             s.setColour(juce::Slider::trackColourId,Theme::green);
@@ -721,8 +736,8 @@ public:
            || std::abs(input.valueFromTextFunction("50%"))>1.e-5
            || std::abs(input.valueFromTextFunction("+6 dB")-6.)>1.e-5)
             issues.add("Master rotary readout or legacy percent input incorrectly maps physical dB");
-        const std::array<const juce::Component*,6> top{{
-            &preset,&stageButton,&undo,&redo,&settings,&powerButton}};
+        const std::array<const juce::Component*,7> top{{
+            &preset,&matchButton,&stageButton,&undo,&redo,&settings,&powerButton}};
         for(size_t i=0;i<top.size();++i)
             for(size_t j=i+1;j<top.size();++j)
                 if(top[i]->getBounds().intersects(top[j]->getBounds()))
@@ -733,12 +748,12 @@ public:
             issues.add("Header meters overlap controls or leave the header");
         if(powerButton.getX()<=settings.getRight() ||
            Theme::width-powerButton.getRight()>22 ||
-           undo.getX()-preset.getRight()!=4 || redo.getX()-undo.getRight()!=4 ||
+           matchButton.getX()-preset.getRight()!=4 || undo.getX()-matchButton.getRight()!=4 || redo.getX()-undo.getRight()!=4 ||
            settings.getX()-redo.getRight()!=4 || powerButton.getX()-settings.getRight()!=4 ||
            stageButton.getRight()>preset.getX())
             issues.add("Owner header order changed");
         if(undo.getWidth()>34 || redo.getWidth()>34 ||
-           undo.getHeight()>32 || redo.getHeight()>32 ||
+           undo.getHeight()!=34 || redo.getHeight()!=34 ||
            undo.getWidth()!=undo.getHeight() || redo.getWidth()!=redo.getHeight() ||
            undo.getTitle()!="Undo" || redo.getTitle()!="Redo")
             issues.add("Undo and Redo icons have become oversized again");
@@ -1072,8 +1087,8 @@ public:
         if(powerButton.getButtonText().isNotEmpty() ||
            stageButton.getRight()>preset.getX() ||
            stageButton.getButtonText()!="STAGE_HOME" ||
-           undo.getX()-preset.getRight()<0 ||
-           undo.getX()-preset.getRight()>12 ||
+           matchButton.getX()-preset.getRight()!=4 ||
+           undo.getX()-matchButton.getRight()!=4 ||
            redo.getX()-undo.getRight()>12 ||
            settings.getX()<=redo.getRight() || settings.getX()-redo.getRight()>16 ||
            powerButton.getX()-settings.getRight()<0 ||
@@ -1496,7 +1511,7 @@ public:
         Theme::fittedText(g,"ONE PLUGIN. EVERY PRESET.",{75,subY,editionX-83,16},
                           11.f,Theme::muted,true,juce::Justification::centredLeft);
         editionLayout.draw(g,{(float)editionX,(float)subY,editionLayout.getWidth(),16.f});
-        Theme::text(g,"PRESET",{623,8,378,15},11.f,Theme::muted,true);
+        Theme::text(g,"PRESET",{623,8,268,15},11.f,Theme::muted,true);
         paintHeaderMeters(g);
         if(focusVisible()){
             const auto deck=workspaceBounds();
@@ -1601,14 +1616,15 @@ public:
                 juce::jlimit(0,Theme::width-w,micPanel.getX()),
                 juce::jlimit(0,Theme::height-h,micPanel.getY()),w,h);
         }
-        preset.setBounds(623,24,378,38);
+        preset.setBounds(623,26,268,34);
+        matchButton.setBounds(895,26,100,34);
         // No dedicated Live Stage button: the wordmark is the return target.
         stageButton.setBounds(73,15,225,52);
-        undo.setBounds(1005,29,28,28);
-        redo.setBounds(1037,29,28,28);
+        undo.setBounds(999,26,34,34);
+        redo.setBounds(1037,26,34,34);
         micButton.setBounds(chain.getX()+174,chain.getY()+6,34,34);
         // Owner correction: power is the rightmost header control.
-        powerButton.setBounds(1109,25,38,38);
+        powerButton.setBounds(1113,26,34,34);
         const bool drawer=drawerVisible();
         const auto deck=workspaceBounds();
         const int y=deck.getBottom()-206;
@@ -1633,7 +1649,7 @@ public:
         micButton.toFront(false);stereoSeparation.toFront(false);
         syncMasterReadouts();
         sizeSelect.setBounds(1094,664,69,22);
-        settings.setBounds(1069,25,36,36);
+        settings.setBounds(1075,26,34,34);
         settingsPanel.setBounds(settings.getRight()-230,78,230,98);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
@@ -1647,6 +1663,8 @@ public:
         if(browser.isVisible())browser.toFront(false);
         if(settingsPanel.isVisible())settingsPanel.toFront(false);
         if(micPanel.isVisible())micPanel.toFront(false);
+        matchPanel.setBounds(workspace.withSizeKeepingCentre(432,278));
+        if(matchPanel.isVisible())matchPanel.toFront(false);
     }
     void refresh(){
         Theme::select(selectedTheme);
@@ -1696,6 +1714,7 @@ public:
             micPanel.anyActive()?Theme::green:Theme::white);
         preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
         powerButton.setBypassed(bypass);
+        matchButton.setEnabled(!bypass);
         // UI state must reflect the current host/program state *now*, not at
         // the next 30Hz timer tick. This also prevents stale module names
         // during screenshot capture and fast A/B preset auditioning.
@@ -1741,6 +1760,7 @@ public:
             (unsigned)(now-lastScopeFrameTimeMs)<400u);
         // Never retain a frozen peak when the host stops calling processBlock.
         updateHeaderMeters(recent);
+        tickMatch();
         const bool armed=processor.isCapturing();
         // Avoid invalidating the capture button 30 times per second when its
         // state has not changed; scope and meters still repaint as needed.
@@ -1879,6 +1899,7 @@ public:
             chain.onClearSelection();
     }
     bool keyPressed(const juce::KeyPress& key)override{
+        if(key==juce::KeyPress::escapeKey && matchPanel.isVisible()){closeMatch();return true;}
         if(key==juce::KeyPress::escapeKey && micPanel.isVisible()) {
             micPanel.setVisible(false);return true;
         }
@@ -1933,6 +1954,83 @@ private:
             return false;
         snapshot.selectedPreset=browser.historySelection();
         return true;
+    }
+    void closeMatch(){
+        processor.cancelLiveMatch();matchListening=false;
+        if(matchFileCancel)matchFileCancel->store(true,std::memory_order_relaxed);
+        matchPanel.setVisible(false);matchButton.setToggleState(false,juce::dontSendNotification);
+    }
+    void beginMatch(){
+        closeMatch();matchDry={};
+        if((int)processor.state.getRawParameterValue("mode")->load()==3)return;
+        browser.setVisible(false);settingsPanel.close();micPanel.setVisible(false);
+        if(chain.onClearSelection)chain.onClearSelection();
+        macroOpen=false;rackHidden=false;refresh();
+        matchPanel.setVisible(true);matchPanel.toFront(true);
+        matchButton.setToggleState(true,juce::dontSendNotification);
+        matchListening=true;matchStarted=juce::Time::getMillisecondCounterHiRes();
+        processor.startLiveMatch();
+        matchPanel.update(SkellMatchPanel::Listening,"Play an isolated vocal. We will build a new rack; you can undo it.",0.f,0.f,false);
+    }
+    void finishMatch(const skellpreset::liveMatch::Profile& profile,bool reference){
+        processor.cancelLiveMatch();matchListening=false;
+        if(!profile.valid()){
+            matchPanel.update(SkellMatchPanel::Problem,"Not enough clean audio. Use at least 6 seconds with 4 seconds of audible vocals; avoid clipping.",0.f,0.f,matchDry.valid());return;
+        }
+        if(!reference)matchDry=profile;
+        if(reference&&!skellpreset::liveMatch::comparable(matchDry,profile)){
+            matchPanel.update(SkellMatchPanel::Problem,"Reference is too similar in tone and dynamics. Choose a clearer, different isolated vocal.",1.f,0.f,matchDry.valid());return;
+        }
+        prepareHistory();
+        if(!pendingHistory){matchPanel.update(SkellMatchPanel::Problem,"Save and remove hosted effects before replacing this rack.",0.f,0.f,matchDry.valid());return;}
+        const auto result=processor.applyLiveMatch(matchDry,reference?&profile:nullptr);
+        if(result.failed()){pendingHistory.reset();matchPanel.update(SkellMatchPanel::Problem,result.getErrorMessage(),0.f,0.f,matchDry.valid());return;}
+        commitHistory();refresh();
+        matchPanel.update(SkellMatchPanel::Done,reference?"Reference-based starting preset applied. Play your vocal to audition.":"Personalized EQ and dynamics are on your rack. Play your vocal to audition.",1.f,0.f,true);
+        matchPanel.toFront(true);
+    }
+    void tickMatch(){
+        if(!matchListening||!matchPanel.isVisible())return;
+        skellpreset::liveMatch::Profile profile;bool done=false;
+        processor.readLiveMatch(profile,done);
+        if(done){finishMatch(profile,false);return;}
+        const auto seconds=(juce::Time::getMillisecondCounterHiRes()-matchStarted)*.001;
+        if(seconds>45.){processor.cancelLiveMatch();matchListening=false;matchPanel.update(SkellMatchPanel::Problem,"No usable vocal input. Play audio in your DAW or choose Dry File.",0.f,0.f,false);return;}
+        const bool more=seconds>6.&&profile.active<4.f;
+        matchPanel.update(more?SkellMatchPanel::More:SkellMatchPanel::Listening,
+            more?"Need more audio — keep the isolated vocal playing.":juce::String(profile.active,1)+" / 4.0 s of audible input. Your rack is unchanged.",
+            std::min(profile.active/4.f,profile.elapsed/6.f),processor.getInputPeak(),false);
+    }
+    void chooseMatchFile(bool reference){
+        if(reference&&!matchDry.valid())return;
+        matchChooser=std::make_unique<juce::FileChooser>(reference?"Choose isolated reference vocal":"Choose dry isolated vocal",juce::File{},"*.wav;*.aif;*.aiff;*.flac");
+        matchChooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
+            [safe=juce::Component::SafePointer<Canvas>(this),reference](const juce::FileChooser& chooser){
+                if(auto* self=safe.getComponent()){auto file=chooser.getResult();if(file.existsAsFile()&&self->matchPanel.isVisible())self->analyzeMatchFile(file,reference);}
+            });
+    }
+    void analyzeMatchFile(juce::File file,bool reference){
+        processor.cancelLiveMatch();matchListening=false;
+        if(matchFileCancel)matchFileCancel->store(true,std::memory_order_relaxed);
+        auto cancel=std::make_shared<std::atomic<bool>>(false);matchFileCancel=cancel;
+        matchPanel.update(SkellMatchPanel::Reading,"Reading up to 20 seconds locally. No audio is uploaded.",0.f,0.f,matchDry.valid());
+        const auto safe=juce::Component::SafePointer<Canvas>(this);
+        const bool launched=juce::Thread::launch([file,reference,cancel,safe]{
+            skellpreset::liveMatch::Profile profile;juce::AudioFormatManager formats;formats.registerBasicFormats();
+            if(file.getSize()>0&&file.getSize()<=128*1024*1024){
+                std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+                if(reader&&reader->numChannels>=1&&reader->numChannels<=2&&reader->sampleRate>=8000.&&reader->sampleRate<=192000.){
+                    skellpreset::liveMatch::Analyzer analyzer;analyzer.prepare(reader->sampleRate);juce::AudioBuffer<float> chunk((int)reader->numChannels,4096);
+                    for(juce::int64 offset=0;offset<reader->lengthInSamples&&!analyzer.finished()&&!cancel->load(std::memory_order_relaxed);){
+                        const int n=(int)std::min<juce::int64>(4096,reader->lengthInSamples-offset);
+                        if(!reader->read(&chunk,0,n,offset,true,reader->numChannels>1)){profile={};break;}
+                        analyzer.push(chunk.getReadPointer(0),reader->numChannels>1?chunk.getReadPointer(1):nullptr,n);profile=analyzer.result();offset+=n;
+                    }
+                }
+            }
+            if(!cancel->load(std::memory_order_relaxed))juce::MessageManager::callAsync([safe,cancel,profile,reference]{if(!cancel->load(std::memory_order_relaxed))if(auto* self=safe.getComponent())if(self->matchPanel.isVisible())self->finishMatch(profile,reference);});
+        });
+        if(!launched)matchPanel.update(SkellMatchPanel::Problem,"Could not start file analysis. Retry or play a vocal.",0.f,0.f,matchDry.valid());
     }
     void updateHistoryButtons() {
         undo.setEnabled(!undoStates.empty());
@@ -1995,7 +2093,13 @@ private:
     int lastRecordingState=-1;
     unsigned lastScopeSampleCount=~0u;
     unsigned lastScopeFrameTimeMs=0u;
-    SkellActionButton preset,undo,redo,record,micButton;
+    SkellActionButton preset,matchButton,undo,redo,record,micButton;
+    SkellMatchPanel matchPanel;
+    std::unique_ptr<juce::FileChooser> matchChooser;
+    std::shared_ptr<std::atomic<bool>> matchFileCancel;
+    skellpreset::liveMatch::Profile matchDry;
+    bool matchListening=false;
+    double matchStarted=0.;
     SkellSettingsButton settings;
     std::unique_ptr<juce::FileChooser> recordChooser;
     juce::File lastCaptureFile;

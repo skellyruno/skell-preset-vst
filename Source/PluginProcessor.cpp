@@ -910,6 +910,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     skellpreset::host::HostedVST3::AudioReadScope hostedBlock(hosted);
     const int visualSlot=slotVisual.beginBlock();
     const bool monoSource=getMainBusNumInputChannels()==1;
+    // Capture the actual main dry input before input trim, MIC, gate or rack.
+    if(getMainBusNumInputChannels()>0)liveMatchCapture.push(buffer.getReadPointer(0),monoSource||buffer.getNumChannels()<2?nullptr:buffer.getReadPointer(1),total,rate);
     const int auxChannels=getBusCount(true)>1?getChannelCountOfBus(true,1):0;
     const int auxOffset=auxChannels>0?getChannelIndexInProcessBlockBuffer(true,1,0):0;
     const bool auxValid=auxChannels>0 && auxOffset>=0 && auxOffset+auxChannels<=buffer.getNumChannels();
@@ -2070,6 +2072,30 @@ juce::Result SkellPresetAudioProcessor::exportPreset(const juce::File& file) con
 juce::Result SkellPresetAudioProcessor::importPreset(const juce::File& file) {
     skellpreset::package::Document doc;
     if(const auto result=skellpreset::package::read(file,doc);result.failed())return result;
+    return applyValidatedPresetDocument(doc);
+}
+juce::Result SkellPresetAudioProcessor::applyLiveMatch(const skellpreset::liveMatch::Profile& dry,const skellpreset::liveMatch::Profile* reference) {
+    using namespace skellpreset::liveMatch;
+    if(!dry.valid())return juce::Result::fail("Need more clean vocal audio.");
+    if(reference&&!comparable(dry,*reference))return juce::Result::fail("Choose a clearer, different isolated reference vocal.");
+    for(int s=0;s<slotCount;++s)if(slotType(s)==ExternalVST3)return juce::Result::fail("Save and remove hosted effects before replacing the rack.");
+    const auto r=fit(dry,reference);
+    skellpreset::package::Document doc;
+    doc.name=reference?"Match / Reference Vocal":"Match / My Vocal";doc.bank="My Presets";
+    doc.mode=(int)state.getRawParameterValue("mode")->load();
+    if(doc.mode==3)return juce::Result::fail("Turn on the rack before applying Match.");
+    doc.micGateOn=true;doc.micGateThreshold=-65.f;doc.micGateDepth=.55f;
+    auto& eq=doc.slots[0];eq.type=StudioEQFX;eq.enabled=true;eq.studioEqOn.fill(false);
+    const auto hz=[](float f){return std::log(f/20.f)/std::log(1000.f);};
+    eq.studioEqOn[0]=eq.studioEqOn[1]=eq.studioEqOn[2]=true;
+    eq.studioEqKind[0]=1;eq.params[0]=hz(75.f);eq.eqQ[0]=.28f;
+    eq.studioEqKind[1]=3;eq.params[2]=hz(250.f);eq.params[3]=.5f+r.low/36.f;
+    eq.studioEqKind[2]=4;eq.params[4]=hz(4500.f);eq.params[5]=.5f+r.high/36.f;
+    auto& comp=doc.slots[1];comp.type=Compressor;comp.enabled=true;
+    comp.params[0]=(r.threshold+48.f)/42.f;comp.params[1]=(r.ratio-1.f)/11.f;
+    comp.params[2]=10.f/98.f;comp.params[3]=100.f/480.f;comp.params[4]=.5f+r.makeup/24.f;
+    if(r.deess){auto& ds=doc.slots[2];ds.type=DeEsser;ds.enabled=true;ds.params[0]=.35f;ds.params[1]=.65f;ds.params[2]=.15f;ds.params[3]=.3f;}
+    doc.outputDb=-3.f; // conservative headroom; no added lookahead or automatic pitch changes
     return applyValidatedPresetDocument(doc);
 }
 juce::Result SkellPresetAudioProcessor::loadVocalStarter(int profile,int variant) {

@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "Theme.h"
+#include "SkellHeaderFace.h"
 #include <algorithm>
 
 // Skell Glitch-inspired recessed circular hardware power switch. Preserve
@@ -22,6 +23,11 @@ public:
     }
     bool isBypassed() const noexcept {return bypassed;}
     void paintButton(juce::Graphics& g,bool over,bool down) override {
+        if(getComponentID()=="header-control"){
+            const auto r=skellpreset::header::face(g,getLocalBounds().toFloat(),isEnabled(),over,down,!bypassed,hasKeyboardFocus(true));
+            const auto c=r.getCentre();juce::Path arc;arc.addCentredArc(c.x,c.y+.5f,7.5f,7.5f,0.f,.70f,juce::MathConstants<float>::twoPi-.70f,true);
+            g.setColour(bypassed?Theme::muted:Theme::green);g.strokePath(arc,juce::PathStrokeType(2.f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));g.drawLine(c.x,c.y-9.f,c.x,c.y+.5f,2.f);return;
+        }
         const auto b=getLocalBounds().toFloat().reduced(2.f);
         const auto centre=b.getCentre();
         const float radius=std::min(b.getWidth(),b.getHeight())*.47f;

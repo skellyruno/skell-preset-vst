@@ -22,6 +22,7 @@
 #include "chain/ImportedVocalFX.h"
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
+#include "chain/LiveVocalMatch.h"
 #include "chain/MicModelDSP.h"
 #include "chain/TubePreampCandidate.h"
 #include "chain/SkelldizerDSP.h"
@@ -84,6 +85,10 @@ public:
     juce::AudioProcessorValueTreeState state;
     void loadFactoryPreset(int index);
     void clearRackToEmpty();
+    void startLiveMatch() noexcept {liveMatchCapture.start();}
+    void cancelLiveMatch() noexcept {liveMatchCapture.cancel();}
+    bool readLiveMatch(skellpreset::liveMatch::Profile& profile,bool& done) const noexcept {return liveMatchCapture.read(profile,done);}
+    juce::Result applyLiveMatch(const skellpreset::liveMatch::Profile& dry,const skellpreset::liveMatch::Profile* reference=nullptr);
     // Original opt-in chain templates, not new host program IDs.
     juce::Result loadVocalStarter(int profile,int variant=0);
     // Message-thread only, validated native .skellpreset ZIP packages.
@@ -340,6 +345,7 @@ private:
     skellpreset::visual::LiveAudioScope liveScope;
     skellpreset::visual::LiveSpectrumCapture liveSpectrumInput,liveSpectrumOutput;
     skellpreset::capture::ClipRecorder capture;
+    skellpreset::liveMatch::Capture liveMatchCapture;
     double rate=48000;
     std::atomic<double> displayedRate{48000.}; // message-thread PDC readout
     int selectedProgram=-2; // -2 empty rack, -1 imported/edited custom chain, >=0 factory

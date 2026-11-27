@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "Theme.h"
+#include "SkellHeaderFace.h"
 
 // One consistent, compact hardware treatment for header and utility buttons.
 // Kept separate from the shared SkellCore look-and-feel so knobs, menus and
@@ -21,6 +22,21 @@ public:
         }
         const bool enabled=isEnabled();
         const auto caption=getButtonText();
+        if(getComponentID()=="header-control"){
+            const auto r=skellpreset::header::face(g,getLocalBounds().toFloat(),enabled,over,down,getToggleState(),hasKeyboardFocus(true));
+            const float cx=r.getCentreX(),cy=r.getCentreY();
+            g.setColour(enabled?(getToggleState()?Theme::green:Theme::white):Theme::muted.withAlpha(.45f));
+            if(caption.length()==1&&(caption[0]==0x21B6||caption[0]==0x21B7)){
+                const float d=caption[0]==0x21B7?-1.f:1.f;
+                juce::Path path;path.startNewSubPath(cx-d,cy-6);path.lineTo(cx-5*d,cy-2);path.lineTo(cx-d,cy+2);
+                path.startNewSubPath(cx-5*d,cy-2);path.lineTo(cx+2*d,cy-2);path.cubicTo(cx+8*d,cy-2,cx+8*d,cy+6,cx+1*d,cy+6);path.lineTo(cx-d,cy+6);
+                g.strokePath(path,juce::PathStrokeType(1.6f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+            }else{
+                if(caption=="MATCH"){const float x=r.getX()+15.f;juce::Path wave;wave.startNewSubPath(x-6,cy);wave.lineTo(x-3,cy);wave.lineTo(x-1,cy-5);wave.lineTo(x+2,cy+5);wave.lineTo(x+4,cy);wave.lineTo(x+7,cy);g.setColour(Theme::green.withAlpha(enabled?1.f:.4f));g.strokePath(wave,juce::PathStrokeType(1.5f));g.setColour(enabled?Theme::white:Theme::muted);}
+                g.setFont(Theme::font(12.4f,true));g.drawFittedText(caption,getLocalBounds().reduced(7,3).withTrimmedLeft(caption=="MATCH"?18:0),juce::Justification::centred,1,.80f);
+            }
+            return;
+        }
         if(caption.length()==1 && (caption[0]==0x21B6 || caption[0]==0x21B7)) {
             // Owner reference: recessed circular, neutral utility buttons.
             // Draw before the generic rectangular button face.

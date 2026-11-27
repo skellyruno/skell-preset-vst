@@ -259,3 +259,7 @@ add_test(NAME SkellPresetDetectorHistoryTest COMMAND SkellPresetDetectorHistoryT
 add_executable(SkellPresetPhaseRotationTest test_phase_rotation.cpp)
 target_compile_features(SkellPresetPhaseRotationTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetPhaseRotationTest COMMAND SkellPresetPhaseRotationTest)
+
+add_executable(SkellPresetLiveVocalMatchTest test_live_vocal_match.cpp)
+target_compile_features(SkellPresetLiveVocalMatchTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetLiveVocalMatchTest COMMAND SkellPresetLiveVocalMatchTest)
