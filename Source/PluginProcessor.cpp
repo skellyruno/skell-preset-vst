@@ -499,7 +499,6 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     for(auto& scope:slotOutputScope)scope.reset();
     hostWork.setSize(2,hostChunkCapacity,false,true);
     dryWork.setSize(2,hostChunkCapacity,false,true);
-    bypassWork.setSize(2,hostChunkCapacity,false,true);
     for(auto& e:engines) {
         e.prepare(rate);
         e.voiceDuck.prepare(rate);
@@ -528,7 +527,6 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     limiterLookahead.store(lookahead,std::memory_order_release);
     const int pdcCapacity=slotCount*(lookahead+skellpreset::dsp::SpectralPitchFormant::latencySamples)+skellpreset::host::HostedVST3::maxTotalLatency;
     dryPdc.prepare(pdcCapacity);
-    bypassPdc.prepare(pdcCapacity);
     parallelPdc.prepare(pdcCapacity);
     preMicHistory.prepare(pdcCapacity,hostChunkCapacity);
     postMicHistory.prepare(pdcCapacity,hostChunkCapacity);
@@ -1156,7 +1154,6 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
         rawDetectorWork.setSize(2,frames,false,false,true);
         parallelWork.setSize(2,frames,false,false,true);parallelWork.clear();
         dryWork.setSize(2,frames,false,false,true);
-        bypassWork.setSize(2,frames,false,false,true);
         auto* inL=buffer.getWritePointer(0)+offset;
         auto* inR=channels==2?buffer.getWritePointer(1)+offset:nullptr;
         for(int n=0;n<frames;++n) {
@@ -1184,11 +1181,11 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             }
             // Gate -> Mic Mod -> Mic Preamp -> post-MIC detector / rack.
             micTube.process(frontL,frontR);
-            const auto original=bypassPdc.process(l,r,blockLatency);
             // Real pre-rack input spectrum; no fabricated energy curves.
             liveSpectrumInput.push(frontL,frontR);
-            // Global Mix blends the latency-aligned original input against
-            // the full input-gain/mic/rack path; output gain follows the blend.
+            // Global Mix and power bypass share the same latency-aligned
+            // original input; both formerly used identical independent delay
+            // lines, fed the same samples and delay on every callback.
             const auto dry=dryPdc.process(l,r,blockLatency);
             rackWork.setSample(0,n,frontL);rackWork.setSample(1,n,frontR);
             sidechainWork.setSample(0,n,frontL);
@@ -1198,8 +1195,6 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             // Read before writing outputs: mono main + stereo output can alias auxiliary channel 0.
             externalKeyHistory.push(keyL?keyL[offset+n]:0.f,keyR?keyR[offset+n]:0.f);
             dryWork.setSample(0,n,dry[0]);dryWork.setSample(1,n,dry[1]);
-            bypassWork.setSample(0,n,original[0]);
-            bypassWork.setSample(1,n,original[1]);
         }
         // The rack is processed one block per stage. Hosted VST3 effects
         // receive proper blocks instead of one-sample callbacks.
@@ -1601,10 +1596,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             const float finalR=(delta?mixedR-dryR:mixedR)*outGain;
             // Exact endpoints avoid channel-dependent cancellation/rounding
             // when the wet signal has already collapsed to true mono.
-            const float outputL=blend>=1.f?finalL:blend<=0.f?bypassWork.getSample(0,n):
-                bypassWork.getSample(0,n)+(finalL-bypassWork.getSample(0,n))*blend;
-            const float outputR=blend>=1.f?finalR:blend<=0.f?bypassWork.getSample(1,n):
-                bypassWork.getSample(1,n)+(finalR-bypassWork.getSample(1,n))*blend;
+            const float outputL=blend>=1.f?finalL:blend<=0.f?dryL:
+                dryL+(finalL-dryL)*blend;
+            const float outputR=blend>=1.f?finalR:blend<=0.f?dryR:
+                dryR+(finalR-dryR)*blend;
             inL[n]=std::isfinite(outputL)?outputL:0.f;
             if(inR)inR[n]=std::isfinite(outputR)?outputR:0.f;
             liveSpectrumOutput.push(inL[n],inR?inR[n]:inL[n]);

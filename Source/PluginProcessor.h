@@ -249,7 +249,7 @@ private:
     skellpreset::host::HostedVST3 hosted;
     // Destroy floating native editors before their hosted processors.
     std::array<std::unique_ptr<juce::DialogWindow>,slotCount> hostedEditorWindows;
-    juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork,sidechainWork,rawDetectorWork,parallelWork;
+    juce::AudioBuffer<float> rackWork,hostWork,dryWork,sidechainWork,rawDetectorWork,parallelWork;
     int hostChunkCapacity=512;
     struct Controls {
         int type=0;bool on=false;float wet=1;float eqLowCut=0,eqHighCut=0;
@@ -337,7 +337,7 @@ private:
     std::atomic<bool> suppressProgramIdentityUpdates{false};
     juce::StringArray programIdentityListenerIds;
     juce::String name="Empty Rack";
-    skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc,parallelPdc;
+    skellpreset::dsp::StereoSampleDelay dryPdc,parallelPdc;
     skellpreset::dsp::DetectorHistory preMicHistory,postMicHistory,externalKeyHistory;
     // Native Stereo Enhancer separation matrix on the final output stage.
     // Owned here (not per slot) so it applies after the whole vocal chain,
