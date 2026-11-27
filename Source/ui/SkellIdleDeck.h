@@ -252,7 +252,6 @@ public:
         const float lightEnergy=lightingEnergy(audioFresh,activity,vocalActivity);
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
-        const auto shadow=Theme::bg;
         auto bandEnergy=[&](int first,int last){float sum=0.f;for(int i=first;i<last;++i)sum+=stageBands[(size_t)i];return sum/(last-first);};
         const std::array<float,3> rigEnergy{{live?bandEnergy(0,12):0.f,live?bandEnergy(12,24):0.f,live?bandEnergy(24,36):0.f}};
         const float crowdEnergy=juce::jlimit(0.f,1.f,.52f*activity+.30f*rigEnergy[1]+.18f*rigEnergy[2]);
