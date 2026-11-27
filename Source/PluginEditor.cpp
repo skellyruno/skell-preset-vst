@@ -1557,7 +1557,8 @@ public:
         const auto rack=chain.getBounds();
         const int outsideBorder=rackOnRight?(rackHidden?workspace.getRight():rack.getRight()):
             (rackHidden?workspace.getX():rack.getX());
-        rackOuterEdge.setBounds(juce::jlimit(0,Theme::width-16,outsideBorder-8),
+        const int outsideStart=outsideBorder-(rackHidden?8:(rackOnRight?4:12));
+        rackOuterEdge.setBounds(juce::jlimit(0,Theme::width-16,outsideStart),
             rack.getY(),16,rack.getHeight());
         rackInnerEdge.setBounds(rackOnRight?rack.getX()-12:rack.getRight()-4,
             rack.getY(),16,rack.getHeight());
@@ -1830,6 +1831,8 @@ public:
             for(int y:{rack.getY()+70,rack.getCentreY(),rack.getBottom()-30}){
                 ok &= getComponentAt(right?rack.getX():rack.getRight()-1,y)==&rackInnerEdge;
                 ok &= getComponentAt(right?rack.getRight()-1:rack.getX(),y)==&rackOuterEdge;
+                // Right-edge rack scroll rail remains usable with either dock.
+                ok &= getComponentAt(rack.getX()+210,y)==&chain;
             }
             ok &= rackInnerEdge.testHoverPaint()&&rackOuterEdge.testHoverPaint();
             ok &= rackInnerEdge.releaseGesture(0,0)&&rackHidden&&!chain.isVisible();
