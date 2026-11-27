@@ -162,7 +162,7 @@ public:
         // Keep enough room for the smallest supported figure before the pit
         // takes its share, so tiny frames still produce a valid layout.
         const float pitMax=juce::jmax(0.f,available-372.f*.30f);
-        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f && h>=440.f?.25f:w>=580.f?.22f:.24f)));
+        const float pitHeight=juce::jmin(pitMax,juce::jlimit(28.f,162.f,stageBottom*(w>=580.f && h>=440.f?.18f:w>=580.f?.19f:.21f)));
         const float feet=stageBottom-pitHeight;
         out.scale=juce::jlimit(.30f,1.35f,juce::jmin(
             // Let the performer read as the headliner, using the space recovered
@@ -255,7 +255,7 @@ public:
             }
         }
         // Restrained moving key light leaves the static environment cached.
-        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.135f+.10f*activity),
+        g.setGradientFill(juce::ColourGradient(Theme::white.withAlpha(.19f+.12f*activity),
             centreX-65.f,feetY-240.f*stage.scale,Theme::bg.withAlpha(0.f),centreX+150.f,feetY-70.f,true));
         g.fillEllipse(centreX-175.f*stage.scale,feetY-365.f*stage.scale,350.f*stage.scale,365.f*stage.scale);
         // Volumetric stage beams from the rig above the performer. These are
@@ -278,7 +278,7 @@ public:
                 wedge.closeSubPath();
                 const auto tint=(beam==1?accent:Theme::blue);
                 g.setGradientFill(juce::ColourGradient(
-                    tint.withAlpha(.115f+.18f*rigEnergy[(size_t)beam]),rigX,rigY,
+                    tint.withAlpha(.15f+.18f*rigEnergy[(size_t)beam]),rigX,rigY,
                     tint.withAlpha(0.f),targetX,targetY,false));
                 g.fillPath(wedge);
                 juce::Path core;
@@ -322,18 +322,18 @@ public:
         // Soft spotlight pool on the boards beneath the performer. It is the
         // brightest floor element and gives the figure real stage presence.
         {
-            const float poolW=168.f*stage.scale,poolH=(.34f+.10f*activity)*poolW;
+            const float poolW=195.f*stage.scale,poolH=(.28f+.10f*activity)*poolW;
             for(int ring=3;ring>=1;--ring) {
                 const float f=(float)ring/3.f;
                 g.setGradientFill(juce::ColourGradient(
-                    Theme::blue.interpolatedWith(accent,.3f).withAlpha(.050f*activity+.027f),centreX,feetY,
+                    Theme::blue.interpolatedWith(accent,.3f).withAlpha(.075f*activity+.048f),centreX,feetY,
                     Theme::bg.withAlpha(0.f),centreX+poolW*f*.55f,feetY,true));
                 g.fillEllipse(centreX-poolW*f,feetY-poolH*f*.42f,
                               poolW*2.f*f,poolH*2.f*f);
             }
             // Mirrored figure glint, kept subtle and tied to measured peak.
             g.setGradientFill(juce::ColourGradient(
-                Theme::white.withAlpha(.065f+.075f*activity),centreX,feetY,
+                Theme::white.withAlpha(.09f+.075f*activity),centreX,feetY,
                 Theme::bg.withAlpha(0.f),centreX,feetY+26.f*stage.scale,false));
             g.fillEllipse(centreX-26.f*stage.scale,feetY-2.f*stage.scale,
                           52.f*stage.scale,30.f*stage.scale);

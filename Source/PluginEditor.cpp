@@ -77,8 +77,7 @@ public:
         const float cy=hover&&!verticalDrag?juce::jlimit(h*.5f,area.getHeight()-h*.5f,(float)pointer.y):area.getCentreY();
         auto r=juce::Rectangle<float>(cx-w*.5f,cy-h*.5f,w,h).reduced(1.f);
         const bool active=hover||pressed||hasKeyboardFocus(false);
-        g.setColour(Theme::panelAlt.withAlpha(active?.98f:.87f));g.fillRoundedRectangle(r,4.f);
-        g.setColour(Theme::green.withAlpha(active?.80f:.38f));g.drawRoundedRectangle(r,4.f,.8f);
+        // Bare chevrons: no enclosure or background.
         const auto c=r.getCentre();juce::Path arrow;
         if(direction==Left||direction==Right){
             const float d=direction==Right?1.f:-1.f;
@@ -87,8 +86,10 @@ public:
             const float d=direction==Down?1.f:-1.f;
             arrow.startNewSubPath(c.x-4.f,c.y-d*2.4f);arrow.lineTo(c.x,c.y+d*2.4f);arrow.lineTo(c.x+4.f,c.y-d*2.4f);
         }
-        g.setColour(active?Theme::green:Theme::white.withAlpha(.80f));
-        g.strokePath(arrow,juce::PathStrokeType(1.6f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        g.setColour(Theme::bg.withAlpha(active?.84f:.52f));
+        g.strokePath(arrow,juce::PathStrokeType(3.7f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        g.setColour(active?Theme::green:Theme::white.withAlpha(.32f));
+        g.strokePath(arrow,juce::PathStrokeType(active?1.9f:1.4f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
     }
 private:
     juce::Point<int> pointer;
@@ -574,7 +575,7 @@ public:
         return slot.updateLiveVisualForScreenshot();
     }
     void configureEdgesForScreenshot(bool right,bool hide,bool controls,bool sidechain){
-        dockRack(right);edgePreview=true;
+        dockRack(right);edgePreview=false;
         if(hide!=rackHidden)toggleRackVisibility();
         if(controls!=macroOpen)toggleDrawerEdge();
         if(sidechain!=routing.isVisible())toggleRoutingEdge();
@@ -1514,15 +1515,15 @@ public:
         rackOuterEdge.setBounds(rackOnRight?1155:0,workspace.getY(),13,workspace.getHeight());
         rackInnerEdge.setBounds(rackOnRight?923:231,workspace.getY(),12,workspace.getHeight());
         rackOuterEdge.configure(rackHidden?(rackOnRight?WorkspaceEdge::Left:WorkspaceEdge::Right):
-            (rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left),rackHidden,rackHidden?"Show effect rack":"Hide effect rack");
+            (rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left),false,rackHidden?"Show effect rack":"Hide effect rack");
         rackInnerEdge.configure(rackOnRight?WorkspaceEdge::Right:WorkspaceEdge::Left,false,"Hide effect rack");
         rackInnerEdge.setVisible(!rackHidden);
         visualLeftEdge.setBounds(workspace.getX()+2,visuals.getY()+36,15,juce::jmax(44,visuals.getHeight()-52));
         visualRightEdge.setBounds(workspace.getRight()-17,visuals.getY()+36,15,juce::jmax(44,visuals.getHeight()-52));
-        visualLeftEdge.configure(routing.isVisible()?WorkspaceEdge::Left:WorkspaceEdge::Right,routing.isVisible(),"Click or drag: sidechain");
-        visualRightEdge.configure(routing.isVisible()?WorkspaceEdge::Right:WorkspaceEdge::Left,routing.isVisible(),"Click or drag: sidechain");
+        visualLeftEdge.configure(routing.isVisible()?WorkspaceEdge::Left:WorkspaceEdge::Right,focusVisible(),"Click or drag: sidechain");
+        visualRightEdge.configure(routing.isVisible()?WorkspaceEdge::Right:WorkspaceEdge::Left,focusVisible(),"Click or drag: sidechain");
         drawerEdge.setBounds(workspace.getX()+18,drawerVisible()?visuals.getBottom()-6:workspace.getBottom()-13,workspace.getWidth()-36,14);
-        drawerEdge.configure(drawerVisible()?WorkspaceEdge::Down:WorkspaceEdge::Up,drawerVisible(),"Click or drag vertically: sound controls");
+        drawerEdge.configure(drawerVisible()?WorkspaceEdge::Down:WorkspaceEdge::Up,focusVisible(),"Click or drag vertically: sound controls");
         drawerEdge.setVisible(!routing.isVisible()&&(editingIdle||nativeVisualAvailable()));
         for(auto* edge:{&rackOuterEdge,&rackInnerEdge,&visualLeftEdge,&visualRightEdge,&drawerEdge})edge->setPreview(edgePreview);
         moonButton.setBounds(idle.moonBounds().translated(idle.getX(),idle.getY()));
