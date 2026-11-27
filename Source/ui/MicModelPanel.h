@@ -267,8 +267,8 @@ public:
         input.onClick=[this] {
             const bool opening=!sourceMenu.isVisible();
             if(opening){
-                const auto* p=processor.state.getRawParameterValue("micPreInput");
-                sourceMenu.setSelected(p?juce::jlimit(0,3,(int)p->load()):0);
+                const auto* source=processor.state.getRawParameterValue("micPreInput");
+                sourceMenu.setSelected(source?juce::jlimit(0,3,(int)source->load()):0);
             }
             sourceMenu.setVisible(opening);
             if(opening) {

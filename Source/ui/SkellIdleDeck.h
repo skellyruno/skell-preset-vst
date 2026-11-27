@@ -108,6 +108,12 @@ public:
         next=std::isfinite(next)?juce::jlimit(0.f,1.f,next):0.f;
         return previous+(next-previous)*(next>previous?.68f:.22f);
     }
+    static float lightingEnergy(bool fresh,float output,float input) noexcept {
+        if(!fresh)return 0.f;
+        output=std::isfinite(output)?juce::jlimit(0.f,1.f,output):0.f;
+        input=std::isfinite(input)?juce::jlimit(0.f,1.f,input):0.f;
+        return std::sqrt(juce::jmax(output,input*.72f));
+    }
     bool hasFreshAudio() const noexcept {return audioFresh;}
     bool hasAudibleOutput() const noexcept {
         return audioFresh && activityLevel>.0005f;
@@ -143,6 +149,12 @@ public:
     }
     static bool testTelemetryScaleForTest() noexcept {
         return testMeterEnvelopeForTest() &&
+            lightingEnergy(false,1.f,1.f)==0.f &&
+            lightingEnergy(true,0.f,0.f)==0.f &&
+            lightingEnergy(true,.04f,0.f)>.19f &&
+            lightingEnergy(true,0.f,.25f)>.4f &&
+            lightingEnergy(true,1.f,1.f)==1.f &&
+            lightingEnergy(true,std::numeric_limits<float>::quiet_NaN(),-1.f)==0.f &&
             followActivity(0.f,1.f)>.6f &&
             followActivity(1.f,0.f)>.7f &&
             followActivity(0.f,std::numeric_limits<float>::quiet_NaN())==0.f &&
@@ -236,7 +248,7 @@ public:
         Theme::workspaceFrame(g,getLocalBounds().toFloat());
         const bool live=hasAudibleOutput();
         const float activity=live?activityLevel:0.f;
-        const float lightEnergy=audioFresh?std::sqrt(juce::jlimit(0.f,1.f,juce::jmax(activity,vocalActivity*.72f))):0.f;
+        const float lightEnergy=lightingEnergy(audioFresh,activity,vocalActivity);
         const auto accent=Theme::green;
         const auto porcelain=Theme::white;
         const auto shadow=Theme::bg;
