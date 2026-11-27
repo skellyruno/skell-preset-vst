@@ -3023,7 +3023,10 @@ int phaseStateSmoke(){
  auto p=std::make_unique<SkellPresetAudioProcessor>();
  juce::MemoryBlock original;p->getStateInformation(original);auto xml=juce::AudioProcessor::getXmlFromBinary(original.getData(),(int)original.getSize());if(!xml)return 1;
  auto old=juce::ValueTree::fromXml(*xml);int removed=0;for(int i=old.getNumChildren()-1;i>=0;--i)if(old.getChild(i).getProperty("id").toString().endsWith("_fxExt12")){old.removeChild(i,nullptr);++removed;}if(removed!=16)return 2;
- const auto& parameters=p->getParameters();if(parameters.size()<16)return 3;for(int i=0;i<16;++i){auto* id=dynamic_cast<juce::AudioProcessorParameterWithID*>(parameters[parameters.size()-16+i]);if(!id||id->paramID!="s"+juce::String(i+1)+"_fxExt12")return 4;}
+ const auto& parameters=p->getParameters();int first=-1;for(int i=0;i<parameters.size();++i){auto* id=dynamic_cast<juce::AudioProcessorParameterWithID*>(parameters[i]);if(id&&id->paramID=="s1_fxExt12"){first=i;break;}}
+ if(first<0||first+16>=parameters.size())return 3;
+ for(int i=0;i<16;++i){auto* id=dynamic_cast<juce::AudioProcessorParameterWithID*>(parameters[first+i]);if(!id||id->paramID!="s"+juce::String(i+1)+"_fxExt12")return 4;}
+ auto* next=dynamic_cast<juce::AudioProcessorParameterWithID*>(parameters[first+16]);if(!next||next->paramID!="s1_studioEqDynamic1")return 4;
  p->setSlotType(0,SkellPresetAudioProcessor::PhaseRotationFX);p->setSlotParam(0,0,.5f);p->setSlotParam(0,1,.4f);p->setSlotParam(0,2,1.f);p->setSlotParam(0,3,.5f);if(p->slotType(0)!=45)return 5;
  p->prepareToPlay(48000,128);if(p->getLatencySamples()!=0)return 6;
  juce::MemoryBlock phase;p->getStateInformation(phase);auto q=std::make_unique<SkellPresetAudioProcessor>();q->setStateInformation(phase.getData(),(int)phase.getSize());if(q->slotType(0)!=45)return 7;

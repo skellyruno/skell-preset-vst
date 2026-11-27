@@ -181,6 +181,9 @@ public:
     float getSlotDuckReductionDb(int slot) const noexcept {
         return slotDuckReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
     }
+    float getSlotEqReductionDb(int slot,int band) const noexcept {
+        return slot>=0&&slot<slotCount&&band>=0&&band<8?slotEqReductionDb[(size_t)slot][(size_t)band].load(std::memory_order_relaxed):0.f;
+    }
     float getSlotGainReductionDb(int slot) const noexcept {
         return slotGainReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
     }
@@ -262,6 +265,10 @@ private:
         std::array<int,8> studioEqKinds{{3,0,0,0,0,0,4,0}};
         std::array<bool,8> studioEqEnabled{{true,true,true,true,true,true,true,false}};
         std::array<float,8> studioEqDynamic{};
+    std::array<float,8> studioEqThreshold{{-24.f,-24.f,-24.f,-24.f,-24.f,-24.f,-24.f,-24.f}};
+    std::array<float,8> studioEqAttack{{12.f,12.f,12.f,12.f,12.f,12.f,12.f,12.f}};
+    std::array<float,8> studioEqRelease{{110.f,110.f,110.f,110.f,110.f,110.f,110.f,110.f}};
+    std::array<float,8> studioEqSlope{{0.f,0.f,0.f,0.f,0.f,0.f,0.f,0.f}};
     };
     std::array<Controls,slotCount> controlCache;
     std::atomic<std::uint64_t> packedOrder{0};
@@ -290,7 +297,7 @@ private:
         std::array<std::atomic<float>*,16> p{};
         std::array<std::atomic<float>*,8> q{};
         std::array<std::atomic<float>*,8> studioEqKind{};
-        std::array<std::atomic<float>*,8> studioEqOn{},studioEqDynamic{};
+        std::array<std::atomic<float>*,8> studioEqOn{},studioEqDynamic{},studioEqThreshold{},studioEqAttack{},studioEqRelease{},studioEqSlope{};
     };
     struct RawMic {
         std::atomic<float>* on=nullptr;
@@ -326,6 +333,7 @@ private:
     std::array<std::atomic<float>,slotCount> slotPeaks;
     std::array<std::atomic<float>,slotCount> slotGainReductionDb,slotDuckReductionDb;
     std::array<std::atomic<float>,slotCount> slotDeessReductionDb;
+    std::array<std::array<std::atomic<float>,8>,slotCount> slotEqReductionDb{};
     std::array<std::array<std::atomic<float>,5>,slotCount> suiteReturnRms;
     std::atomic<float> inputPeak{0},outputPeak{0};
     skellpreset::visual::LiveAudioScope liveScope;

@@ -29,6 +29,10 @@ struct Slot {
     std::array<int,8> studioEqKind {{3,0,0,0,0,0,4,0}};
     std::array<bool,8> studioEqOn {{true,true,true,true,true,true,true,false}};
     std::array<float,8> studioEqDynamic{};
+    std::array<float,8> studioEqThreshold{{-24.f,-24.f,-24.f,-24.f,-24.f,-24.f,-24.f,-24.f}};
+    std::array<float,8> studioEqAttack{{12.f,12.f,12.f,12.f,12.f,12.f,12.f,12.f}};
+    std::array<float,8> studioEqRelease{{110.f,110.f,110.f,110.f,110.f,110.f,110.f,110.f}};
+    std::array<float,8> studioEqSlope{{0.f,0.f,0.f,0.f,0.f,0.f,0.f,0.f}};
     // Optional v2 fields; absent in old presets, so both filters are flat.
     float eqLowCut=0.f,eqHighCut=0.f;
     // Native v2 optional extension, default OFF on original archives.

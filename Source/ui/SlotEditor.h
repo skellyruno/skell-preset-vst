@@ -291,6 +291,8 @@ private:
     void syncEmbeddedEditor();
     void layoutEmbeddedEditor();
     juce::Slider eqQSlider;
+    std::array<juce::Slider,5> eqDetails;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,5> eqDetailAttachments;
     std::array<juce::Slider,2> eqCutSliders;
     std::array<juce::TextButton,8> eqBandButtons;
     std::array<juce::TextButton,3> matchPageButtons;
@@ -335,7 +337,7 @@ private:
     bool lastHostedLoaded=false;
     std::array<float,6> lastControls{};
     std::array<float,16> lastExtendedControls{};
-    std::array<float,50> lastEqControls{}; // includes eight new filter types/enables
+    std::array<float,90> lastEqControls{}; // includes eight new filter types/enables
     bool updateMicCard(juce::Point<float> point);
     bool updateSkelldizerCard(juce::Point<float> point);
     void updateGraphNode(juce::Point<float>);

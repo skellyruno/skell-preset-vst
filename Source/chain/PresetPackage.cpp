@@ -73,6 +73,10 @@ juce::Result validate(const Document& d) {
             if(slot.studioEqKind[(size_t)k]<0 || slot.studioEqKind[(size_t)k]>4)
                 return juce::Result::fail("Invalid Studio EQ filter type");
         for(float depth:slot.studioEqDynamic)if(!finiteRange(depth,0.f,1.f))return juce::Result::fail("Invalid EQ dynamic depth");
+        for(float v:slot.studioEqThreshold)if(!finiteRange(v,-80.f,0.f))return juce::Result::fail("Invalid EQ Threshold");
+        for(float v:slot.studioEqAttack)if(!finiteRange(v,0.5f,200.f))return juce::Result::fail("Invalid EQ Attack");
+        for(float v:slot.studioEqRelease)if(!finiteRange(v,5.f,2000.f))return juce::Result::fail("Invalid EQ Release");
+        for(float v:slot.studioEqSlope)if(!finiteRange(v,0.f,2.f)||v!=std::round(v))return juce::Result::fail("Invalid EQ Slope");
         if(slot.duckSource<0 || slot.duckSource>2)return juce::Result::fail("Invalid duck source");
         if(!finiteRange(slot.duckDepth,0.f,1.f) ||
            !finiteRange(slot.duckThreshold,-60.f,-12.f) ||
@@ -140,6 +144,10 @@ juce::var toJson(const Document& d) {
         item->setProperty("studioEqOn",juce::var(enabled));
         juce::Array<juce::var> dynamics;for(float depth:slot.studioEqDynamic)dynamics.add(depth);
         item->setProperty("studioEqDynamic",juce::var(dynamics));
+        {juce::Array<juce::var> v;for(float x:slot.studioEqThreshold)v.add(x);item->setProperty("studioEqThreshold",juce::var(v));}
+        {juce::Array<juce::var> v;for(float x:slot.studioEqAttack)v.add(x);item->setProperty("studioEqAttack",juce::var(v));}
+        {juce::Array<juce::var> v;for(float x:slot.studioEqRelease)v.add(x);item->setProperty("studioEqRelease",juce::var(v));}
+        {juce::Array<juce::var> v;for(float x:slot.studioEqSlope)v.add(x);item->setProperty("studioEqSlope",juce::var(v));}
         item->setProperty("eqLowCut",slot.eqLowCut);
         item->setProperty("eqHighCut",slot.eqHighCut);
         item->setProperty("duckOn",slot.duckOn);
@@ -326,6 +334,26 @@ juce::Result fromJson(const juce::var& root, Document& out) {
             const auto values=item.getProperty("studioEqDynamic",{});
             if(!values.isArray()||values.getArray()->size()!=8)return juce::Result::fail("Invalid EQ dynamic array");
             for(int k=0;k<8;++k)if(!decodeFloat((*values.getArray())[k],0.f,1.f,slot.studioEqDynamic[(size_t)k]))return juce::Result::fail("Invalid EQ dynamic depth");
+        }
+        if(hasJsonProperty(item,"studioEqThreshold")){
+            const auto values=item.getProperty("studioEqThreshold",{});
+            if(!values.isArray()||values.getArray()->size()!=8)return juce::Result::fail("Invalid EQ Threshold array");
+            for(int k=0;k<8;++k)if(!decodeFloat((*values.getArray())[k],-80.f,0.f,slot.studioEqThreshold[(size_t)k]))return juce::Result::fail("Invalid EQ Threshold");
+        }
+        if(hasJsonProperty(item,"studioEqAttack")){
+            const auto values=item.getProperty("studioEqAttack",{});
+            if(!values.isArray()||values.getArray()->size()!=8)return juce::Result::fail("Invalid EQ Attack array");
+            for(int k=0;k<8;++k)if(!decodeFloat((*values.getArray())[k],0.5f,200.f,slot.studioEqAttack[(size_t)k]))return juce::Result::fail("Invalid EQ Attack");
+        }
+        if(hasJsonProperty(item,"studioEqRelease")){
+            const auto values=item.getProperty("studioEqRelease",{});
+            if(!values.isArray()||values.getArray()->size()!=8)return juce::Result::fail("Invalid EQ Release array");
+            for(int k=0;k<8;++k)if(!decodeFloat((*values.getArray())[k],5.f,2000.f,slot.studioEqRelease[(size_t)k]))return juce::Result::fail("Invalid EQ Release");
+        }
+        if(hasJsonProperty(item,"studioEqSlope")){
+            const auto values=item.getProperty("studioEqSlope",{});
+            if(!values.isArray()||values.getArray()->size()!=8)return juce::Result::fail("Invalid EQ Slope array");
+            for(int k=0;k<8;++k)if(!decodeFloat((*values.getArray())[k],0.f,2.f,slot.studioEqSlope[(size_t)k])||slot.studioEqSlope[(size_t)k]!=std::round(slot.studioEqSlope[(size_t)k]))return juce::Result::fail("Invalid EQ Slope");
         }
         // If absent, old presets remain dry/FX identical. Bad values are
         // rejected before ANY live destination parameters are changed.

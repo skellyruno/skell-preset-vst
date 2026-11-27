@@ -274,6 +274,8 @@ SlotEditor::SlotEditor(SkellPresetAudioProcessor& p):
     eqQSlider.setTooltip("Select an EQ node to edit its independent bandwidth (Q 0.4–8)");
     addAndMakeVisible(eqQSlider);
     eqQSlider.setVisible(false);
+    const char* details[]{"Dynamic depth","Threshold (dBFS)","Attack (ms)","Release (ms)","Cut slope"};
+    for(size_t i=0;i<eqDetails.size();++i){auto& s=eqDetails[i];s.setSliderStyle(juce::Slider::LinearHorizontal);s.setTextBoxStyle(juce::Slider::TextBoxRight,false,54,19);s.setTooltip(details[i]);addAndMakeVisible(s);s.setVisible(false);}
     for(int index=0;index<8;++index) {
         auto& button=eqBandButtons[(size_t)index];
         button.setButtonText(juce::String(index+1));
@@ -1202,6 +1204,16 @@ void SlotEditor::showEqBank(int firstBand) {
     eqQAttachment.reset();
     eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.state,prefix+"eqQ"+juce::String(activeEqBand+1),eqQSlider);
+    for(auto& a:eqDetailAttachments)a.reset();
+    if(module==SkellPresetAudioProcessor::StudioEQFX){
+        const char* fields[]{"Dynamic","Threshold","Attack","Release","Slope"};
+        for(size_t i=0;i<eqDetails.size();++i)eqDetailAttachments[i]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.state,prefix+"studioEq"+fields[i]+juce::String(activeEqBand+1),eqDetails[i]);
+        eqDetails[0].textFromValueFunction=[](double v){return juce::String(v*12.,1)+" dB";};
+        eqDetails[0].valueFromTextFunction=[](const juce::String& v){return v.getDoubleValue()/12.;};
+        eqDetails[4].textFromValueFunction=[](double v){return juce::String(12*(1+juce::roundToInt(v)))+" dB";};
+        eqDetails[4].valueFromTextFunction=[](const juce::String& v){return juce::jlimit(0.,2.,v.getDoubleValue()/12.-1.);};
+        for(auto& s:eqDetails)s.updateText();
+    }
     applyKnobReadouts();
     for(int i=0;i<8;++i) {
         const bool active=i==activeEqBand;
@@ -1553,6 +1565,7 @@ void SlotEditor::select(int newSlot) {
     duckPanel.setVisible(false);livePanel.setVisible(false);liveView.setButtonText("VISUAL");
     graphSnapshotValid=false;
     eqQAttachment.reset();
+    for(auto& a:eqDetailAttachments)a.reset();
     duckSourceAttachment.reset();parallelReturnAttachment.reset();duckExternalAttachment.reset();
     gateFloorAttachment.reset();
     duckOnAttachment.reset();
@@ -1722,6 +1735,10 @@ void SlotEditor::refreshIfChanged() {
             const float depth=dyn?dyn->load():0.f;
             changed=changed||std::abs(depth-lastEqControls[(size_t)(42+k)])>1.e-5f;
             lastEqControls[(size_t)(42+k)]=depth;
+            const char* fields[]{"Threshold","Attack","Release","Slope"};
+            for(int j=0;j<4;++j){const auto* p=processor.state.getRawParameterValue(prefix+"studioEq"+fields[j]+juce::String(k+1));const float v=p?p->load():0.f;const auto ix=(size_t)(50+j*8+k);changed=changed||std::abs(v-lastEqControls[ix])>1.e-5f;lastEqControls[ix]=v;}
+            const float gr=std::round(processor.getSlotEqReductionDb(slot,k)*10.f)*.1f;
+            changed=changed||std::abs(gr-lastEqControls[(size_t)(82+k)])>.05f;lastEqControls[(size_t)(82+k)]=gr;
         }
     }
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
@@ -1772,6 +1789,7 @@ void SlotEditor::refreshIfChanged() {
         modOrbView=false;
         modOrbButton.setButtonText("BONES");
         eqQAttachment.reset();
+        for(auto& a:eqDetailAttachments)a.reset();
         for(auto& attachment:eqCutAttachments)attachment.reset();
         if(isPagedEQ(type)) {
             eqQAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -1836,6 +1854,8 @@ void SlotEditor::refreshIfChanged() {
     duckOpen.setVisible(hasSidechain);
     if(!SkellPresetAudioProcessor::supportsEffectSidechain(type))duckPanel.setVisible(false);
     eqQSlider.setVisible(isPagedEQ(type));
+    const bool studioEq=type==SkellPresetAudioProcessor::StudioEQFX;
+    for(size_t i=0;i<eqDetails.size();++i)eqDetails[i].setVisible(studioEq && (i==4?(studioEqBandType(activeEqBand)==1||studioEqBandType(activeEqBand)==2):studioEqBandType(activeEqBand)==0));
     for(auto& control:eqCutSliders)control.setVisible(type==SkellPresetAudioProcessor::EightBandToneFX);
     for(int index=0;index<8;++index)
         eqBandButtons[(size_t)index].setVisible(isPagedEQ(type) &&
@@ -1875,6 +1895,8 @@ void SlotEditor::resized() {
         effectCategories[i].setBounds(48+col*274,184+row*106,262,98);
     }
     eqQSlider.setBounds(672,114,186,26);
+    for(int i=0;i<4;++i)eqDetails[(size_t)i].setBounds(79+i*132,124,87,25);
+    eqDetails[4].setBounds(85,124,175,25);
     eqCutSliders[0].setBounds(68,125,270,23);
     eqCutSliders[1].setBounds(425,125,215,23);
     for(int k=0;k<8;++k)eqBandButtons[(size_t)k].setBounds(219+k*49,96,40,26);
@@ -2793,7 +2815,8 @@ void SlotEditor::paint(juce::Graphics&g) {
                 kinds[(size_t)i]=studioEqBandType(i);
                 enabled[(size_t)i]=studioEqBandEnabled(i);
             }
-            eq.set(p,q,kinds,enabled);
+            std::array<float,8> slopes{};for(int band=0;band<8;++band){const auto* v=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_studioEqSlope"+juce::String(band+1));slopes[(size_t)band]=v?v->load():0.f;}
+            eq.set(p,q,kinds,enabled,slopes);
             const std::array<juce::Colour,8> colours{{juce::Colour(0xffe77b91),juce::Colour(0xffe7ac6a),juce::Colour(0xffe5d66c),juce::Colour(0xff92d789),juce::Colour(0xff60c6ce),juce::Colour(0xff739fec),juce::Colour(0xffab8ce5),juce::Colour(0xffe78bc6)}};
             for(int band=0;band<8;++band){
                 if(!enabled[(size_t)band])continue;
@@ -2840,7 +2863,8 @@ void SlotEditor::paint(juce::Graphics&g) {
                     {juce::roundToInt(xx)-9,juce::roundToInt(yy)-9,18,18},
                     9.f,bandColour,true,juce::Justification::centred);
                 const auto* dyn=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_studioEqDynamic"+juce::String(band+1));
-                if(shape==0 && dyn && dyn->load()>.001f){g.setColour(bandColour);g.drawEllipse(xx-size*.78f,yy-size*.78f,size*1.56f,size*1.56f,1.2f);}
+                if(shape==0 && dyn && dyn->load()>.001f){g.setColour(bandColour);g.drawEllipse(xx-size*.78f,yy-size*.78f,size*1.56f,size*1.56f,1.2f);
+                    const float gr=processor.getSlotEqReductionDb(slot,band);if(gr>.05f){const float bottom=juce::jmin(plot.getBottom(),yy+gr*plot.getHeight()/72.f);g.drawLine(xx,yy,xx,bottom,2.f);g.fillEllipse(xx-3.f,bottom-3.f,6.f,6.f);}}
                 if(shape==1||shape==2)
                     Theme::text(g,shape==1?"HP":"LP",
                         {(int)(xx-15),(int)(yy-21),30,14},9,
@@ -3800,9 +3824,11 @@ void SlotEditor::paint(juce::Graphics&g) {
                     (type==SkellPresetAudioProcessor::StudioEQFX?" WIDTH":" Q"),
                     {680,96,172,17},10.5f,Theme::green,true);
         if(type==SkellPresetAudioProcessor::StudioEQFX){
-            const auto* dynamic=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_studioEqDynamic"+juce::String(activeEqBand+1));
-            const float depth=dynamic?dynamic->load():0.f;
-            if(studioEqBandType(activeEqBand)==0)Theme::fittedText(g,depth>.001f?"DYN  /  MAX -"+juce::String(depth*12.f,1)+" dB":"DYN OFF  /  ALT-CLICK NODE",{35,124,290,18},10.5f,depth>.001f?Theme::blue:Theme::muted,true);
+            if(studioEqBandType(activeEqBand)==0){
+                const char* labels[]{"DEPTH","THR","ATK","REL"};
+                for(int i=0;i<4;++i)Theme::fittedText(g,labels[i],{35+i*132,125,42,22},10.f,Theme::muted,true);
+                Theme::fittedText(g,"GR "+juce::String(processor.getSlotEqReductionDb(slot,activeEqBand),1)+" dB",{568,125,98,22},10.f,Theme::blue,true);
+            }else if(studioEqBandType(activeEqBand)==1||studioEqBandType(activeEqBand)==2)Theme::text(g,"SLOPE",{35,125,48,22},10.5f,Theme::muted,true);
         }
         if(type==SkellPresetAudioProcessor::EightBandToneFX) {
             Theme::text(g,"LOW CUT",{20,127,55,16},10.5f,Theme::amber,true);

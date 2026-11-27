@@ -80,6 +80,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
         slotGainReductionDb[(size_t)i].store(0);
         slotDuckReductionDb[(size_t)i].store(0);
         slotDeessReductionDb[(size_t)i].store(0);
+        for(auto& meter:slotEqReductionDb[(size_t)i])meter.store(0.f,std::memory_order_relaxed);
         for(auto& value:suiteReturnRms[(size_t)i])value.store(0);
         auto& r=rawSlots[(size_t)i];const auto prefix=slotPrefix(i);
         r.type=state.getRawParameterValue(prefix+"type");
@@ -118,6 +119,10 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
             r.studioEqKind[(size_t)k]=state.getRawParameterValue(prefix+"studioEqKind"+juce::String(k+1));
             r.studioEqOn[(size_t)k]=state.getRawParameterValue(prefix+"studioEqOn"+juce::String(k+1));
             r.studioEqDynamic[(size_t)k]=state.getRawParameterValue(prefix+"studioEqDynamic"+juce::String(k+1));
+            r.studioEqThreshold[(size_t)k]=state.getRawParameterValue(prefix+"studioEqThreshold"+juce::String(k+1));
+            r.studioEqAttack[(size_t)k]=state.getRawParameterValue(prefix+"studioEqAttack"+juce::String(k+1));
+            r.studioEqRelease[(size_t)k]=state.getRawParameterValue(prefix+"studioEqRelease"+juce::String(k+1));
+            r.studioEqSlope[(size_t)k]=state.getRawParameterValue(prefix+"studioEqSlope"+juce::String(k+1));
         }
     }
     packedOrder.store(initialOrder);
@@ -399,6 +404,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
             juce::StringArray{"None","Phase Rotation"},0));
     for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band)
         fl("s"+juce::String(slot)+"_studioEqDynamic"+juce::String(band),"Slot "+juce::String(slot)+" EQ band "+juce::String(band)+" dynamic depth",0.f,1.f,0.f);
+    for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band){
+        const auto id="s"+juce::String(slot)+"_studioEq",suffix=juce::String(band);
+        fl(id+"Threshold"+suffix,"Slot "+juce::String(slot)+" EQ band "+suffix+" threshold",-80.f,0.f,-24.f);
+        fl(id+"Attack"+suffix,"Slot "+juce::String(slot)+" EQ band "+suffix+" attack",0.5f,200.f,12.f);
+        fl(id+"Release"+suffix,"Slot "+juce::String(slot)+" EQ band "+suffix+" release",5.f,2000.f,110.f);
+        fl(id+"Slope"+suffix,"Slot "+juce::String(slot)+" EQ band "+suffix+" slope",0.f,2.f,0.f,1.f);
+    }
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -509,6 +521,7 @@ void SkellPresetAudioProcessor::prepareToPlay(double sampleRate,int samplesPerBl
     for(auto& meter:slotGainReductionDb)meter.store(0.f,std::memory_order_relaxed);
     for(auto& meter:slotDuckReductionDb)meter.store(0.f,std::memory_order_relaxed);
     for(auto& meter:slotDeessReductionDb)meter.store(0.f,std::memory_order_relaxed);
+    for(auto& row:slotEqReductionDb)for(auto& meter:row)meter.store(0.f,std::memory_order_relaxed);
     for(auto& channel:suiteReturnRms)
         for(auto& meter:channel)meter.store(0.f,std::memory_order_relaxed);
     micFrontEnd.prepare(rate);
@@ -746,6 +759,10 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
                 setSlotParam(slot,k*2,frequencies[k]);
                 setReal(id+"studioEqOn"+juce::String(k+1),k<7?1.f:0.f);
                 setReal(id+"studioEqDynamic"+juce::String(k+1),0.f);
+                setReal(id+"studioEqThreshold"+juce::String(k+1),-24.f);
+                setReal(id+"studioEqAttack"+juce::String(k+1),12.f);
+                setReal(id+"studioEqRelease"+juce::String(k+1),110.f);
+                setReal(id+"studioEqSlope"+juce::String(k+1),0.f);
                 setReal(id+"studioEqKind"+juce::String(k+1),
                         (float)(k==0?3:(k==6?4:0)));
             }
@@ -969,6 +986,10 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 (int)raw.studioEqKind[(size_t)k]->load());
             c.studioEqEnabled[(size_t)k]=raw.studioEqOn[(size_t)k]->load()>.5f;
             c.studioEqDynamic[(size_t)k]=raw.studioEqDynamic[(size_t)k]->load();
+            c.studioEqThreshold[(size_t)k]=raw.studioEqThreshold[(size_t)k]->load();
+            c.studioEqAttack[(size_t)k]=raw.studioEqAttack[(size_t)k]->load();
+            c.studioEqRelease[(size_t)k]=raw.studioEqRelease[(size_t)k]->load();
+            c.studioEqSlope[(size_t)k]=raw.studioEqSlope[(size_t)k]->load();
         }
         auto& e=engines[(size_t)s];
         if(previousType!=c.type) {
@@ -1052,8 +1073,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
                 e.phaseRotation.set(c.p[0],c.p[1],c.p[2],c.p[3]);
                 break;
             case StudioEQFX:
-                e.studioEq.set(c.p,c.q,c.studioEqKinds,c.studioEqEnabled);
-                e.studioEq.setDynamics(c.studioEqDynamic);
+                e.studioEq.set(c.p,c.q,c.studioEqKinds,c.studioEqEnabled,c.studioEqSlope);
+                e.studioEq.setDynamics(c.studioEqDynamic,c.studioEqThreshold,c.studioEqAttack,c.studioEqRelease);
                 break;
             case StudioCompressorFX:
                 e.studioComp.set(c.p[0],c.p[1],c.p[2],c.p[3],c.p[4]);
@@ -1628,6 +1649,9 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
     for(int s=0;s<slotCount;++s) {
         slotPeaks[(size_t)s].store(meter[(size_t)s],std::memory_order_relaxed);
         slotDuckReductionDb[(size_t)s].store(std::max(0.f,-gainToDb(duckMinimum[(size_t)s])),std::memory_order_relaxed);
+        const auto& eq=controlCache[(size_t)s];
+        const bool showEq=eq.type==StudioEQFX&&eq.on&&eq.wet>0.f;
+        for(int band=0;band<8;++band)slotEqReductionDb[(size_t)s][(size_t)band].store(showEq?engines[(size_t)s].studioEq.reductionDb((size_t)band):0.f,std::memory_order_relaxed);
         const bool suite=controlCache[(size_t)s].type==VocalFeelSuiteFX;
         const auto& dsp=engines[(size_t)s].vocalSuite;
         const float measured=std::max(grMeter[(size_t)s],-gainToDb(minimumGain[(size_t)s]));
@@ -1687,6 +1711,10 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
                     (float)(band==1?3:(band==7?4:0)));
             setReal(slotPrefix(s)+"studioEqOn"+juce::String(band),band<=7?1.f:0.f);
             setReal(slotPrefix(s)+"studioEqDynamic"+juce::String(band),0.f);
+                setReal(slotPrefix(s)+"studioEqThreshold"+juce::String(band),-24.f);
+                setReal(slotPrefix(s)+"studioEqAttack"+juce::String(band),12.f);
+                setReal(slotPrefix(s)+"studioEqRelease"+juce::String(band),110.f);
+                setReal(slotPrefix(s)+"studioEqSlope"+juce::String(band),0.f);
         }
         setReal(slotPrefix(s)+"eqLowCut",0.f);
         setReal(slotPrefix(s)+"eqHighCut",0.f);
@@ -1877,6 +1905,10 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
                         (float)(band==1?3:(band==7?4:0)));
                 setReal(prefix+"studioEqOn"+suffix,band<=7?1.f:0.f);
                 setReal(prefix+"studioEqDynamic"+suffix,0.f);
+                setReal(prefix+"studioEqThreshold"+suffix,-24.f);
+                setReal(prefix+"studioEqAttack"+suffix,12.f);
+                setReal(prefix+"studioEqRelease"+suffix,110.f);
+                setReal(prefix+"studioEqSlope"+suffix,0.f);
             }
             setReal(prefix+"eqLowCut",0.f);
             setReal(prefix+"eqHighCut",0.f);
@@ -2009,6 +2041,10 @@ juce::Result SkellPresetAudioProcessor::makePresetDocument(
             dst.studioEqKind[(size_t)band]=juce::jlimit(0,4,(int)value(prefix+"studioEqKind"+n));
             dst.studioEqOn[(size_t)band]=value(prefix+"studioEqOn"+n)>.5f;
             dst.studioEqDynamic[(size_t)band]=value(prefix+"studioEqDynamic"+n);
+            dst.studioEqThreshold[(size_t)band]=value(prefix+"studioEqThreshold"+n);
+            dst.studioEqAttack[(size_t)band]=value(prefix+"studioEqAttack"+n);
+            dst.studioEqRelease[(size_t)band]=value(prefix+"studioEqRelease"+n);
+            dst.studioEqSlope[(size_t)band]=value(prefix+"studioEqSlope"+n);
         }
         dst.eqLowCut=value(prefix+"eqLowCut");
         dst.eqHighCut=value(prefix+"eqHighCut");
@@ -2062,6 +2098,10 @@ juce::Result SkellPresetAudioProcessor::applyValidatedPresetDocument(
             setReal(prefix+"studioEqKind"+n,(float)slot.studioEqKind[(size_t)band]);
             setReal(prefix+"studioEqOn"+n,slot.studioEqOn[(size_t)band]?1.f:0.f);
             setReal(prefix+"studioEqDynamic"+n,slot.studioEqDynamic[(size_t)band]);
+            setReal(prefix+"studioEqThreshold"+n,slot.studioEqThreshold[(size_t)band]);
+            setReal(prefix+"studioEqAttack"+n,slot.studioEqAttack[(size_t)band]);
+            setReal(prefix+"studioEqRelease"+n,slot.studioEqRelease[(size_t)band]);
+            setReal(prefix+"studioEqSlope"+n,slot.studioEqSlope[(size_t)band]);
         }
         setReal(prefix+"eqLowCut",slot.eqLowCut);
         setReal(prefix+"eqHighCut",slot.eqHighCut);
@@ -2361,10 +2401,12 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
                 }
             }
         // Projects predating dynamic EQ must always recall the original static sound.
-        for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band){
-            const auto id="s"+juce::String(slot)+"_studioEqDynamic"+juce::String(band);
-            bool present=false;for(int i=0;i<loaded.getNumChildren();++i)present=present||loaded.getChild(i).getProperty("id").toString()==id;
-            if(!present){juce::ValueTree node(juce::Identifier("PARAM"));node.setProperty("id",id,nullptr);node.setProperty("value",0.f,nullptr);loaded.appendChild(node,nullptr);}
+        juce::StringArray existingEqIds;for(int i=0;i<loaded.getNumChildren();++i)existingEqIds.add(loaded.getChild(i).getProperty("id").toString());
+        const char* eqFields[]{"Dynamic","Threshold","Attack","Release","Slope"};
+        const float defaults[]{0.f,-24.f,12.f,110.f,0.f};
+        for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band)for(int field=0;field<5;++field){
+            const auto id="s"+juce::String(slot)+"_studioEq"+eqFields[field]+juce::String(band);
+            if(!existingEqIds.contains(id)){juce::ValueTree node(juce::Identifier("PARAM"));node.setProperty("id",id,nullptr);node.setProperty("value",defaults[field],nullptr);loaded.appendChild(node,nullptr);}
         }
         // Repair untrusted host XML before JUCE copies it into APVTS atomics.
         sanitizeParameterStateValues(loaded, state);
@@ -2425,6 +2467,10 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
             add(prefix+"studioEqKind"+suffix);
             add(prefix+"studioEqOn"+suffix);
             add(prefix+"studioEqDynamic"+suffix);
+            add(prefix+"studioEqThreshold"+suffix);
+            add(prefix+"studioEqAttack"+suffix);
+            add(prefix+"studioEqRelease"+suffix);
+            add(prefix+"studioEqSlope"+suffix);
         }
     }
 }
