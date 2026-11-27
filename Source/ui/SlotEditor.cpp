@@ -1145,7 +1145,9 @@ void SlotEditor::applyTheme() {
 }
 int SlotEditor::studioEqBandType(int band)const{
     if(band<0||band>=8)return 0;
-    const auto id="s"+juce::String(slot+1)+"_studioEqKind"+juce::String(band+1);
+    const auto prefix="s"+juce::String(slot+1)+"_studioEq",suffix=juce::String(band+1);
+    if(const auto* ex=processor.state.getRawParameterValue(prefix+"ExtraShape"+suffix)){const int value=juce::jlimit(0,2,juce::roundToInt(ex->load()));if(value>0)return 4+value;}
+    const auto id=prefix+"Kind"+suffix;
     if(const auto* p=processor.state.getRawParameterValue(id))
         return juce::jlimit(0,4,(int)p->load());
     return band==0?3:(band==6?4:0);
@@ -1158,9 +1160,10 @@ bool SlotEditor::studioEqBandEnabled(int band)const{
 }
 void SlotEditor::setStudioEqBandType(int band,int type){
     if(band<0||band>=8)return;
-    const auto id="s"+juce::String(slot+1)+"_studioEqKind"+juce::String(band+1);
-    if(auto* p=processor.state.getParameter(id))
-        p->setValueNotifyingHost(p->convertTo0to1((float)juce::jlimit(0,4,type)));
+    const auto prefix="s"+juce::String(slot+1)+"_studioEq",suffix=juce::String(band+1);
+    auto set=[&](const juce::String& id,float v){if(auto* p=processor.state.getParameter(id)){p->beginChangeGesture();p->setValueNotifyingHost(p->convertTo0to1(v));p->endChangeGesture();}};
+    if(type<=4)set(prefix+"Kind"+suffix,(float)juce::jlimit(0,4,type));
+    set(prefix+"ExtraShape"+suffix,(float)juce::jlimit(0,2,type-4));
     graphSnapshotValid=false;refreshIfChanged();
 }
 void SlotEditor::setStudioEqBandEnabled(int band,bool enabled){
@@ -1739,6 +1742,7 @@ void SlotEditor::refreshIfChanged() {
             for(int j=0;j<4;++j){const auto* p=processor.state.getRawParameterValue(prefix+"studioEq"+fields[j]+juce::String(k+1));const float v=p?p->load():0.f;const auto ix=(size_t)(50+j*8+k);changed=changed||std::abs(v-lastEqControls[ix])>1.e-5f;lastEqControls[ix]=v;}
             const float gr=std::round(processor.getSlotEqReductionDb(slot,k)*10.f)*.1f;
             changed=changed||std::abs(gr-lastEqControls[(size_t)(82+k)])>.05f;lastEqControls[(size_t)(82+k)]=gr;
+            const float extra=(float)studioEqBandType(k);changed=changed||extra!=lastEqControls[(size_t)(90+k)];lastEqControls[(size_t)(90+k)]=extra;
         }
     }
     if(type==SkellPresetAudioProcessor::AlchemistMatchFinishFX) {
@@ -1929,7 +1933,7 @@ void SlotEditor::resized() {
     loadExternal.setBounds(542,33,164,32);
     installedBrowser.setBounds(85,62,735,385);
     addEqNode.setBounds(74,96,127,26);
-    eqNodeMenu.setBounds(610,156,205,241);
+    eqNodeMenu.setBounds(610,156,205,301);
     // Leave the top-right synchronized power dot fully uncovered.
     editExternal.setBounds(714,33,121,32);
     layoutEmbeddedEditor();
@@ -2845,7 +2849,7 @@ void SlotEditor::paint(juce::Graphics&g) {
                 if(!enabled[(size_t)band])continue;
                 const float hz=eqVisualFrequency(processor,slot,band,type);
                 const int shape=kinds[(size_t)band];
-                const float db=(shape==1||shape==2)?0.f:
+                const float db=(shape==1||shape==2||shape>=5)?0.f:
                     (processor.getSlotParam(slot,band*2+1)-.5f)*36.f;
                 const float xx=(float)plot.getX()+
                     (float)(plot.getWidth()*std::log(hz/20.f)/std::log(1000.f));
@@ -2865,8 +2869,8 @@ void SlotEditor::paint(juce::Graphics&g) {
                 const auto* dyn=processor.state.getRawParameterValue("s"+juce::String(slot+1)+"_studioEqDynamic"+juce::String(band+1));
                 if(shape==0 && dyn && dyn->load()>.001f){g.setColour(bandColour);g.drawEllipse(xx-size*.78f,yy-size*.78f,size*1.56f,size*1.56f,1.2f);
                     const float gr=processor.getSlotEqReductionDb(slot,band);if(gr>.05f){const float bottom=juce::jmin(plot.getBottom(),yy+gr*plot.getHeight()/72.f);g.drawLine(xx,yy,xx,bottom,2.f);g.fillEllipse(xx-3.f,bottom-3.f,6.f,6.f);}}
-                if(shape==1||shape==2)
-                    Theme::text(g,shape==1?"HP":"LP",
+                if(shape==1||shape==2||shape>=5)
+                    Theme::text(g,shape==1?"HP":shape==2?"LP":shape==5?"NOTCH":"BP",
                         {(int)(xx-15),(int)(yy-21),30,14},9,
                         Theme::amber,true,juce::Justification::centred);
             }
@@ -3976,7 +3980,7 @@ void SlotEditor::updateGraphNode(juce::Point<float> point) {
         processor.setSlotParam(slot,activeEqBand*2,x);
         const int shape=type==SkellPresetAudioProcessor::StudioEQFX?
             studioEqBandType(activeEqBand):0;
-        if(shape!=1 && shape!=2)processor.setSlotParam(slot,activeEqBand*2+1,gain);
+        if(shape!=1 && shape!=2 && shape<5)processor.setSlotParam(slot,activeEqBand*2+1,gain);
     } else if(type==SkellPresetAudioProcessor::VocalFeelSuiteFX) {
         if(gestureSuiteParameter>=10 && gestureSuiteParameter<=14)
             processor.setSlotParam(slot,gestureSuiteParameter,
@@ -4079,7 +4083,7 @@ bool SlotEditor::addStudioEqNodeAt(juce::Point<float> point){
                                           SkellPresetAudioProcessor::StudioEQFX);
         const float px=33.f+835.f*std::log(hz/20.f)/std::log(1000.f);
         const int shape=studioEqBandType(band);
-        const float db=(shape==1||shape==2)?0.f:
+        const float db=(shape==1||shape==2||shape>=5)?0.f:
             (processor.getSlotParam(slot,band*2+1)-.5f)*36.f;
         const float py=254.f-db*(206.f/72.f);
         if(std::hypot(point.x-px,point.y-py)<19.f) {
@@ -4275,7 +4279,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
             const float hz=eqVisualFrequency(processor,slot,band,type);
             const float bx=33.f+835.f*std::log(hz/20.f)/std::log(1000.f);
             const int shape=studioEqBandType(band);
-            const float db=(shape==1||shape==2)?0.f:
+            const float db=(shape==1||shape==2||shape>=5)?0.f:
                 (processor.getSlotParam(slot,band*2+1)-.5f)*36.f;
             const float by=254.f-db*206.f/72.f;
             const float d=std::hypot(bx-(float)e.x,by-(float)e.y);
@@ -4285,7 +4289,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
         contextEqBand=activeEqBand=best;
         showEqBank(best);
         eqNodeMenu.setTopLeftPosition(juce::jlimit(12,688,e.x-60),
-                                      juce::jlimit(150,286,e.y-18));
+                                      juce::jlimit(150,246,e.y-18));
         if(e.mods.isAltDown() && studioEqBandType(best)==0){
             const auto id="s"+juce::String(slot+1)+"_studioEqDynamic"+juce::String(best+1);
             if(auto* param=processor.state.getParameter(id)){param->beginChangeGesture();param->setValueNotifyingHost(param->getValue()>.001f?0.f:.5f);param->endChangeGesture();}
@@ -4321,7 +4325,7 @@ void SlotEditor::mouseDown(const juce::MouseEvent& e){
             const float freq=eqVisualFrequency(processor,slot,b,type);
             const float bx=33.f+835.f*std::log(freq/20.f)/std::log(1000.f);
             const int shape=type==SkellPresetAudioProcessor::StudioEQFX?studioEqBandType(b):0;
-            const float db=(shape==1||shape==2)?0.f:
+            const float db=(shape==1||shape==2||shape>=5)?0.f:
                 (processor.getSlotParam(slot,b*2+1)-.5f)*
                     (type==SkellPresetAudioProcessor::StudioEQFX?36.f:30.f);
             const float by=254.f-db*206.f/72.f;
@@ -4609,10 +4613,12 @@ bool SlotEditor::testStudioEqAddAndFilterTypes() {
     const bool hp=studioEqBandType(7)==1;
     eqNodeMenu.open(1);eqNodeMenu.chooseTypeForTest(2);
     const bool lp=studioEqBandType(7)==2;
-    eqNodeMenu.open(2);eqNodeMenu.removeForTest();
+    eqNodeMenu.open(2);eqNodeMenu.chooseTypeForTest(5);const bool notch=studioEqBandType(7)==5;
+    eqNodeMenu.open(5);eqNodeMenu.chooseTypeForTest(6);const bool pass=studioEqBandType(7)==6;
+    eqNodeMenu.open(6);eqNodeMenu.removeForTest();
     const bool removed=!studioEqBandEnabled(7) && !eqBandButtons[7].isVisible()
                     && addEqNode.isEnabled();
-    return seven && eighth && editable && hp && lp && removed;
+    return seven && eighth && editable && hp && lp && notch && pass && removed;
 }
 bool SlotEditor::testStudioEqSeventhBand() {
     const int physical=slot;

@@ -39,6 +39,8 @@ int main(){
         auto kinds=ParametricEQ::defaultKinds;auto enabled=ParametricEQ::defaultEnabled;enabled.fill(false);enabled[1]=true;kinds[1]=1;
         eq.set(p,q,kinds,enabled,slopes);const double first=eq.magnitudeDb(200.);
         slopes[1]=2.f;eq.set(p,q,kinds,enabled,slopes);SKELL_REQUIRE(eq.magnitudeDb(200.)<first-35.);
+        kinds[1]=5;eq.set(p,q,kinds,enabled,slopes);SKELL_REQUIRE(eq.magnitudeDb(2000.)<-70.);SKELL_REQUIRE(std::abs(eq.magnitudeDb(100.))<.1);
+        kinds[1]=6;eq.set(p,q,kinds,enabled,slopes);SKELL_REQUIRE(std::abs(eq.magnitudeDb(2000.))<.01);SKELL_REQUIRE(eq.magnitudeDb(100.)<-15.);
         for(int i=0;i<10000;++i){const auto y=eq.process(.2f*std::sin(i*.03f),.1f);SKELL_REQUIRE(std::isfinite(y[0])&&std::isfinite(y[1]));}
     }
     FastDist dist;dist.prepare(48000.);

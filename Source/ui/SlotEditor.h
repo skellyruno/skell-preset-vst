@@ -337,7 +337,7 @@ private:
     bool lastHostedLoaded=false;
     std::array<float,6> lastControls{};
     std::array<float,16> lastExtendedControls{};
-    std::array<float,90> lastEqControls{}; // includes eight new filter types/enables
+    std::array<float,98> lastEqControls{}; // includes eight new filter types/enables
     bool updateMicCard(juce::Point<float> point);
     bool updateSkelldizerCard(juce::Point<float> point);
     void updateGraphNode(juce::Point<float>);

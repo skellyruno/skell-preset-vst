@@ -33,6 +33,7 @@ struct Slot {
     std::array<float,8> studioEqAttack{{12.f,12.f,12.f,12.f,12.f,12.f,12.f,12.f}};
     std::array<float,8> studioEqRelease{{110.f,110.f,110.f,110.f,110.f,110.f,110.f,110.f}};
     std::array<float,8> studioEqSlope{{0.f,0.f,0.f,0.f,0.f,0.f,0.f,0.f}};
+    std::array<float,8> studioEqExtraShape{};
     // Optional v2 fields; absent in old presets, so both filters are flat.
     float eqLowCut=0.f,eqHighCut=0.f;
     // Native v2 optional extension, default OFF on original archives.

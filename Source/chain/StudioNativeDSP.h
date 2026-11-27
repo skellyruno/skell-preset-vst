@@ -72,7 +72,7 @@ public:
             const double freq=std::clamp(20.*std::pow(1000.,(double)detail::unit(p[(size_t)k*2])),20.,sr*.46);
             const double gain=36.*((double)detail::unit(p[(size_t)k*2+1])-.5);
             const double width=(double)detail::unit(widths[(size_t)k]);
-            const int style=std::clamp(kinds[(size_t)k],0,4); // peak,HP,LP,low shelf,high shelf
+            const int style=std::clamp(kinds[(size_t)k],0,6); // peak,HP,LP,low shelf,high shelf,notch,bandpass
             const int kind=style==0?6:(style==3?5:7);
             const double angle=2.*skellpreset::dsp::pi/sr;
             const double w=std::min(freq*angle,kind==6?2.1991147994995117:3.138451099395752);
@@ -89,6 +89,10 @@ public:
                 const double q=.35*std::pow(12.,width);
                 if(style==1)c.setHighPass(sr,freq,q);
                 else c.setLowPass(sr,freq,q);
+            }else if(style==5||style==6){
+                const double q=.35*std::pow(12.,width),alpha=sn/(2.*q),n=1./(1.+alpha);
+                c.a1=-2.*cs*n;c.a2=(1.-alpha)*n;
+                if(style==5){c.b0=n;c.b1=c.a1;c.b2=n;}else{c.b0=alpha*n;c.b1=0.;c.b2=-c.b0;}
             }else if(std::abs(gain)>1.e-7){
                 constexpr double dbUnit=.1151292546497022842; // ln(10)/20
                 if(kind==6){
@@ -178,12 +182,15 @@ public:
     }
     // Separate, immutable target coefficients for the UI frequency response.
     float reductionDb(size_t band) const noexcept {
-        if(band>=dynamic.size())return 0.f;const auto& d=dynamic[band];
+        if(band>=dynamic.size())return 0.f;
+        const auto& d=dynamic[band];
         return d.freq>0.&&(d.amount>0.f||d.cut.remaining>0)?(float)std::clamp(-d.cut.current.magnitudeDb(d.freq,sr),0.,12.):0.f;
     }
     double bandMagnitudeDb(size_t band,double frequency) const noexcept {
-        if(band>=filters.size())return 0.;double db=filters[band].target.magnitudeDb(frequency,sr);
-        for(int i=0;i<stages[band];++i)db+=extras[band][(size_t)i].target.magnitudeDb(frequency,sr);return db;
+        if(band>=filters.size())return 0.;
+        double db=filters[band].target.magnitudeDb(frequency,sr);
+        for(int i=0;i<stages[band];++i)db+=extras[band][(size_t)i].target.magnitudeDb(frequency,sr);
+        return db;
     }
     double magnitudeDb(double frequency) const noexcept {
         double total=0.;

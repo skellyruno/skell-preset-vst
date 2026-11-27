@@ -123,6 +123,7 @@ SkellPresetAudioProcessor::SkellPresetAudioProcessor()
             r.studioEqAttack[(size_t)k]=state.getRawParameterValue(prefix+"studioEqAttack"+juce::String(k+1));
             r.studioEqRelease[(size_t)k]=state.getRawParameterValue(prefix+"studioEqRelease"+juce::String(k+1));
             r.studioEqSlope[(size_t)k]=state.getRawParameterValue(prefix+"studioEqSlope"+juce::String(k+1));
+            r.studioEqExtraShape[(size_t)k]=state.getRawParameterValue(prefix+"studioEqExtraShape"+juce::String(k+1));
         }
     }
     packedOrder.store(initialOrder);
@@ -411,6 +412,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellPresetAudioProcessor::c
         fl(id+"Release"+suffix,"Slot "+juce::String(slot)+" EQ band "+suffix+" release",5.f,2000.f,110.f);
         fl(id+"Slope"+suffix,"Slot "+juce::String(slot)+" EQ band "+suffix+" slope",0.f,2.f,0.f,1.f);
     }
+    for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band)
+        fl("s"+juce::String(slot)+"_studioEqExtraShape"+juce::String(band),"Slot "+juce::String(slot)+" EQ band "+juce::String(band)+" extra shape",0.f,2.f,0.f,1.f);
     return p;
 }
 void SkellPresetAudioProcessor::EngineSlot::prepare(double sampleRate) {
@@ -763,6 +766,7 @@ void SkellPresetAudioProcessor::setSlotType(int slot,int type) {
                 setReal(id+"studioEqAttack"+juce::String(k+1),12.f);
                 setReal(id+"studioEqRelease"+juce::String(k+1),110.f);
                 setReal(id+"studioEqSlope"+juce::String(k+1),0.f);
+                setReal(id+"studioEqExtraShape"+juce::String(k+1),0.f);
                 setReal(id+"studioEqKind"+juce::String(k+1),
                         (float)(k==0?3:(k==6?4:0)));
             }
@@ -990,6 +994,8 @@ void SkellPresetAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,ju
             c.studioEqAttack[(size_t)k]=raw.studioEqAttack[(size_t)k]->load();
             c.studioEqRelease[(size_t)k]=raw.studioEqRelease[(size_t)k]->load();
             c.studioEqSlope[(size_t)k]=raw.studioEqSlope[(size_t)k]->load();
+            const int extra=juce::jlimit(0,2,juce::roundToInt(raw.studioEqExtraShape[(size_t)k]->load()));
+            if(extra>0)c.studioEqKinds[(size_t)k]=4+extra;
         }
         auto& e=engines[(size_t)s];
         if(previousType!=c.type) {
@@ -1715,6 +1721,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
                 setReal(slotPrefix(s)+"studioEqAttack"+juce::String(band),12.f);
                 setReal(slotPrefix(s)+"studioEqRelease"+juce::String(band),110.f);
                 setReal(slotPrefix(s)+"studioEqSlope"+juce::String(band),0.f);
+                setReal(slotPrefix(s)+"studioEqExtraShape"+juce::String(band),0.f);
         }
         setReal(slotPrefix(s)+"eqLowCut",0.f);
         setReal(slotPrefix(s)+"eqHighCut",0.f);
@@ -1909,6 +1916,7 @@ void SkellPresetAudioProcessor::loadFactoryPreset(int index) {
                 setReal(prefix+"studioEqAttack"+suffix,12.f);
                 setReal(prefix+"studioEqRelease"+suffix,110.f);
                 setReal(prefix+"studioEqSlope"+suffix,0.f);
+                setReal(prefix+"studioEqExtraShape"+suffix,0.f);
             }
             setReal(prefix+"eqLowCut",0.f);
             setReal(prefix+"eqHighCut",0.f);
@@ -2045,6 +2053,7 @@ juce::Result SkellPresetAudioProcessor::makePresetDocument(
             dst.studioEqAttack[(size_t)band]=value(prefix+"studioEqAttack"+n);
             dst.studioEqRelease[(size_t)band]=value(prefix+"studioEqRelease"+n);
             dst.studioEqSlope[(size_t)band]=value(prefix+"studioEqSlope"+n);
+            dst.studioEqExtraShape[(size_t)band]=value(prefix+"studioEqExtraShape"+n);
         }
         dst.eqLowCut=value(prefix+"eqLowCut");
         dst.eqHighCut=value(prefix+"eqHighCut");
@@ -2102,6 +2111,7 @@ juce::Result SkellPresetAudioProcessor::applyValidatedPresetDocument(
             setReal(prefix+"studioEqAttack"+n,slot.studioEqAttack[(size_t)band]);
             setReal(prefix+"studioEqRelease"+n,slot.studioEqRelease[(size_t)band]);
             setReal(prefix+"studioEqSlope"+n,slot.studioEqSlope[(size_t)band]);
+            setReal(prefix+"studioEqExtraShape"+n,slot.studioEqExtraShape[(size_t)band]);
         }
         setReal(prefix+"eqLowCut",slot.eqLowCut);
         setReal(prefix+"eqHighCut",slot.eqHighCut);
@@ -2402,11 +2412,11 @@ void SkellPresetAudioProcessor::setStateInformation(const void* data,int size) {
             }
         // Projects predating dynamic EQ must always recall the original static sound.
         juce::StringArray existingEqIds;for(int i=0;i<loaded.getNumChildren();++i)existingEqIds.add(loaded.getChild(i).getProperty("id").toString());
-        const char* eqFields[]{"Dynamic","Threshold","Attack","Release","Slope"};
-        const float defaults[]{0.f,-24.f,12.f,110.f,0.f};
-        for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band)for(int field=0;field<5;++field){
+        const char* eqFields[]{"Dynamic","Threshold","Attack","Release","Slope","ExtraShape"};
+        const float eqLegacyDefaults[]{0.f,-24.f,12.f,110.f,0.f,0.f};
+        for(int slot=1;slot<=slotCount;++slot)for(int band=1;band<=8;++band)for(int field=0;field<6;++field){
             const auto id="s"+juce::String(slot)+"_studioEq"+eqFields[field]+juce::String(band);
-            if(!existingEqIds.contains(id)){juce::ValueTree node(juce::Identifier("PARAM"));node.setProperty("id",id,nullptr);node.setProperty("value",defaults[field],nullptr);loaded.appendChild(node,nullptr);}
+            if(!existingEqIds.contains(id)){juce::ValueTree node(juce::Identifier("PARAM"));node.setProperty("id",id,nullptr);node.setProperty("value",eqLegacyDefaults[field],nullptr);loaded.appendChild(node,nullptr);}
         }
         // Repair untrusted host XML before JUCE copies it into APVTS atomics.
         sanitizeParameterStateValues(loaded, state);
@@ -2471,6 +2481,7 @@ void SkellPresetAudioProcessor::addProgramIdentityListeners() {
             add(prefix+"studioEqAttack"+suffix);
             add(prefix+"studioEqRelease"+suffix);
             add(prefix+"studioEqSlope"+suffix);
+            add(prefix+"studioEqExtraShape"+suffix);
         }
     }
 }

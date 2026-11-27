@@ -28,7 +28,7 @@ class TestImport(unittest.TestCase):
         for n in range(len(fst)):
             with self.assertRaises(ValueError):records(fst[:n])
         struct.pack_into("<i",b,4+21*4,2)
-        with self.assertRaises(ValueError):eq_settings(b)
+        self.assertEqual(eq_settings(b)[0]["studioEqExtraShape"][0],2)
     def test_unbound(self):
         stream=event(213,b"\0"*32)
         fst=b"FLhd\x06\x00\x00\x00"+b"\0"*6+b"FLdt"+struct.pack("<I",len(stream))+stream

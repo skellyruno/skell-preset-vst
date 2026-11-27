@@ -57,20 +57,20 @@ def eq_settings(payload):
     mask=struct.unpack_from("<I",payload,0x13e)[0]
     if mask>127: raise ValueError("Unknown band mask")
     if not -1800<=p[35]<=1800: raise ValueError("Invalid EQ main gain")
-    result=dict(params=[.5]*16,eqQ=[.5]*8,studioEqKind=[0]*8,studioEqOn=[False]*8,studioEqDynamic=[0.]*8)
+    result=dict(params=[.5]*16,eqQ=[.5]*8,studioEqKind=[0]*8,studioEqOn=[False]*8,studioEqDynamic=[0.]*8,studioEqExtraShape=[0.]*8,studioEqSlope=[0.]*8)
     warnings=["Native filter design is an approximation, not a FL DSP emulation."]
     if design&1: warnings.append("Source HQ mode is not transferred.")
     if options&1: warnings.append("Source linear-phase mode is not transferred.")
-    types={0:0,1:2,3:1,5:3,6:0,7:4}
+    types={0:0,1:2,2:0,3:1,4:0,5:3,6:0,7:4}
     for b in range(7):
         gain,freq,width,kind,order=(p[b+7*k] for k in range(5))
         if not (-1800<=gain<=1800 and 0<=freq<=65536 and 0<=width<=65536 and 0<=kind<=7 and -3<=order<=3):
             raise ValueError("Band %d has invalid saved controls"%(b+1))
         active=bool(mask&(1<<b)) and kind!=0
-        if active and kind not in types: raise ValueError("Band %d uses unsupported band-pass/notch"%(b+1))
-        if active and order!=0: warnings.append("Band %d: source filter order %d approximated by one stage."%(b+1,order))
+        if kind in (2,4): result["studioEqExtraShape"][b]=2 if kind==2 else 1
+        if active and order!=0: warnings.append("Band %d: source filter order %d not yet mapped to native slope."%(b+1,order))
         w=width/65536
-        if kind in (1,3):
+        if kind in (1,2,3,4):
             q=((1-w)**3*9.9+.1)/math.sqrt(2)
             raw=math.log(q/.35)/math.log(12)
             if active and not 0<=raw<=1: warnings.append("Band %d: source cutoff Q outside native range."%(b+1))

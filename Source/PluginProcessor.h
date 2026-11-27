@@ -269,6 +269,7 @@ private:
     std::array<float,8> studioEqAttack{{12.f,12.f,12.f,12.f,12.f,12.f,12.f,12.f}};
     std::array<float,8> studioEqRelease{{110.f,110.f,110.f,110.f,110.f,110.f,110.f,110.f}};
     std::array<float,8> studioEqSlope{{0.f,0.f,0.f,0.f,0.f,0.f,0.f,0.f}};
+        std::array<float,8> studioEqExtraShape{};
     };
     std::array<Controls,slotCount> controlCache;
     std::atomic<std::uint64_t> packedOrder{0};
@@ -297,7 +298,7 @@ private:
         std::array<std::atomic<float>*,16> p{};
         std::array<std::atomic<float>*,8> q{};
         std::array<std::atomic<float>*,8> studioEqKind{};
-        std::array<std::atomic<float>*,8> studioEqOn{},studioEqDynamic{},studioEqThreshold{},studioEqAttack{},studioEqRelease{},studioEqSlope{};
+        std::array<std::atomic<float>*,8> studioEqOn{},studioEqDynamic{},studioEqThreshold{},studioEqAttack{},studioEqRelease{},studioEqSlope{},studioEqExtraShape{};
     };
     struct RawMic {
         std::atomic<float>* on=nullptr;

@@ -77,6 +77,7 @@ juce::Result validate(const Document& d) {
         for(float v:slot.studioEqAttack)if(!finiteRange(v,0.5f,200.f))return juce::Result::fail("Invalid EQ Attack");
         for(float v:slot.studioEqRelease)if(!finiteRange(v,5.f,2000.f))return juce::Result::fail("Invalid EQ Release");
         for(float v:slot.studioEqSlope)if(!finiteRange(v,0.f,2.f)||v!=std::round(v))return juce::Result::fail("Invalid EQ Slope");
+        for(float v:slot.studioEqExtraShape)if(!finiteRange(v,0.f,2.f)||v!=std::round(v))return juce::Result::fail("Invalid EQ ExtraShape");
         if(slot.duckSource<0 || slot.duckSource>2)return juce::Result::fail("Invalid duck source");
         if(!finiteRange(slot.duckDepth,0.f,1.f) ||
            !finiteRange(slot.duckThreshold,-60.f,-12.f) ||
@@ -148,6 +149,7 @@ juce::var toJson(const Document& d) {
         {juce::Array<juce::var> v;for(float x:slot.studioEqAttack)v.add(x);item->setProperty("studioEqAttack",juce::var(v));}
         {juce::Array<juce::var> v;for(float x:slot.studioEqRelease)v.add(x);item->setProperty("studioEqRelease",juce::var(v));}
         {juce::Array<juce::var> v;for(float x:slot.studioEqSlope)v.add(x);item->setProperty("studioEqSlope",juce::var(v));}
+        {juce::Array<juce::var> v;for(float x:slot.studioEqExtraShape)v.add(x);item->setProperty("studioEqExtraShape",juce::var(v));}
         item->setProperty("eqLowCut",slot.eqLowCut);
         item->setProperty("eqHighCut",slot.eqHighCut);
         item->setProperty("duckOn",slot.duckOn);
@@ -354,6 +356,11 @@ juce::Result fromJson(const juce::var& root, Document& out) {
             const auto values=item.getProperty("studioEqSlope",{});
             if(!values.isArray()||values.getArray()->size()!=8)return juce::Result::fail("Invalid EQ Slope array");
             for(int k=0;k<8;++k)if(!decodeFloat((*values.getArray())[k],0.f,2.f,slot.studioEqSlope[(size_t)k])||slot.studioEqSlope[(size_t)k]!=std::round(slot.studioEqSlope[(size_t)k]))return juce::Result::fail("Invalid EQ Slope");
+        }
+        if(hasJsonProperty(item,"studioEqExtraShape")){
+            const auto values=item.getProperty("studioEqExtraShape",{});
+            if(!values.isArray()||values.getArray()->size()!=8)return juce::Result::fail("Invalid EQ extra shape array");
+            for(int k=0;k<8;++k)if(!decodeFloat((*values.getArray())[k],0.f,2.f,slot.studioEqExtraShape[(size_t)k])||slot.studioEqExtraShape[(size_t)k]!=std::round(slot.studioEqExtraShape[(size_t)k]))return juce::Result::fail("Invalid EQ extra shape");
         }
         // If absent, old presets remain dry/FX identical. Bad values are
         // rejected before ANY live destination parameters are changed.
