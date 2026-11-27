@@ -4,6 +4,7 @@
 #include "GraveyardScene.h"
 #include "SkellPerformer.h"
 #include "StageClock.h"
+#include "SkellStageBeam.h"
 #include "../PluginProcessor.h"
 #include <array>
 #include <cmath>
@@ -324,21 +325,8 @@ public:
                 const float targetX=centreX+(beam-1)*205.f*spread+std::sin(crowdPhase*.39f+beam*1.8f)*stage.scale*(8.f+32.f*activity);
                 const float targetY=feetY+6.f;
                 const auto tint=(beam==1?accent:Theme::blue);
-                // Nested low-opacity shafts soften the formerly flat triangle
-                // edges; side-to-side motion continues gently at idle.
-                for(int layer=0;layer<5;++layer){
-                    const float spreadWidth=(86.f-13.f*layer)*stage.scale;
-                    juce::Path wedge;
-                    wedge.startNewSubPath(rigX-2.f,rigY);wedge.lineTo(rigX+2.f,rigY);
-                    wedge.lineTo(targetX+spreadWidth,targetY);wedge.lineTo(targetX-spreadWidth,targetY);wedge.closeSubPath();
-                    g.setGradientFill(juce::ColourGradient(tint.withAlpha(.012f+lightEnergy*(.055f+.035f*rigEnergy[(size_t)beam])),rigX,rigY,tint.withAlpha(0.f),targetX,targetY,false));
-                    g.fillPath(wedge);
-                }
-                juce::Path core;
-                core.startNewSubPath(rigX-1.4f,rigY);core.lineTo(rigX+1.4f,rigY);
-                core.lineTo(targetX+24.f*stage.scale,targetY);core.lineTo(targetX-24.f*stage.scale,targetY);core.closeSubPath();
-                g.setGradientFill(juce::ColourGradient(tint.withAlpha(.012f+lightEnergy*(.09f+.04f*rigEnergy[(size_t)beam])),rigX,rigY,
-                    tint.withAlpha(0.f),targetX,targetY,false));g.fillPath(core);
+                const float brightness=.035f+lightEnergy*(.22f+.13f*rigEnergy[(size_t)beam]);
+                softBeam.draw(g,rigX,rigY,targetX,targetY,86.f*stage.scale,tint,brightness);
             }
         }
         // A broad raised deck with a faceted apron grounds the headliner.
@@ -588,14 +576,16 @@ public:
                             g.fillEllipse(hx-armW*.6f,hy-armW*.7f,armW*1.2f,armW*1.4f);
                             // Fingers follow the forearm direction rather than all pointing skyward.
                             const float dx=(hx-ex)/lower,dy=(hy-ey)/lower;
-                            if(ry>4.f)for(int finger=0;finger<4;++finger){
+                            if(ry>4.f && hy-armW*3.f<pitBottom)for(int finger=0;finger<4;++finger){
                                 const float f=(finger-1.5f)*armW*.36f;
                                 g.drawLine(hx-dy*f,hy+dx*f,hx+dx*armW*1.45f-dy*f*1.5f,
                                     hy+dy*armW*1.45f+dx*f*1.5f,juce::jmax(.45f,armW*.19f));
                             }
                         }
                         const float pelvisY=shoulderY+ry*3.7f;
-                        for(int side:{-1,1}){
+                        // The near rows extend below the stage clip. Do not
+                        // tessellate invisible legs; preserve all visible poses.
+                        if(pelvisY+ry*.5f-juce::jmax(1.f,rx*.42f)<pitBottom)for(int side:{-1,1}){
                             const float sign=(float)side,hip=x+sign*rx*.45f;
                             const float kneeX=hip+sign*rx*(.33f+.14f*wave),kneeY=pelvisY+(base-pelvisY)*.55f;
                             const float footX=x+sign*rx*(.85f+.21f*figure.turn);
@@ -796,6 +786,7 @@ private:
         micMatch.setVisible(stage.valid);
         if(stage.valid)micMatch.setBounds(skellpreset::stage::Performer::microphoneHitBounds(stage.originX,stage.originY,stage.scale,hasAudibleOutput()?activityLevel:0.f,crowdPhase).getIntersection(getLocalBounds()));
     }
+    SkellStageBeam softBeam;
     skellpreset::stage::Backdrop backdrop;
     skellpreset::stage::Performer performer;
     SkellPresetAudioProcessor& processor;

@@ -40,7 +40,8 @@ public:
         aura.addColour(.55,green.withAlpha(.065f+.05f*voice));aura.addColour(.83,green.withAlpha(.08f+.07f*voice));
         g.setGradientFill(aura);g.fillEllipse(bounds);
         const std::array<juce::Colour,7> colours{{green.withMultipliedBrightness(.45f).withAlpha(.22f),green.withMultipliedBrightness(.72f).withAlpha(.35f),green.withAlpha(.42f),green.withAlpha(.64f),green.withAlpha(.85f),green.interpolatedWith(Theme::white,.24f).withAlpha(.94f),green.interpolatedWith(Theme::white,.64f)}};
-        for(auto& b:buckets)b.clear();halos.clear();
+        for(auto& bucket:buckets)bucket.clear();
+        halos.clear();
         for(size_t i=0;i<points.size();++i){
             const auto& p=points[i];
             const float x=p.x*cy+p.z*sy,z=-p.x*sy+p.z*cy;

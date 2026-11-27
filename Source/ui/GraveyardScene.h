@@ -41,6 +41,14 @@ public:
     static juce::Rectangle<float> moonBounds(juce::Rectangle<float> bounds,float horizon) noexcept {
         return moonDisc(bounds.getWidth(),localSkyline(bounds,horizon)).translated(bounds.getX(),bounds.getY());
     }
+    static void softMist(juce::Graphics& g,float cx,float cy,float rx,float ry,juce::Colour colour,float opacity) {
+        if(rx<=0.f||ry<=0.f||opacity<=0.f)return;
+        juce::Graphics::ScopedSaveState mistState(g);
+        g.addTransform(juce::AffineTransform::scale(1.f,ry/rx,cx,cy));
+        juce::ColourGradient mist(colour.withAlpha(opacity),cx,cy,colour.withAlpha(0.f),cx+rx,cy,true);
+        mist.addColour(.50,colour.withAlpha(opacity*.46f));mist.addColour(.82,colour.withAlpha(opacity*.08f));
+        g.setGradientFill(mist);g.fillEllipse(cx-rx,cy-rx,2.f*rx,2.f*rx);
+    }
     void draw(juce::Graphics& target,juce::Rectangle<float> bounds,float horizon) {
         const int w=juce::jmax(1,(int)bounds.getWidth()),h=juce::jmax(1,(int)bounds.getHeight());
         const float skyline=localSkyline(bounds,horizon);
@@ -87,9 +95,7 @@ public:
                 g.setColour(juce::Colour(0xff18282c).interpolatedWith(deep,.32f+.20f*layer).withAlpha(.72f));
                 g.fillPath(ridge);
             }
-            g.setGradientFill(juce::ColourGradient(fog.withAlpha(.15f),moonX,horizonY*.91f,
-                fog.withAlpha(0.f),moonX,horizonY*.48f,false));
-            g.fillRect(0.f,horizonY*.48f,width,horizonY*.45f);
+            softMist(g,width*.60f,horizonY*.84f,width*.70f,horizonY*.34f,fog,.14f);
             // Stars, denser and brighter at the zenith, dimmed near the moon.
             for(int i=0;i<120;++i) {
                 const float sx=hash01(i*3741)*width;
@@ -118,10 +124,7 @@ public:
                     const float px=drift+width*(.06f*puff+.09f*hash01(band*211+puff));
                     const float pw=width*(.14f+.10f*hash01(band*97+puff*13));
                     const float ph=(9.f+7.f*hash01(band*43+puff))*1.7f;
-                    g.setGradientFill(juce::ColourGradient(
-                        juce::Colour(0xff2b4046).withAlpha(a),px,y,
-                        juce::Colour(0xff0a1218).withAlpha(0.f),px+pw*.5f,y+ph,true));
-                    g.fillEllipse(px,y,pw,ph);
+                    softMist(g,px+pw*.5f,y+ph*.5f,pw*.5f,ph*.5f,juce::Colour(0xff536f76),a*.52f);
                 }
             }
 
@@ -133,8 +136,7 @@ public:
                     const float x=width*(hash01(layer*321+n*27)*1.1f-.10f);
                     const float span=width*(.12f+.15f*hash01(layer*513+n*41));
                     const float cloudHeight=10.f+12.f*hash01(layer*112+n*17);
-                    g.setGradientFill(juce::ColourGradient(fog.withAlpha(.085f),x+span*.45f,y, fog.withAlpha(0.f),x+span*.9f,y+cloudHeight,true));
-                    g.fillEllipse(x,y,span,cloudHeight);
+                    softMist(g,x+span*.5f,y+cloudHeight*.5f,span*.5f,cloudHeight*.5f,fog,.10f);
                 }
             }
             // --- Moon: heavy silver disc with layered halo, craters and a
@@ -169,9 +171,7 @@ public:
             g.drawEllipse(moonX-moonR,moonY-moonR,moonR*2.f,moonR*2.f,.9f);
 
             // Layered mist gives the dark ridge atmospheric perspective.
-            g.setGradientFill(juce::ColourGradient(fog.withAlpha(.22f),width*.30f,horizonY-65.f,
-                fog.withAlpha(0.f),width*.30f,horizonY-150.f,false));
-            g.fillRect(0.f,juce::jmax(0.f,horizonY-150.f),width,150.f);
+            softMist(g,width*.30f,horizonY-37.f,width*.62f,112.f,fog,.18f);
             // Distant ridge, then a blacker treeline silhouette.
             juce::Path ridge;
             ridge.startNewSubPath(0.f,horizonY);
@@ -424,10 +424,7 @@ public:
             }
             // Cold moonlight wash across the near graves so the stones are
             // readable instead of sinking into the black.
-            g.setGradientFill(juce::ColourGradient(
-                juce::Colour(0xff9fc4c0).withAlpha(.16f),moonX,horizonY-40.f,
-                juce::Colour(0xff9fc4c0).withAlpha(0.f),moonX,horizonY+14.f,false));
-            g.fillRect(0.f,horizonY-40.f,width,54.f);
+            softMist(g,moonX,horizonY-20.f,width*.72f,48.f,juce::Colour(0xff9fc4c0),.16f);
 
             // --- Raised boards in perspective with plank seams and lip light.
             g.setGradientFill(juce::ColourGradient(juce::Colour(0xff24312e),width*.5f,horizonY-4.f,
@@ -492,14 +489,7 @@ public:
                 juce::Colours::white.withAlpha(0.f),moonX,horizonY+40.f,true));
             g.fillEllipse(moonX-moonR*1.1f,horizonY,moonR*2.2f,36.f);
             // Wet lip highlight: a soft band, never a one-pixel laser line.
-            g.setGradientFill(juce::ColourGradient(
-                Theme::green.withAlpha(.09f),0.f,horizonY-1.f,
-                Theme::green.withAlpha(.03f),0.f,horizonY+7.f,false));
-            g.fillRect(0.f,horizonY-1.f,width,8.f);
-            g.setGradientFill(juce::ColourGradient(
-                Theme::green.withAlpha(.075f),width*.5f,horizonY,
-                Theme::bg.withAlpha(0.f),width*.5f,horizonY+70.f,false));
-            g.fillRect(0.f,horizonY,width,70.f);
+            softMist(g,width*.5f,horizonY+7.f,width*.60f,30.f,Theme::green,.065f);
 
             // Two asymmetrical foreground gravestones flank the boards.
             // Their chipped outlines, side faces and damp stone highlights
@@ -602,8 +592,7 @@ public:
             const float y=worldSkyline-70.f+band*26.f+4.f*std::sin(phase*.31f+band);
             const float a=.045f+.021f*band+.10f*react;
             const float mx=bounds.getX()+offset-width*.45f,my=y+15.f;
-            juce::ColourGradient cloud(mist.withAlpha(a),mx,my,mist.withAlpha(0.f),mx+width*.40f,my+24.f,true);
-            g.setGradientFill(cloud);g.fillEllipse(mx-width*.45f,my-20.f,width*.9f,40.f+band*8.f);
+            softMist(g,mx,my,width*.45f,20.f+band*4.f,mist,a);
         }
         // Green spectral moonlight on the low mist, not the whole sky.
         if(react>.001f){
