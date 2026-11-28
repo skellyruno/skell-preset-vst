@@ -22,3 +22,6 @@ Known quality limits:
 - The production mastering DSP expects a separate oversampler.
 - The production pitch source may have variable source age for voiced synthesis; the delay contract describes the fixed dry/transient host-compensated path, not time-varying source grain age.
 - The header-only `SkellyTuneBackend` is currently realtime profile; no experimental cycle-synthesis mode is enabled by the adapter.
+
+## Independent hybrid room snapshot (2026-11-28)
+Exact SkellCore e828c825e074b47259aba6d339f078ecae79de45, SkellCore/include/SkellCore/experimental/research/convolution/HybridRoom.h, blob efc2c36e691c41fd90104f8193d1d45b660086a5. Original independent Skell DSP, no vendor implementation or IR. Explicit SKELL_IR_REVERB_RESEARCH=ON audition build only; default OFF. No APVTS/module/factory changes. See docs/HYBRID_REVERB_20261128.md.

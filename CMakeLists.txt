@@ -3,6 +3,7 @@ project(SkellPreset VERSION 0.7.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(SKELL_IR_REVERB_RESEARCH "Opt in to experimental shared hybrid room (different sound)" OFF)
 option(SKELL_PRESET_PORTABLE_ONLY "Build portable DSP and MATCH tests without JUCE" OFF)
 enable_testing()
 option(SKELL_PRESET_TEST_SHARED_SKELLAY "Compile and test the real shared Skellay DSP" OFF)
@@ -81,6 +82,8 @@ juce_add_plugin(SkellPreset
     IS_MIDI_EFFECT FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE)
 juce_generate_juce_header(SkellPreset)
+# Public: EngineSlot layout is shared with the native renderer/test executables.
+target_compile_definitions(SkellPreset PUBLIC SKELL_IR_REVERB_RESEARCH=$<BOOL:${SKELL_IR_REVERB_RESEARCH}>)
 
 # Regenerate original placeholder PNGs on clean source checkouts. No Pillow required.
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/bg_panel.png")

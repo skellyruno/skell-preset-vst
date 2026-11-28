@@ -315,6 +315,34 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Preserve the legacy Windows artifact and acceptance results above. Reuse
+      # the existing configured dependencies for a separately labelled audition.
+      - name: Configure and build hybrid reverb audition
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+        shell: pwsh
+        run: |
+          cmake -S . -B build -DSKELL_IR_REVERB_RESEARCH=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Hybrid configuration failed' }
+          cmake --build build --config Release --target SkellPreset_VST3 --parallel 3
+          if ($LASTEXITCODE -ne 0) { throw 'Hybrid preview build failed' }
+          $vst = Get-ChildItem build -Recurse -Directory -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $vst) { throw 'Missing hybrid preview VST3' }
+          python tools/normalize_vst3_moduleinfo.py (Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Hybrid preview metadata invalid' }
+          $dest = Join-Path $PWD 'Skell-Preset-Hybrid-Reverb-PREVIEW'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -LiteralPath $vst.FullName -Destination $dest -Recurse -Force
+          $bin = Get-ChildItem -LiteralPath $vst.FullName -Recurse -File -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $bin) { throw 'Hybrid binary missing' }
+          @("Commit: $(git rev-parse HEAD)", "SHA256: $((Get-FileHash -LiteralPath $bin.FullName -Algorithm SHA256).Hash)", "SKELL_IR_REVERB_RESEARCH=ON", "AUDITION ONLY: existing plugin ID; backup original plugin; different reverb sound; host and listening validation pending") | Set-Content (Join-Path $dest 'BUILD-INFO.txt')
+      - uses: actions/upload-artifact@v5
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+        with:
+          name: Skell-Preset-Hybrid-Reverb-PREVIEW
+          path: Skell-Preset-Hybrid-Reverb-PREVIEW/**
+          if-no-files-found: error
+          retention-days: 14
+
   alchemist-reference-ab:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/alchemist-reference-ab-')
     needs: windows-vst3

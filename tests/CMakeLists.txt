@@ -291,3 +291,14 @@ add_test(NAME SkellPresetMatchStereoCandidateTest COMMAND SkellPresetMatchStereo
 add_executable(SkellPresetMatchEchoEvidenceTest test_match_echo_evidence.cpp)
 target_compile_features(SkellPresetMatchEchoEvidenceTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetMatchEchoEvidenceTest COMMAND SkellPresetMatchEchoEvidenceTest)
+
+# Same exact shared Core research header; independent of selected plugin build.
+add_executable(SkellPresetHybridRoomTest test_hybrid_room.cpp)
+target_include_directories(SkellPresetHybridRoomTest PRIVATE ../SkellCore/include/SkellCore/experimental/research/convolution)
+target_compile_features(SkellPresetHybridRoomTest PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(SkellPresetHybridRoomTest PRIVATE /UNDEBUG)
+else()
+    target_compile_options(SkellPresetHybridRoomTest PRIVATE -UNDEBUG)
+endif()
+add_test(NAME SkellPresetHybridRoomTest COMMAND SkellPresetHybridRoomTest)

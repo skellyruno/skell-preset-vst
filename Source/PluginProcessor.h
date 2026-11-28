@@ -1,6 +1,9 @@
 #pragma once
 #include <JuceHeader.h>
 #include <SkellCore/Core.h>
+#if SKELL_IR_REVERB_RESEARCH
+#include <SkellCore/experimental/research/convolution/HybridRoom.h>
+#endif
 #include "chain/LimiterDSP.h"
 #include <SkellCore/AdlibFX.h>
 #include "chain/BasicDSP.h"
@@ -214,7 +217,11 @@ private:
         skellpreset::dsp::VocalTremolo tremolo;
         skellpreset::dsp::VocalWidth width;
         skellpreset::dsp::ThreeBandDynamics threeBand;
+#if SKELL_IR_REVERB_RESEARCH
+        skellcore::experimental::convolution::HybridVocalRoom voxRoom;
+#else
         skellpreset::dsp::VoxRackRoom voxRoom;
+#endif
         skellpreset::dsp::VoxRackSmoothCompressor voxComp;
         skellpreset::studio::Chorus chorus;
         skellpreset::studio::ParametricEQ studioEq;
@@ -251,7 +258,11 @@ private:
         bool phrasePreviouslyActive=false,manualPreviouslyActive=false;
         float throwFilterL=0,throwFilterR=0,throwFilterPole=.6f;
         void processThrow(float l,float r,float& outL,float& outR,float amount,float feedback,float tone,float trigger,double sampleRate) noexcept;
+#if SKELL_IR_REVERB_RESEARCH
+        std::array<skellcore::experimental::convolution::HybridRoom,1> reverb;
+#else
         std::array<skellcore::FDNReverb,1> reverb;
+#endif
         void prepare(double sampleRate);
     };
     std::array<EngineSlot,slotCount> engines;
