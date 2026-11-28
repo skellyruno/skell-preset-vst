@@ -102,6 +102,7 @@ struct Recipe {float low=0,high=0,threshold=-24,ratio=2,makeup=0;bool deess=fals
     EffectChoice mod,delay,room,rider,harshness,saturation;
     // Match-only compressor timing, mapped to existing rack parameters.
     float attackMs=12.f,releaseMs=120.f;
+    float highpassHz=75.f;
     std::array<float,4> deessControls{{.35f,.65f,.15f,.3f}};
 };
 struct Audio {double rate=48000.;std::vector<float> stereo;size_t frames() const noexcept {return stereo.size()/2;}};

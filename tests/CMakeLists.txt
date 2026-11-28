@@ -264,6 +264,12 @@ add_executable(SkellPresetLiveVocalMatchTest test_live_vocal_match.cpp)
 target_compile_features(SkellPresetLiveVocalMatchTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetLiveVocalMatchTest COMMAND SkellPresetLiveVocalMatchTest)
 
+# Research-only automatic pitch correction gate using the existing SkellyTune core.
+add_executable(SkellPresetMatchPitchCandidateTest test_match_pitch_candidate.cpp)
+target_include_directories(SkellPresetMatchPitchCandidateTest PRIVATE ../SkellCore/include)
+target_compile_features(SkellPresetMatchPitchCandidateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMatchPitchCandidateTest COMMAND SkellPresetMatchPitchCandidateTest)
+
 # Additive Sound Match research; no production rack or parameter changes.
 add_executable(SkellPresetCausalMatchCompressorTest test_causal_match_compressor.cpp)
 target_include_directories(SkellPresetCausalMatchCompressorTest PRIVATE ../SkellCore/include)

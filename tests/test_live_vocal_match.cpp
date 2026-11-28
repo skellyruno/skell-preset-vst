@@ -98,7 +98,7 @@ int main(){
             const auto heldDry=measure(phrase,selectReferenceSegment(phrase,phrase.frames()/2,phrase.frames()),nullptr,nullptr,true);
             if(!autoMixSafe(observed,heldDry))return 32;}
     }
-    if(stylePasses<3)return 33;
+    if(stylePasses!=8)return 33;
     const auto balanced=optimizeAutoMix(audio,dry,MixStyle::Balanced);
     std::cout<<"Renderer fixture balanced "<<balanced.valid<<" "<<balanced.dryHoldout<<" -> "<<balanced.holdoutFinal<<"\n";
     if(!balanced.valid)return 34;
@@ -138,13 +138,32 @@ int main(){
     if(validMatchAudio(corrupt,nullptr)||optimizeAutoMix(corrupt,dry,MixStyle::Balanced).tested!=0||optimize(corrupt,dry).tested!=0)return 52;
     // Finite dry profile cannot conceal corruption elsewhere in a reference.
     if(optimize(audio,dry,&dry,nullptr,nullptr,&corrupt).tested!=0)return 53;
-    // Frequency learning must follow actual burst location and not confuse a steady tone with sibilance.
-    for(double burstHz:{3200.,7200.}){Audio fixture;fixture.rate=48000.;
-        for(int i=0;i<48000*3;++i){const double t=i/48000.;const bool burst=std::fmod(t,.5)<.12;const float x=(float)(.12*std::sin(6.283185307179586*220.*t)+(burst?.10:0.)*std::sin(6.283185307179586*burstHz*t));fixture.stereo.push_back(x);fixture.stereo.push_back(x);}
-        const auto learned=learnPresence(fixture,{0,fixture.frames()});std::cout<<"Presence "<<burstHz<<" -> "<<learned.harshHz<<" / "<<learned.sibilantHz<<"\n";
-        if(burstHz<4000&&learned.harshHz!=3200.f)return 54;
-        if(burstHz>4000&&learned.sibilantHz!=7200.f)return 55;
+    // The calibration shortcut must match a full stateful native render,
+    // including activity-dependent metrics after changing output gain.
+    for(double rate:{44100.,48000.,96000.,192000.}){
+        Audio pcm;pcm.rate=rate;
+        for(int i=0;i<rate*2;++i){const float x=(float)((i<rate*.4?.0015:.15)*std::sin(6.283185307179586*220.*i/rate));pcm.stereo.push_back(x);pcm.stereo.push_back(x*.8f);}
+        Recipe candidate;candidate.output=0;candidate.room={.24f,{{.45f,.52f,.08f,.14f}}};candidate.saturation={.21f,{{.28f,.1f,.5f,.5f}}};
+        const Segment slice{(size_t)(rate*.25),pcm.frames()};std::vector<float> rendered;
+        measure(pcm,slice,&candidate,nullptr,true,&rendered);
+        for(float gain:{-6.f,0.f,6.f}){candidate.output=gain;const auto direct=measure(pcm,slice,&candidate,nullptr,true),cached=measureScaled(rendered,rate,gain);
+            if(!direct.finite()||!cached.finite()||direct.active!=cached.active||direct.peak!=cached.peak||direct.rmsDb!=cached.rmsDb||direct.bands!=cached.bands||direct.clipped!=cached.clipped||direct.envelopeLag!=cached.envelopeLag)return 56;}
     }
+    // The fallback uses existing EQ on/off controls, not a new automation ID.
+    Recipe clean;clean.highpassHz=0;if(EqControls(clean).on[0])return 57;
+    clean.highpassHz=75;if(!EqControls(clean).on[0])return 58;
+    // Frequency learning must identify real bursts without cross-triggering
+    // the other band or confusing a steady tone with a burst.
+    for(double rate:{44100.,48000.,96000.,192000.})for(double burstHz:{3200.,7200.}){Audio fixture;fixture.rate=rate;
+        for(int i=0;i<rate*3;++i){const double t=i/rate;const bool burst=std::fmod(t,.5)<.12;const float x=(float)(.12*std::sin(6.283185307179586*220.*t)+(burst?.10:0.)*std::sin(6.283185307179586*burstHz*t));fixture.stereo.push_back(x);fixture.stereo.push_back(x);}
+        const auto learned=learnPresence(fixture,{0,fixture.frames()});std::cout<<"Presence "<<rate<<" "<<burstHz<<" -> "<<learned.harshHz<<" / "<<learned.sibilantHz<<"\n";
+        if(burstHz<4000&&(learned.harshHz!=3200.f||learned.sibilantHz!=0.f))return 54;
+        if(burstHz>4000&&(learned.sibilantHz!=7200.f||learned.harshHz!=0.f))return 55;
+    }
+    Audio low;low.rate=48000.;for(int i=0;i<96000;++i){const float x=.12f*(float)std::sin(6.283185307179586*30.*i/low.rate);low.stereo.push_back(x);low.stereo.push_back(-x);}
+    if(rumbleDb(low,{0,low.frames()})<-20.f)return 59;
+    Audio steady;steady.rate=48000.;for(int i=0;i<144000;++i){const float x=.12f*(float)std::sin(6.283185307179586*7200.*i/steady.rate);steady.stereo.push_back(x);steady.stereo.push_back(x);}
+    const auto steadyLearn=learnPresence(steady,{0,steady.frames()});if(steadyLearn.harshHz!=0.f||steadyLearn.sibilantHz!=0.f)return 60;
     std::atomic<bool> canceled{true};if(optimizeAutoMix(audio,dry,MixStyle::Pop,&canceled).valid)return 35;if(optimize(audio,dry,nullptr,&canceled).valid)return 12;
     std::cout<<"Live vocal match capture and bounded profile decisions passed at four sample rates\n";
 }

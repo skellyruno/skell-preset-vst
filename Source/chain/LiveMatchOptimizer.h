@@ -18,7 +18,7 @@ struct EqControls {
     explicit EqControls(const Recipe& r) noexcept {
         p.fill(.5f);q.fill(.5f);
         const auto hz=[](float f){return std::log(f/20.f)/std::log(1000.f);};
-        p[0]=hz(75.f);q[0]=.28f;p[2]=hz(250.f);p[3]=.5f+r.low/36.f;p[4]=hz(4500.f);p[5]=.5f+r.high/36.f;
+        on[0]=r.highpassHz>0.f;p[0]=hz(std::clamp(r.highpassHz,25.f,150.f));q[0]=.28f;p[2]=hz(250.f);p[3]=.5f+r.low/36.f;p[4]=hz(4500.f);p[5]=.5f+r.high/36.f;
     }
 };
 inline std::array<float,5> compControls(const Recipe& r) noexcept {
@@ -79,8 +79,10 @@ inline Segment selectReferenceSegment(const Audio& a,size_t lo,size_t hi) noexce
     const auto phrase=selectSegment(a,lo,hi);const size_t length=std::min(hi-lo,(size_t)(a.rate*3.));
     const size_t center=phrase.begin+(phrase.end-phrase.begin)/2;const size_t begin=std::clamp(center>length/2?center-length/2:0,lo,hi-length);return {begin,begin+length};
 }
-inline Profile measure(const Audio& a,Segment s,const Recipe* r,const std::atomic<bool>* cancel=nullptr,bool detailed=false) {
+inline Profile measure(const Audio& a,Segment s,const Recipe* r,const std::atomic<bool>* cancel=nullptr,bool detailed=false,std::vector<float>* rendered=nullptr) {
+    if(!std::isfinite(a.rate)||a.rate<8000.||a.rate>192000.||a.stereo.size()%2||s.begin>=s.end||s.end>a.frames()){if(rendered)rendered->clear();return {};}
     Analyzer analyzer;analyzer.prepare(a.rate,detailed);
+    if(rendered)rendered->resize((s.end-s.begin)*2);
     // Warm up the exact native kernels before measuring the chosen phrase.
     Recipe neutral;
     const size_t warm=(size_t)(a.rate*(r&&(r->mod.wet>0||r->delay.wet>0||r->room.wet>0||r->rider.wet>0||r->harshness.wet>0)?1.5:.2)),start=s.begin>warm?s.begin-warm:0;
@@ -90,7 +92,19 @@ inline Profile measure(const Audio& a,Segment s,const Recipe* r,const std::atomi
         float l=a.stereo[i*2],rr=a.stereo[i*2+1];
         if(!std::isfinite(l)||!std::isfinite(rr))return {};
         if(r){const auto v=chain.process(l,rr);l=v[0];rr=v[1];}
-        if(i>=s.begin)analyzer.push(&l,&rr,1);
+        if(i>=s.begin){analyzer.push(&l,&rr,1);if(rendered){const auto k=(i-s.begin)*2;(*rendered)[k]=l;(*rendered)[k+1]=rr;}}
+    }
+    return analyzer.result();
+}
+// Output trim is the final linear operation in NativeCandidate. Reanalyse the
+// same rendered phrase after calibration, including its activity and peak gates,
+// rather than running all upstream stateful DSP twice. Worker storage is reused.
+inline Profile measureScaled(const std::vector<float>& rendered,double rate,float output,const std::atomic<bool>* cancel=nullptr,bool detailed=true) noexcept {
+    if(!std::isfinite(rate)||rate<8000.||rate>192000.||!std::isfinite(output)||rendered.size()%2)return {};
+    Analyzer analyzer;analyzer.prepare(rate,detailed);const float gain=dsp::dbToGain(output);
+    for(size_t i=0;i+1<rendered.size();i+=2){
+        if((i&4095u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return {};
+        const float l=rendered[i]*gain,r=rendered[i+1]*gain;analyzer.push(&l,&r,1);
     }
     return analyzer.result();
 }
@@ -158,11 +172,12 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
     auto t1=targetFor(d1,rt),t2=targetFor(d2,rh);if(rt){t1.level=rt->rmsDb;t2.level=rh->rmsDb;}
     o.dryScore=referenceLoss(d1,t1,rt);o.dryHoldout=referenceLoss(d2,t2,rh);
     o.recipe=fit(dry,ref);
+    std::vector<float> rendered;
     auto evaluate=[&](Recipe& r){++o.tested;if(progress)progress->store(o.tested,std::memory_order_relaxed);
-        if(rt){r.output=0;const auto unscaled=measure(a,train,&r,cancel,true);if(!unscaled.finite()||unscaled.invalid>0||unscaled.active<.65f||unscaled.peak<=0)return 1.e6f;
+        if(rt){r.output=0;const auto unscaled=measure(a,train,&r,cancel,true,&rendered);if(!unscaled.finite()||unscaled.invalid>0||unscaled.active<.65f||unscaled.peak<=0)return 1.e6f;
             // Independent train-only output gain, capped by sample headroom. Holdout never adjusts gain.
             const float ceiling=20.f*std::log10(.94f/std::max(1.e-8f,unscaled.peak));r.output=std::clamp(std::min(rt->rmsDb-unscaled.rmsDb,ceiling),-12.f,12.f);}
-        return referenceLoss(measure(a,train,&r,cancel,rt!=nullptr),t1,rt);};
+        return referenceLoss(rt?measureScaled(rendered,a.rate,r.output,cancel):measure(a,train,&r,cancel,false),t1,rt);};
     auto validate=[&](const Recipe& r){return measure(a,hold,&r,cancel,rh!=nullptr);};
     o.initial=o.final=evaluate(o.recipe);
     const auto starter=o.recipe;const auto starterHold=validate(starter);o.holdoutInitial=o.holdoutFinal=referenceLoss(starterHold,t2,rh);

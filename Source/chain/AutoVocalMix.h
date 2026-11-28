@@ -75,26 +75,45 @@ inline float styleLoss(const Profile& p,const Profile& dry,const Target& target,
 struct PresenceLearn {float harshHz=0,sibilantHz=0;};
 inline PresenceLearn learnPresence(const Audio& a,Segment phrase,const std::atomic<bool>* cancel=nullptr) noexcept {
     if(!std::isfinite(a.rate)||a.rate<8000||a.rate>192000||phrase.begin>=phrase.end||phrase.end>a.frames())return {};
-    constexpr std::array<float,6> frequencies{{2200,3200,4400,5600,7200,9000}};
-    struct Probe {double b=0,a1=0,a2=0;std::array<double,2> z1{},z2{};double energy=0;std::array<unsigned,41> hist{};unsigned count=0;};
-    std::array<Probe,6> probes{};
-    for(size_t k=0;k<probes.size();++k){if(frequencies[k]>=a.rate*.44)continue;auto& q=probes[k];const double w=6.283185307179586*frequencies[k]/a.rate,alpha=std::sin(w)/5.;q.b=alpha/(1.+alpha);q.a1=-2.*std::cos(w)/(1.+alpha);q.a2=(1.-alpha)/(1.+alpha);}
+    // Two cascaded narrow band-pass sections and non-overlapping category
+    // centers. A 20 ms burst histogram measures relative energy, not pitch.
+    constexpr std::array<float,12> frequencies{{1800,2200,2700,3200,3800,4400,5100,6000,7200,8400,9800,11500}};
+    struct Probe {double b=0,a1=0,a2=0;std::array<std::array<double,2>,2> z1{},z2{};double energy=0;std::array<unsigned,81> hist{};unsigned count=0;};
+    std::array<Probe,frequencies.size()> probes{};
+    for(size_t k=0;k<probes.size();++k){if(frequencies[k]>=a.rate*.44)continue;auto& q=probes[k];const double w=6.283185307179586*frequencies[k]/a.rate,alpha=std::sin(w)/10.;q.b=alpha/(1.+alpha);q.a1=-2.*std::cos(w)/(1.+alpha);q.a2=(1.-alpha)/(1.+alpha);}
     const size_t window=std::max<size_t>(1,(size_t)(a.rate*.020));double total=0;size_t n=0;
     for(size_t i=phrase.begin;i<phrase.end;++i){if((i&2047u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return {};
         for(size_t c=0;c<2;++c){const double x=a.stereo[2*i+c];if(!std::isfinite(x))return {};total+=x*x;
-            for(auto& q:probes){if(q.b==0)continue;const double y=q.b*x+q.z1[c];q.z1[c]=q.z2[c]-q.a1*y;q.z2[c]=-q.b*x-q.a2*y;q.energy+=y*y;}}
-        if(++n==window){if(total/(2.*window)>=1.e-5){for(auto& q:probes){if(q.b==0)continue;const double db=10.*std::log10(std::max(1.e-8,q.energy/std::max(total,1.e-12)));++q.hist[(size_t)std::clamp((int)((db+80.)*.5),0,40)];++q.count;}}for(auto& q:probes)q.energy=0;total=0;n=0;}
+            for(auto& q:probes){if(q.b==0)continue;double v=x;for(size_t section=0;section<2;++section){const double y=q.b*v+q.z1[section][c];q.z1[section][c]=q.z2[section][c]-q.a1*y;q.z2[section][c]=-q.b*v-q.a2*y;v=y;}q.energy+=v*v;}}
+        if(++n==window){if(total/(2.*window)>=1.e-5){for(auto& q:probes){if(q.b==0)continue;const double db=10.*std::log10(std::max(1.e-8,q.energy/std::max(total,1.e-12)));++q.hist[(size_t)std::clamp((int)(db+80.),0,80)];++q.count;}}for(auto& q:probes)q.energy=0;total=0;n=0;}
     }
     PresenceLearn result;float bestHarsh=0,bestSib=0;
+    std::array<float,frequencies.size()> upper{},scores{};upper.fill(-80.f);
     for(size_t k=0;k<probes.size();++k){const auto& q=probes[k];if(q.count<20)continue;
-        auto percentile=[&](unsigned goal){unsigned sum=0;for(size_t b=0;b<q.hist.size();++b){sum+=q.hist[b];if(sum>=goal)return -80.f+2.f*(float)b;}return 0.f;};
-        const float typical=percentile((q.count+1)/2),upper=percentile((9*q.count+9)/10);
-        // Require both a measurable upper-band contribution and burst contrast.
-        const float score=std::max(0.f,upper+26.f)*std::clamp((upper-typical-4.f)/8.f,0.f,1.f);
-        if(k<3&&score>bestHarsh){bestHarsh=score;result.harshHz=frequencies[k];}
-        if(k>=2&&score>bestSib){bestSib=score;result.sibilantHz=frequencies[k];}
+        auto percentile=[&](unsigned goal){unsigned sum=0;for(size_t b=0;b<q.hist.size();++b){sum+=q.hist[b];if(sum>=goal)return -80.f+(float)b;}return 0.f;};
+        const float typical=percentile((q.count+1)/2);upper[k]=percentile((9*q.count+9)/10);
+        scores[k]=std::max(0.f,upper[k]+26.f)*std::clamp((upper[k]-typical-4.f)/8.f,0.f,1.f);
+    }
+    for(size_t k=0;k<probes.size();++k){
+        // Require a local spectral maximum; a skirt of a stronger adjacent
+        // burst cannot independently trigger the other treatment family.
+        if((k>0&&upper[k]<upper[k-1])||(k+1<probes.size()&&upper[k]<=upper[k+1]))continue;
+        const float score=scores[k];
+        if(k<5&&score>bestHarsh){bestHarsh=score;result.harshHz=frequencies[k];}
+        if(k>=5&&score>bestSib){bestSib=score;result.sibilantHz=frequencies[k];}
     }
     return result;
+}
+// Conservative sub-bass detector for the optional clean-input fallback. Four
+// cascaded low-pass poles suppress voiced fundamentals; never sum L/R first.
+inline float rumbleDb(const Audio& a,Segment phrase,const std::atomic<bool>* cancel=nullptr) noexcept {
+    if(!std::isfinite(a.rate)||a.rate<8000||a.rate>192000||phrase.begin>=phrase.end||phrase.end>a.frames())return 0.f;
+    const double pole=1.-std::exp(-6.283185307179586*35./a.rate);
+    std::array<std::array<double,4>,2> state{};double sub=0,total=0;
+    for(size_t i=phrase.begin;i<phrase.end;++i){if((i&2047u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return 0.f;
+        for(size_t ch=0;ch<2;++ch){double x=a.stereo[2*i+ch];if(!std::isfinite(x))return 0.f;total+=x*x;
+            for(auto& z:state[ch]){z+=pole*(x-z);x=z;}sub+=x*x;}}
+    return (float)(10.*std::log10(std::max(1.e-12,sub/std::max(1.e-20,total))));
 }
 inline constexpr int autoMixBudget=71;
 inline Optimization optimizeAutoMix(const Audio& a,const Profile& dry,MixStyle style,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr,const MixIntent& intent={},const Profile* beat=nullptr,const Recipe* previous=nullptr) {
@@ -108,16 +127,17 @@ inline Optimization optimizeAutoMix(const Audio& a,const Profile& dry,MixStyle s
     const auto t1=styleTarget(d1,guide),t2=styleTarget(d2,guide);
     Recipe neutral;neutral.ratio=1;neutral.threshold=-9;neutral.output=0;
     o.dryScore=styleLoss(d1,d1,t1,neutral,guide);o.dryHoldout=styleLoss(d2,d2,t2,neutral,guide);
+    std::vector<float> rendered;
     auto evaluate=[&](Recipe& r){
         if(canceled()||o.tested>=autoMixBudget)return 1.e6f;
         ++o.tested;if(progress)progress->store(o.tested,std::memory_order_relaxed);
-        r.output=0;const auto measured=measure(a,train,&r,cancel,true);
+        r.output=0;const auto measured=measure(a,train,&r,cancel,true,&rendered);
         if(!usableSegment(measured)||canceled())return 1.e6f;
         // Short captures have less evidence about loud syllables. Reserve
         // extra peak headroom before holdout validation, not after it.
         const float peakCap=a.frames()<a.rate*9.? .65f : .90f;
         r.output=std::clamp(std::min(t1.level-measured.rmsDb,20.f*std::log10(peakCap/std::max(measured.peak,1.e-8f))),-12.f,12.f);
-        return styleLoss(measure(a,train,&r,cancel,true),d1,t1,r,guide);
+        return styleLoss(measureScaled(rendered,a.rate,r.output,cancel),d1,t1,r,guide);
     };
     auto offer=[&](Recipe r){const auto score=evaluate(r);if(score+.015f<o.final){o.recipe=r;o.final=score;++o.accepted;}};
     Recipe seed=fit(d1);seed.low=std::clamp((t1.low-d1.lowDb)*.55f,-4.f,3.f);seed.high=std::clamp((t1.high-d1.highDb)*.65f,-3.f,4.f);
@@ -126,6 +146,13 @@ inline Optimization optimizeAutoMix(const Audio& a,const Profile& dry,MixStyle s
     const auto starter=o.recipe;
     o.holdoutInitial=styleLoss(measure(a,hold,&starter,cancel,true),d2,t2,starter,guide);
     offer(neutral);auto shaped=seed;shaped.threshold=std::clamp(d1.rmsDb-4.f,-45.f,-9.f);offer(shaped);
+    // Predeclare a low-complexity fallback using training only. The original
+    // voiced seed is not always the safest choice for a narrow-band signal.
+    const auto safeSeed=o.recipe;const float safeTrain=o.final;
+    Recipe cleanFallback=neutral;float cleanTrain=1.e6f;
+    // A narrow, clean vocal need not lose low-register energy to a fixed
+    // high-pass. Fit only the output level of this predeclared alternative.
+    if(d1.highDb<-24.f&&rumbleDb(a,train,cancel)<-20.f){cleanFallback.highpassHz=0.f;cleanTrain=evaluate(cleanFallback);}
     for(float scale:{1.f,.5f})for(int dim=0;dim<5;++dim)for(float sign:{-1.f,1.f}){
         auto r=o.recipe;switch(dim){case 0:r.low=std::clamp(r.low+sign*2.f*scale,-6.f,5.f);break;
         case 1:r.high=std::clamp(r.high+sign*2.f*scale,-5.f,6.f);break;
@@ -151,23 +178,32 @@ inline Optimization optimizeAutoMix(const Audio& a,const Profile& dry,MixStyle s
     }
     if(canceled())return {};
     o.holdoutFinal=styleLoss(measure(a,hold,&o.recipe,cancel,true),d2,t2,o.recipe,guide);
-    if(o.holdoutFinal>=o.dryHoldout-.025f){o.recipe=starter;o.final=o.initial;o.holdoutFinal=o.holdoutInitial;o.accepted=0;}
+    if(o.holdoutFinal>=o.dryHoldout-.025f){
+        const float safeHold=styleLoss(measure(a,hold,&safeSeed,cancel,true),d2,t2,safeSeed,guide);
+        o.recipe=safeSeed;o.final=safeTrain;o.holdoutFinal=safeHold;o.accepted=0;
+        // Neither fallback is fitted on holdout; this only vetoes unsafe work.
+        if(safeHold>=o.dryHoldout-.025f){o.recipe=starter;o.final=o.initial;o.holdoutFinal=o.holdoutInitial;}
+        if(o.holdoutFinal>=o.dryHoldout-.025f&&cleanTrain+.025f<o.dryScore&&rumbleDb(a,hold,cancel)<-20.f){
+            const float cleanHold=styleLoss(measure(a,hold,&cleanFallback,cancel,true),d2,t2,cleanFallback,guide);
+            if(cleanHold+.025f<o.dryHoldout){o.recipe=cleanFallback;o.final=cleanTrain;o.holdoutFinal=cleanHold;}
+        }
+    }
     // Preserve the original search winner as a predeclared fallback. The
     // timing challenger is selected solely on train; holdout only vetoes it.
-    const auto incumbent=o.recipe;const float incumbentTrain=o.final,incumbentHold=o.holdoutFinal;
-    const int incumbentAccepted=o.accepted;
-    if(incumbent.ratio>1.05f){
+    const auto timingBase=o.recipe;const float timingBaseTrain=o.final,timingBaseHold=o.holdoutFinal;
+    const int timingBaseAccepted=o.accepted;
+    if(timingBase.ratio>1.05f){
         // The fast/slow response families are intentionally broad, not fixed
         // genre presets. The dry dynamics and rendered score decide the winner.
         for(float attack:{5.f,24.f,40.f})for(float release:{65.f,190.f}){
-            auto candidate=incumbent;candidate.attackMs=attack;candidate.releaseMs=release;offer(candidate);
+            auto candidate=timingBase;candidate.attackMs=attack;candidate.releaseMs=release;offer(candidate);
         }
         const auto timingWinner=o.recipe;
         for(float release:{90.f,280.f}){auto candidate=timingWinner;candidate.releaseMs=release;offer(candidate);}
         if(canceled())return {};
         const float challengerHold=styleLoss(measure(a,hold,&o.recipe,cancel,true),d2,t2,o.recipe,guide);
-        if(o.final+.025f<incumbentTrain&&challengerHold+.025f<incumbentHold){o.holdoutFinal=challengerHold;}
-        else{o.recipe=incumbent;o.final=incumbentTrain;o.holdoutFinal=incumbentHold;o.accepted=incumbentAccepted;}
+        if(o.final+.025f<timingBaseTrain&&challengerHold+.025f<timingBaseHold){o.holdoutFinal=challengerHold;}
+        else{o.recipe=timingBase;o.final=timingBaseTrain;o.holdoutFinal=timingBaseHold;o.accepted=timingBaseAccepted;}
     }
     // Learn from the dry training phrase only. Keep the timing winner as a
     // fallback; a new frequency setting must improve both measured phrases.
