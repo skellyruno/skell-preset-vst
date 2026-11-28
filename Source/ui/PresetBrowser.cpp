@@ -619,7 +619,10 @@ void PresetBrowser::placeWithin(juce::Rectangle<int> usable,juce::Rectangle<int>
     if(bounds!=getBounds())setBounds(bounds);
 }
 void PresetBrowser::resized(){
-    search.setBounds(19,17,getWidth()-151,42);
+    search.setBounds(50,17,getWidth()-182,42);
+    search.setColour(juce::TextEditor::backgroundColourId,juce::Colours::transparentBlack);
+    search.setColour(juce::TextEditor::outlineColourId,juce::Colours::transparentBlack);
+    search.setColour(juce::TextEditor::focusedOutlineColourId,juce::Colours::transparentBlack);
     search.setFont(juce::Font(juce::FontOptions(15.f)));
     search.setEnabled(!detailsOpen && !chooserActive);
     clearSearchButton.setEnabled(!detailsOpen && !chooserActive && search.getText().isNotEmpty());
@@ -635,10 +638,11 @@ void PresetBrowser::resized(){
     showcaseView.setColour(juce::TextButton::textColourOffId,showcaseMode?Theme::green:Theme::muted);
     const bool exhibition=showcaseMode&&!detailsOpen;
     const int mid=207+(getWidth()-224)/2, foot=juce::jmin(getHeight()-(showVocalTabs()?100:61),showcaseCardBounds(0).getBottom()+76);
-    showcasePrevious.setBounds(208,190,25,40);showcaseNext.setBounds(getWidth()-43,190,25,40);
-    showcaseLoad.setBounds(mid-71,foot,142,31);showcaseFavorite.setBounds(mid+78,foot,85,31);
+    const int arrowY=showcaseCardBounds(0).getCentreY()-20;
+    showcasePrevious.setBounds(208,arrowY,25,40);showcaseNext.setBounds(getWidth()-43,arrowY,25,40);
+    showcaseLoad.setBounds(mid-82,foot,164,34);showcaseFavorite.setBounds(mid+89,foot,85,34);
     for(auto* b:{&showcasePrevious,&showcaseNext,&showcaseLoad,&showcaseFavorite}){b->setVisible(exhibition);b->setColour(juce::TextButton::buttonColourId,b==&showcaseLoad?Theme::green.withAlpha(.22f):Theme::panelAlt);b->setColour(juce::TextButton::textColourOffId,Theme::white);}
-    if(exhibition){const int n=showcaseSelection(),count=resultCount();showcasePrevious.setEnabled(n>0);showcaseNext.setEnabled(n>=0&&n+1<count);showcaseLoad.setEnabled(n>=0&&!chooserActive&&!loadInFlight&&!saveInFlight);showcaseLoad.setButtonText(directoryMode()==DirectoryMode::none?"LOAD PRESET":directoryMode()==DirectoryMode::artists?"OPEN ARTIST":"OPEN COLLECTION");showcaseFavorite.setVisible(directoryMode()==DirectoryMode::none);const auto entries=directoryMode()==DirectoryMode::none?filtered():std::vector<int>{};showcaseFavorite.setEnabled(n>=0&&n<(int)entries.size()&&!chooserActive);showcaseFavorite.setButtonText(n>=0&&n<(int)entries.size()&&isFavorite(entries[(size_t)n])?"FAVORITED":"FAVORITE");}
+    if(exhibition){const int n=showcaseSelection(),count=resultCount();showcasePrevious.setEnabled(showcaseIndex(-1,count,n)>=0);showcaseNext.setEnabled(showcaseIndex(1,count,n)>=0);showcaseLoad.setEnabled(n>=0&&!chooserActive&&!loadInFlight&&!saveInFlight);showcaseLoad.setButtonText(directoryMode()==DirectoryMode::none?"LOAD PRESET":directoryMode()==DirectoryMode::artists?"OPEN ARTIST":"OPEN COLLECTION");showcaseFavorite.setVisible(directoryMode()==DirectoryMode::none);const auto entries=directoryMode()==DirectoryMode::none?filtered():std::vector<int>{};showcaseFavorite.setEnabled(n>=0&&n<(int)entries.size()&&!chooserActive);showcaseFavorite.setButtonText(n>=0&&n<(int)entries.size()&&isFavorite(entries[(size_t)n])?"FAVORITED":"FAVORITE");}
     thumbnailView.setColour(juce::TextButton::buttonColourId,!listMode&&!showcaseMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
     listView.setColour(juce::TextButton::buttonColourId,listMode&&!showcaseMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
     thumbnailView.setColour(juce::TextButton::textColourOffId,!listMode&&!showcaseMode?Theme::green:Theme::muted);
@@ -1300,7 +1304,7 @@ juce::Rectangle<int> PresetBrowser::directoryCardBounds(int position) const {
 }
 int PresetBrowser::resultAt(juce::Point<int> p) const {
     if(detailsOpen)return -1;
-    if(showcaseMode){const int n=showcaseSelection();for(int d=-1;d<=1;++d)if(n+d>=0&&n+d<resultCount()&&showcaseCardBounds(d).contains(p))return n+d;return -1;}
+    if(showcaseMode){const int n=showcaseSelection(),count=resultCount();for(int d=-1;d<=1;++d){const int index=showcaseIndex(d,count,n);if(index>=0&&showcaseCardBounds(d).contains(p))return index;}return -1;}
     if(directoryMode()==DirectoryMode::none && listMode)
         return presetCardHitForTest(false,p.x,p.y,getWidth(),visibleRows())?scroll+(p.y-110)/61:-1;
     for(int i=0;i<pageCapacity();++i)
@@ -2230,8 +2234,13 @@ void PresetBrowser::paint(juce::Graphics&g) {
     g.setGradientFill(juce::ColourGradient(
         Theme::panel,0.f,0.f,
         Theme::bg,0.f,(float)getHeight(),false));
-    g.fillRoundedRectangle(getLocalBounds().toFloat(),10.f);
-    g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),10.f,1.2f);
+    g.fillRoundedRectangle(getLocalBounds().toFloat(),12.f);
+    g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),12.f,1.2f);
+    g.setColour(Theme::white.withAlpha(.045f));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2.f),10.f,.8f);
+    const juce::Rectangle<float> searchFrame(18.f,16.f,(float)getWidth()-150.f,44.f);
+    g.setColour(Theme::plot);g.fillRoundedRectangle(searchFrame,9.f);g.setColour(search.hasKeyboardFocus(true)?Theme::green.withAlpha(.65f):Theme::stroke);g.drawRoundedRectangle(searchFrame.reduced(.5f),9.f,1.f);
+    g.setColour(Theme::muted);g.drawEllipse(29.f,29.f,12.f,12.f,1.5f);g.drawLine(39.f,39.f,45.f,45.f,1.5f);
+    g.setColour(Theme::stroke.withAlpha(.65f));g.drawHorizontalLine(103,18.f,(float)getWidth()-18.f);
     g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,67.f,3.f,23.f),1.5f);
     g.setColour(Theme::stroke.withAlpha(.7f));
     g.drawVerticalLine(196,105.f,(float)getHeight()-15.f);
@@ -2261,7 +2270,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
             g.setColour(selected?Theme::green.withAlpha(.14f):
                         hovered?Theme::panelAlt.brighter(.075f):Theme::panel);
             g.fillRoundedRectangle(b,6.f);
-            g.setColour(selected?Theme::green.withAlpha(.78f):
+            if(selected){g.setColour(Theme::green);g.fillRoundedRectangle(b.getX()+3.f,b.getY()+7.f,2.f,b.getHeight()-14.f,1.f);}
+            g.setColour(selected?Theme::green.withAlpha(.55f):
                         hovered?Theme::muted.withAlpha(.68f):Theme::stroke.withAlpha(.75f));
             g.drawRoundedRectangle(b.reduced(.5f),6.f,selected?1.25f:1.f);
             Theme::fittedText(g,banks[i],
@@ -2340,8 +2350,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         const bool rowHover=itemIndex==hoveredCard;
-        g.setColour(rowHover?Theme::panelAlt.brighter(.14f):i%2==0?Theme::panelAlt:Theme::panel);
-        g.fillRoundedRectangle(rect,5.f);
+        g.setGradientFill(juce::ColourGradient(rowHover?Theme::panelAlt.brighter(.15f):Theme::panelAlt,rect.getTopLeft(),Theme::panel,rect.getBottomLeft(),false));
+        g.fillRoundedRectangle(rect,7.f);
         const bool loaded=custom
             ?activeUserPreset==userPresets[(size_t)(-entry-1)]
             :entry==processor.loadedFactoryPresetIndex();
@@ -2364,13 +2374,17 @@ void PresetBrowser::paint(juce::Graphics&g) {
                                    rect.getHeight()-18.f,1.25f);
         }
         const int available=getWidth()-304;
-        const int nameWidth=juce::jmax(80,available*46/100);
-        Theme::fittedText(g,itemName,{220,y+5,nameWidth,25},15.f,Theme::white,true);
-        Theme::fittedText(g,custom&&userArtist.isNotEmpty()?userArtist:custom?juce::String("PERSONAL"):juce::String("FACTORY"),{220,y+31,nameWidth,17},10.5f,Theme::muted);
+        const int nameWidth=juce::jmax(70,(available-45)*46/100);
+        const juce::Rectangle<float> tile(218.f,(float)y+8.f,40.f,40.f);
+        const auto cover=custom?artworkForUser(-entry-1).portrait:entry==alchemistIndex?alchemistArtwork:juce::Image{};
+        {juce::Graphics::ScopedSaveState clip(g);juce::Path mask;mask.addRoundedRectangle(tile,5.f);g.reduceClipRegion(mask);if(cover.isValid())g.drawImageWithin(cover,218,y+8,40,40,juce::RectanglePlacement::fillDestination);else paintCover(g,tile,custom?-entry:entry+1,Theme::green.withAlpha(.7f));}
+        g.setColour(Theme::stroke);g.drawRoundedRectangle(tile,5.f,.8f);
+        Theme::fittedText(g,itemName,{268,y+5,nameWidth,25},15.f,Theme::white,true);
+        Theme::fittedText(g,custom&&userArtist.isNotEmpty()?userArtist:custom?juce::String("PERSONAL"):juce::String("FACTORY"),{268,y+31,nameWidth,17},10.5f,Theme::muted);
         juce::StringArray tags;
         if(custom){const auto type=vocalType(-entry-1);if(type=="main")tags.add("MAIN");else if(type=="adlib")tags.add("ADLIB");if(userGenre.isNotEmpty())tags.add(userGenre.toUpperCase());}
         else tags.add(itemBank.toUpperCase());
-        int tx=225+nameWidth;const int limit=getWidth()-81;
+        int tx=273+nameWidth;const int limit=getWidth()-81;
         for(int t=0;t<tags.size()&&tx<limit-26;++t){const auto tint=t==0?Theme::green:Theme::blue;const int tw=juce::jmin(limit-tx,juce::jlimit(42,100,tags[t].length()*7+16));const juce::Rectangle<float> pill((float)tx,(float)y+17.f,(float)tw,22.f);g.setColour(tint.withAlpha(.12f));g.fillRoundedRectangle(pill,11.f);Theme::fittedText(g,tags[t],pill.toNearestInt().reduced(5,0),10.f,tint,true,juce::Justification::centred);tx+=tw+5;}
         // Independent star target: selecting a favorite must not audition the
         // preset or alter any audio/host automation IDs.
@@ -2466,6 +2480,10 @@ void PresetBrowser::paint(juce::Graphics&g) {
         else if(bank==2)
             Theme::text(g,"Assign an artist in Manage Library to group saved sounds.",
                 {222,259,getWidth()-244,26},11,Theme::muted);
+    }
+    if(!showVocalTabs()&&!entries.empty()&&(int)entries.size()<=rows){
+        g.setColour(Theme::stroke.withAlpha(.55f));g.drawHorizontalLine(getHeight()-37,207.f,(float)getWidth()-18.f);
+        Theme::fittedText(g,juce::String(entries.size())+" PRESETS  /  CLICK TO LOAD  /  STAR TO SAVE",{207,getHeight()-29,getWidth()-230,19},10.f,Theme::muted);
     }
     if((int)entries.size()>rows){
         const float railTop=110.f,railHeight=(float)(rows*61-5);

@@ -74,6 +74,7 @@ private:
     bool showcaseMode=false;
     void setShowcase(bool enabled);
     int showcaseSelection() const;
+    int showcaseIndex(int offset,int count,int selected) const noexcept;
     void moveShowcase(int delta);
     void activateShowcase();
     juce::Rectangle<int> showcaseCardBounds(int offset) const;

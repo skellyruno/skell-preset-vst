@@ -193,6 +193,8 @@ bool PresetBrowser::testViewSwitchForTest() {
         ok=ok&&processor.loadedFactoryPresetIndex()==originalProgram;
     }
     ok=ok&&showcaseLoad.isVisible()&&!showcaseCardBounds(0).intersects(showcaseCardBounds(1))&&getLocalBounds().contains(showcaseLoad.getBounds());
+    // Circular artwork navigation is symmetric only when there are three unique cards.
+    ok=ok&&showcaseIndex(-1,3,0)==2&&showcaseIndex(1,3,2)==0&&showcaseIndex(-1,2,0)==-1&&showcaseIndex(1,1,0)==-1&&showcaseIndex(0,0,-1)==-1;
     setListView(savedMode,false);if(savedShowcase)setShowcase(true);keyboardCard=oldFocus;scroll=oldScroll;resized();
     preferencesReadOnly=savedReadOnly;
     return ok;
@@ -211,7 +213,12 @@ void PresetBrowser::setShowcase(bool enabled){
     hoveredCard=hoveredStar=-1;browserWheelCarry=0;resized();repaint();
 }
 int PresetBrowser::showcaseSelection() const {return auditionTargetForTest(keyboardCard,scroll,resultCount());}
-void PresetBrowser::moveShowcase(int delta){const int n=showcaseSelection();if(n>=0)focusCard(n+delta);}
+int PresetBrowser::showcaseIndex(int offset,int count,int selected) const noexcept {
+    if(selected<0||selected>=count)return -1;
+    if(count>=3)return (selected+offset+count)%count;
+    const int index=selected+offset;return index>=0&&index<count?index:-1;
+}
+void PresetBrowser::moveShowcase(int delta){const int n=showcaseIndex(delta,resultCount(),showcaseSelection());if(n>=0)focusCard(n);}
 void PresetBrowser::activateShowcase(){
     if(!showcaseMode||detailsOpen||chooserActive||loadInFlight||saveInFlight)return;
     const int n=showcaseSelection();if(n<0)return;
@@ -219,33 +226,42 @@ void PresetBrowser::activateShowcase(){
     const auto entries=filtered();if(n<(int)entries.size())auditionEntry(entries[(size_t)n]);
 }
 juce::Rectangle<int> PresetBrowser::showcaseCardBounds(int offset) const {
-    const int w=getWidth()-224,mid=207+w/2,hero=juce::jmin(210,(w-66)*48/100),side=juce::jmax(35,(w-66-hero)/2-8);
-    const int height=juce::jlimit(138,236,getHeight()-(showVocalTabs()?311:272));
-    if(offset==0)return {mid-hero/2,131,hero,height};
-    return {offset<0?mid-hero/2-side-8:mid+hero/2+8,151,side,height-40};
+    const int w=getWidth()-224,mid=207+w/2,hero=juce::jmin(234,(w-66)*48/100),side=juce::jmax(35,(w-66-hero)/2-10);
+    const int height=juce::jlimit(138,250,getHeight()-(showVocalTabs()?311:272));
+    if(offset==0)return {mid-hero/2,126,hero,height};
+    return {offset<0?mid-hero/2-side-10:mid+hero/2+10,150,side,height-48};
 }
 void PresetBrowser::paintShowcase(juce::Graphics& g,const std::vector<int>& entries,const std::vector<DirectoryCard>& cards){
     const bool directory=directoryMode()!=DirectoryMode::none;const int count=directory?(int)cards.size():(int)entries.size(),n=showcaseSelection();
     const int width=getWidth()-224,mid=207+width/2;
     if(n<0||n>=count){Theme::fittedText(g,"NO MATCHING SOUNDS",{220,210,width-26,36},17.f,Theme::muted,true,juce::Justification::centred);return;}
-    const auto hero=showcaseCardBounds(0);g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.12f),(float)mid,(float)hero.getCentreY(),Theme::plot.withAlpha(0.f),(float)(mid+width/2),(float)hero.getBottom(),true));g.fillRect(207,110,width,hero.getHeight()+75);
+    const auto hero=showcaseCardBounds(0);
+    const auto gallery=juce::Rectangle<float>(207.f,110.f,(float)width,(float)(getHeight()-145));
+    g.setGradientFill(juce::ColourGradient(Theme::panelAlt.withAlpha(.7f),gallery.getTopLeft(),Theme::bg.withAlpha(.85f),gallery.getBottomLeft(),false));g.fillRoundedRectangle(gallery,12.f);
+    g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.15f),(float)mid,(float)hero.getCentreY(),Theme::plot.withAlpha(0.f),(float)(mid+width/2),(float)hero.getBottom(),true));g.fillRoundedRectangle(gallery,12.f);
+    g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.065f),(float)mid,(float)hero.getBottom(),Theme::green.withAlpha(0.f),(float)mid+width*.38f,(float)hero.getBottom()+28.f,true));g.fillRect(gallery);
     juce::String title,subtitle;
     for(int d:{-1,1,0}){
-        const int i=n+d;if(i<0||i>=count)continue;const auto rect=showcaseCardBounds(d);const auto area=rect.toFloat();juce::Image cover;juce::String label;int seed=0;
+        const int i=showcaseIndex(d,count,n);if(i<0)continue;const auto rect=showcaseCardBounds(d);const auto area=rect.toFloat();juce::Image cover;juce::String label;int seed=0;
         if(directory){const auto& card=cards[(size_t)i];label=card.label;seed=card.id;cover=artworkForUser(card.artIndex).portrait;if(directoryMode()==DirectoryMode::artists){const auto found=artistArtwork.find(skellpreset::artistart::key(card.label));if(found!=artistArtwork.end())cover=found->second.portrait;}}
         else {const int entry=entries[(size_t)i];seed=entry<0?-entry:entry+1;label=entry<0?userDisplayName(-entry-1):processor.getProgramName(entry);cover=entry<0?artworkForUser(-entry-1).portrait:entry==skellpreset::alchemist::factoryIndex?alchemistArtwork:juce::Image{};}
-        g.setColour(Theme::panelAlt);g.fillRoundedRectangle(area,9.f);
+        g.setColour(juce::Colours::black.withAlpha(.50f));g.fillRoundedRectangle(area.translated(0.f,5.f).expanded(d==0?4.f:2.f),12.f);
+        if(d==0){g.setColour(Theme::green.withAlpha(.06f));g.fillRoundedRectangle(area.expanded(4.f),13.f);}
+        g.setColour(Theme::panelAlt);g.fillRoundedRectangle(area,10.f);
         {juce::Graphics::ScopedSaveState state(g);juce::Path clip;clip.addRoundedRectangle(area.reduced(2.f),7.f);g.reduceClipRegion(clip);
             if(cover.isValid())g.drawImageWithin(cover,rect.getX()+2,rect.getY()+2,rect.getWidth()-4,rect.getHeight()-4,juce::RectanglePlacement::fillDestination);
             else {const std::array<juce::Colour,4> accents{{Theme::green,Theme::blue,Theme::amber,Theme::pink}};skellpreset::art::paintCover(g,area.reduced(2.f),seed,accents[(size_t)artworkPaletteIndexForTest(seed)].withAlpha(.85f));}
-            g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(d==0?.02f:.43f),area.getTopLeft(),Theme::bg.withAlpha(d==0?.35f:.82f),area.getBottomLeft(),false));g.fillRect(area);
+            g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(d==0?.02f:.26f),area.getTopLeft(),Theme::bg.withAlpha(d==0?.24f:.72f),area.getBottomLeft(),false));g.fillRect(area);
         }
-        g.setColour(d==0?Theme::green.withAlpha(.85f):hoveredCard==i?Theme::green.withAlpha(.5f):Theme::stroke);g.drawRoundedRectangle(area.reduced(.6f),9.f,d==0?1.6f:1.f);
+        g.setColour(d==0?Theme::green.withAlpha(.73f):hoveredCard==i?Theme::green.withAlpha(.5f):Theme::stroke);g.drawRoundedRectangle(area.reduced(.6f),9.f,d==0?1.4f:1.f);
+        g.setColour(Theme::white.withAlpha(d==0?.15f:.055f));g.drawRoundedRectangle(area.reduced(2.2f),7.f,.75f);
         if(d!=0)Theme::fittedText(g,label,rect.withTop(rect.getBottom()-29).reduced(4,0),10.f,Theme::muted,true,juce::Justification::centred);
         else{title=label;if(directory){const auto& card=cards[(size_t)i];subtitle=juce::String(card.main)+" MAIN  /  "+juce::String(card.adlib)+" ADLIB  /  "+juce::String(card.other)+" OTHER";}else{const int entry=entries[(size_t)i];subtitle=entry<0?artistForUser(-entry-1):juce::String("FACTORY PRESET");}}
     }
-    Theme::fittedText(g,title,{220,hero.getBottom()+13,width-26,31},21.f,Theme::white,true,juce::Justification::centred);
-    Theme::fittedText(g,subtitle,{220,hero.getBottom()+45,width-26,19},11.f,Theme::muted,true,juce::Justification::centred);
+    Theme::fittedText(g,title,{220,hero.getBottom()+9,width-26,31},24.f,Theme::white,true,juce::Justification::centred);
+    Theme::fittedText(g,subtitle,{220,hero.getBottom()+41,width-26,19},11.f,Theme::muted,true,juce::Justification::centred);
     const int footer=getHeight()-(showVocalTabs()?65:25);
+    const int marks=juce::jmin(count,9);const int activeMark=count<=9?n:juce::roundToInt((float)n*(marks-1)/(float)(count-1));
+    for(int mark=0;mark<marks;++mark){g.setColour(mark==activeMark?Theme::green:Theme::muted.withAlpha(.34f));g.fillRoundedRectangle((float)(mid-marks*11/2+mark*11),(float)footer-8.f,mark==activeMark?8.f:5.f,3.f,1.5f);}
     Theme::fittedText(g,juce::String(n+1)+" / "+juce::String(count)+"  |  BROWSE WITHOUT LOADING",{215,footer,width-16,16},10.f,Theme::muted,false,juce::Justification::centred);
 }
