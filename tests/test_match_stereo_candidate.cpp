@@ -9,6 +9,15 @@ int main(){
     Audio ref;ref.rate=dry.rate;NativeCandidate chain(dry.rate,recipe);
     for(size_t i=0;i<dry.frames();++i){const auto y=chain.process(dry.stereo[2*i],dry.stereo[2*i+1]);ref.stereo.insert(ref.stereo.end(),y.begin(),y.end());}
     const auto rp=profile(ref);const auto found=optimize(dry,dp,&rp,nullptr,nullptr,&ref);
+    // Basic calibration must retain exactly the same level/activity/peak as
+    // the detailed analyzer. Cached early trials may not change the winner.
+    const auto seg=selectReferenceSegment(dry,0,dry.frames()/2);
+    const auto basic=measure(dry,seg,&recipe,nullptr,false),detail=measure(dry,seg,&recipe,nullptr,true);
+    if(basic.rmsDb!=detail.rmsDb||basic.peak!=detail.peak||basic.active!=detail.active||basic.invalid!=detail.invalid)return 8;
+    const auto uncached=optimize(dry,dp,&rp,nullptr,nullptr,&ref,false);
+    if(found.valid!=uncached.valid||found.final!=uncached.final||found.holdoutFinal!=uncached.holdoutFinal||trialKey(found.recipe)!=trialKey(uncached.recipe)||found.tested!=uncached.tested||found.renderedCandidates+found.cacheHits!=found.tested||uncached.cacheHits!=0||uncached.renderedCandidates!=uncached.tested)return 9;
+    std::cout<<"Render accounting: "<<found.renderedCandidates<<" native renders, "<<found.cacheHits<<" exact cache hits\n";
+    auto changed=recipe;changed.mod.p[3]+=.1f;if(trialKey(changed)==trialKey(recipe))return 10;
     std::cout<<"Width: "<<found.dryHoldout<<" -> "<<found.holdoutFinal<<" ("<<found.tested<<" candidates)\n";
     if(!found.valid||found.recipe.width.wet<=0||found.holdoutFinal>=found.dryHoldout||found.tested>referenceBudget)return 1;
     // Verify the doubler is actual native wet-only DSP, not a gain trick.

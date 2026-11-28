@@ -8,6 +8,7 @@
 #include "AdvancedVocalDSP.h"
 #include "VisualAnalysis.h"
 #include "VocalEffects.h"
+#include <optional>
 
 namespace skellpreset::liveMatch {
 // Shared normalized control mapping: the scorer and rack writer use the
@@ -91,14 +92,14 @@ inline Profile measure(const Audio& a,Segment s,const Recipe* r,const std::atomi
     Analyzer analyzer;analyzer.prepare(a.rate,detailed);
     if(rendered)rendered->resize((s.end-s.begin)*2);
     // Warm up the exact native kernels before measuring the chosen phrase.
-    Recipe neutral;
     const size_t warm=(size_t)(a.rate*(r&&(r->mod.wet>0||r->delay.wet>0||r->room.wet>0||r->rider.wet>0||r->harshness.wet>0||r->doubler.wet>0||r->width.wet>0)?1.5:.2)),start=s.begin>warm?s.begin-warm:0;
-    NativeCandidate chain(a.rate,r?*r:neutral,start);
+    std::optional<NativeCandidate> chain;
+    if(r)chain.emplace(a.rate,*r,start);
     for(size_t i=start;i<s.end;++i){
         if((i&2047u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return {};
         float l=a.stereo[i*2],rr=a.stereo[i*2+1];
         if(!std::isfinite(l)||!std::isfinite(rr))return {};
-        if(r){const auto v=chain.process(l,rr);l=v[0];rr=v[1];}
+        if(chain){const auto v=chain->process(l,rr);l=v[0];rr=v[1];}
         if(i>=s.begin){analyzer.push(&l,&rr,1);if(rendered){const auto k=(i-s.begin)*2;(*rendered)[k]=l;(*rendered)[k+1]=rr;}}
     }
     return analyzer.result();
@@ -197,10 +198,19 @@ inline float stereoBandError(const StereoBands& value,const StereoBands& target)
 struct Optimization {
     Recipe recipe{};
     float initial=1.e6f,final=1.e6f,holdoutInitial=1.e6f,holdoutFinal=1.e6f,dryScore=1.e6f,dryHoldout=1.e6f;
-    int tested=0,accepted=0;bool valid=false,referenceRejected=false;
+    int tested=0,accepted=0,renderedCandidates=0,cacheHits=0;bool valid=false,referenceRejected=false;
 };
-inline constexpr int plainBudget=25,baseReferenceBudget=132,stereoReferenceBudget=168,echoReferenceBudget=180,referenceBudget=198;
-inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* ref=nullptr,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr,const Audio* referenceAudio=nullptr) {
+inline constexpr int plainBudget=25,baseReferenceBudget=132,stereoReferenceBudget=168,echoReferenceBudget=180,bandReferenceBudget=198,referenceBudget=206;
+// Explicit values, not object bytes (padding and inactive state are not hashes).
+// Reference-mode output is recalibrated, so callers zero it before keying.
+inline std::array<float,55> trialKey(const Recipe& r) noexcept {
+    std::array<float,55> k{};size_t i=0;
+    for(float v:{r.low,r.high,r.threshold,r.ratio,r.makeup,float(r.deess),r.output,float(r.modulation),r.attackMs,r.releaseMs,r.highpassHz})k[i++]=v;
+    for(float v:r.deessControls)k[i++]=v;
+    for(const auto* e:{&r.mod,&r.delay,&r.room,&r.rider,&r.harshness,&r.saturation,&r.doubler,&r.width}){k[i++]=e->wet;for(float v:e->p)k[i++]=v;}
+    return k;
+}
+inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* ref=nullptr,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr,const Audio* referenceAudio=nullptr,bool reuseIdentical=true) {
     Optimization o;
     if(!dry.valid()||(ref&&!ref->valid())||!validMatchAudio(a,cancel))return o;
     const auto train=ref?selectReferenceSegment(a,0,a.frames()/2):selectSegment(a,0,a.frames()/2),hold=ref?selectReferenceSegment(a,a.frames()/2,a.frames()):selectSegment(a,a.frames()/2,a.frames());
@@ -216,11 +226,22 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
     o.dryScore=referenceLoss(d1,t1,rt);o.dryHoldout=referenceLoss(d2,t2,rh);
     o.recipe=fit(dry,ref);
     std::vector<float> rendered;
+    struct Trial {std::array<float,55> key;float score,output;};
+    std::vector<Trial> trials;bool cacheActive=rt&&reuseIdentical;
+    if(cacheActive)trials.reserve(baseReferenceBudget);
     auto evaluate=[&](Recipe& r){++o.tested;if(progress)progress->store(o.tested,std::memory_order_relaxed);
-        if(rt){r.output=0;const auto unscaled=measure(a,train,&r,cancel,true,&rendered);if(!unscaled.finite()||unscaled.invalid>0||unscaled.active<.65f||unscaled.peak<=0)return 1.e6f;
+        if(cancel&&cancel->load(std::memory_order_relaxed))return 1.e6f;
+        std::array<float,55> key{};
+        if(cacheActive){r.output=0;key=trialKey(r);for(const auto& trial:trials)if(trial.key==key){r.output=trial.output;++o.cacheHits;return trial.score;}}
+        ++o.renderedCandidates;
+        // Calibration needs only level, activity and peak. The detailed pass
+        // still runs on the calibrated PCM, with identical scoring features.
+        if(rt){r.output=0;const auto unscaled=measure(a,train,&r,cancel,false,&rendered);if(!unscaled.finite()||unscaled.invalid>0||unscaled.active<.65f||unscaled.peak<=0)return 1.e6f;
             // Independent train-only output gain, capped by sample headroom. Holdout never adjusts gain.
             const float ceiling=20.f*std::log10(.94f/std::max(1.e-8f,unscaled.peak));r.output=std::clamp(std::min(rt->rmsDb-unscaled.rmsDb,ceiling),-12.f,12.f);}
-        return referenceLoss(rt?measureScaled(rendered,a.rate,r.output,cancel):measure(a,train,&r,cancel,false),t1,rt);};
+        const float score=referenceLoss(rt?measureScaled(rendered,a.rate,r.output,cancel):measure(a,train,&r,cancel,false),t1,rt);
+        if(cacheActive&&score<1.e5f&&!(cancel&&cancel->load(std::memory_order_relaxed)))trials.push_back({key,score,r.output});
+        return score;};
     auto validate=[&](const Recipe& r){return measure(a,hold,&r,cancel,rh!=nullptr);};
     o.initial=o.final=evaluate(o.recipe);
     const auto starter=o.recipe;const auto starterHold=validate(starter);o.holdoutInitial=o.holdoutFinal=referenceLoss(starterHold,t2,rh);
@@ -265,6 +286,9 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
         for(float scale:{1.f,.45f})for(int fx=0;fx<3;++fx)for(int dim=0;dim<3;++dim)for(float sign:{-1.f,1.f}){auto r=o.recipe;auto& e=fx==0?r.mod:fx==1?r.delay:r.room;if(e.wet==0)continue;if(dim==0)e.wet=std::clamp(e.wet+sign*.18f*scale,0.f,.98f);else e.p[dim-1]=std::clamp(e.p[dim-1]+sign*.18f*scale,0.f,1.f);offer(r);}
     }
     if(cancel&&cancel->load(std::memory_order_relaxed))return {};
+    // Later paired echo and band measurements consume the actual rendered PCM;
+    // never return a score-only cached entry for those stages.
+    cacheActive=false;
     // If the training phrase still has a stereo mismatch, try a bounded
     // set of existing stereo/double inserts. Do not use holdout to pick
     // parameters. A failed challenger may fall back to the original winner.
@@ -343,7 +367,7 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
         if(initialBand>.035f&&initialBand<1.e5f){
             float bestBand=initialBand,bestCombined=bandAnchorScore+8.f*initialBand;
             auto offerBand=[&](Recipe candidate){
-                if(o.tested>=referenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))return;
+                if(o.tested>=bandReferenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))return;
                 const float score=evaluate(candidate);if(score>=1.e5f||score>bandAnchorScore+.025f)return;
                 const float error=stereoBandError(stereoBands(rendered.data(),rendered.size()/2,a.rate,cancel),targetBands);
                 if(error+.005f<bestBand&&score+8.f*error+.015f<bestCombined){bestBand=error;bestCombined=score+8.f*error;o.recipe=candidate;o.final=score;++o.accepted;}
@@ -372,6 +396,22 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
                     o.recipe=bandAnchor;o.final=bandAnchorScore;o.holdoutFinal=bandAnchorHold;o.accepted=bandAnchorAccepted;finalHold=bandAnchorProfile;
                 }
             }
+        }
+    }
+    // A late, bounded modulation refinement covers feedback/base delay and
+    // stereo spread, which the original two-control search never optimized.
+    // Do not disturb independently qualified echo or stereo reconstructions.
+    if(rt&&rh&&o.recipe.mod.wet>0.f&&o.recipe.delay.wet==0.f&&o.recipe.width.wet==0.f&&o.recipe.doubler.wet==0.f&&o.final>.05f){
+        const auto anchor=o.recipe;const float anchorScore=o.final,anchorHold=o.holdoutFinal;const int anchorAccepted=o.accepted;
+        for(float scale:{1.f,.4f})for(size_t dim:{2u,3u})for(float sign:{-1.f,1.f}){
+            if(o.tested>=referenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))continue;
+            auto candidate=o.recipe;candidate.mod.p[dim]=std::clamp(candidate.mod.p[dim]+sign*.25f*scale,0.f,1.f);
+            if(candidate.mod.p[dim]==o.recipe.mod.p[dim])continue;
+            const float score=evaluate(candidate);if(score+.015f<o.final){o.recipe=candidate;o.final=score;++o.accepted;}
+        }
+        if(o.accepted!=anchorAccepted){const auto held=validate(o.recipe);const float error=referenceLoss(held,t2,rh);
+            if(referencePass(held,*rh)&&error+.025f<anchorHold){finalHold=held;o.holdoutFinal=error;}
+            else{o.recipe=anchor;o.final=anchorScore;o.holdoutFinal=anchorHold;o.accepted=anchorAccepted;}
         }
     }
     // Reject a trained winner that regresses on unseen material or cannot
