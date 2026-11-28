@@ -29,23 +29,164 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Configure portable DSP/MATCH tests
-        run: cmake -S . -B build-test -DSKELL_PRESET_PORTABLE_ONLY=ON
+        run: cmake -S . -B build-test -DSKELL_PRESET_PORTABLE_ONLY=ON -DSKELL_PRESET_TEST_SHARED_SKELLAY=ON
       - name: Compile portable tests
         run: cmake --build build-test --parallel 2
       - name: Run portable regression suite
         run: ctest --test-dir build-test --output-on-failure
+      - name: Print Studio Delay CPU and 8/16-instance memory diagnostics
+        run: ctest --test-dir build-test --verbose -R SkellPresetStudioDelayTest
       - name: Test offline reference WAV diagnostics
         run: python3 -m unittest discover -s tests -p test_reference_wav_inspect.py -v
+
+  artwork-cache:
+    # Only public, owner-requested artwork. Never upload the private preset bank.
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'Pillow==12.2.0'
+      - run: python tests/test_artist_artwork.py
+      - name: Prepare owner-authorized public artist photo for offline private build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools')
+          from artist_artwork import prepare_artwork
+          root = Path(os.environ['RUNNER_TEMP'])/'public-artist-artwork'
+          root.mkdir(parents=True, exist_ok=True)
+          rows = prepare_artwork(root, {'artists': {'skellyruno': {'name': 'skellyruno'}}}, required=True)
+          # Include source and normalized hash, not the redundant inline bytes.
+          (root/'provenance.json').write_text(json.dumps([{k:v for k,v in row.items() if k!='payload'} for row in rows], indent=2))
+          print('Verified public artist image cached:', rows[0]['sha256'], rows[0]['source']['kind'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skellyruno-public-artist-artwork-cache
+          path: ${{ runner.temp }}/public-artist-artwork
+          if-no-files-found: error
+          retention-days: 1
+
+  quick4-source-cache:
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Collect pinned source dependencies (no builds or screenshots)
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/quick4-source-cache"
+          mkdir -p "$root"
+          git archive HEAD | tar -x -C "$(mkdir -p "$root/plugin"; echo "$root/plugin")"
+          git rev-parse HEAD > "$root/PLUGIN_COMMIT"
+          fetch() {
+            local url="$1" ref="$2" name="$3"
+            git init -q "$root/$name"
+            git -C "$root/$name" fetch --depth 1 "$url" "$ref"
+            git -C "$root/$name" checkout -q --detach FETCH_HEAD
+            printf '%s %s %s\n' "$name" "$ref" "$(git -C "$root/$name" rev-parse HEAD)" >> "$root/DEPENDENCIES"
+            rm -rf "$root/$name/.git"
+          }
+          fetch https://github.com/juce-framework/JUCE.git refs/tags/8.0.12 juce
+          fetch https://github.com/skellyruno/skell-vst-template.git 1f759e4f6ab08d950aaccfc2dfc0415825461ff1 core
+          fetch https://github.com/skellyruno/skellcore-vst-template.git 6a2077b3275819dcc1166f8c5a4a04a5f3558caf guided
+          fetch https://github.com/skellyruno/skellcore-vst-template.git c4ae09c896fa84279d3cc42f19925f97a7e5c124 presence
+          fetch https://github.com/skellyruno/skellcore-vst-template.git cf2d182a1c4b1b45f97253f5e1b17dd91343aeaa adlib
+          fetch https://github.com/skellyruno/skellay.git 8a0904b99dba671195f139907e09ac86a09ad5f4 skellay
+          test -f "$root/juce/CMakeLists.txt"
+          test -f "$root/plugin/tests/ui_renderer.cpp"
+          tar -czf "$RUNNER_TEMP/quick4-source-cache.tar.gz" -C "$root" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Quick4-offline-source-cache
+          path: ${{ runner.temp }}/quick4-source-cache.tar.gz
+          compression-level: 0
+          retention-days: 7
+
+  quick4-linux-local-runner:
+    needs: quick4-source-cache
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+    runs-on: ubuntu-latest
+    container: debian:13
+    timeout-minutes: 45
+    steps:
+      - name: Prepare Debian 13 native build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates build-essential cmake ninja-build pkg-config python3 git libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libgl1-mesa-dev libxrender-dev libxcomposite-dev libxfixes-dev libxkbcommon-dev
+      - uses: actions/download-artifact@v4
+        with:
+          name: Quick4-offline-source-cache
+          path: cache
+      - name: Build exact native renderer for local execution only
+        shell: bash
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
+        run: |
+          set -euo pipefail
+          root="$PWD/offline"
+          mkdir -p "$root"
+          tar -xzf cache/quick4-source-cache.tar.gz -C "$root"
+          cmake -S "$root/plugin" -B "$root/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSKELL_PRESET_BUILD_UI_RENDERER=ON \
+            -DSKELL_PRESET_TEST_SHARED_SKELLAY=ON \
+            -DJUCE_PATH="$root/juce" -DSKELLCORE_PATH="$root/core/SkellCore" \
+            -DFETCHCONTENT_SOURCE_DIR_SKELLGUIDEDTOURHEADERS="$root/guided" \
+            -DFETCHCONTENT_SOURCE_DIR_SKELLWORLDPRESENCEHEADERS="$root/presence" \
+            -DFETCHCONTENT_SOURCE_DIR_SKELLADLIBFXHEADERS="$root/adlib" \
+            -DSKELLAY_SOURCE_DIR="$root/skellay" -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+          cmake --build "$root/build" --target SkellPresetUIRenderer --parallel 2
+          mkdir -p Quick4-Linux
+          exe="$(find "$root/build" -type f -name SkellPresetUIRenderer -print -quit)"
+          test -n "$exe" && test -x "$exe"
+          cp "$exe" Quick4-Linux/
+          cp "$root/PLUGIN_COMMIT" "$root/DEPENDENCIES" Quick4-Linux/
+          ldd "$exe" > Quick4-Linux/LINKED_LIBRARIES.txt
+          ! grep -q 'not found' Quick4-Linux/LINKED_LIBRARIES.txt
+          printf '%s\n' 'Capture locally: xvfb-run -a ./SkellPresetUIRenderer --output captures' > Quick4-Linux/README.txt
+          tar -czf quick4-linux-local-runner.tar.gz -C Quick4-Linux .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Skell-Preset-Quick4-Linux-local-runner
+          path: quick4-linux-local-runner.tar.gz
+          if-no-files-found: error
+          retention-days: 7
 
   windows-vst3:
     runs-on: windows-latest
     needs: portable-tests
     steps:
       - uses: actions/checkout@v5
+      # Cache only external immutable FetchContent sources/build helpers, not
+      # the full plugin build tree. CMake still revalidates its pinned refs.
+      - name: Restore JUCE and pinned SkellCore FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: skellpreset-windows-fetchcontent-${{ hashFiles('CMakeLists.txt', 'SkellCore/CMakeLists.txt') }}
+          restore-keys: |
+            skellpreset-windows-fetchcontent-
       - name: Configure JUCE 8 and SkellCore
-        run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON -DSKELL_PRESET_BUILD_UI_RENDERER=ON
-      - name: Compile Windows VST3, regression fixtures and real UI renderer
-        run: cmake --build build --config Release --parallel 2
+        run: cmake -S . -B build -A x64 -DSKELL_PRESET_ALCHEMIST_RENDERER=ON -DSKELL_PRESET_BUILD_UI_RENDERER=ON -DSKELL_PRESET_TEST_SHARED_SKELLAY=ON
+      # Build the user-testable VST3 before unrelated heavy JUCE renderer,
+      # nested-host and package-test executables. Production checks still run.
+      - name: Compile shipping Windows VST3 first
+        run: cmake --build build --config Release --target SkellPreset_VST3 --parallel 3
       # JUCE's manifest writer emits permissive JSON with trailing commas.
       # The VST3 bundle is user-installable only after strict normalization;
       # verify the exact shipping plugin (not SkellHostFixture.vst3).
@@ -64,6 +205,52 @@ jobs:
           if ($manifest.Name -ne 'Skell-Preset' -or $manifest.Version -ne '0.7.0') {
             throw 'Unexpected Skell-Preset identity or version in VST3 moduleinfo'
           }
+      # This is a PREVIEW binary only: compiler + metadata checked, not yet
+      # native host/UI/FL Studio/pluginval approved. Final artifact is later.
+      - name: Bundle VST3
+        shell: pwsh
+        run: |
+          # Do not accidentally package the SkellHostFixture.vst3 regression
+          # plugin now present in the same build tree.
+          $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
+          # Revalidate the exact VST3 that will be packaged.
+          $metadata = Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json'
+          $validated = Get-Content -LiteralPath $metadata -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($validated.Name -ne 'Skell-Preset' -or $validated.Version -ne '0.7.0') { throw 'Shipping VST3 metadata identity/version mismatch' }
+          # Embed provenance so a downloaded ZIP can be matched to its source.
+          $bin = Get-ChildItem -LiteralPath $vst.FullName -Recurse -File -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $bin) { throw 'Skell-Preset binary missing inside VST3 bundle' }
+          $hash = (Get-FileHash -LiteralPath $bin.FullName -Algorithm SHA256).Hash
+          $info = @(
+            'Product: Skell-Preset',
+            'Version: 0.7.0',
+            "PR Source Commit: ${{ github.event.pull_request.head.sha || github.sha }}",
+            "CI Checkout Commit: ${{ github.sha }}",
+            "Branch: ${{ github.head_ref || github.ref_name }}",
+            "Workflow Run: ${{ github.run_id }}",
+            "Binary SHA256: $hash",
+            'Bundle: Skell-Preset.vst3',
+            'PREVIEW ONLY until all exact-head native/UI/FL Studio/pluginval gates pass',
+            'Unverified installed-copy identity: check DAW plugin path separately'
+          )
+          $info | Set-Content -LiteralPath Skell-Preset-BUILD-INFO.txt -Encoding UTF8
+          # upload-artifact creates the downloadable ZIP itself. Stage the
+          # bundle directly so users do not receive a ZIP-inside-a-ZIP.
+          $packageRoot = Join-Path $PWD 'Skell-Preset-Windows-VST3'
+          if (Test-Path -LiteralPath $packageRoot) { Remove-Item -LiteralPath $packageRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $packageRoot | Out-Null
+          Copy-Item -LiteralPath $vst.FullName -Destination $packageRoot -Recurse -Force
+          Copy-Item -LiteralPath 'Skell-Preset-BUILD-INFO.txt' -Destination $packageRoot -Force
+      - name: Upload early Windows VST3 test preview
+        uses: actions/upload-artifact@v5
+        with:
+          name: Skell-Preset-Windows-VST3-PREVIEW
+          path: Skell-Preset-Windows-VST3/**
+          if-no-files-found: error
+          retention-days: 14
+      - name: Compile remaining native regression fixtures and real UI renderer
+        run: cmake --build build --config Release --parallel 3
       - name: Validate native preset ZIP import/export and security
         run: ctest --test-dir build -C Release --output-on-failure -E SkellPresetRealRackStress
       - name: Stress compiled full rack and print CPU/latency metrics
@@ -83,42 +270,27 @@ jobs:
           if (-not $renderer) { throw 'Compiled rack audio test executable missing' }
           & $renderer.FullName --studio-smoke
           if ($LASTEXITCODE -ne 0) { throw "Studio rack audio/PDC/state regression failed: $LASTEXITCODE" }
+          & $renderer.FullName --ui-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Real JUCE editor layout/interaction smoke failed: $LASTEXITCODE" }
           & $renderer.FullName --native-trials-smoke
           if ($LASTEXITCODE -ne 0) { throw "Native factory recall/audio/PDC/state regression failed: $LASTEXITCODE" }
           & $renderer.FullName --lowend-override-smoke
           if ($LASTEXITCODE -ne 0) { throw "Factory 54 low-end override regression failed: $LASTEXITCODE" }
-      - name: Bundle VST3
+      - name: Package native Quick4 executable for local capture only
         shell: pwsh
         run: |
-          # Do not accidentally package the SkellHostFixture.vst3 regression
-          # plugin now present in the same build tree.
-          $vst = Get-ChildItem -Path build -Directory -Recurse -Filter 'Skell-Preset.vst3' | Select-Object -First 1
-          if (-not $vst -or $vst.Name -ne 'Skell-Preset.vst3') { throw 'Skell-Preset VST3 bundle missing' }
-          # Revalidate the exact VST3 that will be packaged.
-          $metadata = Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json'
-          $validated = Get-Content -LiteralPath $metadata -Raw | ConvertFrom-Json -ErrorAction Stop
-          if ($validated.Name -ne 'Skell-Preset' -or $validated.Version -ne '0.7.0') { throw 'Shipping VST3 metadata identity/version mismatch' }
-          # Embed provenance so a downloaded ZIP can be matched to its source.
-          $bin = Get-ChildItem -LiteralPath $vst.FullName -Recurse -File -Filter 'Skell-Preset.vst3' | Select-Object -First 1
-          if (-not $bin) { throw 'Skell-Preset binary missing inside VST3 bundle' }
-          $hash = (Get-FileHash -LiteralPath $bin.FullName -Algorithm SHA256).Hash
-          $info = @(
-            'Product: Skell-Preset',
-            'Version: 0.7.0',
-            "Commit: ${{ github.sha }}",
-            "Branch: ${{ github.head_ref || github.ref_name }}",
-            "Binary SHA256: $hash",
-            'Bundle: Skell-Preset.vst3',
-            'Unverified installed-copy identity: check DAW plugin path separately'
-          )
-          $info | Set-Content -LiteralPath Skell-Preset-BUILD-INFO.txt -Encoding UTF8
-          # upload-artifact creates the downloadable ZIP itself. Stage the
-          # bundle directly so users do not receive a ZIP-inside-a-ZIP.
-          $packageRoot = Join-Path $PWD 'Skell-Preset-Windows-VST3'
-          if (Test-Path -LiteralPath $packageRoot) { Remove-Item -LiteralPath $packageRoot -Recurse -Force }
-          New-Item -ItemType Directory -Path $packageRoot | Out-Null
-          Copy-Item -LiteralPath $vst.FullName -Destination $packageRoot -Recurse -Force
-          Copy-Item -LiteralPath 'Skell-Preset-BUILD-INFO.txt' -Destination $packageRoot -Force
+          $renderer = Get-ChildItem build -Recurse -File -Filter 'SkellPresetUIRenderer.exe' | Select-Object -First 1
+          if (-not $renderer) { throw 'Native Quick4 executable missing' }
+          New-Item -ItemType Directory -Force -Path Quick4-Windows | Out-Null
+          Copy-Item -LiteralPath $renderer.FullName -Destination Quick4-Windows -Force
+          git rev-parse HEAD | Set-Content Quick4-Windows/COMMIT.txt
+          @('Run locally: .\SkellPresetUIRenderer.exe --output captures','For deep audit add --full. No screenshots are generated in CI.') | Set-Content Quick4-Windows/README.txt
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Skell-Preset-Quick4-Windows
+          path: Quick4-Windows/**
+          if-no-files-found: error
+
       - name: Package compiled Alchemist diagnostic renderer
         shell: pwsh
         run: |
@@ -142,6 +314,34 @@ jobs:
           path: Skell-Preset-Windows-VST3/**
           if-no-files-found: error
           retention-days: 30
+
+      # Preserve the legacy Windows artifact and acceptance results above. Reuse
+      # the existing configured dependencies for a separately labelled audition.
+      - name: Configure and build hybrid reverb audition
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+        shell: pwsh
+        run: |
+          cmake -S . -B build -DSKELL_IR_REVERB_RESEARCH=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Hybrid configuration failed' }
+          cmake --build build --config Release --target SkellPreset_VST3 --parallel 3
+          if ($LASTEXITCODE -ne 0) { throw 'Hybrid preview build failed' }
+          $vst = Get-ChildItem build -Recurse -Directory -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $vst) { throw 'Missing hybrid preview VST3' }
+          python tools/normalize_vst3_moduleinfo.py (Join-Path $vst.FullName 'Contents/Resources/moduleinfo.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Hybrid preview metadata invalid' }
+          $dest = Join-Path $PWD 'Skell-Preset-Hybrid-Reverb-PREVIEW'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -LiteralPath $vst.FullName -Destination $dest -Recurse -Force
+          $bin = Get-ChildItem -LiteralPath $vst.FullName -Recurse -File -Filter 'Skell-Preset.vst3' | Select-Object -First 1
+          if (-not $bin) { throw 'Hybrid binary missing' }
+          @("Commit: $(git rev-parse HEAD)", "SHA256: $((Get-FileHash -LiteralPath $bin.FullName -Algorithm SHA256).Hash)", "SKELL_IR_REVERB_RESEARCH=ON", "AUDITION ONLY: existing plugin ID; backup original plugin; different reverb sound; host and listening validation pending") | Set-Content (Join-Path $dest 'BUILD-INFO.txt')
+      - uses: actions/upload-artifact@v5
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/studio-dynamics-delay-ui-20261121'
+        with:
+          name: Skell-Preset-Hybrid-Reverb-PREVIEW
+          path: Skell-Preset-Hybrid-Reverb-PREVIEW/**
+          if-no-files-found: error
+          retention-days: 14
 
   alchemist-reference-ab:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'test/alchemist-reference-ab-')

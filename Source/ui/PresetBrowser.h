@@ -1,44 +1,149 @@
 #pragma once
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
+#include "../chain/ArtistBank.h"
+#include "ArtistArtwork.h"
 #include <array>
 #include <functional>
+#include <map>
 #include <memory>
 #include <vector>
-class PresetBrowser final:public juce::Component {
+class PresetBrowser final:public juce::Component,public juce::SettableTooltipClient {
 public:
     explicit PresetBrowser(SkellPresetAudioProcessor&);
     void paint(juce::Graphics&) override;
     void resized() override;
+    void visibilityChanged() override {if(onVisibilityChanged)onVisibilityChanged();}
     void mouseDown(const juce::MouseEvent&) override;
+    void dockTo(juce::Rectangle<int> workspace);
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
     bool keyPressed(const juce::KeyPress&) override;
     void open();
+    bool configureDirectoryForScreenshot(int page,int width,int height);
+    void setListViewForScreenshot(bool list) {preferencesReadOnly=true;if(!showcaseMode)setListView(list,false);}
+    bool testViewSwitchForTest();
     void applyTheme();
     // Cached on the message thread; no image file I/O from paint/audio.
     juce::Image selectedCover() const;
     int visibleFactoryPresetsForTest() const;
     bool canSetCoverForTest() const {return canEditCover();}
-    bool testMainVocalsPresetFilterForTest(); // exact two-item factory whitelist
-    std::function<void()> onClose;
+    bool testMainVocalsPresetFilterForTest(); // primary whitelist and independent artists/favorites
+    bool testLibrarySnapshotForTest(); // isolated temporary library, no user data
+    bool testBrowserLayoutForTest(); // visible, nonoverlapping controls on both pages
+    bool testBrowserKeyboardForTest(); // roving result focus without triggering audio loads
+    bool testBrowserSortingForTest(); // no data mutation during sorting
+    bool testCategoryCountsForTest(); // cached library counts track user metadata
+    // The highlighted keyboard card must be the one Enter auditions, even
+    // after Home/End/PageDown scrolling. With no highlight use the first
+    // visible card; never index a filtered list out of bounds.
+    static constexpr int auditionTargetForTest(int focus,int scroll,int count) noexcept {
+        if(count<=0)return -1;
+        return focus>=0 && focus<count?focus:
+               (scroll<0?0:scroll>=count?count-1:scroll);
+    }
+    static constexpr int artworkPaletteIndexForTest(int seed) noexcept {
+        // This exact helper is used by the real paint path. The previous
+        // seed%5 indexed a four-colour palette out of bounds for 4/9/44...
+        return (seed<0?0:seed)%4;
+    }
+    static bool presetCardHitForTest(bool editing,int x,int y,int width,int rows=6) noexcept {
+        // Each visible card is 56px tall, 61px apart. The five-pixel gaps
+        // are never click-to-load regions, nor is the Edit Details overlay.
+        const int relative=y-110;
+        return !editing && x>=207 && x<width-17 &&
+               relative>=0 && relative<rows*61 && relative%61<56;
+    }
+    void loadFactoryForHistoryTest(int index) {juce::ScopedValueSetter<bool> guard(preferencesReadOnly,true);loadFactoryFromBrowser(index);}
+    juce::File historySelection() const {return activeUserPreset;}
+    void restoreHistorySelection(const juce::File& selection) {
+        ++selectionRevision;
+        activeUserPreset=selection;
+        refreshArtwork();
+    }
+    std::function<void()> onBeforeLoad;
+    std::function<void()> onLoadFailed;
+    std::function<void()> onClose,onVisibilityChanged;
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
 private:
+    juce::TextButton thumbnailView{"GRID"},listView{"LIBRARY"},showcaseView{"SHOWCASE"},closeBrowser{"X"};
+    juce::TextButton showcasePrevious{"<"},showcaseNext{">"},showcaseLoad{"LOAD"},showcaseFavorite{"FAVORITE"};
+    bool showcaseMode=false;
+    void setShowcase(bool enabled);
+    int showcaseSelection() const;
+    int showcaseIndex(int offset,int count,int selected) const noexcept;
+    void moveShowcase(int delta);
+    void activateShowcase();
+    juce::Rectangle<int> showcaseCardBounds(int offset) const;
+
+    bool listMode=true,preferencesReadOnly=false;
+    juce::StringArray recentKeys;
+    void rememberRecent(int entry);
+    void setListView(bool list,bool persist=true);
+    void loadUIPreferences();
+    void saveUIPreferences() const;
+    void paintPresetGrid(juce::Graphics&,const std::vector<int>&);
     SkellPresetAudioProcessor& processor;
-    juce::TextEditor search;
-    juce::TextButton importButton{"IMPORT"},exportButton{"SAVE PRESET"},artworkButton{"SET COVER"};
+    juce::TextEditor search,artistEditor,categoryEditor;
+    juce::ComboBox genrePicker,genreFilter,sortPicker,artistTierFilter,artistFilter,typeFilter,tierEditor,typeEditor;
+    juce::TextEditor pairEditor;
+    juce::TextButton metadataButton{"SAVE ORGANIZATION"},relatedButton{"MATCHING PRESETS"},directoryBack{"BACK"};
+    juce::TextButton starterButton{"SKELLY SOUND LAB"};
+    void showVocalStarters();
+    juce::TextButton importButton{"IMPORT"},exportButton{"SAVE"},
+        saveAsButton{"SAVE AS…"},
+        artworkButton{"SET COVER"},artistButton{"SET ARTIST"},
+        genreButton{"TAG"},detailsButton{"MANAGE LIBRARY"},
+        addCategoryButton{"ADD CATEGORY"},clearSearchButton{"CLEAR"};
     std::unique_ptr<juce::FileChooser> fileChooser;
     bool chooserActive=false;
     void setChooserActive(bool active);
     void chooseImport();
-    void chooseExport();
+    // SAVE overwrites the selected personal preset; factories and never-saved
+    // chains open SAVE AS. A second click can never queue a duplicate write.
+    void saveActivePreset(bool chooseName);
+    void startPresetWrite(const juce::File& destination);
+    void setSaveStatus(const juce::String& text);
+    void refreshSaveControls();
+    bool saveInFlight=false;
+    juce::String saveStatus;
+    struct SaveMeta {
+        juce::File previousUser,oldCover;
+        juce::String artist,type,pair;
+        juce::StringArray genres;
+        std::uint64_t selection=0;
+        int program=-1;
+    };
+    SaveMeta pendingSave;
+    std::uint64_t selectionRevision=0;
     void chooseArtwork();
-    void refreshArtwork();
-    int bank=0,scroll=0,hoveredCard=-1;
+    void refreshArtwork(bool decodeBackdrop=true);
+    int bank=0,scroll=0,hoveredCard=-1,hoveredStar=-1,keyboardCard=-1,
+        hoveredBank=-1;
+    bool hoveredAdlibs=false;
+    float browserWheelCarry=0.f;
+    std::array<int,5> categoryCounts{};
+    bool categoryCountsDirty=true;
+    void refreshCategoryCounts();
+    bool detailsOpen=false;
+    bool mainAdlibs=false; // dedicated top-level Adlib Presets destination
+    int adlibsCount=0; // cached on message thread with other category counts
+    void showDetails(bool open);
+    void chooseBank(int index);
+    void chooseAdlibs();
+    void focusCard(int index);
     juce::StringArray favoriteKeys; // sidecar only; not in VST3 state or preset ZIP
+    juce::StringArray artistKeys,artistNames; // user library sidecar, never audio state
+    juce::StringArray genreKeys,genreNames; // manually assigned; never auto-detected
+    juce::StringArray customCategories; // user-owned local sidecar, not a preset
     std::vector<juce::File> userPresets;
+    skellpreset::artistart::Art artworkForUser(int index) const;
+    skellpreset::artistart::Cache artistArtwork;
+    skellpreset::artistart::Cache fallbackArtistArtwork;
+    void rebuildArtistArtworkFallbacks();
+    std::vector<skellpreset::artistart::Art> userCinemaArtwork;
     std::vector<juce::Image> userArtwork; // UI-thread thumbnail cache, no filesystem in paint()
     juce::Image alchemistArtwork; // editable factory cover, stored separately
     juce::Image selectedUserBackdrop; // single full-res cached artwork
@@ -50,12 +155,110 @@ private:
     void loadFavorites();
     bool saveFavorites() const;
     juce::File favoritesFile() const;
+    juce::File artistsFile() const;
+    juce::String artistForUser(int index) const;
+    void loadArtists();
+    bool saveArtists() const;
+    bool setArtistForUser(int index,const juce::String& name);
+    juce::File genresFile() const;
+    juce::String genreForUser(int index) const;
+    juce::StringArray genresForUser(int index) const;
+    void loadGenres();
+    bool saveGenres() const;
+    bool setGenreForUser(int index,const juce::String& label);
+    juce::File categoriesFile() const;
+    void loadCustomCategories();
+    bool saveCustomCategories() const;
+    void refreshGenreChoices();
+    void refreshArtistChoices();
+    int visibleRows() const noexcept {return juce::jlimit(6,7,(getHeight()-153)/61);}
+    juce::Rectangle<int> usableBounds;
+    juce::Rectangle<int> constrainWindow(juce::Rectangle<int>) const;
+    bool showVocalTabs() const;
+    void syncVocalTabs();
+    std::array<juce::TextButton,3> vocalTabs;
+    void resetResults();
+    struct DirectoryCard {juce::String label;int id=0,main=0,adlib=0,other=0,artIndex=-1;};
+    enum class DirectoryMode { none,genres,tiers,artists };
+    void paintShowcase(juce::Graphics&,const std::vector<int>&,const std::vector<DirectoryCard>&);
+    DirectoryMode directoryMode() const;
+    std::vector<DirectoryCard> directoryCards() const;
+    int resultCount() const;
+    int directoryColumns() const;
+    int directoryRows() const;
+    int pageCapacity() const;
+    juce::Rectangle<int> directoryCardBounds(int position) const;
+    int resultAt(juce::Point<int>) const;
+    bool activateDirectoryRow(int index);
+    bool goBackDirectory();
+    bool hasDirectoryParent() const;
+    void paintDirectory(juce::Graphics&,const std::vector<DirectoryCard>&);
+    juce::StringArray organizationKeys,organizationValues;
+    juce::File organizationFile() const;
+    juce::String organizationValue(const juce::String& key) const;
+    void setOrganizationValue(const juce::String& key,const juce::String& value);
+    void loadOrganization();
+    bool saveOrganization() const;
+    juce::String vocalType(int index) const;
+    juce::String userDisplayName(int index) const;
+    juce::String artistTier(const juce::String& artist) const;
+    juce::String pairForUser(int index) const;
+    int activeUserIndex() const;
+    void refreshOrganizationEditor();
+    bool isKnownCategory(const juce::String& label) const;
     juce::File libraryDirectory() const;
     juce::File activeArtworkDestination() const;
     bool canEditCover() const;
-    void reloadAlchemistArtwork();
     void scanLibrary();
-    void copyToLibrary(const juce::File& file);
+    // One rescan + choice refresh after any library mutation. Callers must not
+    // scan again themselves: the old path scanned three times per save.
+    void requestLibraryScan();
+    bool libraryScanInFlight=false,libraryScanQueued=false;
+    std::uint64_t libraryRevision=0;
+    void requestBackdrop();
+    bool backdropInFlight=false,backdropQueued=false;
+    std::uint64_t backdropRevision=0;
+    juce::File backdropPreset;
+    void startPresetRead(const juce::File& file,bool external);
+    bool loadInFlight=false;
+    bool coverWriteInFlight=false;
+    // Thumbnail decode cache keyed by source path + modification stamp, so a
+    // rescan only decodes covers that actually changed on disk.
+    struct CoverCacheEntry {
+        juce::int64 modified=0,size=0;
+        juce::Image thumbnail;
+        skellpreset::artistart::Art cinema;
+    };
+    using CoverCache=std::map<juce::String,CoverCacheEntry>;
+    struct LibrarySnapshot {
+        bool ok=false;
+        std::vector<juce::File> files;
+        std::vector<juce::Image> thumbnails;
+        CoverCache covers;
+        juce::Image alchemist;
+        std::vector<skellpreset::artistart::Art> cinema;
+        skellpreset::artistart::Cache artistArt;
+        bool artistArtScanned=false;
+        bool bankScanned=false;
+        skellpreset::artistbank::MetadataMap bankMetadata;
+    };
+    struct BackdropSnapshot {
+        juce::File source;
+        juce::int64 modified=-1;
+        juce::Image image;
+    };
+    static LibrarySnapshot collectLibrary(const juce::File& folder,const CoverCache& previous);
+    void applyLibrarySnapshot(LibrarySnapshot snapshot);
+    static BackdropSnapshot collectBackdrop(const juce::File& preset);
+    void applyBackdrop(BackdropSnapshot snapshot);
+    static juce::File copyToLibraryFile(const juce::File& source,const juce::File& folder);
+    void completePresetWrite(const juce::File& libraryCopy,bool ok,const juce::String& error,
+                             LibrarySnapshot snapshot,BackdropSnapshot backdrop);
+    CoverCache coverCache;
+    skellpreset::artistbank::MetadataMap embeddedArtistMetadata;
+    juce::File backdropSource;
+    juce::int64 backdropModified=-1;
+    bool backdropLoaded=false;
     void loadFactoryFromBrowser(int index);
     void loadUserFromBrowser(int index);
     void auditionEntry(int entry);

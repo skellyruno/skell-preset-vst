@@ -9,8 +9,11 @@ endforeach()
 add_executable(SkellPresetMatchTest test_match.cpp)
 target_compile_features(SkellPresetMatchTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetMatchTest COMMAND SkellPresetMatchTest)
-# Preserve original 43 host programs and all 55 current factory identities.
-# Reconciles the historical tests/test_factory_presets.cpp without its old ceiling.
+add_executable(SkellPresetLimiterTimingTest test_limiter_timing.cpp)
+target_include_directories(SkellPresetLimiterTimingTest PRIVATE ../SkellCore/include)
+target_compile_features(SkellPresetLimiterTimingTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetLimiterTimingTest COMMAND SkellPresetLimiterTimingTest)
+# Owner-authorized pre-release 39-factory catalog and retained identity checks.
 add_executable(SkellPresetFactoryHistoryTest test_factory_catalog_history.cpp)
 target_compile_features(SkellPresetFactoryHistoryTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetFactoryHistoryTest COMMAND SkellPresetFactoryHistoryTest)
@@ -160,3 +163,142 @@ add_test(NAME SkellPresetStudioChorusDSPTest COMMAND SkellPresetStudioChorusDSPT
 add_executable(SkellPresetStudioNativeDSPTest test_studio_native_dsp.cpp)
 target_compile_features(SkellPresetStudioNativeDSPTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetStudioNativeDSPTest COMMAND SkellPresetStudioNativeDSPTest)
+
+# Opt-in, JUCE-free stereo-linked vocal-driven wet sidechain regression.
+add_executable(SkellPresetWetDuckTest test_wet_ducker.cpp)
+target_compile_features(SkellPresetWetDuckTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetWetDuckTest COMMAND SkellPresetWetDuckTest)
+
+# Opt-in Skell Studio-style delay: portable echo, feedback and tempo stress.
+add_executable(SkellPresetLiveSpectrumTest test_live_spectrum.cpp)
+target_compile_features(SkellPresetLiveSpectrumTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetLiveSpectrumTest COMMAND SkellPresetLiveSpectrumTest)
+
+add_executable(SkellPresetVocalFeelRecipesTest test_vocal_feel_recipes.cpp)
+target_compile_features(SkellPresetVocalFeelRecipesTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVocalFeelRecipesTest COMMAND SkellPresetVocalFeelRecipesTest)
+
+add_executable(SkellPresetVocalFeelSuiteTest test_vocal_feel_suite.cpp)
+target_compile_features(SkellPresetVocalFeelSuiteTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVocalFeelSuiteTest COMMAND SkellPresetVocalFeelSuiteTest)
+
+add_executable(SkellPresetVocalFeelOptoTest test_vocal_feel_opto.cpp)
+target_compile_features(SkellPresetVocalFeelOptoTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVocalFeelOptoTest COMMAND SkellPresetVocalFeelOptoTest)
+
+add_executable(SkellPresetStudioDelayTest test_studio_delay.cpp)
+target_compile_features(SkellPresetStudioDelayTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetStudioDelayTest COMMAND SkellPresetStudioDelayTest)
+
+# Native output-stage stereo separation (Stereo Enhancer matrix, raw -96..96,
+# 10 ms sample-count smoothing, exact neutral bypass, mono compatibility).
+add_executable(SkellPresetStereoSeparationTest test_stereo_separation.cpp)
+target_compile_features(SkellPresetStereoSeparationTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetStereoSeparationTest COMMAND SkellPresetStereoSeparationTest)
+
+# Isolated limiter-inspired gate release research, not shipping signal routing.
+add_executable(SkellPresetLimiterGateCandidateTest test_limiter_gate_candidate.cpp)
+target_compile_features(SkellPresetLimiterGateCandidateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetLimiterGateCandidateTest COMMAND SkellPresetLimiterGateCandidateTest)
+
+add_executable(SkellPresetStageClockTest test_stage_clock.cpp)
+target_compile_features(SkellPresetStageClockTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetStageClockTest COMMAND SkellPresetStageClockTest)
+
+if(TARGET skellay_shared_native)
+    add_executable(SkellPresetSharedSkellayTest test_shared_skellay.cpp)
+    target_link_libraries(SkellPresetSharedSkellayTest PRIVATE skellay_shared_native)
+    add_test(NAME SkellPresetSharedSkellayTest COMMAND SkellPresetSharedSkellayTest)
+endif()
+
+add_executable(SkellPresetSendRoutingTest test_send_routing.cpp)
+target_compile_features(SkellPresetSendRoutingTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetSendRoutingTest COMMAND SkellPresetSendRoutingTest)
+add_executable(SkellPresetRightFirstDelayTest test_right_first_delay.cpp)
+target_compile_features(SkellPresetRightFirstDelayTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetRightFirstDelayTest COMMAND SkellPresetRightFirstDelayTest)
+
+# --- Shared telemetry / presentation mode / visual geometry (JUCE-free, header-only SkellCore) ---
+find_package(Threads REQUIRED)
+add_executable(SkellPresetTelemetryTest test_telemetry.cpp)
+target_include_directories(SkellPresetTelemetryTest PRIVATE ../SkellCore/include)
+target_compile_features(SkellPresetTelemetryTest PRIVATE cxx_std_17)
+target_link_libraries(SkellPresetTelemetryTest PRIVATE Threads::Threads)
+add_test(NAME SkellPresetTelemetryTest COMMAND SkellPresetTelemetryTest)
+add_executable(SkellPresetPresentationModeTest test_presentation_mode.cpp)
+target_include_directories(SkellPresetPresentationModeTest PRIVATE ../SkellCore/include)
+target_compile_features(SkellPresetPresentationModeTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetPresentationModeTest COMMAND SkellPresetPresentationModeTest)
+add_executable(SkellPresetVisualMathTest test_visual_math.cpp)
+target_include_directories(SkellPresetVisualMathTest PRIVATE ../SkellCore/include)
+target_compile_features(SkellPresetVisualMathTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVisualMathTest COMMAND SkellPresetVisualMathTest)
+
+add_executable(SkellPresetVocalPreviewAnalysisTest test_vocal_preview_analysis.cpp)
+target_compile_features(SkellPresetVocalPreviewAnalysisTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetVocalPreviewAnalysisTest COMMAND SkellPresetVocalPreviewAnalysisTest)
+
+add_executable(SkellPresetTubePreampCandidateTest test_tube_preamp_candidate.cpp)
+target_compile_features(SkellPresetTubePreampCandidateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetTubePreampCandidateTest COMMAND SkellPresetTubePreampCandidateTest)
+
+# Recovered from closed preview branch; isolated offline utilities, no plugin state changes.
+add_executable(SkellPresetFLRawStateTest test_fl_raw_state.cpp)
+target_compile_features(SkellPresetFLRawStateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetFLRawStateTest COMMAND SkellPresetFLRawStateTest)
+add_executable(SkellPresetDynamicsPeakHistoryTest test_dynamics_peak_history.cpp)
+target_compile_features(SkellPresetDynamicsPeakHistoryTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetDynamicsPeakHistoryTest COMMAND SkellPresetDynamicsPeakHistoryTest)
+add_executable(SkellPresetStateInspect ../tools/state_inspect.cpp)
+target_compile_features(SkellPresetStateInspect PRIVATE cxx_std_17)
+
+add_executable(SkellPresetDetectorHistoryTest test_detector_history.cpp)
+target_compile_features(SkellPresetDetectorHistoryTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetDetectorHistoryTest COMMAND SkellPresetDetectorHistoryTest)
+
+add_executable(SkellPresetPhaseRotationTest test_phase_rotation.cpp)
+target_compile_features(SkellPresetPhaseRotationTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetPhaseRotationTest COMMAND SkellPresetPhaseRotationTest)
+
+add_executable(SkellPresetLiveVocalMatchTest test_live_vocal_match.cpp)
+target_compile_features(SkellPresetLiveVocalMatchTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetLiveVocalMatchTest COMMAND SkellPresetLiveVocalMatchTest)
+
+# Research-only automatic pitch correction gate using the existing SkellyTune core.
+add_executable(SkellPresetMatchPitchCandidateTest test_match_pitch_candidate.cpp)
+target_include_directories(SkellPresetMatchPitchCandidateTest PRIVATE ../SkellCore/include)
+target_compile_features(SkellPresetMatchPitchCandidateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMatchPitchCandidateTest COMMAND SkellPresetMatchPitchCandidateTest)
+
+# Additive Sound Match research; no production rack or parameter changes.
+add_executable(SkellPresetCausalMatchCompressorTest test_causal_match_compressor.cpp)
+target_include_directories(SkellPresetCausalMatchCompressorTest PRIVATE ../SkellCore/include)
+target_compile_features(SkellPresetCausalMatchCompressorTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetCausalMatchCompressorTest COMMAND SkellPresetCausalMatchCompressorTest)
+if(TARGET skellay_shared_native)
+    add_executable(SkellPresetMatchDelayChainTest test_match_delay_chain.cpp)
+    target_include_directories(SkellPresetMatchDelayChainTest PRIVATE ../SkellCore/include)
+    target_link_libraries(SkellPresetMatchDelayChainTest PRIVATE skellay_shared_native)
+    add_test(NAME SkellPresetMatchDelayChainTest COMMAND SkellPresetMatchDelayChainTest)
+endif()
+
+# Reference search uses existing rack width and decorrelated double inserts.
+add_executable(SkellPresetMatchStereoCandidateTest test_match_stereo_candidate.cpp)
+target_compile_features(SkellPresetMatchStereoCandidateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMatchStereoCandidateTest COMMAND SkellPresetMatchStereoCandidateTest)
+
+# Training-only paired echo-period evidence; never a reference replay filter.
+add_executable(SkellPresetMatchEchoEvidenceTest test_match_echo_evidence.cpp)
+target_compile_features(SkellPresetMatchEchoEvidenceTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMatchEchoEvidenceTest COMMAND SkellPresetMatchEchoEvidenceTest)
+
+# Same exact shared Core research header; independent of selected plugin build.
+add_executable(SkellPresetHybridRoomTest test_hybrid_room.cpp)
+target_include_directories(SkellPresetHybridRoomTest PRIVATE ../SkellCore/include/SkellCore/experimental/research/convolution)
+target_compile_features(SkellPresetHybridRoomTest PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(SkellPresetHybridRoomTest PRIVATE /UNDEBUG)
+else()
+    target_compile_options(SkellPresetHybridRoomTest PRIVATE -UNDEBUG)
+endif()
+add_test(NAME SkellPresetHybridRoomTest COMMAND SkellPresetHybridRoomTest)

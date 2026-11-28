@@ -1,17 +1,33 @@
 #pragma once
 #include <JuceHeader.h>
 #include <SkellCore/Core.h>
+#if SKELL_IR_REVERB_RESEARCH
+#include <SkellCore/experimental/research/convolution/HybridRoom.h>
+#endif
+#include "chain/LimiterDSP.h"
+#include <SkellCore/AdlibFX.h>
 #include "chain/BasicDSP.h"
 #include "chain/LiveAudioScope.h"
+#include "chain/LiveSpectrum.h"
+#include "chain/SlotVisualCapture.h"
+#include "../SkellCore/include/SkellCore/PresentationMode.h"
 #include "chain/ClipRecorder.h"
 #include "chain/VocalEffects.h"
 #include "chain/ModulationFX.h"
 #include "chain/StudioChorusDSP.h"
 #include "chain/StudioNativeDSP.h"
+#include "chain/StudioDelayDSP.h"
+#include "chain/MixerStereoSeparation.h"
+#include "chain/PhaseRotation.h"
+#include "chain/VocalFeelOptoDSP.h"
+#include "chain/VocalFeelSuiteDSP.h"
+#include "chain/WetDuckerDSP.h"
 #include "chain/ImportedVocalFX.h"
 #include "chain/AdvancedVocalDSP.h"
 #include "chain/AlchemistMatchDSP.h"
+#include "chain/LiveVocalMatch.h"
 #include "chain/MicModelDSP.h"
+#include "chain/TubePreampCandidate.h"
 #include "chain/SkelldizerDSP.h"
 #include "chain/SpectralPitchFormant.h"
 #include "chain/VoxRackFX.h"
@@ -24,8 +40,23 @@
 
 class SkellPresetAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater, private juce::AudioProcessorValueTreeState::Listener {
 public:
-    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, NumberOfModules };
+    enum ModuleType { Empty, EQ, Compressor, Limiter, Gate, Saturator, Reverb, Delay, Exciter, AdlibThrow, AdlibDoubler, DeEsser, ExternalVST3, Radio, RetroCrush, Tremolo, StereoWidth, ThreeBandDynamics, VoxRackRoom, VoxRackSmoothComp, VocalChorusFX, VocalFlangerFX, RingModFX, VocalRiderFX, DuckingPingPongFX, VocalVibratoFX, EightBandToneFX, SerialDynamicsFX, DynamicHarshnessFX, AdaptiveNoiseFX, StudioPitchFormantFX, AlchemistMatchFinishFX, MicModelFX, SkelldizerFX, StudioEQFX, StudioLimiterFX, StudioCompressorFX, StudioFastDistFX, StudioDelayFX, AdlibChop, AdlibMotion, AdlibFilter, AdlibSaturate, VocalFeelOptoFX, VocalFeelSuiteFX, PhaseRotationFX, NumberOfModules };
     static constexpr int slotCount=16;
+    juce::String moduleDisplayName(int type) const;
+    static bool supportsWetSidechain(int type) noexcept {
+        return type==Reverb || type==VoxRackRoom || type==Delay ||
+               type==StudioDelayFX || type==AdlibThrow ||
+               type==DuckingPingPongFX || type==AdlibDoubler;
+    }
+    static bool supportsEffectSidechain(int type) noexcept {
+        return type>Empty && type<NumberOfModules && type!=ExternalVST3;
+    }
+    static const char* sidechainEnableSuffix(int type) noexcept {
+        return type==AdlibDoubler?"dubDuckOn":supportsWetSidechain(type)?"duckOn":"duckEffect";
+    }
+    static bool supportsParallelReturn(int type) noexcept {
+        return type==Delay || type==VoxRackRoom || type==AdlibDoubler;
+    }
     static constexpr int defaultSlotCount=10;
     static constexpr int emptyRackProgramIndex=static_cast<int>(skellpreset::factoryPresets.size());
     static constexpr int customRackProgramIndex=emptyRackProgramIndex+1;
@@ -57,8 +88,19 @@ public:
     juce::AudioProcessorValueTreeState state;
     void loadFactoryPreset(int index);
     void clearRackToEmpty();
+    bool startLiveMatch() noexcept {return liveMatchCapture.start();}
+    bool copyLiveMatchAudio(skellpreset::liveMatch::Audio& audio) const {return liveMatchCapture.copyCompleted(audio);}
+    void cancelLiveMatch() noexcept {liveMatchCapture.cancel();}
+    bool readLiveMatch(skellpreset::liveMatch::Profile& profile,bool& done) const noexcept {return liveMatchCapture.read(profile,done);}
+    juce::Result applyLiveMatch(const skellpreset::liveMatch::Profile& dry,const skellpreset::liveMatch::Profile* reference=nullptr,const skellpreset::liveMatch::Recipe* optimized=nullptr);
+    // Original opt-in chain templates, not new host program IDs.
+    juce::Result loadVocalStarter(int profile,int variant=0);
     // Message-thread only, validated native .skellpreset ZIP packages.
     juce::Result exportPreset(const juce::File& file) const;
+    // Snapshot of the live chain. Runs on the message thread so the ZIP
+    // writer can compress the result later on a background thread without
+    // ever touching APVTS or host parameter state off the message thread.
+    juce::Result makePresetDocument(skellpreset::package::Document&) const;
     juce::Result importPreset(const juce::File& file);
     void reorderSlot(int from,int to);
     // Remove an extra rack row without renumbering any APVTS slot identity.
@@ -85,15 +127,23 @@ public:
     void setSlotType(int slot,int type);
     // Decodes the backward-compatible legacy type + optional extended effect.
     int slotType(int slot) const noexcept;
+    // Message-thread query: which loaded effects a Simple macro actually
+    // modulates. Tone drives EQ gain, Punch compressor threshold, Space
+    // reverb/delay wet, Grit saturator/limiter drive. A macro with no target
+    // must be presented as inactive rather than as a working control.
+    juce::StringArray macroTargets(int macroIndex) const;
+    bool macroHasTarget(int macroIndex) const {return !macroTargets(macroIndex).isEmpty();}
     float getSlotParam(int slot,int param) const noexcept;
     void setSlotParam(int slot,int param,float normalised);
     void setSlotOn(int slot,bool on);
-    juce::Result loadHostedVST3(int slot,const juce::File& path);
+    juce::Result loadHostedVST3(int slot,const juce::File& path,const juce::String& identifier={},
+                                const juce::PluginDescription* scanned=nullptr);
     void openHostedVST3Editor(int slot);
+    void closeHostedVST3Editors();
     juce::String hostedVST3Name(int slot) const {return hosted.getName(slot);}
     bool hasHostedVST3(int slot) const noexcept {return hosted.get(slot)!=nullptr;}
     // Message-thread-only borrowed pointer for optional inline JUCE editor.
-    // The host retains plugin instances until processor destruction.
+    // The message-thread host retires old instances only after editors close.
     juce::AudioPluginInstance* hostedVST3InstanceForUI(int slot) const noexcept {
         return hosted.get(slot);
     }
@@ -108,6 +158,14 @@ public:
     // Audio producer progress is lock-free; the editor can avoid repainting
     // an unchanged waveform while FL Studio's transport is idle.
     unsigned liveScopeSampleCount() const noexcept {return liveScope.samplesCaptured();}
+    void getLiveSpectrumInput(
+        std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity>& samples) const noexcept {
+        liveSpectrumInput.snapshot(samples);
+    }
+    void getLiveSpectrumOutput(
+        std::array<float,skellpreset::visual::LiveSpectrumCapture::capacity>& samples) const noexcept {
+        liveSpectrumOutput.snapshot(samples);
+    }
     // UI-triggered WAV capture of the processed host channel; never opens a
     // microphone independently or overwrites DAW input/recording settings.
     juce::Result startCapture(const juce::File& path);
@@ -118,9 +176,39 @@ public:
     float getInputPeak() const noexcept {return inputPeak.load();}
     float getOutputPeak() const noexcept {return outputPeak.load();}
     float getSlotPeak(int slot) const noexcept {return slotPeaks[(size_t)juce::jlimit(0,slotCount-1,slot)].load();}
+    template<size_t N> void getSlotScope(int slot,std::array<float,N>& input,std::array<float,N>& output) const noexcept {
+        const auto i=(size_t)juce::jlimit(0,slotCount-1,slot);
+        slotInputScope[i].snapshot(input);slotOutputScope[i].snapshot(output);
+    }
+    using Presentation=skellcore::ui::Presentation;
+    Presentation presentation() const noexcept {return effectPresentation.load(std::memory_order_relaxed);}
+    void setPresentation(Presentation value) noexcept {effectPresentation.store(value,std::memory_order_relaxed);}
+    void requestSlotVisual(int slot) noexcept {slotVisual.request(slot);}
+    bool getSlotVisual(int slot,skellpreset::visual::SlotVisualCapture::Frame& frame) const noexcept {
+        return slotVisual.read(slot,frame);
+    }
+    float getSlotDuckReductionDb(int slot) const noexcept {
+        return slotDuckReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
+    }
+    float getSlotEqReductionDb(int slot,int band) const noexcept {
+        return slot>=0&&slot<slotCount&&band>=0&&band<8?slotEqReductionDb[(size_t)slot][(size_t)band].load(std::memory_order_relaxed):0.f;
+    }
+    float getSlotGainReductionDb(int slot) const noexcept {
+        return slotGainReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
+    }
+    float getSlotDeessReductionDb(int slot) const noexcept {
+        return slotDeessReductionDb[(size_t)juce::jlimit(0,slotCount-1,slot)].load(std::memory_order_relaxed);
+    }
+    float getSuiteReturnRms(int slot,int chain) const noexcept {
+        return suiteReturnRms[(size_t)juce::jlimit(0,slotCount-1,slot)]
+                             [(size_t)juce::jlimit(0,4,chain)].load(std::memory_order_relaxed);
+    }
 private:
+    friend class PresetBrowser;
+    juce::Result applyValidatedPresetDocument(const skellpreset::package::Document& doc);
     struct EngineSlot {
         skellpreset::dsp::SmoothedBiquad peak, highpass;
+        skellpreset::dsp::PhaseRotation phaseRotation;
         skellpreset::dsp::Compressor comp;
         skellpreset::dsp::Gate gate;
         skellpreset::dsp::SplitDeEsser deesser;
@@ -129,7 +217,11 @@ private:
         skellpreset::dsp::VocalTremolo tremolo;
         skellpreset::dsp::VocalWidth width;
         skellpreset::dsp::ThreeBandDynamics threeBand;
+#if SKELL_IR_REVERB_RESEARCH
+        skellcore::experimental::convolution::HybridVocalRoom voxRoom;
+#else
         skellpreset::dsp::VoxRackRoom voxRoom;
+#endif
         skellpreset::dsp::VoxRackSmoothCompressor voxComp;
         skellpreset::studio::Chorus chorus;
         skellpreset::studio::ParametricEQ studioEq;
@@ -138,6 +230,7 @@ private:
         skellpreset::studio::FastDist studioDist;
         skellpreset::dsp::VocalFlanger flanger;
         skellpreset::dsp::VocalRingMod ring;
+        skellcore::adlibfx::Processor adlibFx;
         skellpreset::dsp::VocalRider rider;
         skellpreset::dsp::DuckingPingPongDelay duckingDelay;
         skellpreset::dsp::VocalVibrato vibrato;
@@ -151,9 +244,13 @@ private:
         skellpreset::dsp::SpectralPitchFormant studioPitch;
         skellpreset::dsp::StereoSampleDelay pitchDry;
         skellpreset::dsp::Delay delay;
+        skellpreset::studio::StereoDelay studioDelay;
+        skellpreset::dsp::VocalFeelOpto vocalFeel;
+        skellpreset::dsp::VocalFeelSuite vocalSuite;
+        skellpreset::dsp::VoiceWetDucker voiceDuck;
         skellpreset::dsp::AdlibDoubler doubler;
         skellpreset::dsp::StereoSampleDelay limiterDry,hostDry;
-        skellcore::TruePeakLimiter limiter;
+        skellpreset::dsp::CompatibleLimiter limiter;
         skellcore::PhraseTracker phrase;
         std::array<std::vector<float>,2> throwHistory;
         size_t throwWrite=0,throwRead=0;
@@ -161,18 +258,35 @@ private:
         bool phrasePreviouslyActive=false,manualPreviouslyActive=false;
         float throwFilterL=0,throwFilterR=0,throwFilterPole=.6f;
         void processThrow(float l,float r,float& outL,float& outR,float amount,float feedback,float tone,float trigger,double sampleRate) noexcept;
+#if SKELL_IR_REVERB_RESEARCH
+        std::array<skellcore::experimental::convolution::HybridRoom,1> reverb;
+#else
         std::array<skellcore::FDNReverb,1> reverb;
+#endif
         void prepare(double sampleRate);
     };
     std::array<EngineSlot,slotCount> engines;
     skellpreset::host::HostedVST3 hosted;
-    juce::AudioBuffer<float> rackWork,hostWork,dryWork,bypassWork;
+    // Destroy floating native editors before their hosted processors.
+    std::array<std::unique_ptr<juce::DialogWindow>,slotCount> hostedEditorWindows;
+    juce::AudioBuffer<float> rackWork,hostWork,dryWork,sidechainWork,rawDetectorWork,parallelWork;
     int hostChunkCapacity=512;
     struct Controls {
         int type=0;bool on=false;float wet=1;float eqLowCut=0,eqHighCut=0;
+        bool duckOn=false,rightFirst=false,parallelReturn=false,duckExternal=false;
+        int duckSource=0;
+        float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
+              duckAttack=12.f;
+        float limitAttack=0.f,limitRelease=70.f;
         std::array<float,16> p{};std::array<float,8> q{};
         std::array<int,8> studioEqKinds{{3,0,0,0,0,0,4,0}};
         std::array<bool,8> studioEqEnabled{{true,true,true,true,true,true,true,false}};
+        std::array<float,8> studioEqDynamic{};
+    std::array<float,8> studioEqThreshold{{-24.f,-24.f,-24.f,-24.f,-24.f,-24.f,-24.f,-24.f}};
+    std::array<float,8> studioEqAttack{{12.f,12.f,12.f,12.f,12.f,12.f,12.f,12.f}};
+    std::array<float,8> studioEqRelease{{110.f,110.f,110.f,110.f,110.f,110.f,110.f,110.f}};
+    std::array<float,8> studioEqSlope{{0.f,0.f,0.f,0.f,0.f,0.f,0.f,0.f}};
+        std::array<float,8> studioEqExtraShape{};
     };
     std::array<Controls,slotCount> controlCache;
     std::atomic<std::uint64_t> packedOrder{0};
@@ -185,13 +299,23 @@ private:
         std::atomic<float>* extension5=nullptr;
         std::atomic<float>* extension6=nullptr;
         std::atomic<float>* extension7=nullptr;
+        std::atomic<float>* extension8=nullptr;
+        std::atomic<float>* extension9=nullptr;
+        std::atomic<float>* extension10=nullptr;
+        std::atomic<float>* extension11=nullptr;
+        std::atomic<float>* extension12=nullptr;
         std::atomic<float>* on=nullptr;
         std::atomic<float>* wet=nullptr;
         std::atomic<float>* eqLowCut=nullptr,*eqHighCut=nullptr;
+        std::atomic<float>* duckOn=nullptr,*duckDepth=nullptr;
+        std::atomic<float>* rightFirst=nullptr,*dubDuckOn=nullptr,*duckSource=nullptr,*parallelReturn=nullptr,*duckExternal=nullptr,*duckEffect=nullptr;
+        std::atomic<float>* duckThreshold=nullptr,*duckRelease=nullptr,
+                          *duckAttack=nullptr;
+        std::atomic<float>* limitAttack=nullptr,*limitRelease=nullptr;
         std::array<std::atomic<float>*,16> p{};
         std::array<std::atomic<float>*,8> q{};
         std::array<std::atomic<float>*,8> studioEqKind{};
-        std::array<std::atomic<float>*,8> studioEqOn{};
+        std::array<std::atomic<float>*,8> studioEqOn{},studioEqDynamic{},studioEqThreshold{},studioEqAttack{},studioEqRelease{},studioEqSlope{},studioEqExtraShape{};
     };
     struct RawMic {
         std::atomic<float>* on=nullptr;
@@ -199,21 +323,41 @@ private:
         std::atomic<float>* target=nullptr;
         std::atomic<float>* amount=nullptr;
         std::atomic<float>* trim=nullptr;
+        std::atomic<float>* gateOn=nullptr;
+        std::atomic<float>* gateThreshold=nullptr;
+        std::atomic<float>* gateRelease=nullptr;
+        std::atomic<float>* gateHold=nullptr;
+        std::atomic<float>* gateAttack=nullptr,*gateHysteresis=nullptr,*gateDepth=nullptr;
+        std::atomic<float>* tubeOn=nullptr,*tubeGain=nullptr,*tubeDrive=nullptr,*tubeAir=nullptr,*tubeTrim=nullptr;
     } rawMic;
+    skellpreset::research::MicTubeStage micTube;
     skellpreset::dsp::MicModelTone micFrontEnd;
-    juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet;
+    skellpreset::dsp::Gate micInputGate;
+    juce::SmoothedValue<float,juce::ValueSmoothingTypes::Linear> micFrontWet,micGateWet;
     struct RawGlobal {
         std::atomic<float>* mode=nullptr;std::atomic<float>* input=nullptr;
         std::atomic<float>* mix=nullptr;std::atomic<float>* output=nullptr;
         std::atomic<float>* gate=nullptr;std::atomic<float>* threshold=nullptr;
         std::atomic<float>* delta=nullptr;
+        // Native Stereo Enhancer separation of the final output stage.
+        std::atomic<float>* stereoSeparation=nullptr;
         std::array<std::atomic<float>*,4> macros{};
     } rawGlobal;
     std::array<RawSlot,slotCount> rawSlots;
+    std::array<skellpreset::visual::LiveAudioScope,slotCount> slotInputScope,slotOutputScope;
+    skellpreset::visual::SlotVisualCapture slotVisual;
+    std::array<float,skellpreset::visual::SlotVisualCapture::maxBlock> visualDynamics{},visualWetL{},visualWetR{};
+    std::atomic<Presentation> effectPresentation{Presentation::Clean};
     std::array<std::atomic<float>,slotCount> slotPeaks;
+    std::array<std::atomic<float>,slotCount> slotGainReductionDb,slotDuckReductionDb;
+    std::array<std::atomic<float>,slotCount> slotDeessReductionDb;
+    std::array<std::array<std::atomic<float>,8>,slotCount> slotEqReductionDb{};
+    std::array<std::array<std::atomic<float>,5>,slotCount> suiteReturnRms;
     std::atomic<float> inputPeak{0},outputPeak{0};
     skellpreset::visual::LiveAudioScope liveScope;
+    skellpreset::visual::LiveSpectrumCapture liveSpectrumInput,liveSpectrumOutput;
     skellpreset::capture::ClipRecorder capture;
+    skellpreset::liveMatch::Capture liveMatchCapture;
     double rate=48000;
     std::atomic<double> displayedRate{48000.}; // message-thread PDC readout
     int selectedProgram=-2; // -2 empty rack, -1 imported/edited custom chain, >=0 factory
@@ -221,7 +365,12 @@ private:
     std::atomic<bool> suppressProgramIdentityUpdates{false};
     juce::StringArray programIdentityListenerIds;
     juce::String name="Empty Rack";
-    skellpreset::dsp::StereoSampleDelay dryPdc,bypassPdc;
+    skellpreset::dsp::StereoSampleDelay dryPdc,parallelPdc;
+    skellpreset::dsp::DetectorHistory preMicHistory,postMicHistory,externalKeyHistory;
+    // Native Stereo Enhancer separation matrix on the final output stage.
+    // Owned here (not per slot) so it applies after the whole vocal chain,
+    // including stereo modulation, delay and reverb, exactly once.
+    skellpreset::dsp::MixerStereoSeparation stereoSeparation;
     std::atomic<int> limiterLookahead{0};
     int currentReportedLatency=0;
     void updateHostLatency();

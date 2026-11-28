@@ -6,6 +6,7 @@
 // All stage IDs are EXISTING Skell Preset module IDs. Never renumber these
 // IDs or alter existing factory program indices; append the preview instead.
 #include <array>
+#include "FactoryPresets.h"
 
 namespace skellpreset::alchemist {
 struct NativeStage {
@@ -113,8 +114,8 @@ constexpr auto makeStages() noexcept {
 }
 
 inline constexpr auto stages=makeStages();
-inline constexpr int originalFactoryCount=43;
-inline constexpr int factoryIndex=43;
+inline constexpr int originalFactoryCount=factoryIndexForRecipe(43);
+inline constexpr int factoryIndex=factoryIndexForRecipe(43);
 inline constexpr const char* name="Alchemist (Native Preview)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==7, "Alchemist chain must have seven native effects");

@@ -4,6 +4,12 @@
 sandbox or a DAW replacement. A faulty external plugin can hang, crash or corrupt
 the parent FL Studio process. Save your FL project before testing a new insert.
 
+Known FloopHole bundles and recursive Skell-Preset inserts are rejected before
+any scan or load, including project recall. This restores the previous crash
+guard; ordinary VST3s remain eligible. The name check is not a sandbox and cannot
+protect against renamed or otherwise defective binaries. A blocked saved insert
+remains unloaded; do not rename the bridge to bypass the protection.
+
 ## How to try it
 
 1. Open Skell-Preset / Advanced.

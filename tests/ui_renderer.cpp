@@ -4,6 +4,7 @@
 #include "../Source/PluginProcessor.h"
 #include "../Source/chain/AlchemistNativePreset.h"
 #include "../Source/chain/NativeSoundMatchTrials.h"
+#include "../Source/chain/VocalFeelRecipes.h"
 #include "../Source/host/InstalledVST3Index.h"
 #include <SkellCore/HeadlessUIRenderer.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -11,6 +12,8 @@
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <chrono>
+#include <algorithm>
 
 namespace {
 struct View {
@@ -24,19 +27,30 @@ constexpr std::array<View, 4> views {{
     {"simple", 0, false},
     {"bypass", 3, false}
 }};
-constexpr std::array<const char*, 3> themes {{"obsidian", "cream", "crimson"}};
+constexpr std::array<const char*, 2> themes {{"obsidian", "crimson"}};
+// Keep the persistent numeric IDs stable (0/2; retired 1 remains reserved).
+constexpr std::array<int,2> themeIds {{0,2}};
 constexpr std::array<float, 4> scales {{.70f, .85f, 1.f, 1.25f}};
 } // namespace
 
 int main(int argc, char** argv) {
-    bool quick4=false,extras=false;
+    bool quick4=true,extras=false,factorySlots=false,releaseAudit=false,motionAudit=false;
+    juce::String argument="ui-screenshots";
     for(int i=1;i<argc;++i) {
-        if(juce::String(argv[i])=="--quick4")quick4=true;
+        if(juce::String(argv[i])=="--output"){
+            if(i+1>=argc || juce::String(argv[i+1]).startsWith("--")){
+                std::fprintf(stderr,"--output requires a directory\n");return 2;
+            }
+            argument=juce::String::fromUTF8(argv[++i]);continue;
+        }
+        if(juce::String(argv[i])=="--full")quick4=false;
+        if(juce::String(argv[i])=="--motion-audit")motionAudit=true;
+        if(juce::String(argv[i])=="--release-audit"){releaseAudit=true;quick4=false;}
+        if(juce::String(argv[i])=="--quick4")quick4=true; // compatibility with older launchers
         if(juce::String(argv[i])=="--extras")extras=true;
+        if(juce::String(argv[i])=="--factory-slots"){factorySlots=true;quick4=false;}
     }
-    const juce::String argument = argc >= 3 && juce::String(argv[1]) == "--output"
-        ? juce::String::fromUTF8(argv[2]) : juce::String("ui-screenshots");
-    const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
+     const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile(argument);
     std::fprintf(stderr,"[Quick4] main entered; processor=%zu bytes editor=%zu bytes\\n",
                  sizeof(SkellPresetAudioProcessor),sizeof(SkellPresetAudioProcessorEditor));
     juce::ScopedJuceInitialiser_GUI gui;
@@ -105,7 +119,7 @@ int main(int argc, char** argv) {
     // block-based refactor for external plugin hosting.
     for(double sampleRate:{44100.,48000.,96000.}) {
         processor.prepareToPlay(sampleRate,256);
-        processor.loadFactoryPreset(25); // Zero-PDC tracking chain.
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25)); // Zero-PDC tracking chain.
         for(int frameCount:{63,256,8193}) {
             juce::AudioBuffer<float> probe(2,frameCount);
             for(int n=0;n<frameCount;++n) {
@@ -244,7 +258,7 @@ int main(int argc, char** argv) {
         }
     }
     processor.prepareToPlay(48000.,512);
-    processor.loadFactoryPreset(25);
+    processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25));
     if(auto* mode=processor.state.getParameter("mode"))
         mode->setValueNotifyingHost(mode->convertTo0to1(3.f));
     for(int step=0;step<12;++step) {
@@ -269,12 +283,12 @@ int main(int argc, char** argv) {
             std::fprintf(stderr,"Processor sample rate was not prepared\n");
             ++failures;
         }
-        processor.loadFactoryPreset(25);
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25));
         if(processor.getLatencySamples()!=0) {
             std::fprintf(stderr,"Live Lead must report zero added PDC samples\n");
             ++failures;
         }
-        processor.loadFactoryPreset(24);
+        processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(24));
         if(processor.getLatencySamples()<=0) {
             std::fprintf(stderr,"Vocal Polish limiter must report positive PDC\n");
             ++failures;
@@ -294,7 +308,7 @@ int main(int argc, char** argv) {
                     skellcore::ui::headless::Scene scene;
                     scene.id = juce::String(themes[(size_t)theme]) + "-" + view.name + "-"
                         + juce::String(juce::roundToInt(scale * 100.f));
-                    scene.theme = theme;
+                    scene.theme = themeIds[(size_t)theme];
                     scene.mode = view.mode;
                     scene.browser = view.browser;
                     scene.width = juce::roundToInt(1168.f * scale);
@@ -302,9 +316,14 @@ int main(int argc, char** argv) {
                     options.scenes.push_back(scene);
                 }
         options.scenes.push_back({"obsidian-guided-tour-70",818,482,0,1,false});
+        // Themed Settings is native JUCE and needs actual local visual
+        // inspection at both small and large host scales, in both skins.
+        options.scenes.push_back({"obsidian-settings-70",818,482,0,0,false});
+        options.scenes.push_back({"obsidian-settings-125",1460,860,0,0,false});
+        options.scenes.push_back({"crimson-settings-70",818,482,2,0,false});
         options.scenes.push_back({"obsidian-mic-panel-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-expanded-70",818,482,0,1,false});
-        options.scenes.push_back({"cream-deesser-70",818,482,1,1,false});
+        options.scenes.push_back({"crimson-deesser-70",818,482,2,1,false});
         options.scenes.push_back({"obsidian-live-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-external-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-wet-dot-70",818,482,0,1,false});
@@ -312,26 +331,36 @@ int main(int argc, char** argv) {
         options.scenes.push_back({"obsidian-installed-vst3-browser-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-rack-right-browser-70",818,482,0,1,true});
-        options.scenes.push_back({"obsidian-factory-broadcast-70",818,482,0,1,false});
+        options.scenes.push_back({"edge-stage-left-hidden-100",1168,688,0,1,false});
+        options.scenes.push_back({"edge-stage-right-hidden-70",818,482,0,1,false});
+        options.scenes.push_back({"edge-effect-hidden-125",1460,860,0,1,false});
+        options.scenes.push_back({"edge-effect-controls-100",1168,688,0,1,false});
+        options.scenes.push_back({"edge-sidechain-hidden-100",1168,688,0,1,false});
         options.scenes.push_back({"obsidian-factory-digital-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-threeband-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-vox-velvet-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-vox-chamber-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-wide-choir-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-phantom-sweep-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-alien-ring-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-module-picker-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-empty-library-100",1168,688,0,1,false});
         options.scenes.push_back({"obsidian-factory-rider-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-ducked-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-flutter-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-eightband-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-opto-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-harsh-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-factory-noise-70",818,482,0,1,false});
-        options.scenes.push_back({"obsidian-factory-formant-70",818,482,0,1,false});
         // Dedicated verified captures for every native effect visualization.
         // No mock UI: each scene switches the actual rack module/editor.
-        const std::array<std::pair<const char*,int>,31> effectScenes {{
+        const std::array<std::pair<const char*,int>,44> effectScenes {{
+            {"empty",SkellPresetAudioProcessor::Empty},
+            {"eq",SkellPresetAudioProcessor::EQ},
+            {"studio-eq",SkellPresetAudioProcessor::StudioEQFX},
+            {"studio-limiter",SkellPresetAudioProcessor::StudioLimiterFX},
+            {"studio-compressor",SkellPresetAudioProcessor::StudioCompressorFX},
+            {"studio-fast-dist",SkellPresetAudioProcessor::StudioFastDistFX},
+            {"studio-delay",SkellPresetAudioProcessor::StudioDelayFX},
+            {"adlib-chop",SkellPresetAudioProcessor::AdlibChop},
+            {"adlib-motion",SkellPresetAudioProcessor::AdlibMotion},
+            {"adlib-filter",SkellPresetAudioProcessor::AdlibFilter},
+            {"adlib-saturate",SkellPresetAudioProcessor::AdlibSaturate},
+            {"vocal-feel-opto",SkellPresetAudioProcessor::VocalFeelOptoFX},
             {"compressor",SkellPresetAudioProcessor::Compressor},
             {"limiter",SkellPresetAudioProcessor::Limiter},
             {"gate",SkellPresetAudioProcessor::Gate},
@@ -362,18 +391,74 @@ int main(int argc, char** argv) {
             {"studio-pitch-formant",SkellPresetAudioProcessor::StudioPitchFormantFX},
             {"alchemist-match-finish",SkellPresetAudioProcessor::AlchemistMatchFinishFX},
             {"mic-modeling",SkellPresetAudioProcessor::MicModelFX},
-            {"skelldizer",SkellPresetAudioProcessor::SkelldizerFX}
+            {"skelldizer",SkellPresetAudioProcessor::SkelldizerFX},
+            {"phase-rotation",SkellPresetAudioProcessor::PhaseRotationFX}
         }};
-        for(const auto& effect:effectScenes)
-            options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",
-                                      818,482,0,1,false});
-        options.scenes.push_back({"obsidian-effect-chorus-orb-70",818,482,0,1,false});
+        for(const auto& effect:effectScenes) {
+            options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-70",818,482,0,1,false});
+            options.scenes.push_back({juce::String("obsidian-effect-")+effect.first+"-100",1168,688,0,1,false});
+            if(releaseAudit){
+                for(int theme=0;theme<(int)themes.size();++theme)
+                    for(float scale:scales){
+                        if(theme==0 && (scale==.70f || scale==1.f))continue;
+                        options.scenes.push_back({juce::String(themes[(size_t)theme])+"-effect-"+effect.first+"-"+
+                            juce::String(juce::roundToInt(scale*100.f)),juce::roundToInt(1168.f*scale),
+                            juce::roundToInt(688.f*scale),themeIds[(size_t)theme],1,false});
+                    }
+            }
+        }
+        options.scenes.push_back({"obsidian-external-100",1168,688,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-voice-100",1168,688,0,1,false});
+        // Real JUCE suite captures are part of the deep, local visual audit,
+        // not Quick4's four stable fast-start views.
+        options.scenes.push_back({"obsidian-vocal-suite-voice-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-dynamics-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-mixes-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-output-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-style-picker-125",1460,860,0,1,false});
+        options.scenes.push_back({"obsidian-vocal-suite-spectrum-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-effect-chorus-digital-bones-70",818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-calibration-70",
                                   818,482,0,1,false});
         options.scenes.push_back({"obsidian-effect-alchemist-reference-70",
                                   818,482,0,1,false});
+        // Complete module inventory: external and vocal suite have independent scenes.
+        std::array<bool,SkellPresetAudioProcessor::NumberOfModules> covered{};
+        covered[SkellPresetAudioProcessor::ExternalVST3]=true;
+        covered[SkellPresetAudioProcessor::VocalFeelSuiteFX]=true;
+        for(const auto& effect:effectScenes){
+            if(covered[(size_t)effect.second]){std::fprintf(stderr,"Duplicate effect capture type %d\n",effect.second);++failures;}
+            covered[(size_t)effect.second]=true;
+        }
+        for(size_t i=0;i<covered.size();++i)if(!covered[i]){std::fprintf(stderr,"Missing effect capture type %zu\n",i);++failures;}
+        options.scenes.push_back({"obsidian-stage-audience-100",1168,688,0,1,false});
+        options.scenes.push_back({"obsidian-sidechain-routing-70",818,482,0,1,false});
+        options.scenes.push_back({"obsidian-sidechain-routing-100",1168,688,0,1,false});
+        const char* directoryNames[]{"default","genres","genre-leaf","tiers","underground","mainstream","artist","artist-main","artist-adlib"};
+        for(int page=0;page<9;++page)for(int view=0;view<2;++view)
+            options.scenes.push_back({juce::String("audit-browser-")+juce::String(page)+"-"+directoryNames[page]+(view==0?"-thumbnails":"-list"),1168,688,0,1,true});
+        if(juce::SystemStats::getEnvironmentVariable("SKELL_ARTIST_BANK_QA",{})=="1"){
+            options.scenes.push_back({"audit-browser-9-embedded-artist-directory-list",1168,688,0,1,true});
+            options.scenes.push_back({"audit-browser-10-embedded-all-list",1168,688,0,1,true});
+            options.scenes.push_back({"audit-browser-11-embedded-main-list",1168,688,0,1,true});
+            options.scenes.push_back({"audit-browser-12-embedded-adlib-list",1168,688,0,1,true});
+        }
+        options.scenes.push_back({"audit-browser-0-minimum",818,482,0,1,true});
+        options.scenes.push_back({"audit-browser-0-maximum",1460,860,0,1,true});
+        if(factorySlots){
+            for(int index=0;index<SkellPresetAudioProcessor::emptyRackProgramIndex;++index){
+                processor.loadFactoryPreset(index);
+                const int recipe=skellpreset::recipeForFactoryIndex(index);
+                for(int pos=0;pos<processor.activeSlotCount();++pos){
+                    const int physical=processor.slotIdAt(pos);
+                    if(processor.slotType(physical)==SkellPresetAudioProcessor::Empty)continue;
+                    options.scenes.push_back({juce::String("audit-factory-")+juce::String(recipe)+"-slot-"+juce::String(physical),1168,688,0,1,false});
+                }
+            }
+            processor.loadFactoryPreset(0);
+        }
         if(quick4) {
-            // Opt-in four actual-editor views; the original full 110-scene
+            // Four actual-editor views; the complete current two-theme
             // matrix and its independent regressions remain available.
             options.scenes={
                 {"obsidian-simple-100",1168,688,0,0,false},
@@ -383,7 +468,10 @@ int main(int argc, char** argv) {
             };
         }
         options.configure = [&](const auto& scene) {
-            if(scene.id=="obsidian-mic-panel-70") {
+            if(scene.id.startsWith("audit-factory-")){
+                const auto recipe=scene.id.fromFirstOccurrenceOf("audit-factory-",false,false).getIntValue();
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(recipe));
+            }else if(scene.id=="obsidian-mic-panel-70") {
                 processor.loadFactoryPreset(0);
                 if(auto* p=processor.state.getParameter("micPreOn"))
                     p->setValueNotifyingHost(p->convertTo0to1(1.f));
@@ -397,45 +485,33 @@ int main(int argc, char** argv) {
                 while(processor.activeSlotCount()<16)processor.appendRackSlot();
                 processor.setSlotType(15,SkellPresetAudioProcessor::DeEsser);
                 processor.setSlotOn(15,true);
-            } else if(scene.id=="cream-deesser-70") {
-                processor.loadFactoryPreset(24); // Skell Vocal Polish
+            } else if(scene.id=="crimson-deesser-70") {
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(24)); // Skell Vocal Polish
             } else if(scene.id=="obsidian-live-70") {
-                processor.loadFactoryPreset(25); // Skell Live Lead, 0 PDC
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(25)); // Skell Live Lead, 0 PDC
             } else if(scene.id=="obsidian-rack-right-70"
                       || scene.id=="obsidian-rack-right-browser-70") {
                 processor.loadFactoryPreset(0);
-            } else if(scene.id=="obsidian-factory-broadcast-70") {
-                processor.loadFactoryPreset(26);
             } else if(scene.id=="obsidian-factory-digital-70") {
-                processor.loadFactoryPreset(27);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(27));
             } else if(scene.id=="obsidian-factory-threeband-70") {
-                processor.loadFactoryPreset(28);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(28));
             } else if(scene.id=="obsidian-factory-vox-velvet-70") {
-                processor.loadFactoryPreset(29);
-            } else if(scene.id=="obsidian-factory-vox-chamber-70") {
-                processor.loadFactoryPreset(30);
-            } else if(scene.id=="obsidian-factory-wide-choir-70") {
-                processor.loadFactoryPreset(31);
-            } else if(scene.id=="obsidian-factory-phantom-sweep-70") {
-                processor.loadFactoryPreset(32);
-            } else if(scene.id=="obsidian-factory-alien-ring-70") {
-                processor.loadFactoryPreset(33);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(29));
             } else if(scene.id=="obsidian-factory-rider-70") {
-                processor.loadFactoryPreset(34);
-            } else if(scene.id=="obsidian-factory-ducked-70") {
-                processor.loadFactoryPreset(35);
-            } else if(scene.id=="obsidian-factory-flutter-70") {
-                processor.loadFactoryPreset(36);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(34));
             } else if(scene.id=="obsidian-factory-eightband-70") {
-                processor.loadFactoryPreset(37);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(37));
             } else if(scene.id=="obsidian-factory-opto-70") {
-                processor.loadFactoryPreset(38);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(38));
             } else if(scene.id=="obsidian-factory-harsh-70") {
-                processor.loadFactoryPreset(39);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(39));
             } else if(scene.id=="obsidian-factory-noise-70") {
-                processor.loadFactoryPreset(40);
-            } else if(scene.id=="obsidian-factory-formant-70") {
-                processor.loadFactoryPreset(41);
+                processor.loadFactoryPreset(skellpreset::factoryIndexForRecipe(40));
+            } else if(scene.id=="obsidian-empty-library-100") {
+                processor.loadFactoryPreset(0);
+                processor.setSlotType(0,SkellPresetAudioProcessor::Empty);
+                processor.setSlotOn(0,false);
             } else if(scene.id=="obsidian-module-picker-70") {
                 processor.loadFactoryPreset(0);
             } else if(scene.id=="obsidian-rack-wet-dot-70"
@@ -444,12 +520,19 @@ int main(int argc, char** argv) {
                 processor.setSlotOn(0,false);
                 if(auto* wet=processor.state.getParameter("s3_wet"))
                     wet->setValueNotifyingHost(wet->convertTo0to1(.36f));
-            } else if(scene.id=="obsidian-external-70" ||
+            } else if(scene.id=="obsidian-external-70" || scene.id=="obsidian-external-100" ||
                       scene.id=="obsidian-installed-vst3-browser-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::ExternalVST3);
                 processor.setSlotOn(0,true);
-            } else if(scene.id=="obsidian-effect-chorus-orb-70") {
+            } else if(scene.id.startsWith("obsidian-vocal-suite-")) {
+                processor.clearRackToEmpty();
+                processor.setSlotType(0,SkellPresetAudioProcessor::VocalFeelSuiteFX);
+                processor.setSlotOn(0,true);
+                const auto& recipe=skellpreset::dsp::vocalFeelRecipes[1].values;
+                for(int k=0;k<16;++k)
+                    processor.setSlotParam(0,k,recipe[(size_t)k]);
+            } else if(scene.id=="obsidian-effect-chorus-digital-bones-70") {
                 processor.loadFactoryPreset(0);
                 processor.setSlotType(0,SkellPresetAudioProcessor::VocalChorusFX);
                 processor.setSlotOn(0,true);
@@ -470,82 +553,109 @@ int main(int argc, char** argv) {
                     std::fprintf(stderr,"Alchemist factory stage 7 missing or unexpected latency in screenshot fixture\\n");
                     ++failures;
                 }
-            } else if(scene.id.startsWith("obsidian-effect-")) {
+            } else if(scene.id.startsWith("obsidian-effect-") || scene.id.startsWith("crimson-effect-")) {
                 processor.loadFactoryPreset(0);
+                const auto requested=scene.id.fromFirstOccurrenceOf("-effect-",false,false)
+                    .upToLastOccurrenceOf("-",false,false);
+                bool matched=false;
                 for(const auto& effect:effectScenes)
-                    if(scene.id==juce::String("obsidian-effect-")+effect.first+"-70") {
+                    if(requested==effect.first) {
+                        matched=true;
                         processor.setSlotType(0,effect.second);
-                        processor.setSlotOn(0,true);
+                        processor.setSlotOn(0,effect.second!=SkellPresetAudioProcessor::Empty);
                         processor.setSlotParam(0,0,.68f);
                         processor.setSlotParam(0,1,.42f);
                         break;
                     }
+                if(!matched){std::fprintf(stderr,"Unknown native effect scene %s\n",scene.id.toRawUTF8());++failures;}
             }
             editor.dismissGuidedTourForScreenshot();
             editor.configureForScreenshot(scene.theme, scene.mode, scene.browser);
             if(scene.id=="obsidian-rack-right-70"
                || scene.id=="obsidian-rack-right-browser-70")
                 editor.dockRackForScreenshot(true);
+            if(scene.id.startsWith("obsidian-vocal-suite-")) {
+                const int page=scene.id.contains("dynamics")?1:
+                               scene.id.contains("mixes")?2:
+                               scene.id.contains("output")?3:0;
+                editor.setSuiteForScreenshot(page,
+                    scene.id.contains("style-picker"));
+                if(scene.id.contains("spectrum"))
+                    editor.setSuiteSpectrumForScreenshot(true);
+            }
             if(scene.id=="obsidian-module-picker-70")
                 editor.openModulePickerForScreenshot();
+            if(scene.id=="obsidian-empty-library-100"){
+                editor.selectRackSlotForScreenshot(0,0);
+                editor.openModulePickerForScreenshot();
+            }
             if(scene.id=="obsidian-guided-tour-70" && !editor.showGuidedTourForScreenshot())
                 std::fprintf(stderr,"Guided tour did not show in real-editor render\\n");
             if(scene.id=="obsidian-expanded-70")
                 editor.selectRackSlotForScreenshot(15,6);
-            else if(scene.id=="cream-deesser-70")
+            else if(scene.id=="crimson-deesser-70")
                 editor.selectRackSlotForScreenshot(9,0);
             else if(scene.id=="obsidian-effect-alchemist-match-finish-70"
                     || scene.id=="obsidian-effect-alchemist-calibration-70"
                     || scene.id=="obsidian-effect-alchemist-reference-70")
                 editor.selectRackSlotForScreenshot(6,0);
-            else if(scene.id.startsWith("obsidian-effect-")
-                    || scene.id=="obsidian-external-70"
+            else if(scene.id.startsWith("obsidian-effect-") || scene.id.startsWith("crimson-effect-")
+                    || scene.id.startsWith("obsidian-vocal-suite-")
+                    || scene.id=="obsidian-external-70" || scene.id=="obsidian-external-100"
                     || scene.id=="obsidian-installed-vst3-browser-70")
                 editor.selectRackSlotForScreenshot(0,0);
-            else if(scene.id=="obsidian-factory-broadcast-70"
-                    || scene.id=="obsidian-factory-digital-70")
+            else if(scene.id=="obsidian-factory-digital-70")
                 editor.selectRackSlotForScreenshot(3,0);
             else if(scene.id=="obsidian-factory-threeband-70" ||
                     scene.id=="obsidian-factory-vox-velvet-70")
                 editor.selectRackSlotForScreenshot(1,0);
-            else if(scene.id=="obsidian-factory-vox-chamber-70")
-                editor.selectRackSlotForScreenshot(5,0);
-            else if(scene.id=="obsidian-factory-wide-choir-70" ||
-                    scene.id=="obsidian-factory-alien-ring-70")
-                editor.selectRackSlotForScreenshot(3,0);
-            else if(scene.id=="obsidian-factory-phantom-sweep-70")
-                editor.selectRackSlotForScreenshot(7,0);
-            else if(scene.id=="obsidian-factory-rider-70" ||
-                    scene.id=="obsidian-factory-flutter-70")
+            else if(scene.id=="obsidian-factory-rider-70")
                 editor.selectRackSlotForScreenshot(8,0);
-            else if(scene.id=="obsidian-factory-ducked-70")
-                editor.selectRackSlotForScreenshot(4,0);
             else if(scene.id=="obsidian-factory-eightband-70" ||
                     scene.id=="obsidian-factory-harsh-70" ||
                     scene.id=="obsidian-factory-noise-70")
                 editor.selectRackSlotForScreenshot(8,0);
             else if(scene.id=="obsidian-factory-opto-70")
                 editor.selectRackSlotForScreenshot(1,0);
-            else if(scene.id=="obsidian-factory-formant-70")
-                editor.selectRackSlotForScreenshot(8,0);
             if(scene.id=="obsidian-installed-vst3-browser-70")
                 editor.openInstalledVST3BrowserForScreenshot();
             if(scene.id=="obsidian-effect-alchemist-calibration-70")
                 editor.setMatchPageForScreenshot(1);
             if(scene.id=="obsidian-effect-alchemist-reference-70")
                 editor.setMatchPageForScreenshot(2);
-            editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-orb-70");
+            editor.setModOrbForScreenshot(scene.id=="obsidian-effect-chorus-digital-bones-70");
             editor.setMicPanelForScreenshot(scene.id=="obsidian-mic-panel-70");
+            editor.setSettingsPanelForScreenshot(scene.id=="obsidian-settings-70" ||
+                scene.id=="obsidian-settings-125" || scene.id=="crimson-settings-70");
+            if(scene.id=="obsidian-stage-audience-100")editor.showHomeForScreenshot();
+            if(scene.id.startsWith("edge-")){
+                if(scene.id.startsWith("edge-stage"))editor.showHomeForScreenshot();
+                else editor.selectRackSlotForScreenshot(0,0);
+                editor.configureEdgesForScreenshot(scene.id.contains("right"),
+                    scene.id.contains("hidden"),scene.id.contains("controls"),scene.id.contains("sidechain"));
+            }
+            if(scene.id.startsWith("obsidian-sidechain-routing-"))editor.showRoutingForScreenshot();
+            if(scene.id.startsWith("audit-browser-")){
+                const int page=scene.id.fromFirstOccurrenceOf("audit-browser-",false,false).getIntValue();
+                const bool small=scene.id.endsWith("minimum"),large=scene.id.endsWith("maximum");
+                if(!editor.configureBrowserForScreenshot(page,small?620:large?1000:780,small?530:large?604:560,scene.id.endsWith("-list"))){
+                    std::fprintf(stderr,"Browser scene configuration failed: %s\n",scene.id.toRawUTF8());++failures;
+                }
+            }
+            if(scene.id.startsWith("audit-factory-")){
+                const int physical=scene.id.fromLastOccurrenceOf("-slot-",false,false).getIntValue();
+                int pos=0;for(int n=0;n<processor.activeSlotCount();++n)if(processor.slotIdAt(n)==physical)pos=n;
+                editor.selectRackSlotForScreenshot(physical,juce::jmax(0,pos-6));
+            }
         };
         options.inspect = [&] { return editor.getScreenshotLayoutIssues(); };
         options.mustDiffer = {
             {"obsidian-advanced-70", "obsidian-preset-browser-70"},
             {"obsidian-advanced-70", "obsidian-simple-70"},
             {"obsidian-advanced-70", "obsidian-bypass-70"},
-            {"obsidian-advanced-70", "cream-advanced-70"},
-            {"cream-advanced-70", "crimson-advanced-70"},
+            {"obsidian-advanced-70", "crimson-advanced-70"},
             {"obsidian-advanced-70", "obsidian-expanded-70"},
-            {"cream-advanced-70", "cream-deesser-70"},
+            {"crimson-advanced-70", "crimson-deesser-70"},
             {"obsidian-advanced-70", "obsidian-live-70"},
             {"obsidian-effect-saturator-70", "obsidian-effect-reverb-70"},
             {"obsidian-effect-delay-70", "obsidian-effect-adlib-throw-70"},
@@ -560,16 +670,12 @@ int main(int argc, char** argv) {
             {"obsidian-effect-radio-70", "obsidian-effect-retro-crush-70"},
             {"obsidian-effect-tremolo-70", "obsidian-effect-stereo-width-70"},
             {"obsidian-effect-threeband-70", "obsidian-effect-radio-70"},
-            {"obsidian-factory-broadcast-70", "obsidian-factory-threeband-70"},
             {"obsidian-effect-voxrack-room-70", "obsidian-effect-voxrack-comp-70"},
-            {"obsidian-factory-vox-velvet-70", "obsidian-factory-vox-chamber-70"},
             {"obsidian-advanced-70", "obsidian-module-picker-70"},
             {"obsidian-effect-vocal-chorus-70", "obsidian-effect-vocal-flanger-70"},
             {"obsidian-effect-ring-mod-70", "obsidian-effect-vocal-flanger-70"},
-            {"obsidian-factory-wide-choir-70", "obsidian-factory-alien-ring-70"},
             {"obsidian-effect-vocal-rider-70", "obsidian-effect-vocal-vibrato-70"},
             {"obsidian-effect-ducking-pingpong-70", "obsidian-effect-delay-70"},
-            {"obsidian-factory-rider-70", "obsidian-factory-ducked-70"},
             {"obsidian-effect-eight-band-eq-70", "obsidian-effect-fet-opto-70"},
             {"obsidian-effect-harshness-tamer-70", "obsidian-effect-adaptive-noise-70"},
             {"obsidian-factory-eightband-70", "obsidian-factory-opto-70"},
@@ -580,8 +686,10 @@ int main(int argc, char** argv) {
              "obsidian-effect-alchemist-reference-70"},
             {"obsidian-effect-mic-modeling-70","obsidian-effect-eight-band-eq-70"},
             {"obsidian-effect-skelldizer-70","obsidian-effect-mic-modeling-70"},
-            {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-orb-70"},
-            {"obsidian-advanced-70","obsidian-mic-panel-70"}
+            {"obsidian-effect-vocal-chorus-70","obsidian-effect-chorus-digital-bones-70"},
+            {"obsidian-advanced-70","obsidian-mic-panel-70"},
+            {"obsidian-simple-70","obsidian-settings-70"},
+            {"obsidian-settings-70","crimson-settings-70"}
         };
         if(quick4) {
             options.mustDiffer={
@@ -597,12 +705,117 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "UI screenshot: %s\n", error.toRawUTF8());
             ++failures;
         }
-        if (report.captured != (quick4?4:110)) {
+        const int expectedScenes=quick4?4:(int)options.scenes.size();
+        if (report.captured != expectedScenes) {
             std::fprintf(stderr,"Expected %d PNGs, captured %d\n",
-                         quick4?4:110,report.captured);
+                         expectedScenes,report.captured);
             ++failures;
         }
 
+        // Feed deterministic dynamic multitone audio through the actual slot, then
+        // capture its actual editor using measured telemetry (not an animation mock).
+        if(!quick4){
+            const std::pair<const char*,int> visuals[]={{"compressor",SkellPresetAudioProcessor::Compressor},{"studio-compressor",SkellPresetAudioProcessor::StudioCompressorFX},{"eq",SkellPresetAudioProcessor::EQ},{"saturator",SkellPresetAudioProcessor::Saturator},{"reverb",SkellPresetAudioProcessor::Reverb}};
+            for(const auto& effect:visuals){
+                processor.clearRackToEmpty();processor.setSlotType(0,effect.second);processor.setSlotOn(0,true);
+                processor.setSlotParam(0,0,.25f);processor.setSlotParam(0,1,.72f);
+                editor.configureForScreenshot(0,1,false);editor.selectRackSlotForScreenshot(0,0);
+                bool fresh=false;juce::AudioBuffer<float> probe(2,512);juce::MidiBuffer midi;
+                for(int block=0;block<192;++block){
+                    processor.requestSlotVisual(0);
+                    const float envelope=.035f+.55f*(.5f+.5f*std::sin(block*.31f));
+                    for(int n=0;n<512;++n){const double t=(block*512+n)/48000.;const float sample=envelope*(.60f*(float)std::sin(t*690.0)+.26f*(float)std::sin(t*2349.0)+.14f*(float)std::sin(t*8831.0));probe.setSample(0,n,sample);probe.setSample(1,n,sample*.82f);}
+                    processor.processBlock(probe,midi);
+                    if(block%2==0)fresh=editor.updateLiveVisualForScreenshot();
+                }
+                skellpreset::visual::SlotVisualCapture::Frame measured;
+                const bool readable=processor.getSlotVisual(0,measured);
+                if(!readable || ((effect.second==SkellPresetAudioProcessor::Compressor || effect.second==SkellPresetAudioProcessor::StudioCompressorFX) &&
+                    (!(measured.sharedOutput.flags&skellcore::telemetry::kFlagGrValid) || measured.slowCount==0 ||
+                     std::none_of(measured.slow.begin(),measured.slow.begin()+measured.slowCount,[](const auto& b){return b.grDbMax>.1f;}))) ||
+                    (effect.second==SkellPresetAudioProcessor::Reverb && (!measured.returnSpectrumReady || !measured.returnAvailable ||
+                     measured.returnRms[0]+measured.returnRms[1]<=0.f))){
+                    std::fprintf(stderr,"Measured effect telemetry invalid: %s\n",effect.first);++failures;
+                }
+                const auto shot=skellcore::ui::headless::capture(editor,1168,688);
+                if(!fresh || !shot.image.isValid() || !skellcore::ui::headless::writePng(shot.image,folder.getChildFile(juce::String("measured-effect-")+effect.first+"-100.png"))){std::fprintf(stderr,"Measured effect capture failed: %s\n",effect.first);++failures;}
+                // Capture the full-width real telemetry, including the drawer,
+                // after feeding fresh audio with no forced capture override.
+                editor.configureEdgesForScreenshot(false,true,false,false);
+                bool focusFresh=false;
+                for(int block=0;block<96;++block){
+                    const float env=.04f+.48f*(.5f+.5f*std::sin(block*.21f));
+                    for(int n=0;n<512;++n){
+                        const double time=(block*512+n)/48000.;
+                        const float x=env*(.7f*(float)std::sin(time*690.)+.3f*(float)std::sin(time*2349.));
+                        probe.setSample(0,n,x);probe.setSample(1,n,x*.82f);
+                    }
+                    processor.processBlock(probe,midi);focusFresh=editor.updateLiveVisualForScreenshot();
+                }
+                auto full=skellcore::ui::headless::capture(editor,1168,688);
+                if(!focusFresh||!full.image.isValid()||!skellcore::ui::headless::writePng(full.image,folder.getChildFile(juce::String("focus-measured-")+effect.first+"-100.png"))){
+                    std::fprintf(stderr,"Full focus capture failed: %s\n",effect.first);++failures;
+                }
+                editor.configureEdgesForScreenshot(false,true,true,false);
+                auto drawer=skellcore::ui::headless::capture(editor,1168,688);
+                if(!drawer.image.isValid()||!skellcore::ui::headless::writePng(drawer.image,folder.getChildFile(juce::String("focus-controls-")+effect.first+"-100.png")))++failures;
+            }
+            processor.requestSlotVisual(-1);processor.loadFactoryPreset(0);
+        }
+        // Local-only temporal evidence. Each frame is the real editor after
+        // 1536 new samples (32ms at 48k), not an interpolated screenshot.
+        if(motionAudit){
+            const std::pair<const char*,int> viewsToCapture[]={{"compressor",SkellPresetAudioProcessor::StudioCompressorFX},{"eq",SkellPresetAudioProcessor::EQ},{"drive",SkellPresetAudioProcessor::Saturator},{"reverb",SkellPresetAudioProcessor::Reverb},{"stage",SkellPresetAudioProcessor::Empty}};
+            for(const auto& view:viewsToCapture){
+                const bool stage=view.second==SkellPresetAudioProcessor::Empty;
+                const auto motionFolder=folder.getChildFile(juce::String("motion-")+view.first);
+                if(motionFolder.createDirectory().failed()){++failures;continue;}
+                processor.clearRackToEmpty();
+                if(!stage){processor.setSlotType(0,view.second);processor.setSlotOn(0,true);processor.setSlotParam(0,0,.25f);processor.setSlotParam(0,1,.72f);}
+                editor.configureForScreenshot(0,1,false);
+                if(stage){editor.showHomeForScreenshot();processor.requestSlotVisual(-1);}else editor.selectRackSlotForScreenshot(0,0);
+                juce::AudioBuffer<float> probe(2,512);juce::MidiBuffer midi;
+                std::uint64_t previousFingerprint=0;int changedFrames=0;
+                std::array<double,40> updateMs{},paintMs{};
+                for(int frame=0;frame<64;++frame){
+                    for(int block=0;block<3;++block){
+                        if(!stage)processor.requestSlotVisual(0);
+                        for(int n=0;n<512;++n){
+                            const double t=((frame*3+block)*512+n)/48000.;
+                            const float phrase=(float)(.12+.42*(.5+.5*std::sin(13.*t)))*((frame/12)%3==2?.12f:1.f);
+                            const float x=phrase*(.54f*(float)std::sin(t*690.)+.25f*(float)std::sin(t*2349.)+.21f*(float)std::sin(t*8831.)*(float)(.5+.5*std::sin(t*4.1)));
+                            probe.setSample(0,n,x);probe.setSample(1,n,x*.82f);
+                        }
+                        processor.processBlock(probe,midi);
+                    }
+                    const auto updateStart=std::chrono::steady_clock::now();
+                    if(stage)editor.updateStageForScreenshot(frame*32.);else editor.updateLiveVisualForScreenshot();
+                    const auto paintStart=std::chrono::steady_clock::now();
+                    if(frame<24)continue; // warm the real analysis history before recording
+                    const auto shot=skellcore::ui::headless::capture(editor,1168,688);
+                    const auto paintEnd=std::chrono::steady_clock::now();
+                    updateMs[(size_t)(frame-24)]=std::chrono::duration<double,std::milli>(paintStart-updateStart).count();
+                    paintMs[(size_t)(frame-24)]=std::chrono::duration<double,std::milli>(paintEnd-paintStart).count();
+                    if(!shot.image.isValid() || !skellcore::ui::headless::writePng(shot.image,motionFolder.getChildFile(juce::String(frame-24).paddedLeft('0',3)+".png"))){++failures;continue;}
+                    // Sample the actual moving surface densely, not a sparse
+                    // whole-window fingerprint dominated by static chrome.
+                    std::uint64_t visualFingerprint=14695981039346656037ull;
+                    const int startY=stage?100:235,endY=stage?640:425;
+                    for(int yy=startY;yy<endY;yy+=3)for(int xx=280;xx<1100;xx+=3){
+                        visualFingerprint^=shot.image.getPixelAt(xx,yy).getARGB();visualFingerprint*=1099511628211ull;
+                    }
+                    if(previousFingerprint!=0 && previousFingerprint!=visualFingerprint)++changedFrames;
+                    previousFingerprint=visualFingerprint;
+                }
+                std::printf("Motion %s: %d/39 adjacent frames changed\n",view.first,changedFrames);
+                std::array<double,40> totalMs{};for(size_t i=0;i<totalMs.size();++i)totalMs[i]=updateMs[i]+paintMs[i];
+                const auto report=[](auto values){std::sort(values.begin(),values.end());return std::array<double,3>{(values[19]+values[20])*.5,values[37],values.back()};};
+                const auto u=report(updateMs),p=report(paintMs),t=report(totalMs);
+                std::printf("Perf %s: update p50 %.3f p95 %.3f; paint p50 %.3f p95 %.3f; total p50 %.3f p95 %.3f max %.3f ms\n",view.first,u[0],u[1],p[0],p[1],t[0],t[1],t[2]);
+                if(changedFrames<30)++failures;
+            }
+            processor.requestSlotVisual(-1);processor.loadFactoryPreset(0);
+        }
         // Pixel-level branding regression: a previous AttributedString bug
         // drew PRESET at JUCE's 14pt default despite a 27pt design size.
         // Exclude the skull badge and the content area from the measurement.
@@ -611,7 +824,7 @@ int main(int argc, char** argv) {
         const auto wordmark=skellcore::ui::headless::capture(editor,818,482);
         int firstX=818,lastX=-1,firstY=482,lastY=-1;
         if(wordmark.image.isValid())
-            for(int y=7;y<45;++y)for(int x=53;x<242;++x) {
+            for(int y=14;y<50;++y)for(int x=53;x<242;++x) {
                 const auto colour=wordmark.image.getPixelAt(x,y);
                 if(colour.getGreen()>130
                    && colour.getGreen()>colour.getRed()*1.4f
@@ -631,7 +844,7 @@ int main(int argc, char** argv) {
         const auto legendCheck=skellcore::ui::headless::capture(editor,818,482);
         int neonTextPixels=0;
         if(legendCheck.image.isValid())
-            for(int y=128;y<159;++y)for(int x=198;x<640;++x){
+            for(int y=267;y<302;++y)for(int x=400;x<575;++x){
                 const auto colour=legendCheck.image.getPixelAt(x,y);
                 if(colour.getGreen()>120
                     && colour.getGreen()>colour.getRed()*1.35f
@@ -639,15 +852,16 @@ int main(int argc, char** argv) {
                     ++neonTextPixels;
             }
         if(neonTextPixels<25) {
-            std::fprintf(stderr,"Radio graph title is hidden by the plot clip at 70%%\n");
+            std::fprintf(stderr,"Radio hardware output readout is missing at 70%%\n");
             ++failures;
         }
         if(!quick4)processor.loadFactoryPreset(0); // Full-matrix legacy baseline only.
         // Quick4 captures exactly the 4 current-source real editor scenes.
-        // Full audits keep the old six-view overview.
+        // Full audits show only the two supported dark themes.
         constexpr int thumbnailWidth = 818, thumbnailHeight = 482;
         juce::Image overview(juce::Image::RGB,2*thumbnailWidth,
-                             (quick4?2:3)*thumbnailHeight,true);
+                             (quick4?2:(int)themes.size())*thumbnailHeight,true);
+        {
         juce::Graphics g(overview);
         if(quick4) {
             // Use the exact four previously saved PNGs. Re-rendering the
@@ -669,7 +883,8 @@ int main(int argc, char** argv) {
         } else {
             for(int theme=0;theme<(int)themes.size();++theme)
                 for(int column=0;column<2;++column) {
-                    editor.configureForScreenshot(theme,views[(size_t)column].mode,
+                    editor.configureForScreenshot(themeIds[(size_t)theme],
+                                                  views[(size_t)column].mode,
                                                   views[(size_t)column].browser);
                     const auto capture=skellcore::ui::headless::capture(
                         editor,thumbnailWidth,thumbnailHeight);
@@ -682,11 +897,45 @@ int main(int argc, char** argv) {
                     }
                 }
         }
+        } // Flush the Windows graphics context before PNG encoding.
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
         if(quick4 && extras) {
+            // Actual browser layouts from the production component, not a mockup.
+            for(int page:{0,13,15,14}){
+                editor.configureForScreenshot(0,1,true);
+                if(!editor.configureBrowserForScreenshot(page,0,0,true)){++failures;continue;}
+                const auto shot=skellcore::ui::headless::capture(editor,1168,688);
+                const char* name=page==0?"library-list-100.png":page==13?"library-showcase-100.png":page==15?"artist-library-real-100.png":"artist-showcase-qa-100.png";
+                if(!shot.image.isValid()||!skellcore::ui::headless::writePng(shot.image,folder.getChildFile(name)))++failures;
+            }
+            for(int scene=0;scene<7;++scene){
+                if(!editor.smartMatchForScreenshot(scene)){std::fprintf(stderr,"Live Match interaction %d failed\n",scene);++failures;}
+                if(scene<3||(scene>=4&&scene<6)){const auto shot=skellcore::ui::headless::capture(editor,1168,688);const char* names[]{"match-style-100.png","match-insufficient-100.png","match-done-100.png","","match-listening-active-100.png","match-refine-100.png"};if(!shot.image.isValid()||!skellcore::ui::headless::writePng(shot.image,folder.getChildFile(names[scene])))++failures;}
+            }
             // Two EXTRA real-editor scene PNGs. Quick4 remains four primary
             // screenshots and the contact sheet is unchanged.
+            // Output-stage separation: capture the actual STEREO dial at both
+            // audible extremes so widen/merge are verified in the real editor.
+            struct SeparationShot {const char* file;int raw;};
+            constexpr SeparationShot separationShots[]{
+                {"obsidian-stereo-wide-100.png",-96},
+                {"obsidian-stereo-mono-100.png",96}
+            };
+            for(const auto& shot:separationShots) {
+                processor.loadFactoryPreset(0);
+                // Drive the real host parameter exactly as automation would.
+                if(auto* p=processor.state.getParameter("stereoSeparation"))
+                    p->setValueNotifyingHost(p->convertTo0to1((float)shot.raw));
+                editor.configureForScreenshot(0,0,false);
+                const auto separation=skellcore::ui::headless::capture(editor,1168,688);
+                if(!separation.image.isValid() || separation.distinctColours<12 ||
+                   !skellcore::ui::headless::writePng(separation.image,
+                       folder.getChildFile(shot.file))) {
+                    std::fprintf(stderr,"Actual STEREO separation screenshot failed\n");
+                    ++failures;
+                }
+            }
             processor.loadFactoryPreset(skellpreset::alchemist::factoryIndex);
             editor.configureForScreenshot(0,1,false);
             editor.showHomeForScreenshot();
@@ -838,7 +1087,7 @@ int main(int argc, char** argv) {
             editor.configureForScreenshot(0,1,false);
             editor.selectRackSlotForScreenshot(0,0);
             // The rack menu was previously never photographed, so clipped
-            // bottom actions could pass the 110-scene audit unnoticed.
+            // bottom actions could pass the full UI-scene audit unnoticed.
             if(!editor.openRackContextMenuForScreenshot(0)) {
                 std::fprintf(stderr,"Real rack context menu out of bounds\n");
                 ++failures;
@@ -849,6 +1098,18 @@ int main(int argc, char** argv) {
                        menu.image,folder.getChildFile("obsidian-rack-context-menu-100.png"))) {
                     std::fprintf(stderr,"Real rack context menu screenshot failed\n");
                     ++failures;
+                }
+            }
+            for(bool redoAvailable:{false,true}) {
+                editor.configureForScreenshot(0,1,false);
+                if(!editor.showHistoryForScreenshot(redoAvailable)){
+                    std::fprintf(stderr,"History screenshot fixture failed\n");++failures;continue;
+                }
+                for(int width:{818,1168}) {
+                    const auto shot=skellcore::ui::headless::capture(editor,width,width==818?482:688);
+                    const auto file=juce::String("obsidian-history-")+(redoAvailable?"redo":"undo")+(width==818?"-70.png":"-100.png");
+                    if(!shot.image.isValid() || shot.distinctColours<12 ||
+                       !skellcore::ui::headless::writePng(shot.image,folder.getChildFile(file)))++failures;
                 }
             }
         }

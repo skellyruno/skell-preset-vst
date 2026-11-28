@@ -19,30 +19,30 @@ using namespace skellpreset;
 using namespace skellpreset::dsp;
 
 int main() {
-    static_assert(factoryPresets.size()==55,"Append only; preserve prior programs");
-    static_assert(factoryPresets[49].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
+    static_assert(factoryPresets.size()==39,"Curated pre-release catalog");
+    static_assert(factoryPresets[33].name==std::string_view("Alchemist Lighter Dynamics (Trial)"),
                   "Alchemist lighter-dynamics candidate must remain at index 49");
-    static_assert(factoryPresets[50].name==std::string_view("Alchemist Fast Compressor Blend (Trial)"),
+    static_assert(factoryPresets[34].name==std::string_view("Alchemist Fast Compressor Blend (Trial)"),
                   "Fast-compressor blend trial must append at index 50");
-    static_assert(factoryPresets[51].name==std::string_view("Alchemist Smooth Compressor Blend (Trial)"),
+    static_assert(factoryPresets[35].name==std::string_view("Alchemist Smooth Compressor Blend (Trial)"),
                   "Smooth-compressor blend trial must append at index 51");
-    static_assert(factoryPresets[52].name==std::string_view("Alchemist Serial Dynamics (Trial)"),
+    static_assert(factoryPresets[36].name==std::string_view("Alchemist Serial Dynamics (Trial)"),
                   "Serial FET/RMS trial must append at index 52");
-    static_assert(factoryPresets[53].name==std::string_view("Alchemist Low-End Contour (Trial)"),
+    static_assert(factoryPresets[37].name==std::string_view("Alchemist Low-End Contour (Trial)"),
                   "Measured low-end trial must append at index 53");
-    static_assert(factoryPresets[54].name==std::string_view("Alchemist Serial Dynamics Blend (Trial)"),
+    static_assert(factoryPresets[38].name==std::string_view("Alchemist Serial Dynamics Blend (Trial)"),
                   "Serial dynamics blend trial must append at index 54");
-    static_assert(alchemist::factoryIndex==43,"Alchemist is appended after Studio Six");
+    static_assert(alchemist::factoryIndex==27,"Alchemist is appended after Studio Six");
     assert(std::strcmp(factoryPresets[0].name,"Clean Lead")==0);
-    assert(std::strcmp(factoryPresets[42].name,"Studio Six")==0);
-    assert(std::strcmp(factoryPresets[43].name,alchemist::name)==0);
-    assert(std::strcmp(factoryPresets[43].bank,"Main Vocals")==0);
-    assert(std::strcmp(factoryPresets[44].name,deuce::name)==0);
-    assert(std::strcmp(factoryPresets[44].bank,"Main Vocals")==0);
-    assert(std::strcmp(factoryPresets[45].name,alchemist_trial::name)==0);
-    assert(std::strcmp(factoryPresets[46].name,deuce_v25::name)==0);
-    assert(std::strcmp(factoryPresets[47].name,alchemist_peak_guard_trial::name)==0);
-    assert(std::strcmp(factoryPresets[47].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[26].name,"Studio Six")==0);
+    assert(std::strcmp(factoryPresets[27].name,alchemist::name)==0);
+    assert(std::strcmp(factoryPresets[27].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[28].name,deuce::name)==0);
+    assert(std::strcmp(factoryPresets[28].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[29].name,alchemist_trial::name)==0);
+    assert(std::strcmp(factoryPresets[30].name,deuce_v25::name)==0);
+    assert(std::strcmp(factoryPresets[31].name,alchemist_peak_guard_trial::name)==0);
+    assert(std::strcmp(factoryPresets[31].bank,"Main Vocals")==0);
     assert(alchemist_peak_guard_trial::stages.size()==8);
     for(std::size_t i=0;i<alchemist_trial::stages.size();++i)
         assert(alchemist_peak_guard_trial::stages[i].module==alchemist_trial::stages[i].module);
@@ -50,22 +50,22 @@ int main() {
     assert(alchemist_peak_guard_trial::stages[7].wet==1.f);
     assert(std::abs(alchemist_peak_guard_trial::stages[7].p[0]-.89f)<1.e-7f);
     assert(alchemist_peak_guard_trial::stages[7].p[1]==0.f);
-    assert(std::strcmp(factoryPresets[48].name,alchemist_tone_match_trial::name)==0);
-    assert(std::strcmp(factoryPresets[48].bank,"Main Vocals")==0);
-    assert(std::strcmp(factoryPresets[49].name,alchemist_lighter_dynamics_trial::name)==0);
-    assert(std::strcmp(factoryPresets[49].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[32].name,alchemist_tone_match_trial::name)==0);
+    assert(std::strcmp(factoryPresets[32].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[33].name,alchemist_lighter_dynamics_trial::name)==0);
+    assert(std::strcmp(factoryPresets[33].bank,"Main Vocals")==0);
     assert(alchemist_lighter_dynamics_trial::stages[2].wet==.20f);
     assert(alchemist_lighter_dynamics_trial::stages[3].wet==.50f);
-    assert(std::strcmp(factoryPresets[50].name,alchemist_fast_compressor_blend_trial::name)==0);
-    assert(std::strcmp(factoryPresets[50].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[34].name,alchemist_fast_compressor_blend_trial::name)==0);
+    assert(std::strcmp(factoryPresets[34].bank,"Main Vocals")==0);
     assert(alchemist_fast_compressor_blend_trial::stages[2].wet==.20f);
     assert(alchemist_fast_compressor_blend_trial::stages[3].wet==.70f);
-    assert(std::strcmp(factoryPresets[51].name,alchemist_smooth_compressor_blend_trial::name)==0);
-    assert(std::strcmp(factoryPresets[51].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[35].name,alchemist_smooth_compressor_blend_trial::name)==0);
+    assert(std::strcmp(factoryPresets[35].bank,"Main Vocals")==0);
     assert(alchemist_smooth_compressor_blend_trial::stages[2].wet==.35f);
     assert(alchemist_smooth_compressor_blend_trial::stages[3].wet==.50f);
-    assert(std::strcmp(factoryPresets[52].name,alchemist_serial_dynamics_trial::name)==0);
-    assert(std::strcmp(factoryPresets[52].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[36].name,alchemist_serial_dynamics_trial::name)==0);
+    assert(std::strcmp(factoryPresets[36].bank,"Main Vocals")==0);
     assert(alchemist_serial_dynamics_trial::stages.size()==7);
     assert(alchemist_serial_dynamics_trial::stages[2].module==27);
     assert(alchemist_serial_dynamics_trial::stages[3].module==33);
@@ -76,8 +76,8 @@ int main() {
     assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[1]-.5f)<1.e-6f);
     assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[2]-.35f)<1.e-6f);
     assert(std::abs(alchemist_serial_dynamics_trial::stages[2].p[3]-.15f)<1.e-6f);
-    assert(std::strcmp(factoryPresets[53].name,alchemist_low_end_contour_trial::name)==0);
-    assert(std::strcmp(factoryPresets[53].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[37].name,alchemist_low_end_contour_trial::name)==0);
+    assert(std::strcmp(factoryPresets[37].bank,"Main Vocals")==0);
     assert(alchemist_low_end_contour_trial::stages.size()==7);
     assert(alchemist_low_end_contour_trial::stages[0].module==1);
     assert(std::abs(alchemist_low_end_contour_trial::stages[0].p[3]-.04f)<1.e-7f);
@@ -97,8 +97,8 @@ int main() {
         for(float v:stage.p)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
         for(float v:stage.q)assert(std::isfinite(v)&&v>=0.f&&v<=1.f);
     }
-    assert(std::strcmp(factoryPresets[54].name,alchemist_serial_dynamics_blend_trial::name)==0);
-    assert(std::strcmp(factoryPresets[54].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[38].name,alchemist_serial_dynamics_blend_trial::name)==0);
+    assert(std::strcmp(factoryPresets[38].bank,"Main Vocals")==0);
     assert(alchemist_serial_dynamics_blend_trial::stages.size()==7);
     assert(alchemist_serial_dynamics_blend_trial::stages[2].module==27);
     assert(alchemist_serial_dynamics_blend_trial::stages[2].wet==.45f);
@@ -141,7 +141,7 @@ int main() {
     assert(std::abs(alchemist_tone_match_trial::stages[1].p[15]-.830000f)<1.e-7f);
     for(std::size_t i=0;i<alchemist_peak_guard_trial::stages.size();++i)
         assert(alchemist_tone_match_trial::stages[i].module==alchemist_peak_guard_trial::stages[i].module);
-    assert(std::strcmp(factoryPresets[46].bank,"Main Vocals")==0);
+    assert(std::strcmp(factoryPresets[30].bank,"Main Vocals")==0);
     assert(deuce_v25::stages.size()==13);
     assert(deuce_v25::stages[12].module==26);
     for(std::size_t k=0;k<deuce::stages.size();++k){

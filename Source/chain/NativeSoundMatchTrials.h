@@ -54,7 +54,7 @@ constexpr auto makeStages() noexcept {
     }};
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=44;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(44);
 inline constexpr const char* name="Deuce D/Max (Native Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()<=16,"Deuce chain must fit Skell physical rack");
@@ -98,7 +98,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=46;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(46);
 inline constexpr const char* name="Deuce v2.5 (Native Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==13 && stages[12].module==26,
@@ -118,7 +118,7 @@ constexpr auto makeStages() noexcept {
     return stages;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=45;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(45);
 inline constexpr const char* name="Alchemist Refined (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages[6].module==31,"Alchemist refinement must use legacy MatchFinish ID");
@@ -143,7 +143,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=47;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(47);
 inline constexpr const char* name="Alchemist Peak Guard (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==8 && stages[6].module==31 && stages[7].module==3,
@@ -167,7 +167,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=48;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(48);
 inline constexpr const char* name="Alchemist Tone Match (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==8 && stages[6].module==31 && stages[7].module==3,
@@ -189,7 +189,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=49;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(49);
 inline constexpr const char* name="Alchemist Lighter Dynamics (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==8 && stages[2].module==2 && stages[3].module==19,
@@ -209,7 +209,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=50;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(50);
 inline constexpr const char* name="Alchemist Fast Compressor Blend (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==8 && stages[2].module==2 && stages[3].module==19,
@@ -227,7 +227,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=51;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(51);
 inline constexpr const char* name="Alchemist Smooth Compressor Blend (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==8 && stages[2].module==2 && stages[3].module==19,
@@ -261,7 +261,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=52;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(52);
 inline constexpr const char* name="Alchemist Serial Dynamics (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==7 && stages[2].module==27 &&
@@ -287,7 +287,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=53;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(53);
 inline constexpr const char* name="Alchemist Low-End Contour (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==7 && stages[0].module==1 && stages[1].module==26 &&
@@ -309,7 +309,7 @@ constexpr auto makeStages() noexcept {
     return result;
 }
 inline constexpr auto stages=makeStages();
-inline constexpr int factoryIndex=54;
+inline constexpr int factoryIndex=skellpreset::factoryIndexForRecipe(54);
 inline constexpr const char* name="Alchemist Serial Dynamics Blend (Trial)";
 inline constexpr const char* bank="Main Vocals";
 static_assert(stages.size()==7 && stages[0].module==1 && stages[1].module==26 &&

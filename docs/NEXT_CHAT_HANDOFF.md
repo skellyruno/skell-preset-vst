@@ -1,5 +1,10 @@
 # SKELL-PRESET — development handoff for a new conversation
 
+> **Newest pass:** read `docs/HANDOFF_2026-11-25_SAVE_FREEZE.md` first. It
+> covers the preset-browser save-freeze fix and the remaining UI work order
+> (Simple panel, empty slots, Stereo as rack effect, rack polish, visualizer,
+> browser redesign). The notes below describe the older baseline.
+
 Updated: 2026-11-11. **Always inspect the current `main` HEAD, open PRs and
 workflow runs before editing; this handoff is a starting point, not a
 substitute for checking the live repository.**

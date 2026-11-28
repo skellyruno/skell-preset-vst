@@ -8,6 +8,9 @@
 #include "../Source/chain/AlchemistNativePreset.h"
 #include "../Source/chain/NativeSoundMatchTrials.h"
 #include "../Source/chain/ABMetrics.h"
+#include "NativeVocalPreview.h"
+#include "NativeVocalAudition.h"
+#include "../Source/chain/VocalStarterChains.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -187,10 +190,10 @@ int blankSmoke() {
        || plugin->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex
        || plugin->getProgramName(SkellPresetAudioProcessor::emptyRackProgramIndex)!="Empty Rack"
        || plugin->getProgramName(SkellPresetAudioProcessor::customRackProgramIndex)!="Custom Rack"
-       || plugin->getProgramName(43)!="Alchemist"
-       || plugin->getProgramName(44)!="Deuce D/Max (Native Trial)"
-       || plugin->getProgramName(46)!="Deuce"
-       || plugin->getProgramName(54)!="Alchemist Serial Dynamics Blend (Trial)")
+       || plugin->getProgramName(skellpreset::factoryIndexForRecipe(43))!="Alchemist"
+       || plugin->getProgramName(skellpreset::factoryIndexForRecipe(44))!="Deuce D/Max (Native Trial)"
+       || plugin->getProgramName(skellpreset::factoryIndexForRecipe(46))!="Deuce"
+       || plugin->getProgramName(skellpreset::factoryIndexForRecipe(54))!="Alchemist Serial Dynamics Blend (Trial)")
         return 31;
     for(int s=0;s<SkellPresetAudioProcessor::slotCount;++s) {
         const auto* active=plugin->state.getRawParameterValue(
@@ -617,6 +620,42 @@ int uiSmoke() {
     const auto after=editor->getScreenshotLayoutIssues();
     report(after,"final-layout");
     if(!after.isEmpty())return 54;
+    // Real-editor De-Esser lifecycle regression: select its actual panel,
+    // automate spectral settings and process finite audio with GUI alive.
+    // This checks the observed crash path more directly than the portable
+    // split-band test alone; it does not substitute for FL Studio testing.
+    editor->configureForScreenshot(0,1,false);
+    plugin->clearRackToEmpty();
+    plugin->setSlotType(0,SkellPresetAudioProcessor::DeEsser);
+    plugin->setSlotOn(0,true);
+    editor->selectRackSlotForScreenshot(0,0);
+    auto deesserLayout=editor->getScreenshotLayoutIssues();
+    report(deesserLayout,"deesser-editor");
+    if(!deesserLayout.isEmpty())return 55;
+    for(int block=0;block<80;++block) {
+        if(block%8==0) {
+            plugin->setSlotParam(0,0,block%16==0?.06f:.94f);
+            plugin->setSlotParam(0,1,block%16==0?.15f:.85f);
+            plugin->setSlotParam(0,2,block%16==0?.65f:.25f);
+            plugin->setSlotParam(0,3,block%16==0?.05f:.95f);
+        }
+        juce::AudioBuffer<float> samples(2,256);
+        for(int n=0;n<256;++n) {
+            const auto phase=2.*juce::MathConstants<double>::pi
+                *(block*256+n)/48000.;
+            const float sample=(float)(.32*std::sin(7200.*phase)
+                                       +.10*std::sin(240.*phase));
+            samples.setSample(0,n,sample);
+            samples.setSample(1,n,sample*.8f);
+        }
+        juce::MidiBuffer events;
+        plugin->processBlock(samples,events);
+        for(int channel=0;channel<2;++channel)
+            for(int n=0;n<256;++n)
+                if(!std::isfinite(samples.getSample(channel,n)))return 56;
+    }
+    if(plugin->getLatencySamples()!=0)return 57;
+    editor->showHomeForScreenshot();
     editor.reset();
     plugin->releaseResources();
     std::puts("PASS: real JUCE editor geometry, rack wheel, MIC, and picker controls; no screenshot captures");
@@ -669,7 +708,7 @@ int smoke() {
     return 0;
 }
 
-// Load all four append-only Studio effects in the actual JUCE processor;
+// Exercise all five opt-in Studio effects in the actual JUCE processor;
 // measure host-facing PDC and exercise the real Windows rack signal path.
 int percentDisplaySmoke(){
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
@@ -697,14 +736,398 @@ int percentDisplaySmoke(){
     return 0;
 }
 
+int masterSignalSmoke(){
+    // Render deterministic, stereo, same-input vectors through the real processor.
+    // Exercise host-notified APVTS values after prepare; skip the 20 ms ramp
+    // for steady-state comparisons, while separately measuring ramp continuity.
+    constexpr int blockSize=256,blocks=28,settle=12;
+    constexpr double sr=48000.;
+    auto source=[sr](int n,int ch){
+        return (ch==0?1.f:.73f)*(.075f*(float)std::sin(2.*juce::MathConstants<double>::pi*713.*n/sr)
+               +.022f*(float)std::sin(2.*juce::MathConstants<double>::pi*1741.*n/sr));
+    };
+    struct Render {std::vector<float> output,original;int latency=0;bool finite=true;};
+    auto render=[&](int mode,int factory,float input,float mix,float output){
+        Render result;
+        auto p=std::make_unique<SkellPresetAudioProcessor>();
+        if(factory>=0)p->loadFactoryPreset(factory);else p->clearRackToEmpty();
+        if(factory==-2){p->setSlotType(0,SkellPresetAudioProcessor::Limiter);p->setSlotOn(0,true);}
+        setProcessorParameter(*p,"mode",(float)mode);
+        setProcessorParameter(*p,"micGateOn",0.f);setProcessorParameter(*p,"micPreOn",0.f);
+        setProcessorParameter(*p,"delta",0.f);
+        setProcessorParameter(*p,"input",0.f);setProcessorParameter(*p,"mix",1.f);setProcessorParameter(*p,"output",0.f);
+        p->prepareToPlay(sr,blockSize);
+        result.latency=p->getLatencySamples();
+        setProcessorParameter(*p,"input",input);setProcessorParameter(*p,"mix",mix);setProcessorParameter(*p,"output",output);
+        juce::AudioBuffer<float> audio(2,blockSize);juce::MidiBuffer midi;
+        for(int b=0;b<blocks;++b){
+            for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n)audio.setSample(ch,n,source(b*blockSize+n,ch));
+            p->processBlock(audio,midi);
+            if(b<settle)continue;
+            for(int n=0;n<blockSize;++n)for(int ch=0;ch<2;++ch){
+                const float sample=audio.getSample(ch,n);
+                result.finite=result.finite && std::isfinite(sample);
+                result.output.push_back(sample);
+                result.original.push_back(source(b*blockSize+n-result.latency,ch));
+            }
+        }
+        p->releaseResources();
+        return result;
+    };
+    auto error=[](const std::vector<float>& a,const std::vector<float>& b,double scale=1.){
+        if(a.size()!=b.size() || a.empty())return 1.e9;
+        double peak=0.;for(size_t i=0;i<a.size();++i)peak=std::max(peak,std::abs((double)a[i]-scale*b[i]));
+        return peak;
+    };
+    auto rms=[](const std::vector<float>& a){
+        double sum=0.;for(float x:a)sum+=(double)x*x;
+        return a.empty()?0.:std::sqrt(sum/a.size());
+    };
+    constexpr int factory=skellpreset::alchemist::factoryIndex;
+    for(int mode:{0,1}){
+        const auto unity=render(mode,-1,0.f,1.f,0.f);
+        const auto in=render(mode,-1,6.f,1.f,0.f);
+        const auto out=render(mode,-1,0.f,1.f,-6.f);
+        const auto dry=render(mode,factory,6.f,0.f,0.f);
+        const auto wet=render(mode,factory,6.f,1.f,0.f);
+        const auto middle=render(mode,factory,6.f,.5f,0.f);
+        auto expected=wet.output;
+        for(size_t i=0;i<expected.size();++i)expected[i]=.5f*(wet.output[i]+dry.output[i]);
+        const double inDb=20.*std::log10(rms(in.output)/rms(unity.output));
+        const double outDb=20.*std::log10(rms(out.output)/rms(unity.output));
+        const double dryError=error(dry.output,dry.original),blendError=error(middle.output,expected);
+        const double wetDiff=error(wet.output,dry.output);
+        std::printf("MASTER_RENDER mode=%d input=%+.3f dB output=%+.3f dB dry_error=%.8g blend_error=%.8g wet_difference=%.8g latency=%d samples\n",
+            mode,inDb,outDb,dryError,blendError,wetDiff,wet.latency);
+        if(!unity.finite || !in.finite || !out.finite || !dry.finite || !wet.finite || !middle.finite ||
+           std::abs(inDb-6.)>.03 || std::abs(outDb+6.)>.03 || dryError>2.e-5 ||
+           blendError>2.e-4 || wetDiff<.001 || wet.latency!=dry.latency)return 93;
+    }
+    for(int mode:{0,1}) {
+        const auto dry=render(mode,-2,6.f,0.f,0.f),wet=render(mode,-2,6.f,1.f,0.f),blend=render(mode,-2,6.f,.5f,0.f);
+        auto expected=wet.output;for(size_t i=0;i<expected.size();++i)expected[i]=.5f*(dry.output[i]+wet.output[i]);
+        const double dryError=error(dry.output,dry.original),mixError=error(blend.output,expected);
+        std::printf("MASTER_PDC mode=%d latency=%d dry_error=%.9g blend_error=%.9g\n",mode,dry.latency,dryError,mixError);
+        if(!dry.finite || !wet.finite || !blend.finite || dry.latency<=0 || dry.latency!=wet.latency || dryError>2.e-5 || mixError>2.e-4)return 97;
+    }
+    auto p=std::make_unique<SkellPresetAudioProcessor>();p->clearRackToEmpty();
+    setProcessorParameter(*p,"mode",1.f);setProcessorParameter(*p,"input",0.f);
+    setProcessorParameter(*p,"mix",1.f);setProcessorParameter(*p,"output",0.f);
+    p->prepareToPlay(sr,blockSize);
+    juce::AudioBuffer<float> audio(2,blockSize);juce::MidiBuffer midi;
+    float previous=.1f;double maxStep=0.;
+    setProcessorParameter(*p,"input",6.f);
+    for(int b=0;b<8;++b){
+        for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n)audio.setSample(ch,n,.1f);
+        p->processBlock(audio,midi);
+        for(int n=0;n<blockSize;++n){const float sample=audio.getSample(0,n);maxStep=std::max(maxStep,(double)std::abs(sample-previous));previous=sample;}
+    }
+    std::printf("MASTER_RENDER input automation max sample step=%.8g final=%.8g\n",maxStep,previous);
+    if(maxStep>.002 || std::abs(previous-.1f*std::pow(10.f,6.f/20.f))>.001f)return 94;
+    const auto ramp=[&](const char* id,float target,float expected){
+        setProcessorParameter(*p,id,target);
+        double step=0.;bool finite=true;
+        for(int b=0;b<8;++b){
+            for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n)audio.setSample(ch,n,.1f);
+            p->processBlock(audio,midi);
+            for(int n=0;n<blockSize;++n){const float sample=audio.getSample(0,n);finite=finite&&std::isfinite(sample);step=std::max(step,(double)std::abs(sample-previous));previous=sample;}
+        }
+        std::printf("MASTER_RENDER %s automation max sample step=%.8g final=%.8g\n",id,step,previous);
+        return finite && step<.002 && std::abs(previous-expected)<.001f;
+    };
+    if(!ramp("mix",0.f,.1f) || !ramp("output",-6.f,.1f*std::pow(10.f,-6.f/20.f)))return 94;
+    p->releaseResources();
+    setProcessorParameter(*p,"mix",.37f);setProcessorParameter(*p,"output",-3.f);
+    juce::MemoryBlock state;p->getStateInformation(state);
+    auto restored=std::make_unique<SkellPresetAudioProcessor>();
+    restored->setStateInformation(state.getData(),(int)state.getSize());
+    if(std::abs(restored->state.getRawParameterValue("input")->load()-6.f)>.02f ||
+       std::abs(restored->state.getRawParameterValue("mix")->load()-.37f)>.002f ||
+       std::abs(restored->state.getRawParameterValue("output")->load()+3.f)>.02f)return 95;
+    // Round-trip the same user-saved rack via the actual preset archive path.
+    const auto personalFile=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("skell-master-qa-"+juce::Uuid().toString()+".skellpreset");
+    struct DeleteFixture {juce::File file;~DeleteFixture(){file.deleteFile();}} cleanup{personalFile};
+    if(p->exportPreset(personalFile).failed() || restored->importPreset(personalFile).failed())return 96;
+    const float expected=.1f*(1.f+.37f*(std::pow(10.f,6.f/20.f)-1.f))*std::pow(10.f,-3.f/20.f);
+    for(int mode:{0,1}){
+        setProcessorParameter(*restored,"mode",(float)mode);
+        restored->prepareToPlay(sr,blockSize);
+        double peakError=0.;bool finite=true;
+        for(int b=0;b<8;++b){
+            for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n)audio.setSample(ch,n,.1f);
+            restored->processBlock(audio,midi);
+            if(b<4)continue;
+            for(int ch=0;ch<2;++ch)for(int n=0;n<blockSize;++n){const float sample=audio.getSample(ch,n);finite=finite&&std::isfinite(sample);peakError=std::max(peakError,(double)std::abs(sample-expected));}
+        }
+        const int latency=restored->getLatencySamples();restored->releaseResources();
+        std::printf("MASTER_RENDER personal mode=%d expected=%.8g peak_error=%.8g latency=%d\n",mode,expected,peakError,latency);
+        if(!finite || peakError>2.e-5 || latency!=0)return 96;
+    }
+    std::puts("PASS: master gain, dry/wet interpolation, automation smoothing, PDC, state and personal preset recall");
+    return 0;
+}
+int limiterStateSmoke() {
+    using P=SkellPresetAudioProcessor;
+    for(int type:{P::Limiter,P::StudioLimiterFX}) {
+        auto p=std::make_unique<P>();p->clearRackToEmpty();p->setSlotType(0,type);p->setSlotOn(0,true);
+        p->setSlotParam(0,0,.35f);p->setSlotParam(0,1,.2f);p->setSlotParam(0,2,1.f);
+        p->setSlotParam(0,3,0.f);p->setSlotParam(0,4,0.f);
+        setProcessorParameter(*p,"s1_limitAttack",1.25f);setProcessorParameter(*p,"s1_limitRelease",227.f);
+        juce::MemoryBlock modern;p->getStateInformation(modern);
+        auto q=std::make_unique<P>();q->setStateInformation(modern.getData(),(int)modern.getSize());
+        const auto valuesMatch=[&](P& target,float attack,float release) {
+            return target.slotType(0)==type && std::abs(target.state.getRawParameterValue("s1_limitAttack")->load()-attack)<.001f &&
+                std::abs(target.state.getRawParameterValue("s1_limitRelease")->load()-release)<.001f &&
+                target.getSlotParam(0,1)==.2f && target.getSlotParam(0,2)==1.f && target.getSlotParam(0,3)==0.f;
+        };
+        if(!valuesMatch(*q,1.25f,227.f))return 98;
+        const auto path=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("limiter-"+juce::Uuid().toString()+".skellpreset");
+        const bool zip=p->exportPreset(path).wasOk() && q->importPreset(path).wasOk() && valuesMatch(*q,1.25f,227.f);
+        path.deleteFile();if(!zip)return 98;
+        auto xml=juce::AudioProcessor::getXmlFromBinary(modern.getData(),(int)modern.getSize());
+        auto tree=juce::ValueTree::fromXml(*xml);
+        for(int i=tree.getNumChildren();--i>=0;) {
+            const auto id=tree.getChild(i).getProperty("id").toString();
+            if(id.endsWith("_limitAttack") || id.endsWith("_limitRelease"))tree.removeChild(i,nullptr);
+        }
+        juce::MemoryBlock old;auto oldXml=tree.createXml();juce::AudioProcessor::copyXmlToBinary(*oldXml,old);
+        q->setStateInformation(old.getData(),(int)old.getSize());if(!valuesMatch(*q,0.f,70.f))return 98;
+        auto render=[&](float attack,float release) {
+            q->setStateInformation(modern.getData(),(int)modern.getSize());
+            setProcessorParameter(*q,"mode",1.f);setProcessorParameter(*q,"micGateOn",0.f);
+            setProcessorParameter(*q,"s1_limitAttack",attack);setProcessorParameter(*q,"s1_limitRelease",release);
+            q->prepareToPlay(48000.,256);std::vector<float> samples;
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+            for(int block=0;block<64;++block) {
+                for(int n=0;n<256;++n) {
+                    const int pos=block*256+n;const float value=(pos<1200?.9f:.04f)*std::sin(pos*.173f);
+                    audio.setSample(0,n,value);audio.setSample(1,n,value*.8f);
+                }
+                q->processBlock(audio,midi);
+                for(int n=0;n<256;++n){const float value=audio.getSample(0,n);if(!std::isfinite(value))return std::vector<float>{};samples.push_back(value);}
+            }
+            const int latency=q->getLatencySamples();q->releaseResources();if(latency!=144)return std::vector<float>{};
+            return samples;
+        };
+        const auto fast=render(0.f,15.f),slow=render(0.f,400.f),attack=render(2.f,15.f);
+        if(fast.empty() || fast.size()!=slow.size() || fast.size()!=attack.size())return 98;
+        double attackDelta=0.,releaseDelta=0.;
+        for(size_t i=0;i<fast.size();++i){if(i<1600)attackDelta+=std::abs(fast[i]-attack[i]);else releaseDelta+=std::abs(fast[i]-slow[i]);}
+        std::printf("LIMITER_RENDER type=%d attack_delta=%.8g release_delta=%.8g PDC=144 host+ZIP+legacy recall PASS\n",type,attackDelta,releaseDelta);
+        if(attackDelta<.001 || releaseDelta<.01)return 98;
+    }
+    return 0;
+}
 int studioSmoke() {
+    {
+        using P=SkellPresetAudioProcessor;auto a=std::make_unique<P>();auto b=std::make_unique<P>();
+        a->clearRackToEmpty();b->clearRackToEmpty();
+        auto set=[&](const char* id,float v){auto* p=a->state.getParameter(id);p->setValueNotifyingHost(p->convertTo0to1(v));};
+        set("micTubeGain",3.f);set("micTubeDrive",.5f);set("micTubeAir",2.f);set("micTubeTrim",-3.f);
+        a->prepareToPlay(48000.,256);b->prepareToPlay(48000.,256);
+        juce::AudioBuffer<float> x(2,256),y(2,256);juce::MidiBuffer midi;
+        double diff=0.;
+        for(int block=0;block<32;++block){
+            if(block==8)set("micTubeOn",1.f);
+            for(int ch=0;ch<2;++ch)for(int i=0;i<256;++i){const float sample=.35f*std::sin((block*256+i)*.07f);x.setSample(ch,i,sample);y.setSample(ch,i,sample);}
+            a->processBlock(x,midi);b->processBlock(y,midi);
+            for(int ch=0;ch<2;++ch)for(int i=0;i<256;++i){
+                const float l=x.getSample(ch,i),r=y.getSample(ch,i);if(!std::isfinite(l))return 181;
+                if(block<8 && l!=r)return 182;
+                if(block>=16)diff+=std::abs(l-r);
+            }
+        }
+        if(diff<.01 || a->getLatencySamples()!=b->getLatencySamples())return 183;
+        juce::MemoryBlock state;a->getStateInformation(state);b->setStateInformation(state.getData(),(int)state.getSize());
+        if(b->state.getRawParameterValue("micTubeOn")->load()<.5f || std::abs(b->state.getRawParameterValue("micTubeDrive")->load()-.5f)>.005f)return 184;
+        a->releaseResources();b->releaseResources();
+        a->loadFactoryPreset(0);if(a->state.getRawParameterValue("micTubeOn")->load()>.5f)return 185;
+        std::puts("PASS: MIC preamp independent opt-in, exact off parity, audible-path difference, host recall and factory reset");
+    }
+    // All original starter chains must use native effects, retain zero
+    // reported latency, round-trip through host state and render finite audio.
+    {
+        using P=SkellPresetAudioProcessor;
+        auto p=std::make_unique<P>();
+        for(int profile=0;profile<skellpreset::starter::count;++profile){
+            if(p->loadVocalStarter(profile).failed() || p->loadedFactoryPresetIndex()!=-1 ||
+               p->slotType(0)!=P::AdaptiveNoiseFX || p->slotType(7)!=P::StudioDelayFX ||
+               p->state.getRawParameterValue("micGateOn")->load()<.5f)return 172;
+            p->prepareToPlay(48000.,256);
+            if(p->getLatencySamples()!=0)return 173;
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;double energy=0.;
+            for(int block=0;block<100;++block){
+                for(int ch=0;ch<2;++ch)for(int n=0;n<256;++n)audio.setSample(ch,n,.2f*std::sin((block*256+n)*.031f));
+                p->processBlock(audio,midi);
+                for(int n=0;n<256;++n){const float x=audio.getSample(0,n);if(!std::isfinite(x) || std::abs(x)>8.f)return 174;energy+=x*x;}
+            }
+            if(energy<.001)return 175;
+            const auto name=p->presetName();juce::MemoryBlock state;p->getStateInformation(state);
+            auto restored=std::make_unique<P>();restored->setStateInformation(state.getData(),(int)state.getSize());
+            if(restored->presetName()!=name || restored->slotType(7)!=P::StudioDelayFX ||
+                restored->state.getRawParameterValue("s8_duckOn")->load()<.5f)return 176;
+            p->releaseResources();
+        }
+        if(p->loadVocalStarter(-1).wasOk())return 177;
+        using namespace skellpreset::starter;
+        for(int profile=0;profile<count;++profile)for(int variant=1;variant<=variations;++variant){
+            auto a=make<P>(profile,variant),b=make<P>(profile,variant);
+            if(a.name!=b.name || a.name==make<P>(profile,0).name || !a.name.startsWith("Skelly "))return 178;
+            for(size_t s=0;s<a.slots.size();++s){
+                if(a.slots[s].params!=b.slots[s].params || a.slots[s].type==P::StudioPitchFormantFX ||
+                   a.slots[s].type==P::ExternalVST3 || a.slots[s].wet<0.f || a.slots[s].wet>1.f)return 179;
+                for(float value:a.slots[s].params)if(!std::isfinite(value)||value<0.f||value>1.f)return 179;
+            }
+        }
+        if(p->loadVocalStarter(0,65).wasOk() || p->loadVocalStarter(count-1,64).failed())return 180;
+        std::puts("PASS: twenty original starters, 1280 bounded reproducible variants, zero reported latency and host-state recall for base profiles");
+    }
+    {
+        using P=SkellPresetAudioProcessor;
+        for(int kind:{P::Compressor,P::StudioCompressorFX,P::Reverb}) {
+        auto a=std::make_unique<P>();auto b=std::make_unique<P>();
+        a->clearRackToEmpty();a->setSlotType(0,kind);a->setSlotOn(0,true);
+        a->setSlotParam(0,0,0.f);a->setSlotParam(0,1,1.f);
+        a->setPresentation(P::Presentation::Visual);
+        juce::MemoryBlock saved;a->getStateInformation(saved);
+        b->setStateInformation(saved.getData(),(int)saved.getSize());
+        if(b->presentation()!=P::Presentation::Visual)return 168;
+        b->setPresentation(P::Presentation::Clean);
+        a->prepareToPlay(48000.,256);b->prepareToPlay(48000.,256);
+        a->requestSlotVisual(0);
+        juce::AudioBuffer<float> x(2,256),y(2,256);juce::MidiBuffer midi;
+        for(int block=0;block<100;++block){
+            for(int ch=0;ch<2;++ch)for(int j=0;j<256;++j){const float z=.35f*std::sin((block*256+j)*.03f);x.setSample(ch,j,z);y.setSample(ch,j,z);}
+            a->processBlock(x,midi);b->processBlock(y,midi);
+            for(int ch=0;ch<2;++ch)for(int j=0;j<256;++j)if(x.getSample(ch,j)!=y.getSample(ch,j))return 169;
+        }
+        skellpreset::visual::SlotVisualCapture::Frame frame;
+        if(!a->getSlotVisual(0,frame) || !frame.sharedValid || frame.slowCount==0 || b->getSlotVisual(0,frame))return 170;
+        if(kind==P::Reverb){if(!frame.returnAvailable || !frame.returnSpectrumReady || frame.returnRms[0]+frame.returnRms[1]<=0.f)return 170;}
+        else if(!(frame.sharedOutput.flags&skellcore::telemetry::kFlagGrValid) || frame.sharedOutput.grDbMax<=0.f)return 170;
+        a->requestSlotVisual(-1);if(a->getSlotVisual(0,frame))return 171;
+        a->releaseResources();b->releaseResources();
+        }
+        std::puts("PASS: persistent presentation, compressor and wet reverb telemetry, bit-identical audio with tap on/off");
+    }
+    if(const int limiterResult=limiterStateSmoke())return limiterResult;
+    if(const int masterResult=masterSignalSmoke())return masterResult;
+    // Host automation of newly appended parameters must change Empty Rack's
+    // program identity to Custom Rack, just like every legacy control.
+    // This regression exercises the registered APVTS listeners directly.
+    {
+        auto identity=std::make_unique<SkellPresetAudioProcessor>();
+        if(identity->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+            return 87;
+        auto* gate=identity->state.getParameter("micGateOn");
+        if(!gate)return 88;
+        gate->setValueNotifyingHost(gate->convertTo0to1(1.f));
+        if(identity->getCurrentProgram()!=SkellPresetAudioProcessor::customRackProgramIndex)
+            return 89;
+        identity->clearRackToEmpty();
+        if(identity->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+            return 90;
+        auto* delay=identity->state.getParameter("s1_fxExt8");
+        if(!delay)return 91;
+        delay->setValueNotifyingHost(delay->convertTo0to1(1.f));
+        if(identity->slotType(0)!=SkellPresetAudioProcessor::StudioDelayFX ||
+           identity->getCurrentProgram()!=SkellPresetAudioProcessor::customRackProgramIndex)
+            return 93;
+        std::puts("PASS: new mic gate and Studio Delay automation preserves Empty/Custom program identity");
+    }
+    // Selecting any factory opts into the MIC gate without changing factory IDs.
+    // Empty Rack and explicitly saved OFF host state must continue to restore OFF.
+    {
+        auto selected=std::make_unique<SkellPresetAudioProcessor>();
+        const auto* gate=selected->state.getRawParameterValue("micGateOn");
+        if(!gate || gate->load()>.5f) return 104;
+        juce::MemoryBlock savedEmpty;
+        selected->getStateInformation(savedEmpty);
+        for(int program=0;program<SkellPresetAudioProcessor::emptyRackProgramIndex;++program) {
+            selected->loadFactoryPreset(program);
+            if(gate->load()<.5f || selected->getCurrentProgram()!=program)
+                return 105;
+        }
+        selected->clearRackToEmpty();
+        if(gate->load()>.5f ||
+           selected->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+            return 106;
+        selected->loadFactoryPreset(0);
+        selected->setStateInformation(savedEmpty.getData(),(int)savedEmpty.getSize());
+        const auto* restored=selected->state.getRawParameterValue("micGateOn");
+        if(!restored || restored->load()>.5f ||
+           selected->getCurrentProgram()!=SkellPresetAudioProcessor::emptyRackProgramIndex)
+            return 107;
+        // Emulate an older FL Studio factory snapshot with no micGateOn
+        // parameter at all, and restore it over an active new factory gate.
+        // The historical factory 43 identity and original OFF sound survive.
+        selected->loadFactoryPreset(skellpreset::factoryIndexForRecipe(43));
+        auto* gateParameter=selected->state.getParameter("micGateOn");
+        if(!gateParameter) return 108;
+        gateParameter->setValueNotifyingHost(gateParameter->convertTo0to1(0.f));
+        juce::MemoryBlock oldFactory;
+        selected->getStateInformation(oldFactory);
+        auto oldXml=juce::AudioProcessor::getXmlFromBinary(
+            oldFactory.getData(),(int)oldFactory.getSize());
+        if(!oldXml) return 109;
+        auto oldTree=juce::ValueTree::fromXml(*oldXml);
+        std::array<bool,4> missingIds{};
+        const juce::StringArray newGateIds{"micGateOn","micGateAttackMs",
+            "micGateHysteresisDb","micGateDepth"};
+        for(int child=oldTree.getNumChildren()-1;child>=0;--child) {
+            const auto id=oldTree.getChild(child).getProperty("id").toString();
+            const int which=newGateIds.indexOf(id);
+            if(which>=0) {
+                oldTree.removeChild(child,nullptr);
+                missingIds[(size_t)which]=true;
+            }
+        }
+        for(const auto removed:missingIds)if(!removed)return 110;
+        auto missingGateXml=oldTree.createXml();
+        if(!missingGateXml) return 111;
+        juce::MemoryBlock oldFactoryWithoutGate;
+        juce::AudioProcessor::copyXmlToBinary(*missingGateXml,oldFactoryWithoutGate);
+        selected->loadFactoryPreset(skellpreset::factoryIndexForRecipe(43)); // New user selection enables the gate.
+        if(selected->state.getRawParameterValue("micGateOn")->load()<.5f)
+            return 112;
+        // Deliberately dirty all added controls to verify missing-state
+        // migration does not preserve stale values from a different preset.
+        struct Change {const char* id;float value;};
+        constexpr Change changed[]{
+            {"micGateAttackMs",19.f},{"micGateHysteresisDb",10.f},
+            {"micGateDepth",.2f}
+        };
+        for(const auto& change:changed) {
+            auto* param=selected->state.getParameter(change.id);
+            if(!param)return 118;
+            param->setValueNotifyingHost(param->convertTo0to1(change.value));
+        }
+        selected->setStateInformation(oldFactoryWithoutGate.getData(),
+                                      (int)oldFactoryWithoutGate.getSize());
+        const auto* restoredAttack=selected->state.getRawParameterValue("micGateAttackMs");
+        const auto* restoredHyst=selected->state.getRawParameterValue("micGateHysteresisDb");
+        const auto* restoredDepth=selected->state.getRawParameterValue("micGateDepth");
+        if(selected->state.getRawParameterValue("micGateOn")->load()>.5f ||
+           selected->getCurrentProgram()!=skellpreset::factoryIndexForRecipe(43) ||
+           !restoredAttack || std::abs(restoredAttack->load()-4.f)>.05f ||
+           !restoredHyst || std::abs(restoredHyst->load()-3.f)>.05f ||
+           !restoredDepth || std::abs(restoredDepth->load()-1.f)>.001f)
+            return 113;
+        std::puts("PASS: factory gate ON, saved OFF and legacy missing-gate FL host states remain OFF");
+    }
     auto processor=std::make_unique<SkellPresetAudioProcessor>();
     processor->prepareToPlay(48000.,257);
     const int types[]{
         SkellPresetAudioProcessor::StudioEQFX,
         SkellPresetAudioProcessor::StudioLimiterFX,
         SkellPresetAudioProcessor::StudioCompressorFX,
-        SkellPresetAudioProcessor::StudioFastDistFX
+        SkellPresetAudioProcessor::StudioFastDistFX,
+        SkellPresetAudioProcessor::StudioDelayFX,
+        SkellPresetAudioProcessor::AdlibChop,
+        SkellPresetAudioProcessor::AdlibMotion,
+        SkellPresetAudioProcessor::AdlibFilter,
+        SkellPresetAudioProcessor::AdlibSaturate
     };
     for(const int type:types){
         processor->setSlotOn(0,false);
@@ -720,6 +1143,18 @@ int studioSmoke() {
         }else if(type==SkellPresetAudioProcessor::StudioFastDistFX) {
             processor->setSlotParam(0,0,.7f);
             processor->setSlotParam(0,3,.6f);
+        }else if(type>=SkellPresetAudioProcessor::AdlibChop &&
+                 type<=SkellPresetAudioProcessor::AdlibSaturate) {
+            processor->setSlotParam(0,0,.88f);
+            processor->setSlotParam(0,1,.90f);
+            processor->setSlotParam(0,2,.22f);
+            processor->setSlotParam(0,3,1.f);
+        }else if(type==SkellPresetAudioProcessor::StudioDelayFX) {
+            processor->setSlotParam(0,0,.32f); // ~100 ms free-running echo
+            processor->setSlotParam(0,1,.36f);
+            processor->setSlotParam(0,2,.30f); // true stereo
+            processor->setSlotParam(0,10,.68f); // wet echo
+            processor->setSlotParam(0,11,1.f);  // full dry
         }else{
             processor->setSlotParam(0,0,.89f);
             processor->setSlotParam(0,1,.1f);
@@ -778,6 +1213,371 @@ int studioSmoke() {
         std::printf("PASS: Studio ID %d, PDC %d, peak %.4f, change %.4f, state recall\n",
                     type,latency,peak,difference);
     }
+    // Host state and native preset recall of new opt-in return duck controls.
+    // Every previous factory slot, effect ID and wet state stays unchanged.
+    {
+        processor->setSlotType(0,SkellPresetAudioProcessor::Reverb);
+        processor->setSlotOn(0,true);
+        auto* duckOn=processor->state.getParameter("s1_duckOn");
+        auto* duckDepth=processor->state.getParameter("s1_duckDepth");
+        auto* duckRelease=processor->state.getParameter("s1_duckRelease");
+        auto* duckAttack=processor->state.getParameter("s1_duckAttack");
+        if(!duckOn || !duckDepth || !duckRelease || !duckAttack ||
+           processor->getLatencySamples()!=0) return 98;
+        duckOn->setValueNotifyingHost(duckOn->convertTo0to1(1.f));
+        duckDepth->setValueNotifyingHost(duckDepth->convertTo0to1(.78f));
+        duckRelease->setValueNotifyingHost(duckRelease->convertTo0to1(420.f));
+        duckAttack->setValueNotifyingHost(duckAttack->convertTo0to1(26.f));
+        juce::MemoryBlock packed;
+        processor->getStateInformation(packed);
+        auto recalled=std::make_unique<SkellPresetAudioProcessor>();
+        recalled->setStateInformation(packed.getData(),(int)packed.getSize());
+        const auto* on=recalled->state.getRawParameterValue("s1_duckOn");
+        const auto* amount=recalled->state.getRawParameterValue("s1_duckDepth");
+        const auto* attackSaved=recalled->state.getRawParameterValue("s1_duckAttack");
+        if(!on || !amount || !attackSaved || on->load()<.5f ||
+           std::abs(amount->load()-.78f)>.02f ||
+           std::abs(attackSaved->load()-26.f)>.1f)return 99;
+        const auto duckFile=juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getNonexistentChildFile("skell-wet-sidechain-smoke",".skellpreset",false);
+        if(processor->exportPreset(duckFile).failed())return 100;
+        auto restored=std::make_unique<SkellPresetAudioProcessor>();
+        const auto saved=restored->importPreset(duckFile);
+        duckFile.deleteFile();
+        const auto* restoredAttack=restored->state.getRawParameterValue("s1_duckAttack");
+        if(saved.failed() || !restoredAttack ||
+           restored->state.getRawParameterValue("s1_duckOn")->load()<.5f ||
+           std::abs(restoredAttack->load()-26.f)>.1f)return 101;
+        restored->loadFactoryPreset(0);
+        if(restored->state.getRawParameterValue("s1_duckOn")->load()>.5f ||
+           std::abs(restored->state.getRawParameterValue("s1_duckAttack")->load()-12.f)>.1f)
+            return 102;
+        std::puts("PASS: wet sidechain APVTS state, ZIP import/export, OFF factory reset, 0 PDC");
+    }
+    // Acoustic proof through the real compiled JUCE audio processor:
+    // a voiced input must duck the ECHO, not the signal path's dry vocal.
+    // Compare identical 400 Hz stereo input with opt-in sidechain OFF/ON.
+    {
+        const auto runDelay=[&](bool enabled)->std::array<double,2> {
+            auto p=std::make_unique<SkellPresetAudioProcessor>();
+            p->prepareToPlay(48000.,256);
+            p->setSlotType(0,SkellPresetAudioProcessor::StudioDelayFX);
+            p->setSlotOn(0,true);
+            p->setSlotParam(0,0,0.f); // 25 ms
+            p->setSlotParam(0,1,.50f);
+            p->setSlotParam(0,2,.30f); // true stereo
+            p->setSlotParam(0,4,0.f);
+            p->setSlotParam(0,5,.85f);
+            p->setSlotParam(0,7,0.f);
+            p->setSlotParam(0,9,0.f);
+            p->setSlotParam(0,10,1.f); // full echo
+            p->setSlotParam(0,11,1.f); // exact unity dry
+            p->setSlotParam(0,12,0.f);
+            if(auto* amount=p->state.getParameter("s1_duckDepth"))
+                amount->setValueNotifyingHost(amount->convertTo0to1(.90f));
+            if(auto* on=p->state.getParameter("s1_duckOn"))
+                on->setValueNotifyingHost(on->convertTo0to1(enabled?1.f:0.f));
+            std::array<double,2> energy{};
+            for(int block=0;block<250;++block) {
+                juce::AudioBuffer<float> b(2,256);
+                for(int n=0;n<256;++n) {
+                    const int index=block*256+n;
+                    const float voice=index<48000?(float)(
+                        .3*std::sin(2.*juce::MathConstants<double>::pi*
+                                      400.*index/48000.)):0.f;
+                    b.setSample(0,n,voice);
+                    b.setSample(1,n,voice);
+                }
+                juce::MidiBuffer midi;
+                p->processBlock(b,midi);
+                for(int n=0;n<256;++n) {
+                    const int index=block*256+n;
+                    const double dry=index<48000?
+                        .3*std::sin(2.*juce::MathConstants<double>::pi*
+                                     400.*index/48000.):0.;
+                    const double echo=(double)b.getSample(0,n)-dry;
+                    if(!std::isfinite(echo)) {
+                        p->releaseResources();
+                        return std::array<double,2>{{-1.,-1.}};
+                    }
+                    if(index>12000&&index<45000)energy[0]+=echo*echo;
+                    if(index>49000&&index<56000)energy[1]+=echo*echo;
+                }
+            }
+            p->releaseResources();
+            return energy;
+        };
+        const auto without=runDelay(false),with=runDelay(true);
+        if(!(without[0]>.01 && with[0]>=0. &&
+             with[0]<without[0]*.33 && with[1]>=0.)) {
+            std::fprintf(stderr,"VOICE SIDECHAIN AUDIO: dry-echo %.7f, ducked-echo %.7f, tails %.7f / %.7f\n",
+                         without[0],with[0],without[1],with[1]);
+            return 103;
+        }
+        std::printf("PASS: compiled Studio Delay wet return ducked %.1f dB while dry vocal stays unity; zero new latency\n",
+                    10.*std::log10(std::max(1.e-8,with[0]/without[0])));
+    }
+    // Real compiled processor: independent sends must preserve the dry
+    // signal, not feed into each other, and respect serial rack PDC.
+    {
+        using P=SkellPresetAudioProcessor;
+        constexpr int frames=8192,blockSize=256;
+        auto renderSends=[=](bool delayOn,bool dubOn,bool latency) {
+            auto p=std::make_unique<P>();p->clearRackToEmpty();
+            auto set=[&](const juce::String& id,float value) {
+                if(auto* param=p->state.getParameter(id))param->setValueNotifyingHost(param->convertTo0to1(value));
+            };
+            if(delayOn){
+                p->setSlotType(0,P::Delay);p->setSlotOn(0,true);
+                p->setSlotParam(0,0,0.f);p->setSlotParam(0,1,0.f);
+                set("s1_parallelReturn",1.f);set("s1_wet",.5f);
+            }
+            if(dubOn){
+                p->setSlotType(1,P::AdlibDoubler);p->setSlotOn(1,true);
+                set("s2_parallelReturn",1.f);set("s2_wet",.5f);
+            }
+            if(latency){p->setSlotType(2,P::StudioPitchFormantFX);p->setSlotOn(2,false);}
+            p->prepareToPlay(48000.,blockSize);
+            const int expected=latency?skellpreset::dsp::SpectralPitchFormant::latencySamples:0;
+            if(p->getLatencySamples()!=expected)return std::vector<float>{};
+            juce::AudioBuffer<float> audio(2,blockSize);juce::MidiBuffer midi;
+            for(int i=0;i<24;++i){audio.clear();p->processBlock(audio,midi);}
+            std::vector<float> result;result.reserve(frames);
+            for(int i=0;i<frames;i+=blockSize){
+                audio.clear();
+                if(i==0){audio.setSample(0,0,.25f);audio.setSample(1,0,.25f);}
+                p->processBlock(audio,midi);
+                for(int n=0;n<blockSize;++n)result.push_back(audio.getSample(0,n));
+            }
+            p->releaseResources();return result;
+        };
+        const auto dry=renderSends(false,false,false),delay=renderSends(true,false,false),
+            dub=renderSends(false,true,false),both=renderSends(true,true,false),
+            aligned=renderSends(true,true,true);
+        if(dry.size()!=frames || delay.size()!=frames || dub.size()!=frames ||
+           both.size()!=frames || aligned.size()!=frames)return 161;
+        const int lag=skellpreset::dsp::SpectralPitchFormant::latencySamples;
+        if(std::abs(dry[0]-.25f)>1.e-5f || std::abs(both[0]-dry[0])>1.e-5f)return 162;
+        double delayEnergy=0.,dubEnergy=0.;
+        for(int n=0;n<frames;++n){
+            if(!std::isfinite(both[(size_t)n]) || !std::isfinite(aligned[(size_t)n]))return 163;
+            const float d=delay[(size_t)n]-dry[(size_t)n],u=dub[(size_t)n]-dry[(size_t)n];
+            delayEnergy+=d*d;dubEnergy+=u*u;
+            if(std::abs(both[(size_t)n]-(dry[(size_t)n]+d+u))>2.e-5f)return 164;
+            const float expected=n>=lag?both[(size_t)(n-lag)]:0.f;
+            if(std::abs(aligned[(size_t)n]-expected)>2.e-5f)return 165;
+        }
+        if(delayEnergy<1.e-6 || dubEnergy<1.e-6)return 166;
+        std::printf("PASS: parallel delay/dub independence, dry impulse and %d-sample rack PDC\n",lag);
+    }
+    {
+        auto p=std::make_unique<SkellPresetAudioProcessor>();p->clearRackToEmpty();
+        p->setSlotType(0,SkellPresetAudioProcessor::Delay);p->setSlotOn(0,true);
+        auto set=[&](const juce::String& id,float v){
+            if(auto* param=p->state.getParameter(id))param->setValueNotifyingHost(param->convertTo0to1(v));
+        };
+        set("micGateOn",1.f);set("micGateThreshold",-10.f);set("micGateDepth",1.f);
+        set("s1_duckOn",1.f);set("s1_duckDepth",.9f);set("s1_duckThreshold",-60.f);
+        set("s1_duckRelease",50.f);
+        p->prepareToPlay(48000.,256);
+        auto measure=[&](int source){
+            set("s1_duckSource",(float)source);
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+            for(int i=0;i<220;++i){
+                for(int n=0;n<256;++n){audio.setSample(0,n,.03f);audio.setSample(1,n,.03f);}
+                p->processBlock(audio,midi);
+            }
+            return p->getSlotDuckReductionDb(0);
+        };
+        const float post=measure(0),pre=measure(1),postAgain=measure(0);
+        p->releaseResources();
+        if(!std::isfinite(pre) || pre<8.f || post>1.f || postAgain>1.f){
+            std::fprintf(stderr,"DETECTOR SOURCE: post %.2f pre %.2f post %.2f dB\n",post,pre,postAgain);
+            return 167;
+        }
+        std::printf("PASS: measured pre/post MIC detector difference %.2f dB\n",pre-post);
+    }
+    {
+        auto p=std::make_unique<SkellPresetAudioProcessor>();
+        p->clearRackToEmpty();
+        auto layout=p->getBusesLayout();
+        layout.inputBuses.set(1,juce::AudioChannelSet::stereo());
+        if(!p->setBusesLayout(layout))return 181;
+        p->setSlotType(0,SkellPresetAudioProcessor::Delay);p->setSlotOn(0,true);
+        auto set=[&](const juce::String& id,float v){
+            if(auto* param=p->state.getParameter(id))param->setValueNotifyingHost(param->convertTo0to1(v));
+        };
+        set("s1_duckOn",1.f);set("s1_duckExternal",1.f);
+        set("s1_duckDepth",.9f);set("s1_duckThreshold",-40.f);set("s1_duckRelease",50.f);
+        p->prepareToPlay(48000.,256);
+        auto measure=[&](float key){
+            juce::AudioBuffer<float> audio(4,256);juce::MidiBuffer midi;
+            float peak=0.f;
+            for(int i=0;i<220;++i){
+                audio.clear();
+                for(int n=0;n<256;++n){audio.setSample(2,n,key);audio.setSample(3,n,-key);}
+                p->processBlock(audio,midi);
+                for(int n=0;n<256;++n)peak=std::max(peak,std::abs(audio.getSample(0,n))+std::abs(audio.getSample(1,n)));
+            }
+            return std::array<float,2>{p->getSlotDuckReductionDb(0),peak};
+        };
+        const auto silent=measure(0.f),active=measure(.5f),released=measure(0.f);
+        p->releaseResources();
+        if(silent[0]>1.f || active[0]<8.f || released[0]>1.f || active[1]>1.e-6f || p->getLatencySamples()!=0)return 182;
+        std::puts("PASS: external stereo key, silence release, no key leakage, zero added PDC");
+    }
+    {
+        auto p=std::make_unique<SkellPresetAudioProcessor>();
+        p->clearRackToEmpty();
+        auto layout=p->getBusesLayout();layout.inputBuses.set(1,juce::AudioChannelSet::stereo());
+        if(!p->setBusesLayout(layout))return 183;
+        p->setSlotType(0,SkellPresetAudioProcessor::Saturator);p->setSlotOn(0,true);
+        p->setSlotParam(0,0,.9f);p->setSlotParam(0,1,.5f);
+        auto set=[&](const juce::String& id,float v){if(auto* param=p->state.getParameter(id))
+            param->setValueNotifyingHost(param->convertTo0to1(v));};
+        set("s1_wet",1.f);set("s1_duckOn",1.f); // historical inert flag
+        set("s1_duckExternal",1.f);set("s1_duckDepth",1.f);
+        set("s1_duckThreshold",-40.f);set("s1_duckRelease",50.f);
+        p->prepareToPlay(48000.,256);
+        auto measure=[&](float key){
+            juce::AudioBuffer<float> a(4,256);juce::MidiBuffer midi;
+            double error=0.;
+            for(int b=0;b<220;++b){
+                for(int n=0;n<256;++n){
+                    const float v=.25f*std::sin((float)n*.21f);
+                    a.setSample(0,n,v);a.setSample(1,n,v);
+                    a.setSample(2,n,key);a.setSample(3,n,-key);
+                }
+                p->processBlock(a,midi);
+                if(b==219)for(int n=0;n<256;++n){
+                    const float v=.25f*std::sin((float)n*.21f);
+                    error+=std::abs(a.getSample(0,n)-v)+std::abs(a.getSample(1,n)-v);
+                }
+            }
+            return std::array<double,2>{error/512.,p->getSlotDuckReductionDb(0)};
+        };
+        const auto old=measure(.5f);
+        set("s1_duckEffect",1.f);
+        const auto linked=measure(.5f),released=measure(0.f);
+        const bool pass=old[0]>.001 && old[1]<.001 && linked[0]<old[0]*.05 &&
+            linked[1]>15. && std::abs(released[0]-old[0])<.0001 && p->getLatencySamples()==0;
+        p->releaseResources();
+        if(!pass){std::fprintf(stderr,"Generic sidechain old %.6f linked %.6f release %.6f dB %.2f\n",old[0],linked[0],released[0],linked[1]);return 184;}
+        std::puts("PASS: generic native contribution duck, legacy inert flag, release and zero latency");
+    }
+    // Exercise the FRONT-END mic gate through the actual JUCE audio callback.
+    // It must be opt-in, zero-PDC, stereo linked, recallable, and bypass clean.
+    processor->setSlotOn(0,false);
+    processor->setSlotType(0,SkellPresetAudioProcessor::Empty);
+    auto* micGate=processor->state.getParameter("micGateOn");
+    auto* micThreshold=processor->state.getParameter("micGateThreshold");
+    if(!micGate || !micThreshold || processor->slotType(0)!=SkellPresetAudioProcessor::Empty)
+        return 76;
+    micThreshold->setValueNotifyingHost(micThreshold->convertTo0to1(-20.f));
+    if(processor->getLatencySamples()!=0)return 77;
+    auto gateEnergy=[&](float left,float right) {
+        std::array<double,2> energy{};
+        for(int block=0;block<100;++block) {
+            juce::AudioBuffer<float> audio(2,257);
+            for(int n=0;n<257;++n) {
+                audio.setSample(0,n,left);
+                audio.setSample(1,n,right);
+            }
+            juce::MidiBuffer midi;
+            processor->processBlock(audio,midi);
+            if(block>=75)for(int ch=0;ch<2;++ch)
+                for(int n=0;n<257;++n) {
+                    const double sample=audio.getSample(ch,n);
+                    if(!std::isfinite(sample))
+                        return std::array<double,2>{-1.,-1.};
+                    energy[(size_t)ch]+=sample*sample;
+                }
+        }
+        return energy;
+    };
+    micGate->setValueNotifyingHost(micGate->convertTo0to1(1.f));
+    const auto quietGate=gateEnergy(.004f,.004f);
+    // A loud left input must hold the same gate open on a quiet right channel.
+    const auto stereoLinked=gateEnergy(.35f,.005f);
+    micGate->setValueNotifyingHost(micGate->convertTo0to1(0.f));
+    const auto quietBypass=gateEnergy(.004f,.004f);
+    if(quietBypass[1]<.1 || quietGate[1]<0. ||
+       quietGate[1]>=quietBypass[1]*.05 || stereoLinked[1]<.08) {
+        std::fprintf(stderr,"Mic gate audio failed: quiet-on %.6f stereo-linked %.6f bypass %.6f\n",
+                     quietGate[1],stereoLinked[1],quietBypass[1]);
+        return 78;
+    }
+    micGate->setValueNotifyingHost(micGate->convertTo0to1(1.f));
+    // Prove the newly appended REDUCTION control affects the actual
+    // processBlock output. Zero reduction is the same audible dry gate bypass.
+    auto* depthControl=processor->state.getParameter("micGateDepth");
+    auto* attackControl=processor->state.getParameter("micGateAttackMs");
+    auto* hysteresisControl=processor->state.getParameter("micGateHysteresisDb");
+    if(!depthControl || !attackControl || !hysteresisControl)return 114;
+    depthControl->setValueNotifyingHost(depthControl->convertTo0to1(0.f));
+    const auto zeroReduction=gateEnergy(.004f,.004f);
+    depthControl->setValueNotifyingHost(depthControl->convertTo0to1(1.f));
+    const auto fullReduction=gateEnergy(.004f,.004f);
+    if(!(zeroReduction[1]>quietBypass[1]*.95 &&
+         fullReduction[1]>=0. && fullReduction[1]<zeroReduction[1]*.05))
+        return 115;
+    attackControl->setValueNotifyingHost(attackControl->convertTo0to1(11.f));
+    hysteresisControl->setValueNotifyingHost(hysteresisControl->convertTo0to1(7.f));
+    depthControl->setValueNotifyingHost(depthControl->convertTo0to1(.4f));
+    juce::MemoryBlock micState;
+    processor->getStateInformation(micState);
+    auto recalledMic=std::make_unique<SkellPresetAudioProcessor>();
+    recalledMic->setStateInformation(micState.getData(),(int)micState.getSize());
+    const auto* gateRestored=recalledMic->state.getRawParameterValue("micGateOn");
+    const auto* thresholdRestored=recalledMic->state.getRawParameterValue("micGateThreshold");
+    if(!gateRestored || gateRestored->load()<.5f ||
+       !thresholdRestored || std::abs(thresholdRestored->load()+20.f)>.05f)
+        return 79;
+    const auto* savedAttack=recalledMic->state.getRawParameterValue("micGateAttackMs");
+    const auto* savedHyst=recalledMic->state.getRawParameterValue("micGateHysteresisDb");
+    const auto* savedDepth=recalledMic->state.getRawParameterValue("micGateDepth");
+    if(!savedAttack || std::abs(savedAttack->load()-11.f)>.05f ||
+       !savedHyst || std::abs(savedHyst->load()-7.f)>.05f ||
+       !savedDepth || std::abs(savedDepth->load()-.4f)>.001f)
+        return 116;
+    std::puts("PASS: input noise gate bypass, stereo link, zero PDC and host-state recall");
+    // A new factory selection enables its front-end gate with safe knob
+    // defaults; restored project and package states keep saved ON/OFF choices.
+    recalledMic->loadFactoryPreset(0);
+    const auto gateRelease=recalledMic->state.getRawParameterValue("micGateRelease");
+    const auto gateHold=recalledMic->state.getRawParameterValue("micGateHold");
+    const auto* attack=recalledMic->state.getRawParameterValue("micGateAttackMs");
+    const auto* hysteresis=recalledMic->state.getRawParameterValue("micGateHysteresisDb");
+    const auto* depth=recalledMic->state.getRawParameterValue("micGateDepth");
+    if(!attack || std::abs(attack->load()-4.f)>.05f ||
+       !hysteresis || std::abs(hysteresis->load()-3.f)>.05f ||
+       !depth || std::abs(depth->load()-1.f)>.001f ||
+       gateRestored->load()<.5f || std::abs(thresholdRestored->load()+45.f)>.05f ||
+       !gateRelease || std::abs(gateRelease->load()-160.f)>.05f ||
+       !gateHold || std::abs(gateHold->load()-55.f)>.05f)
+        return 94;
+    // Portable .skellpreset must preserve the new gate, not only host binary
+    // state. Previous schema-v2 files without gate fields remain OFF.
+    const auto gateFile=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("skell-studio-gate-roundtrip",".skellpreset",false);
+    if(processor->exportPreset(gateFile).failed())return 95;
+    auto importedGate=std::make_unique<SkellPresetAudioProcessor>();
+    const auto importResult=importedGate->importPreset(gateFile);
+    gateFile.deleteFile();
+    if(importResult.failed())return 96;
+    const auto* importedOn=importedGate->state.getRawParameterValue("micGateOn");
+    const auto* importedThreshold=importedGate->state.getRawParameterValue("micGateThreshold");
+    if(!importedOn || importedOn->load()<.5f || !importedThreshold ||
+       std::abs(importedThreshold->load()+20.f)>.05f)
+        return 97;
+    const auto* pkgAttack=importedGate->state.getRawParameterValue("micGateAttackMs");
+    const auto* pkgHyst=importedGate->state.getRawParameterValue("micGateHysteresisDb");
+    const auto* pkgDepth=importedGate->state.getRawParameterValue("micGateDepth");
+    if(!pkgAttack || std::abs(pkgAttack->load()-11.f)>.05f ||
+       !pkgHyst || std::abs(pkgHyst->load()-7.f)>.05f ||
+       !pkgDepth || std::abs(pkgDepth->load()-.4f)>.001f)
+        return 117;
+    std::puts("PASS: factory gate ON reset and native package gate roundtrip");
     processor->releaseResources();
     return 0;
 }
@@ -785,27 +1585,103 @@ int studioSmoke() {
 // End-to-end native processor workload: not a simulated individual effect.
 // Measures serialized callbacks for several plugin instances sharing one audio
 // device thread. Hosted CI machine timings are NOT FL Studio CPU results.
+// Worst-case populated rack; actual processor calls, not kernel estimates.
+// Keep high-rate instance counts bounded to avoid CI memory exhaustion.
+static int populatedRackStress() {
+    using P=SkellPresetAudioProcessor;
+    constexpr int types[]{P::Gate,P::EQ,P::Compressor,P::DeEsser,
+        P::SkelldizerFX,P::StudioEQFX,P::StudioCompressorFX,P::StudioFastDistFX,
+        P::VocalChorusFX,P::VocalFlangerFX,P::StudioDelayFX,P::VoxRackRoom,
+        P::AdlibDoubler,P::PhaseRotationFX,P::StereoWidth,P::Limiter};
+    static_assert(sizeof(types)/sizeof(types[0])==P::slotCount);
+    struct Load {double rate;int block,count;};
+    constexpr Load loads[]{{44100.,64,1},{48000.,64,5},{48000.,128,10},
+        {96000.,64,10},{96000.,256,20},{192000.,17,1},{192000.,128,5}};
+    for(const auto& c:loads){
+        std::vector<std::unique_ptr<P>> racks;
+        std::vector<std::unique_ptr<juce::AudioBuffer<float>>> buffers;
+        int expectedLatency=-1;
+        for(int k=0;k<c.count;++k){
+            auto p=std::make_unique<P>();p->clearRackToEmpty();
+            while(p->activeSlotCount()<P::slotCount)
+                if(p->appendRackSlot()<0)return 51;
+            for(int n=0;n<P::slotCount;++n){
+                p->setSlotType(n,types[n]);p->setSlotOn(n,true);
+                if(p->slotType(n)!=types[n])return 52;
+            }
+            p->prepareToPlay(c.rate,c.block);
+            if(expectedLatency<0)expectedLatency=p->getLatencySamples();
+            if(p->getLatencySamples()!=expectedLatency)return 53;
+            racks.push_back(std::move(p));
+            buffers.push_back(std::make_unique<juce::AudioBuffer<float>>(2,c.block));
+        }
+        juce::MidiBuffer midi;
+        const int blocks=std::max(16,(int)(c.rate*.20/c.block));
+        double elapsed=0.,worst=0.,peak=0.;int misses=0;
+        const double budget=c.block/c.rate;
+        for(int b=0;b<blocks;++b){
+            for(auto& buffer:buffers)for(int n=0;n<c.block;++n){
+                const auto sample=(std::int64_t)b*c.block+n;
+                const double sec=sample/c.rate;
+                const float x=(float)(.065*std::sin(1300.*sec)+.018*std::sin(39000.*sec)+
+                    (sample%997==0?.16:0.));
+                buffer->setSample(0,n,x);buffer->setSample(1,n,.8f*x);
+            }
+            // Change an actual rack parameter periodically outside measured time.
+            if(b%13==0)for(auto& p:racks)p->setSlotParam(1,0,(float)(b%39)/39.f);
+            const auto begin=std::chrono::steady_clock::now();
+            for(int k=0;k<c.count;++k)racks[(size_t)k]->processBlock(*buffers[(size_t)k],midi);
+            const double dt=std::chrono::duration<double>(std::chrono::steady_clock::now()-begin).count();
+            elapsed+=dt;worst=std::max(worst,dt);if(dt>budget)++misses;
+            for(const auto& buffer:buffers)for(int ch=0;ch<2;++ch)for(int n=0;n<c.block;++n){
+                const double x=buffer->getSample(ch,n);
+                if(!std::isfinite(x)||std::abs(x)>32.)return 54;
+                peak=std::max(peak,std::abs(x));
+            }
+        }
+        if(peak<=0.)return 55;
+        std::printf("FULL-16-RACK instances=%d rate=%.0f block=%d latency=%d avg_ratio=%.4f max_ratio=%.4f misses=%d/%d peak=%.6f\n",
+            c.count,c.rate,c.block,expectedLatency,elapsed/(blocks*budget),worst/budget,misses,blocks,peak);
+        for(auto& p:racks)p->releaseResources();
+    }
+    return 0;
+}
+
 int stress() {
+    if(const int result=populatedRackStress())return result;
     const int instances[]{5,10,20};
     const int buffers[]{64,128,256};
     const double rates[]{44100.,48000.,96000.};
     for(const double sr:rates) {
         // Check actual host-facing processor PDC, not a helper's estimate.
-        for(const int preset:{skellpreset::alchemist::factoryIndex,
-                                skellpreset::alchemist_serial_dynamics_trial::factoryIndex,
-                                skellpreset::alchemist_low_end_contour_trial::factoryIndex,
-                                skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,25,0}) {
+        // Recipe IDs survive factory-bank compaction; public program indexes do not.
+        constexpr int liveLead=skellpreset::factoryIndexForRecipe(25);
+        constexpr int noiseGuard=skellpreset::factoryIndexForRecipe(40);
+        constexpr int studioSix=skellpreset::factoryIndexForRecipe(42);
+        constexpr int cleanLead=skellpreset::factoryIndexForRecipe(0);
+        static_assert(liveLead>=0 && noiseGuard>=0 && studioSix>=0 && cleanLead>=0);
+        static_assert(std::string_view(skellpreset::factoryPresets[liveLead].name)=="Skell Live Lead");
+        static_assert(std::string_view(skellpreset::factoryPresets[noiseGuard].name)=="Noise Guard");
+        static_assert(std::string_view(skellpreset::factoryPresets[studioSix].name)=="Studio Six");
+        struct LatencyCase { int preset; bool lookahead; };
+        const LatencyCase cases[]{
+            {skellpreset::alchemist::factoryIndex,false},
+            {skellpreset::alchemist_serial_dynamics_trial::factoryIndex,true},
+            {skellpreset::alchemist_low_end_contour_trial::factoryIndex,true},
+            {skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex,true},
+            {liveLead,false},{noiseGuard,true},{studioSix,false},{cleanLead,true}
+        };
+        for(const auto& test:cases) {
             auto p=std::make_unique<SkellPresetAudioProcessor>();
-            p->loadFactoryPreset(preset);
+            p->loadFactoryPreset(test.preset);
             p->prepareToPlay(sr,64);
-            const int expected=(preset==0 || preset==skellpreset::alchemist_serial_dynamics_trial::factoryIndex ||
-                                preset==skellpreset::alchemist_low_end_contour_trial::factoryIndex ||
-                                preset==skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex)
-                ?std::max(48,(int)(sr*.003)):0;
+            const int expected=test.lookahead?std::max(48,(int)(sr*.003)):0;
             if(p->getLatencySamples()!=expected) {
                 std::fprintf(stderr,
-                    "FAIL factory %d / %.0f Hz: reported=%d expected=%d samples\n",
-                    preset,sr,p->getLatencySamples(),expected);
+                    "FAIL factory %d (%s; recipe %d) / %.0f Hz: reported=%d expected=%d samples\n",
+                    test.preset,p->getProgramName(test.preset).toRawUTF8(),
+                    skellpreset::recipeForFactoryIndex(test.preset),
+                    sr,p->getLatencySamples(),expected);
                 return 9;
             }
             p->releaseResources();
@@ -1118,6 +1994,57 @@ int compareWavs(const juce::File& candidateFile,const juce::File& referenceFile)
 
 // Exercise real mono WAV decoding, native Alchemist processing and stereo WAV
 // encoding. File cleanup is automatic even if a regression assertion fails.
+int vocalPreviewSmoke() {
+    const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("SkellVocalPreview","",false);
+    if(root.createDirectory().failed())return 1;
+    struct Cleanup{juce::File dir;~Cleanup(){dir.deleteRecursively();}} cleanup{root};
+    const auto dry=root.getChildFile("dry.wav"),wet=root.getChildFile("wet.wav");
+    const auto preset=root.getChildFile("latency.skellpreset");
+    constexpr int samples=4099;
+    juce::AudioBuffer<float> signal(1,samples);signal.clear();signal.setSample(0,0,.25f);
+    for(int n=1;n<samples;++n)signal.setSample(0,n,.125f*std::sin(n*.07f));
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::OutputStream> stream(dry.createOutputStream());
+    if(!stream)return 2;
+    auto writer=wav.createWriterFor(stream,juce::AudioFormatWriter::Options{}
+        .withSampleRate(48000.).withNumChannels(1).withBitsPerSample(32)
+        .withSampleFormat(juce::AudioFormatWriter::Options::SampleFormat::floatingPoint));
+    if(!writer || !writer->writeFromAudioSampleBuffer(signal,0,samples))return 3;
+    writer.reset();
+    auto p=std::make_unique<SkellPresetAudioProcessor>();p->clearRackToEmpty();
+    p->setSlotType(0,SkellPresetAudioProcessor::StudioPitchFormantFX);p->setSlotOn(0,false);
+    if(p->exportPreset(preset).failed())return 4;
+    p.reset();
+    if(skellpreset::preview::render(dry,wet,-1,preset).failed())return 5;
+    juce::AudioFormatManager formats;formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(wet));
+    if(!reader || reader->lengthInSamples!=samples || reader->numChannels!=2)return 6;
+    juce::AudioBuffer<float> restored(2,samples);
+    if(!reader->read(&restored,0,samples,0,true,true))return 7;
+    for(int ch=0;ch<2;++ch)for(int n=0;n<samples;++n)
+        if(std::abs(restored.getSample(ch,n)-signal.getSample(0,n))>1.e-5f)return 8;
+    reader.reset();
+    if(skellpreset::preview::render(dry,wet,-1,preset).wasOk())return 9;
+    const auto starter=root.getChildFile("starter.wav");
+    if(skellpreset::preview::render(dry,starter,1,{},.05).failed())return 10;
+    reader.reset(formats.createReaderFor(starter));
+    if(!reader || reader->lengthInSamples!=samples+2400)return 11;
+    reader.reset();
+    const auto pair=root.getChildFile("pair");
+    if(skellpreset::preview::renderMatchedPair(dry,pair,-1,preset,.05).failed())return 12;
+    if(!pair.getChildFile("listen.html").existsAsFile()||!pair.getChildFile("processed-raw.wav").existsAsFile())return 13;
+    std::unique_ptr<juce::AudioFormatReader> aa(formats.createReaderFor(pair.getChildFile("A-dry.wav"))),
+        bb(formats.createReaderFor(pair.getChildFile("B-processed.wav")));
+    if(!aa||!bb||aa->lengthInSamples!=samples+2400||bb->lengthInSamples!=aa->lengthInSamples)return 14;
+    skellpreset::preview::Metrics am,bm;
+    if(skellpreset::preview::measureFile(*aa,samples,am).failed()||
+       skellpreset::preview::measureFile(*bb,samples,bm).failed()||
+       std::abs(am.rms()-bm.rms())>1.e-6||am.peak>.891252||bm.peak>.891252)return 15;
+    if(skellpreset::preview::renderMatchedPair(dry,pair,-1,preset).wasOk())return 16;
+    std::puts("PASS: native preview, latency alignment, matched audition WAVs, HTML player, no overwrite and explicit tail");
+    return 0;
+}
 int monoSmoke() {
     const auto temp=juce::File::getSpecialLocation(juce::File::tempDirectory);
     const auto input=temp.getNonexistentChildFile("SkellPresetMonoSmoke",".wav",false);
@@ -1165,9 +2092,9 @@ int monoSmoke() {
 int eightBandAirFactorySmoke() {
     constexpr float gains[8]{-.04f,-.06f,-.03f,-.01f,.04f,.055f,.08f,.05f};
     auto plugin=std::make_unique<SkellPresetAudioProcessor>();
-    plugin->setCurrentProgram(37); // legacy host program: Eight-Band Air
-    if(plugin->getCurrentProgram()!=37 ||
-       plugin->loadedFactoryPresetIndex()!=37 ||
+    plugin->setCurrentProgram(skellpreset::factoryIndexForRecipe(37)); // legacy host program: Eight-Band Air
+    if(plugin->getCurrentProgram()!=skellpreset::factoryIndexForRecipe(37) ||
+       plugin->loadedFactoryPresetIndex()!=skellpreset::factoryIndexForRecipe(37) ||
        plugin->activeSlotCount()!=10 ||
        plugin->slotType(8)!=SkellPresetAudioProcessor::EightBandToneFX ||
        plugin->slotIdAt(0)!=8)
@@ -1234,8 +2161,8 @@ int eightBandAirFactorySmoke() {
     auto restored=std::make_unique<SkellPresetAudioProcessor>();
     restored->setStateInformation(hostState.getData(),static_cast<int>(hostState.getSize()));
     restored->prepareToPlay(48000.,256);
-    if(restored->getCurrentProgram()!=37 ||
-       restored->loadedFactoryPresetIndex()!=37 ||
+    if(restored->getCurrentProgram()!=skellpreset::factoryIndexForRecipe(37) ||
+       restored->loadedFactoryPresetIndex()!=skellpreset::factoryIndexForRecipe(37) ||
        !hasExpectedEqState(*restored))
         return 255;
 
@@ -1823,22 +2750,335 @@ int lowEndOverrideSmoke() {
     return 0;
 }
 
+// Output-stage stereo separation exercised through the REAL processor at
+// 44.1/48/96/192 kHz: neutral null, mono compatibility, mid/side response,
+// automation smoothing, peak safety, block-size consistency, preset recall
+// and factory neutrality.
+int stereoSeparationSmoke() {
+    int failures = 0;
+    auto fail = [&failures](const char* what) {
+        std::fprintf(stderr, "FAIL: %s\n", what);
+        ++failures;
+    };
+    auto setP = [](SkellPresetAudioProcessor& p, const char* id, float real) {
+        if (auto* param = p.state.getParameter(id))
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
+                param->setValueNotifyingHost(
+                    ranged->getNormalisableRange().convertTo0to1(real));
+    };
+    auto valueOf = [](SkellPresetAudioProcessor& p, const char* id) {
+        auto* raw = p.state.getRawParameterValue(id);
+        return raw ? raw->load() : 0.f;
+    };
+    auto fill = [](juce::AudioBuffer<float>& b, int index, int chunk, bool mono) {
+        for (int n = 0; n < b.getNumSamples(); ++n) {
+            const float t = (float)(index * chunk + n) / 48000.f;
+            const float l = .22f * std::sin(2.f * juce::MathConstants<float>::pi * 220.f * t)
+                          + .11f * std::sin(2.f * juce::MathConstants<float>::pi * 1370.f * t);
+            const float r = .19f * std::sin(2.f * juce::MathConstants<float>::pi * 330.f * t)
+                          + .07f * std::sin(2.f * juce::MathConstants<float>::pi * 910.f * t);
+            b.setSample(0, n, l);
+            b.setSample(1, n, mono ? l : r);
+        }
+    };
+    auto peakOf = [](const juce::AudioBuffer<float>& b) {
+        double p = 0.;
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int n = 0; n < b.getNumSamples(); ++n)
+                p = std::max(p, (double)std::abs(b.getSample(ch, n)));
+        return p;
+    };
+
+    for (double rate : {44100., 48000., 96000., 192000.}) {
+        SkellPresetAudioProcessor plugin;
+        plugin.prepareToPlay(rate, blockSize);
+        // A brand-new instance is the Empty Rack: no slots, no mic stage. That
+        // isolates the output stage so a residual cannot be blamed on an
+        // effect's own stereo colouring.
+        setP(plugin, "mix", 1.f);
+        setP(plugin, "input", 0.f);
+        setP(plugin, "output", 0.f);
+        setP(plugin, "stereoSeparation", 0.f);
+
+        // Neutral null against a second reference pass after leaving neutral.
+        std::vector<float> reference;
+        for (int block = 0; block < 8; ++block) {
+            juce::AudioBuffer<float> b(2, blockSize);
+            fill(b, block, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(b, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int n = 0; n < blockSize; ++n)
+                    reference.push_back(b.getSample(ch, n));
+        }
+        setP(plugin, "stereoSeparation", 96.f);
+        for (int block = 0; block < 8; ++block) {
+            juce::AudioBuffer<float> drain(2, blockSize);
+            fill(drain, block, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(drain, midi);
+        }
+        setP(plugin, "stereoSeparation", 0.f);
+        for (int block = 0; block < 4; ++block) {
+            juce::AudioBuffer<float> drain(2, blockSize);
+            fill(drain, block, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(drain, midi);
+        }
+        size_t cursor = 0;
+        double nullDiff = 0.;
+        for (int block = 0; block < 8; ++block) {
+            juce::AudioBuffer<float> b(2, blockSize);
+            fill(b, block, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(b, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int n = 0; n < blockSize; ++n)
+                    nullDiff = std::max(nullDiff,
+                        (double)std::abs(b.getSample(ch, n) - reference[cursor++]));
+        }
+        if (nullDiff != 0.) fail("neutral separation is not bit-exactly transparent");
+
+        // Mono compatibility at every position. The processor derives mono
+        // operation from the declared bus layout, so this case advertises a
+        // genuine mono input rather than a two-channel buffer of equal sides.
+        for (int raw : {-96, -40, 0, 55, 96}) {
+            SkellPresetAudioProcessor mono;
+            mono.setPlayConfigDetails(1, 2, rate, blockSize);
+            mono.prepareToPlay(rate, 512);
+            
+            setP(mono, "mix", 1.f);
+            setP(mono, "input", 0.f);
+            setP(mono, "output", 0.f);
+            setP(mono, "stereoSeparation", (float)raw);
+            for (int block = 0; block < 4; ++block) {
+                juce::AudioBuffer<float> drain(2, blockSize);
+                fill(drain, block, blockSize, true);
+                juce::MidiBuffer midi;
+                mono.processBlock(drain, midi);
+            }
+            double side = 0.;
+            for (int block = 0; block < 5; ++block) {
+                juce::AudioBuffer<float> b(2, blockSize);
+                fill(b, block, blockSize, true);
+                juce::MidiBuffer midi;
+                mono.processBlock(b, midi);
+                for (int n = 0; n < blockSize; ++n)
+                    side = std::max(side, (double)std::abs(
+                        b.getSample(0, n) - b.getSample(1, n)));
+            }
+            if (side != 0.) fail("mono input gained a side signal");
+        }
+
+        // Independent expected transfer for the actual processor. A static
+        // hard-panned probe separates width law, gain, and routing errors.
+        // No private audio is required for this deterministic regression.
+        for (int raw : {-96,-72,-48,-24,0,24,48,72,96}) {
+            setP(plugin,"stereoSeparation",static_cast<float>(raw));
+            const int settleBlocks=static_cast<int>(std::ceil(rate*.020/blockSize))+1;
+            for(int block=0;block<settleBlocks;++block) {
+                juce::AudioBuffer<float> drain(2,blockSize);
+                fill(drain,block,blockSize,false);
+                juce::MidiBuffer midi;
+                plugin.processBlock(drain,midi);
+            }
+            juce::AudioBuffer<float> probe(2,blockSize);
+            fill(probe,7,blockSize,false);
+            const float travel=static_cast<float>(raw)/96.f;
+            const float width=1.f-(travel<=0.f?travel:static_cast<float>((std::pow(5.,static_cast<double>(travel))-1.)*.25));
+            juce::AudioBuffer<float> original;
+            original.makeCopyOf(probe);
+            juce::MidiBuffer midi;
+            plugin.processBlock(probe,midi);
+            double error=0.;
+            bool exactMono=true;
+            for(int n=0;n<blockSize;++n) {
+                const float mid=.5f*(original.getSample(0,n)+original.getSample(1,n));
+                const float side=.5f*(original.getSample(0,n)-original.getSample(1,n))*width;
+                error=std::max(error,static_cast<double>(std::abs(probe.getSample(0,n)-(mid+side))));
+                error=std::max(error,static_cast<double>(std::abs(probe.getSample(1,n)-(mid-side))));
+                if(raw==96 && probe.getSample(0,n)!=probe.getSample(1,n))exactMono=false;
+            }
+            if(!exactMono)fail("maximum mono retained a side signal");
+            if(error>2.e-5)fail("actual processor separation transfer or center gain differs");
+        }
+
+        // Peak safety and finiteness.
+        for (int raw : {-96, -60, 0, 60, 96}) {
+            setP(plugin, "stereoSeparation", (float)raw);
+            for (int block = 0; block < 4; ++block) {
+                juce::AudioBuffer<float> drain(2, blockSize);
+                fill(drain, block, blockSize, false);
+                juce::MidiBuffer midi;
+                plugin.processBlock(drain, midi);
+            }
+            double inPeak = 0., outPeak = 0.;
+            for (int block = 0; block < 5; ++block) {
+                juce::AudioBuffer<float> b(2, blockSize);
+                fill(b, block, blockSize, false);
+                inPeak = std::max(inPeak, peakOf(b));
+                juce::MidiBuffer midi;
+                plugin.processBlock(b, midi);
+                outPeak = std::max(outPeak, peakOf(b));
+            }
+            const double bound = (double)skellpreset::dsp::MixerStereoSeparation
+                ::peakGainBound(raw) * inPeak + 1.e-5;
+            if (outPeak > bound) fail("output exceeded the matrix peak bound");
+            if (!std::isfinite(outPeak) || outPeak >= 4.0)
+                fail("output was not finite and bounded");
+        }
+
+        // Automation smoothing: no sample-to-sample step on a full swing.
+        {
+            setP(plugin, "stereoSeparation", -96.f);
+            for (int block = 0; block < 4; ++block) {
+                juce::AudioBuffer<float> drain(2, blockSize);
+                fill(drain, block, blockSize, false);
+                juce::MidiBuffer midi;
+                plugin.processBlock(drain, midi);
+            }
+            setP(plugin, "stereoSeparation", 96.f);
+            juce::AudioBuffer<float> b(2, blockSize);
+            fill(b, 20, blockSize, false);
+            juce::MidiBuffer midi;
+            plugin.processBlock(b, midi);
+            double step = 0.;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int n = 1; n < blockSize; ++n)
+                    step = std::max(step, (double)std::abs(
+                        b.getSample(ch, n) - b.getSample(ch, n - 1)));
+            if (step >= .6) fail("automation swing stepped instead of gliding");
+        }
+
+        // Block-size consistency of the separation matrix itself. The plugin's
+        // 20 ms master smoothing is intentionally block-rate dependent, so
+        // verifying the output stage means driving the module directly with an
+        // identical absolute sample grid chopped into different block sizes.
+        {
+            const size_t total = (size_t)(rate * .12);
+            std::vector<float> srcL(total), srcR(total);
+            for (size_t i = 0; i < total; ++i) {
+                const float t = (float)i / (float)rate;
+                srcL[i] = .22f * std::sin(2.f * juce::MathConstants<float>::pi * 220.f * t)
+                        + .11f * std::sin(2.f * juce::MathConstants<float>::pi * 1370.f * t);
+                srcR[i] = .19f * std::sin(2.f * juce::MathConstants<float>::pi * 330.f * t)
+                        + .07f * std::sin(2.f * juce::MathConstants<float>::pi * 910.f * t);
+            }
+            auto renderAt = [&](int chunk) {
+                skellpreset::dsp::MixerStereoSeparation sep;
+                sep.prepare(rate);
+                sep.setRaw(96);
+                auto l = srcL, r = srcR;
+                for (size_t offset = 0; offset < total; offset += (size_t)chunk) {
+                    const int n = (int)std::min((size_t)chunk, total - offset);
+                    sep.process(l.data() + offset, r.data() + offset, n);
+                }
+                return std::make_pair(l, r);
+            };
+            const auto small = renderAt(127);
+            const auto large = renderAt(512);
+            double diff = 0.;
+            for (size_t i = 0; i < total; ++i) {
+                diff = std::max(diff, (double)std::abs(small.first[i] - large.first[i]));
+                diff = std::max(diff, (double)std::abs(small.second[i] - large.second[i]));
+            }
+            if (diff != 0.) fail("block-size change altered the separation result");
+        }
+    }
+
+    // Preset recall through export/import.
+    {
+        SkellPresetAudioProcessor plugin;
+        plugin.prepareToPlay(48000., blockSize);
+        plugin.loadFactoryPreset(0);
+        setP(plugin, "stereoSeparation", -61.f);
+        const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getNonexistentChildFile("skell-stereo-recall-", ".skellpreset", false);
+        if (!plugin.exportPreset(file).wasOk()) fail("export with separation failed");
+        setP(plugin, "stereoSeparation", 88.f);
+        if (!plugin.importPreset(file).wasOk()) fail("import with separation failed");
+        if (std::abs(valueOf(plugin, "stereoSeparation") + 61.f) >= .01f)
+            fail("preset recall lost the saved separation");
+        file.deleteFile();
+    }
+
+    // Every factory program loads at verified neutral.
+    {
+        SkellPresetAudioProcessor plugin;
+        plugin.prepareToPlay(48000., blockSize);
+        for (int preset = 0; preset < (int)skellpreset::factoryPresets.size(); ++preset) {
+            setP(plugin, "stereoSeparation", 77.f);
+            plugin.loadFactoryPreset(preset);
+            if (valueOf(plugin, "stereoSeparation") != 0.f)
+                fail("factory preset did not reset separation to neutral");
+        }
+    }
+
+    if (failures == 0)
+        std::puts("PASS Stereo separation: 44.1/48/96/192k null, mono, peaks, smoothing, block size, recall, factories");
+    return failures == 0 ? 0 : 1;
+}
+
+int phaseStateSmoke(){
+ auto p=std::make_unique<SkellPresetAudioProcessor>();
+ juce::MemoryBlock original;p->getStateInformation(original);auto xml=juce::AudioProcessor::getXmlFromBinary(original.getData(),(int)original.getSize());if(!xml)return 1;
+ auto old=juce::ValueTree::fromXml(*xml);int removed=0;for(int i=old.getNumChildren()-1;i>=0;--i)if(old.getChild(i).getProperty("id").toString().endsWith("_fxExt12")){old.removeChild(i,nullptr);++removed;}if(removed!=16)return 2;
+ const auto& parameters=p->getParameters();int first=-1;for(int i=0;i<parameters.size();++i){auto* id=dynamic_cast<juce::AudioProcessorParameterWithID*>(parameters[i]);if(id&&id->paramID=="s1_fxExt12"){first=i;break;}}
+ if(first<0||first+16>=parameters.size())return 3;
+ for(int i=0;i<16;++i){auto* id=dynamic_cast<juce::AudioProcessorParameterWithID*>(parameters[first+i]);if(!id||id->paramID!="s"+juce::String(i+1)+"_fxExt12")return 4;}
+ auto* next=dynamic_cast<juce::AudioProcessorParameterWithID*>(parameters[first+16]);if(!next||next->paramID!="s1_studioEqDynamic1")return 4;
+ p->setSlotType(0,SkellPresetAudioProcessor::PhaseRotationFX);p->setSlotParam(0,0,.5f);p->setSlotParam(0,1,.4f);p->setSlotParam(0,2,1.f);p->setSlotParam(0,3,.5f);if(p->slotType(0)!=45)return 5;
+ p->prepareToPlay(48000,128);if(p->getLatencySamples()!=0)return 6;
+ juce::MemoryBlock phase;p->getStateInformation(phase);auto q=std::make_unique<SkellPresetAudioProcessor>();q->setStateInformation(phase.getData(),(int)phase.getSize());if(q->slotType(0)!=45)return 7;
+ const auto f=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("phase-state-qa",".skellpreset");if(p->exportPreset(f).failed())return 8;if(q->importPreset(f).failed()||q->slotType(0)!=45){f.deleteFile();return 9;}f.deleteFile();
+ juce::MemoryBlock older;juce::AudioProcessor::copyXmlToBinary(*old.createXml(),older);q->setStateInformation(older.getData(),(int)older.getSize());if(q->slotType(0)==45)return 10;
+ std::cout<<"PASS: appended 16 flags, zero latency, native package and state roundtrip, legacy state clears phase flags\n";return 0;
+}
+
 } // namespace
 
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI initialiser;
+    if(argc==2 && juce::String(argv[1])=="--phase-state-smoke")return phaseStateSmoke();
+    if(argc==2 && juce::String(argv[1])=="--preview-smoke")return vocalPreviewSmoke();
+    if(argc>=5 && argc<=7 && (juce::String(argv[1])=="--preview-starter" || juce::String(argv[1])=="--preview-preset" ||
+                                juce::String(argv[1])=="--audition-starter" || juce::String(argv[1])=="--audition-preset")){
+        const bool starter=juce::String(argv[1]).endsWith("-starter");
+        const bool audition=juce::String(argv[1]).startsWith("--audition-");
+        const juce::String profile(argv[2]);
+        int profileId=0,variant=0;
+        if(starter){
+            const auto parts=juce::StringArray::fromTokens(profile,":","");
+            if(parts.size()<1 || parts.size()>2)return 7;
+            if(parts[0].isEmpty() || !parts[0].containsOnly("0123456789") || parts[0].length()>2)return 7;
+            profileId=parts[0].getIntValue();
+            if(parts.size()==2){if(parts[1].isEmpty() || parts[1].length()>2 || !parts[1].containsOnly("0123456789"))return 7;variant=parts[1].getIntValue();}
+            if(profileId<1 || profileId>skellpreset::starter::count || variant>skellpreset::starter::variations)return 7;
+        }
+        double tail=0.,bpm=120.;
+        if(argc>=6){char* end=nullptr;tail=std::strtod(argv[5],&end);if(end==argv[5] || *end!='\0')return 7;}
+        if(argc==7){char* end=nullptr;bpm=std::strtod(argv[6],&end);if(end==argv[6] || *end!='\0')return 7;}
+        const auto source=juce::File(juce::String::fromUTF8(argv[3])),destination=juce::File(juce::String::fromUTF8(argv[4]));
+        const auto package=starter?juce::File{}:juce::File(juce::String::fromUTF8(argv[2]));
+        const auto result=audition?skellpreset::preview::renderMatchedPair(source,destination,starter?profileId-1:-1,package,tail,bpm,variant):
+            skellpreset::preview::render(source,destination,starter?profileId-1:-1,package,tail,bpm,variant);
+        if(result.failed()){std::fprintf(stderr,"%s\n",result.getErrorMessage().toRawUTF8());return 8;}
+        return 0;
+    }
     if(argc==2 && juce::String(argv[1])=="--smoke")return smoke();
     if(argc==2 && juce::String(argv[1])=="--smoke-blank")return blankSmoke();
     if(argc==2 && juce::String(argv[1])=="--smoke-slot-order")return strictSlotOrderSmoke();
     if(argc==2 && juce::String(argv[1])=="--ui-smoke")return uiSmoke();
     if(argc==2 && juce::String(argv[1])=="--studio-smoke")return studioSmoke();
+    if(argc==2 && juce::String(argv[1])=="--master-signal-smoke")return masterSignalSmoke();
     if(argc==2 && juce::String(argv[1])=="--native-trials-smoke")return nativeTrialsSmoke();
     if(argc==2 && juce::String(argv[1])=="--lowend-override-smoke")return lowEndOverrideSmoke();
     if(argc==2 && juce::String(argv[1])=="--percent-smoke")return percentDisplaySmoke();
     if(argc==2 && juce::String(argv[1])=="--stress")return stress();
     if(argc==2 && juce::String(argv[1])=="--smoke-mono")return monoSmoke();
+    if(argc==2 && juce::String(argv[1])=="--stereo-separation")return stereoSeparationSmoke();
     if(argc==7 && juce::String(argv[1])=="--factory-override") {
-        const int factory=juce::String(argv[2]).getIntValue();
+        const int factory=skellpreset::factoryIndexForRecipe(juce::String(argv[2]).getIntValue());
         const float hpf=std::strtof(argv[3],nullptr);
         const float band70=std::strtof(argv[4],nullptr);
         if(factory!=skellpreset::alchemist_serial_dynamics_blend_trial::factoryIndex ||
@@ -1856,11 +3096,15 @@ int main(int argc,char** argv) {
         if(requested!="43" && requested!="44" && requested!="45" && requested!="46" && requested!="47" && requested!="48" && requested!="49" && requested!="50" && requested!="51" && requested!="52" && requested!="53" && requested!="54")return 7;
         return render(juce::File(juce::String::fromUTF8(argv[3])),
                       juce::File(juce::String::fromUTF8(argv[4])),
-                      requested.getIntValue());
+                      skellpreset::factoryIndexForRecipe(requested.getIntValue()));
     }
     if(argc!=3) {
         std::fprintf(stderr,"Usage: SkellPresetAlchemistRender --factory 43|44|45|46|47|48|49|50|51|52|53|54 INPUT.wav NEW_OUTPUT.wav\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --factory-override 54 HPF_NORMALIZED BAND70_GAIN_NORMALIZED INPUT.wav NEW_OUTPUT.wav\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --audition-starter PROFILE[:VARIANT] INPUT NEW_FOLDER [TAIL_SECONDS] [BPM]\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --audition-preset PRESET.skellpreset INPUT NEW_FOLDER [TAIL_SECONDS] [BPM]\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-starter PROFILE[:VARIANT] INPUT NEW_OUTPUT.wav [TAIL_SECONDS] [BPM]\n");
+        std::fprintf(stderr,"       SkellPresetAlchemistRender --preview-preset PRESET.skellpreset INPUT NEW_OUTPUT.wav [TAIL_SECONDS] [BPM]\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --lowend-override-smoke\n");
         std::fprintf(stderr,"       SkellPresetAlchemistRender --compare CANDIDATE.wav REFERENCE.wav\n");
         return 1;
@@ -1868,3 +3112,4 @@ int main(int argc,char** argv) {
     return render(juce::File(juce::String::fromUTF8(argv[1])),
                   juce::File(juce::String::fromUTF8(argv[2])));
 }
+

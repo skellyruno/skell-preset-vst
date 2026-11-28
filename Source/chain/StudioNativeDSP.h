@@ -45,9 +45,13 @@ public:
     void prepare(double sampleRate) noexcept {
         sr=std::clamp(std::isfinite(sampleRate)?sampleRate:48000.,8000.,192000.);
         for(auto& f:filters)f.prepare(sr);
+        for(auto& row:extras)for(auto& f:row)f.prepare(sr);
+        stages.fill(0);
+        for(auto& d:dynamic){d={};d.cut.prepare(sr);d.attackPole=std::exp(-1./(.012*sr));d.releasePole=std::exp(-1./(.110*sr));}
+        cadence=std::max(8,(int)(sr*.002));
         initialized=false;
     }
-    void reset() noexcept {for(auto& f:filters)f.reset();}
+    void reset() noexcept {for(auto& f:filters)f.reset();for(auto& row:extras)for(auto& f:row)f.reset();for(auto& d:dynamic){d.detector.reset();d.cut.reset();d.env=0.;d.applied=0.f;d.counter=0;d.cut.aim(skellpreset::dsp::Biquad{});}}
     static constexpr std::array<int,8> defaultKinds{{3,0,0,0,0,0,4,0}};
     static constexpr std::array<bool,8> defaultEnabled{{true,true,true,true,true,true,true,false}};
     void set(const std::array<float,16>& p,const std::array<float,8>& widths) noexcept {
@@ -56,20 +60,27 @@ public:
     void set(const std::array<float,16>& p,const std::array<float,8>& widths,
              const std::array<int,8>& kinds,
              const std::array<bool,8>& enabled) noexcept {
+        set(p,widths,kinds,enabled,std::array<float,8>{});
+    }
+    void set(const std::array<float,16>& p,const std::array<float,8>& widths,
+             const std::array<int,8>& kinds,const std::array<bool,8>& enabled,const std::array<float,8>& slopes) noexcept {
         if(initialized && p==lastP && widths==lastWidths &&
-           kinds==lastKinds && enabled==lastEnabled)return;
+           kinds==lastKinds && enabled==lastEnabled && slopes==lastSlopes)return;
         initialized=true;lastP=p;lastWidths=widths;
-        lastKinds=kinds;lastEnabled=enabled;
+        lastKinds=kinds;lastEnabled=enabled;lastSlopes=slopes;
         for(int k=0;k<8;++k){
             const double freq=std::clamp(20.*std::pow(1000.,(double)detail::unit(p[(size_t)k*2])),20.,sr*.46);
             const double gain=36.*((double)detail::unit(p[(size_t)k*2+1])-.5);
             const double width=(double)detail::unit(widths[(size_t)k]);
-            const int style=std::clamp(kinds[(size_t)k],0,4); // peak,HP,LP,low shelf,high shelf
+            const int style=std::clamp(kinds[(size_t)k],0,6); // peak,HP,LP,low shelf,high shelf,notch,bandpass
             const int kind=style==0?6:(style==3?5:7);
             const double angle=2.*skellpreset::dsp::pi/sr;
             const double w=std::min(freq*angle,kind==6?2.1991147994995117:3.138451099395752);
             const double sn=std::sin(w),cs=std::cos(w);
             skellpreset::dsp::Biquad c;
+            const size_t b=(size_t)k;
+            stages[b]=enabled[b]&&(style==1||style==2)?(int)std::round(detail::unit(slopes[b]*.5f)*2.f):0;
+            for(int i=0;i<2;++i){skellpreset::dsp::Biquad next;if(i<stages[b]){if(style==1)next.setHighPass(sr,freq);else next.setLowPass(sr,freq);}extras[b][(size_t)i].aim(next);}
             if(!enabled[(size_t)k]){
                 filters[(size_t)k].aim(c);
                 continue;
@@ -78,6 +89,10 @@ public:
                 const double q=.35*std::pow(12.,width);
                 if(style==1)c.setHighPass(sr,freq,q);
                 else c.setLowPass(sr,freq,q);
+            }else if(style==5||style==6){
+                const double q=.35*std::pow(12.,width),alpha=sn/(2.*q),n=1./(1.+alpha);
+                c.a1=-2.*cs*n;c.a2=(1.-alpha)*n;
+                if(style==5){c.b0=n;c.b1=c.a1;c.b2=n;}else{c.b0=alpha*n;c.b1=0.;c.b2=-c.b0;}
             }else if(std::abs(gain)>1.e-7){
                 constexpr double dbUnit=.1151292546497022842; // ln(10)/20
                 if(kind==6){
@@ -113,15 +128,73 @@ public:
             filters[(size_t)k].aim(c);
         }
     }
+    // Opt-in linked stereo dynamic bell cut: adjustable timing/threshold.
+    // No lookahead or allocations.
+    void setDynamics(const std::array<float,8>& amounts) noexcept {
+        std::array<float,8> th,a,r;th.fill(-24.f);a.fill(12.f);r.fill(110.f);setDynamics(amounts,th,a,r);
+    }
+    void setDynamics(const std::array<float,8>& amounts,const std::array<float,8>& thresholds,const std::array<float,8>& attacks,const std::array<float,8>& releases) noexcept {
+        for(size_t k=0;k<dynamic.size();++k){
+            auto& d=dynamic[k];
+            const float amount=lastEnabled[k] && lastKinds[k]==0?detail::unit(amounts[k]):0.f;
+            if(amount==0.f){if(d.amount>0.f){d.cut.aim(skellpreset::dsp::Biquad{});d.env=0.;d.applied=0.f;d.detector.reset();}d.amount=0.f;continue;}
+            d.threshold=skellpreset::dsp::clamp(thresholds[k],-80.f,0.f);
+            const float a=skellpreset::dsp::clamp(attacks[k],.5f,200.f),r=skellpreset::dsp::clamp(releases[k],5.f,2000.f);
+            if(d.attackMs!=a){d.attackMs=a;d.attackPole=std::exp(-1./(.001*a*sr));}
+            if(d.releaseMs!=r){d.releaseMs=r;d.releasePole=std::exp(-1./(.001*r*sr));}
+            const float frequencyControl=detail::unit(lastP[k*2]),widthControl=detail::unit(lastWidths[k]);
+            if(d.amount==amount && d.frequencyControl==frequencyControl && d.widthControl==widthControl)continue;
+            const double f=std::clamp(20.*std::pow(1000.,(double)frequencyControl),20.,sr*.46);
+            // Match the existing bell's octave bandwidth approximately.
+            const double bw=.1+4.9*detail::unit(lastWidths[k]);
+            const double q=std::clamp(1./(2.*std::sinh(std::log(2.)*.5*bw)),.2,12.);
+            if(d.amount==amount && d.freq==f && d.q==q)continue;
+            d.amount=amount;d.freq=f;d.q=q;d.frequencyControl=frequencyControl;d.widthControl=widthControl;
+            const double w=2.*skellpreset::dsp::pi*f/sr,alpha=std::sin(w)/(2.*q),n=1./(1.+alpha);
+            d.detector.b0=alpha*n;d.detector.b1=0.;d.detector.b2=-alpha*n;
+            d.detector.a1=-2.*std::cos(w)*n;d.detector.a2=(1.-alpha)*n;
+            d.counter=0;
+        }
+    }
     std::array<float,2> process(float l,float r) noexcept {
-        for(auto& filter:filters){const auto y=filter.process(l,r);l=y[0];r=y[1];}
+        const float dryL=l,dryR=r;
+        for(size_t k=0;k<filters.size();++k){
+            const auto y=filters[k].process(l,r);l=y[0];r=y[1];
+            for(size_t i=0;i<2;++i){auto& f=extras[k][i];if((int)i<stages[k]||f.remaining>0){const auto z=f.process(l,r);l=z[0];r=z[1];}}
+            auto& d=dynamic[k];
+            if(d.amount>0.f){
+                const double a=d.detector.process(dryL,0),b=d.detector.process(dryR,1);
+                const double power=.5*(a*a+b*b),pole=power>d.env?d.attackPole:d.releasePole;
+                d.env=power+(d.env-power)*pole;
+                if(--d.counter<=0){
+                    d.counter=cadence;
+                    const float over=(float)(10.*std::log10(std::max(1.e-12,d.env))-d.threshold);
+                    const float target=-12.f*d.amount*std::clamp(over/18.f,0.f,1.f);
+                    if(std::abs(target-d.applied)>.045f || (target==0.f && d.applied!=0.f)){
+                        d.applied=target;
+                        d.cut.setPeak(sr,d.freq,target,d.q);
+                    }
+                }
+            }
+            if(d.amount>0.f || d.cut.remaining>0){const auto wet=d.cut.process(l,r);l=wet[0];r=wet[1];}
+        }
         return {detail::safe(l),detail::safe(r)};
     }
     // Separate, immutable target coefficients for the UI frequency response.
+    float reductionDb(size_t band) const noexcept {
+        if(band>=dynamic.size())return 0.f;
+        const auto& d=dynamic[band];
+        return d.freq>0.&&(d.amount>0.f||d.cut.remaining>0)?(float)std::clamp(-d.cut.current.magnitudeDb(d.freq,sr),0.,12.):0.f;
+    }
+    double bandMagnitudeDb(size_t band,double frequency) const noexcept {
+        if(band>=filters.size())return 0.;
+        double db=filters[band].target.magnitudeDb(frequency,sr);
+        for(int i=0;i<stages[band];++i)db+=extras[band][(size_t)i].target.magnitudeDb(frequency,sr);
+        return db;
+    }
     double magnitudeDb(double frequency) const noexcept {
         double total=0.;
-        for(const auto& filter:filters)
-            total+=filter.target.magnitudeDb(frequency,sr);
+        for(size_t k=0;k<filters.size();++k)total+=bandMagnitudeDb(k,frequency);
         return std::isfinite(total)?total:0.;
     }
 private:
@@ -131,6 +204,10 @@ private:
     std::array<int,8> lastKinds=defaultKinds;
     std::array<bool,8> lastEnabled=defaultEnabled;
     std::array<skellpreset::dsp::SmoothedBiquad,8> filters{};
+    std::array<std::array<skellpreset::dsp::SmoothedBiquad,2>,8> extras{};std::array<int,8> stages{};std::array<float,8> lastSlopes{};
+    struct DynamicBand {skellpreset::dsp::Biquad detector;skellpreset::dsp::SmoothedBiquad cut;double env=0.,freq=0.,q=1.;float amount=0.f,applied=0.f,frequencyControl=-1.f,widthControl=-1.f,threshold=-24.f,attackMs=12.f,releaseMs=110.f;double attackPole=0.,releasePole=0.;int counter=0;};
+    std::array<DynamicBand,8> dynamic{};
+    int cadence=96;
 };
 
 // Studio Dynamics transfers the original threshold/ratio/knee laws, a stereo
@@ -166,18 +243,21 @@ public:
         envelope=pole*envelope+(1.-pole)*rms;
         if(envelope<1.e-20)envelope=0.;
         const float lvl=(float)std::min(envelope,100.);
-        if(lvl<=thresholdAmp)return 1.f;
+        if(lvl<=thresholdAmp){measuredGain=1.f;measuredReductionDb=0.f;return 1.f;}
         const float over=20.f*std::log10(lvl)-thresholdDb;
         const float db=(kneeA>1.e-5f)
             ? ((std::log1p((over+1.f)*kneeA)*kneeB-1.f)*(slope+1.f)-over)
             : over*slope;
-        return std::clamp(std::pow(10.f,db/20.f),0.f,1.f);
+        measuredReductionDb=-db;
+        measuredGain=std::clamp(std::pow(10.f,db/20.f),0.f,1.f);return measuredGain;
     }
     std::array<float,2> process(float l,float r) noexcept {
         const float g=gain(l,r);return {detail::safe(l*g),detail::safe(r*g)};
     }
+    float gainReductionDb() const noexcept {return measuredReductionDb;}
 private:
     double sr=48000.,sum=0.,envelope=0.,attackPole=.9,releasePole=.999;
+    float measuredGain=1.f,measuredReductionDb=0.f;
     float thresholdAmp=.25f,thresholdDb=-12.f,slope=-.7f,kneeA=0.f,kneeB=0.f;
     std::array<float,4096> window{};
     size_t index=0;int rmsCount=64;

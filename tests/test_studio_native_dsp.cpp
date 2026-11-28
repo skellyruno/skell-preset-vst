@@ -13,6 +13,36 @@
 #include <limits>
 int main(){
     using namespace skellpreset::studio;
+    // New dynamic path is opt-in and frequency-selective at all rates.
+    for(double sr:{44100.,48000.,96000.,192000.}){
+        ParametricEQ a,b;a.prepare(sr);b.prepare(sr);
+        std::array<float,16> p{};p.fill(.5f);p[2]=(float)(std::log(2000./20.)/std::log(1000.));
+        std::array<float,8> q{};q.fill(.3f);std::array<float,8> depth{};depth[1]=1.f;
+        a.set(p,q);b.set(p,q);a.setDynamics(depth);
+        auto measure=[&](double f,float amp){a.prepare(sr);b.prepare(sr);a.set(p,q);b.set(p,q);a.setDynamics(depth);double wet=0.,dry=0.;for(int i=0;i<(int)(sr*.40);++i){const float x=amp*(float)std::sin(2.*skellpreset::dsp::pi*f*i/sr);auto y=a.process(x,x);auto z=b.process(x,x);if(i>sr*.25){wet+=y[0]*y[0];dry+=z[0]*z[0];}}return std::sqrt(wet/dry);};
+        SKELL_REQUIRE(measure(2000.,.5f)<.75);
+        SKELL_REQUIRE(measure(2000.,.005f)>.995);
+        SKELL_REQUIRE(measure(100.,.5f)>.95);
+        depth.fill(0.f);a.prepare(sr);b.prepare(sr);a.set(p,q);b.set(p,q);a.setDynamics(depth);
+        for(int i=0;i<2000;++i){float x=.3f*std::sin(i*.031f);SKELL_REQUIRE(a.process(x,-x)==b.process(x,-x));}
+    }
+    for(double sr:{44100.,48000.,96000.,192000.}){
+        ParametricEQ eq;eq.prepare(sr);std::array<float,16> p{};p.fill(.5f);
+        p[2]=(float)(std::log(2000./20.)/std::log(1000.));
+        std::array<float,8> q{},depth{},threshold{},attack{},release{},slopes{};q.fill(.3f);depth[1]=1.f;threshold.fill(-60.f);attack.fill(2.f);release.fill(50.f);
+        eq.set(p,q);eq.setDynamics(depth,threshold,attack,release);
+        for(int i=0;i<(int)(sr*.35);++i){const float x=.02f*std::sin(2.*skellpreset::dsp::pi*2000.*i/sr);eq.process(x,x);}
+        SKELL_REQUIRE(eq.reductionDb(1)>3.f);
+        threshold.fill(0.f);eq.setDynamics(depth,threshold,attack,release);
+        for(int i=0;i<(int)(sr*.3);++i)eq.process(.02f,.02f);
+        SKELL_REQUIRE(eq.reductionDb(1)<.1f);
+        auto kinds=ParametricEQ::defaultKinds;auto enabled=ParametricEQ::defaultEnabled;enabled.fill(false);enabled[1]=true;kinds[1]=1;
+        eq.set(p,q,kinds,enabled,slopes);const double first=eq.magnitudeDb(200.);
+        slopes[1]=2.f;eq.set(p,q,kinds,enabled,slopes);SKELL_REQUIRE(eq.magnitudeDb(200.)<first-35.);
+        kinds[1]=5;eq.set(p,q,kinds,enabled,slopes);SKELL_REQUIRE(eq.magnitudeDb(2000.)<-70.);SKELL_REQUIRE(std::abs(eq.magnitudeDb(100.))<.1);
+        kinds[1]=6;eq.set(p,q,kinds,enabled,slopes);SKELL_REQUIRE(std::abs(eq.magnitudeDb(2000.))<.01);SKELL_REQUIRE(eq.magnitudeDb(100.)<-15.);
+        for(int i=0;i<10000;++i){const auto y=eq.process(.2f*std::sin(i*.03f),.1f);SKELL_REQUIRE(std::isfinite(y[0])&&std::isfinite(y[1]));}
+    }
     FastDist dist;dist.prepare(48000.);
     struct Sample{std::array<int,5> p;float x;float expected;};
     // Reference vectors from Skell Studio's Rust tests; the original FL reference values.

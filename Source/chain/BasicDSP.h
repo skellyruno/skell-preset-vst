@@ -101,7 +101,7 @@ struct SmoothedBiquad {
 
 struct Compressor {
     double sampleRate=48000, envelope=0;
-    float threshold=-18,ratio=3,attackMs=12,releaseMs=90,makeupDb=0;
+    float threshold=-18,ratio=3,attackMs=12,releaseMs=90,makeupDb=0,lastReductionDb=0;
     // Parameter smoothing guards against clicks when the host writes automation
     // at block boundaries. Envelope smoothing remains independent.
     double smoothedThreshold=-18,smoothedRatio=3,smoothedMakeup=0,paramPole=.998;
@@ -110,6 +110,8 @@ struct Compressor {
         paramPole=std::exp(-1. / (sampleRate*.012));
         smoothedThreshold=threshold;smoothedRatio=ratio;smoothedMakeup=makeupDb;reset();
     }
+    double timingRate=0.,attackPole=0.,releasePole=0.;
+    float timingAttack=0.f,timingRelease=0.f;
     void reset() noexcept {envelope=0;}
     void set(float thr,float r,float attack,float release,float makeup) noexcept {
         threshold=clamp(thr,-60,0); ratio=clamp(r,1,20);attackMs=clamp(attack,.2f,200);releaseMs=clamp(release,5,2000);makeupDb=clamp(makeup,-24,24);
@@ -119,11 +121,17 @@ struct Compressor {
         smoothedRatio=paramPole*smoothedRatio+(1.-paramPole)*ratio;
         smoothedMakeup=paramPole*smoothedMakeup+(1.-paramPole)*makeupDb;
         const auto val=std::isfinite(detector)?std::min(10000.f,std::abs(detector)):0.f;
-        const auto a=std::exp(-1./(sampleRate*.001*(val>envelope?attackMs:releaseMs)));
+        if(timingRate!=sampleRate || timingAttack!=attackMs || timingRelease!=releaseMs) {
+            timingRate=sampleRate;timingAttack=attackMs;timingRelease=releaseMs;
+            attackPole=std::exp(-1./(sampleRate*.001*attackMs));
+            releasePole=std::exp(-1./(sampleRate*.001*releaseMs));
+        }
+        const auto a=val>envelope?attackPole:releasePole;
         envelope=a*envelope+(1-a)*val;
         if(envelope<1.e-20)envelope=0.; // no persistent denormal detector state
         const auto lvl=gainToDb(static_cast<float>(envelope));
         const auto gr=lvl>smoothedThreshold?(lvl-smoothedThreshold)*(1.-1./smoothedRatio):0.;
+        lastReductionDb=(float)gr;
         return dbToGain((float)(smoothedMakeup-gr));
     }
 };
@@ -131,12 +139,21 @@ struct Compressor {
 struct Gate {
     double sr=48000,envelope=0,gain=0;
     float threshold=-45.f,release=90.f,holdMs=55.f,hysteresisDb=3.f;
+    float attackMs=4.f; // historical gate attack default
     int holdRemaining=0;
     bool open=false;
+    double timingRate=0.,detectPole=0.,attackPole=0.,releasePole=0.;
+    float timingAttack=0.f,timingRelease=0.f;
     void prepare(double rate) noexcept {sr=std::max(8000.,rate);envelope=0;gain=0;holdRemaining=0;open=false;}
     float processGain(float detector) noexcept {
         // Schmitt thresholds and a hold timer prevent quiet-consonant chatter.
-        const auto a=std::exp(-1./(sr*.004));
+        if(timingRate!=sr || timingAttack!=attackMs || timingRelease!=release) {
+            timingRate=sr;timingAttack=attackMs;timingRelease=release;
+            detectPole=std::exp(-1./(sr*.004));
+            attackPole=std::exp(-1./(sr*.001*(double)clamp(attackMs,.5f,25.f)));
+            releasePole=std::exp(-1./(sr*.001*(double)std::max(20.f,release)));
+        }
+        const auto a=detectPole;
         const double input=std::isfinite(detector)?std::abs((double)detector):0.;
         envelope=a*envelope+(1-a)*input;
         if(envelope<1.e-20)envelope=0.;
@@ -150,7 +167,7 @@ struct Gate {
                 open=false;
         }
         const float goal=open?1.f:0.f;
-        const auto smooth=std::exp(-1./(sr*.001*(goal>gain?4.:std::max(20.f,release))));
+        const auto smooth=goal>gain?attackPole:releasePole;
         gain=smooth*gain+(1-smooth)*goal;
         if(gain<1.e-20)gain=0.;
         return clamp((float)gain,0.f,1.f);
@@ -245,6 +262,33 @@ inline float softLimit(float x,float ceiling=0.96f) noexcept {
 }
 
 
+// Shared stereo history: append the entire current chunk once and read
+// arbitrary earlier taps for serial sidechain alignment, even when FX are off.
+// The capacity includes a complete maximum chunk so earlier samples survive.
+struct DetectorHistory {
+    std::array<std::vector<float>,2> data;
+    size_t head=0;
+    void prepare(int maxDelay,int maxChunk) {
+        const size_t capacity=static_cast<size_t>(std::max(0,maxDelay))+
+            static_cast<size_t>(std::max(1,maxChunk))+1;
+        for(auto& d:data)d.assign(capacity,0.f);
+        head=0;
+    }
+    void push(float l,float r) noexcept {
+        if(data[0].empty())return;
+        data[0][head]=std::isfinite(l)?l:0.f;data[1][head]=std::isfinite(r)?r:0.f;
+        if(++head==data[0].size())head=0;
+    }
+    std::array<float,2> at(int frames,int n,int delay) const noexcept {
+        if(data[0].empty() || n<0 || n>=frames)return {0.f,0.f};
+        const auto size=data[0].size();
+        const size_t age=static_cast<size_t>(frames-n)+static_cast<size_t>(std::max(0,delay));
+        if(age>=size)return {0.f,0.f};
+        const size_t ix=head>=age?head-age:size-(age-head);
+        return {data[0][ix],data[1][ix]};
+    }
+};
+
 // Preallocated PDC line: all dry/wet alignment runs without reallocations or locks.
 struct StereoSampleDelay {
     std::array<std::vector<float>,2> channel;
@@ -261,9 +305,10 @@ struct StereoSampleDelay {
         const auto d=(size_t)std::clamp(delay,0,(int)capacity-2);
         channel[0][head]=std::isfinite(l)?l:0.f;
         channel[1][head]=std::isfinite(r)?r:0.f;
-        const size_t read=(head+capacity-d)%capacity;
+        // Both head and d are below capacity: one conditional wrap is exact.
+        const size_t read=head>=d?head-d:capacity-(d-head);
         const std::array<float,2> output{channel[0][read],channel[1][read]};
-        head=(head+1)%capacity;
+        if(++head==capacity)head=0;
         return output;
     }
 };

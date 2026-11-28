@@ -28,8 +28,22 @@ struct Slot {
     // retain original 7-band defaults; eighth band starts switched off.
     std::array<int,8> studioEqKind {{3,0,0,0,0,0,4,0}};
     std::array<bool,8> studioEqOn {{true,true,true,true,true,true,true,false}};
+    std::array<float,8> studioEqDynamic{};
+    std::array<float,8> studioEqThreshold{{-24.f,-24.f,-24.f,-24.f,-24.f,-24.f,-24.f,-24.f}};
+    std::array<float,8> studioEqAttack{{12.f,12.f,12.f,12.f,12.f,12.f,12.f,12.f}};
+    std::array<float,8> studioEqRelease{{110.f,110.f,110.f,110.f,110.f,110.f,110.f,110.f}};
+    std::array<float,8> studioEqSlope{{0.f,0.f,0.f,0.f,0.f,0.f,0.f,0.f}};
+    std::array<float,8> studioEqExtraShape{};
     // Optional v2 fields; absent in old presets, so both filters are flat.
     float eqLowCut=0.f,eqHighCut=0.f;
+    // Native v2 optional extension, default OFF on original archives.
+    bool duckOn=false;
+    bool rightFirst=false,dubDuckOn=false; // optional v2, legacy off
+    int duckSource=0;
+    bool parallelReturn=false,duckExternal=false,duckEffect=false;
+    float duckDepth=.65f,duckThreshold=-32.f,duckRelease=320.f,
+          duckAttack=12.f;
+    float limitAttack=0.f,limitRelease=70.f;
 };
 
 struct Document {
@@ -43,6 +57,18 @@ struct Document {
     bool micPreOn = false;
     int micPreInput = 0, micPreTarget = 0;
     float micPreAmount = 1.f, micPreTrim = .5f;
+    // Optional v2 extension; absence means the original input gate stays OFF.
+    // Keep old .skellpreset packages readable and allow new gate state recall.
+    bool micGateOn = false;
+    float micGateThreshold = -45.f, micGateRelease = 160.f, micGateHold = 55.f;
+    float micGateAttackMs=4.f,micGateHysteresisDb=3.f,micGateDepth=1.f;
+    // Optional v2 extension: native output-stage stereo separation, raw
+    // -96..+96 (negative widens, positive merges, 0 neutral). Absent in older
+    // packages, so every existing preset loads at verified neutral.
+    int stereoSeparation = 0;
+    // Independent optional MIC preamp; legacy archives remain neutral/off.
+    bool micTubeOn=false;
+    float micTubeGain=0.f,micTubeDrive=0.f,micTubeAir=0.f,micTubeTrim=0.f;
     std::array<float, 8> macros {{.5f,.5f,.5f,.5f,.5f,.5f,.5f,.5f}};
     std::array<Slot, slotCount> slots = [] {
         std::array<Slot, slotCount> result {};
@@ -56,4 +82,5 @@ struct Document {
 // rejects symlinks and unsupported members, and NEVER extracts archive paths.
 juce::Result write(const juce::File& target, const Document& document);
 juce::Result read(const juce::File& source, Document& result);
+juce::Result readMemory(const juce::MemoryBlock& source, Document& result);
 } // namespace skellpreset::package

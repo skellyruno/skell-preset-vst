@@ -1,0 +1,13 @@
+# Major UI / master signal pass
+
+Baseline: 4c8022789f438b0a8d73a2ed0cc555ea22cff7b4, draft PR #90. Four owner screenshots: cluttered browser, De-Esser marker mismatch, flat stage, misaligned tagline.
+
+Source changes: native browser directory navigation with no visible stacked filters, leaf vocal type tabs, bounded draggable header and bottom/right resize grip, size-responsive 6/7 rows; same metadata and IDs. Header removes Match and rack move status, brings preset selector near mode. Master sliders remain available both workspaces. Original input dry tap is delay compensated and output trim follows blend, existing 20ms smoothing retained. Shared effect face removes VISUAL return surface and overlapping footer text. De-Esser uses the actual static one-pole split transfer at maximum reduction, with log-frequency handle and frequency-only host gestures. Stage adds two muted, audio-reactive audience layers. Native regression tests added for master audio/recall, graph mapping, and browser dimensions.
+
+Unverified until exact-head CI and local captures: every-effect visual review; stage aesthetics; real host recall and audio listening; CPU/latency evidence. GitHub DNS was unavailable locally (JUCE and plugin git ls-remote failed), so no screenshots or local native build are claimed. Previous verified build remains 7c1ecca / 45318506274. No factory recipe or automation ID changes. Dry blend behavior intentionally changes when Mix is below 100% and input/mic processing is active; the full-wet path and full bypass are retained.
+
+### Follow-up source inspection
+- Consolidated Import/Save under Manage Library, leaving only six navigation rows and one management entry while browsing.
+- Independent resize axes, anchored edge constraints, theme-aware vocal tabs, and expanded visibility assertions.
+- Added sculpted joint shading and skull lighting to the native stage drawing; no generated assets.
+- Extended actual processor-render tests to Mix/Output automation ramps and a temporary personal preset archive round-trip in both modes. Exact-head Windows results still required.

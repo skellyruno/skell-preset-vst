@@ -23,7 +23,7 @@ int main() {
     static_assert(atr::factoryIndex==de::factoryIndex+1,"append-only Alchemist trial");
     static_assert(al::stages.size()==7 && de::stages.size()==12,"factory shape");
     static_assert(al::stages[6].p[12]==.5f,"base Alchemist must stay refined-OFF");
-    static_assert(skellpreset::alchemist_lighter_dynamics_trial::factoryIndex==49,
+    static_assert(skellpreset::alchemist_lighter_dynamics_trial::factoryIndex==33,
                   "Alchemist lighter-dynamics trial is append-only");
     static_assert(skellpreset::alchemist_lighter_dynamics_trial::stages.size()==8 &&
                   skellpreset::alchemist_lighter_dynamics_trial::stages[7].module==3,
@@ -31,8 +31,8 @@ int main() {
     static_assert(skellpreset::alchemist_lighter_dynamics_trial::stages[2].wet==.20f &&
                   skellpreset::alchemist_lighter_dynamics_trial::stages[3].wet==.50f,
                   "Combined fast/slow trial preserves its two documented wet changes");
-    static_assert(skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex==50 &&
-                  skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex==51,
+    static_assert(skellpreset::alchemist_fast_compressor_blend_trial::factoryIndex==34 &&
+                  skellpreset::alchemist_smooth_compressor_blend_trial::factoryIndex==35,
                   "Independent Alchemist blend trials append at 50 and 51");
     static_assert(skellpreset::alchemist_fast_compressor_blend_trial::stages[2].wet==.20f &&
                   skellpreset::alchemist_fast_compressor_blend_trial::stages[3].wet==.70f,
@@ -40,7 +40,7 @@ int main() {
     static_assert(skellpreset::alchemist_smooth_compressor_blend_trial::stages[2].wet==.35f &&
                   skellpreset::alchemist_smooth_compressor_blend_trial::stages[3].wet==.50f,
                   "Factory 51 changes only smooth compressor blend");
-    static_assert(skellpreset::alchemist_serial_dynamics_trial::factoryIndex==52 &&
+    static_assert(skellpreset::alchemist_serial_dynamics_trial::factoryIndex==36 &&
                   skellpreset::alchemist_serial_dynamics_trial::stages.size()==7 &&
                   skellpreset::alchemist_serial_dynamics_trial::stages[2].module==27 &&
                   skellpreset::alchemist_serial_dynamics_trial::stages[6].module==3,

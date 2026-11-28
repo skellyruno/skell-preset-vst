@@ -82,14 +82,48 @@ int main(int argc,char** argv) {
 
     skellpreset::host::HostedVST3 host;
     const juce::File fixture(juce::String::fromUTF8(argv[1]));
-    const auto loaded=host.load(0,fixture,48000.,512);
+    using Host=skellpreset::host::HostedVST3;
+    // The real public scan/load entry points must reject unsafe names before
+    // attempting to open a DLL, even when the saved path no longer exists.
+    // Normal effects must remain eligible for the actual fixture load below.
+    for(const auto* name:{"FloopHole.vst3","Floop-Hole.vst3","FLOOP_HOLE.vst3","Skell Preset.vst3"}) {
+        const auto path=fixture.getSiblingFile(name);
+        const auto safety=skellpreset::host::nestedHostSafety(path.getFileNameWithoutExtension());
+        std::vector<Host::EffectChoice> blocked;
+        const auto scan=Host::inspectEffects(path,blocked);
+        const auto load=host.load(0,path,48000.,512);
+        if(safety.wasOk() || scan.getErrorMessage()!=safety.getErrorMessage()
+           || load.getErrorMessage()!=safety.getErrorMessage() || !blocked.empty() || host.get(0)) {
+            std::fprintf(stderr,"Unsafe nested bundle preflight failed: %s\n",name);
+            return 21;
+        }
+    }
+    if(skellpreset::host::nestedHostSafety("SkellyTune").failed() ||
+       skellpreset::host::nestedHostSafety("Owned fixture").failed())return 22;
+    juce::OwnedArray<juce::PluginDescription> catalog;
+    for(int i=0;i<3;++i){
+        auto* d=catalog.add(new juce::PluginDescription());
+        d->name="Owned fixture "+juce::String(i);d->fileOrIdentifier=fixture.getFullPathName();
+        d->pluginFormatName="VST3";d->uniqueId=100+i;d->isInstrument=i==0;
+    }
+    if(Host::chooseEffect(catalog,{})!=catalog[1] ||
+       Host::chooseEffect(catalog,Host::classKey(*catalog[2]))!=catalog[2] ||
+       Host::chooseEffect(catalog,Host::classKey(*catalog[0]))!=nullptr ||
+       Host::chooseEffect(catalog,"unavailable")!=nullptr)return 18;
+    std::vector<Host::EffectChoice> choices;
+    if(Host::inspectEffects(fixture,choices).failed() || choices.size()!=1)return 19;
+    // An unusable cached description must not suppress exact-class discovery.
+    auto stale=choices[0].description;stale.fileOrIdentifier="invalid-cache-path";
+    const auto loaded=host.load(0,fixture,48000.,512,choices[0].identifier,&stale);
     if(loaded.failed()) {
         std::fprintf(stderr,"Host instantiate failed: %s\n",
             loaded.getErrorMessage().toRawUTF8());
         return 3;
     }
     auto* plugin=host.get(0);
-    if(!plugin || host.getLatency(0)!=0) {
+    if(!plugin || host.getLatency(0)!=0 || plugin->getTotalNumInputChannels()!=2 ||
+       plugin->getTotalNumOutputChannels()!=2 || plugin->getBusCount(true)!=2 ||
+       plugin->getBus(true,1)->isEnabled() || host.getIdentifier(0)!=choices[0].identifier) {
         std::fprintf(stderr,"Fixture not loaded or wrong latency\n");return 4;
     }
     juce::AudioBuffer<float> audio(2,512);
@@ -113,7 +147,22 @@ int main(int argc,char** argv) {
     if(host.getState(0).isEmpty()) {
         std::fprintf(stderr,"Hosted plug-in state was not captured\n");return 7;
     }
-    host.release();
-    std::printf("PASS nested JUCE VST3 load, forwarded transport, stereo processing, PDC and state\n");
+    // A replacement must not invalidate an already-running audio callback.
+    {
+        skellpreset::host::HostedVST3::AudioReadScope held(host);
+        if(held.get(0)!=plugin || host.load(0,fixture,48000.,512).failed() ||
+           host.get(0)==plugin || held.get(0)!=plugin || host.retainedCountForTest(0)!=2)return 14;
+        audio.clear();held.get(0)->processBlock(audio,midi);
+    }
+    host.pollLatencies();
+    if(host.retainedCountForTest(0)!=1)return 15;
+    // Exceed the former eight-replacements-per-session limit without leaks.
+    for(int i=0;i<12;++i) {
+        if(host.load(0,fixture,48000.,512).failed())return 16;
+        host.pollLatencies();
+        if(host.retainedCountForTest(0)!=1)return 17;
+    }
+    host.release();host.prepare(44100.,256);host.release();
+    std::printf("PASS nested JUCE VST3 load, transport, stereo processing, PDC, state and deferred replacement\n");
     return 0;
 }

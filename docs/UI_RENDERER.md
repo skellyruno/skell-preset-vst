@@ -1,14 +1,15 @@
 # Skell-Preset real-editor Quick4 (local, no screenshot workflows)
 
-The shared SkellCore Quick4 launcher now opts into an explicit four-scene
+The shared SkellCore Quick4 launcher uses the default four-scene
 mode in this repo's real JUCE SkellPresetUIRenderer. The four outputs are:
 (1) Obsidian Simple with original Tone/Punch/Space/Grit rotary cards at 100%,
 (2) Obsidian Advanced effect editor at 100%,
 (3) effect library open at 70%, and (4) MIC widget open at 70%.
 
 The compiled editor and processor are real C++ JUCE components, not a
-mockup or screenshot from an older commit. Its existing full 110-scene
-deep audit remains intact when not passed --quick4.
+mockup or screenshot from an older commit. Use `--full` for the expanded deep audit of all module types, library directories,
+browser sizes and stage. Use `--full --factory-slots` for every occupied factory
+slot; the legacy `--quick4` flag remains accepted for older launchers.
 
 Preferred setup: check out SkellCore and use quick4.ps1 from Windows
 Developer PowerShell, or quick4.sh on Linux. Both call the persistent
@@ -18,11 +19,11 @@ SkellCore/docs/QUICK4_PERSISTENT_WORKSPACE.md at the selected core revision.
 
 Direct Linux invocation from a compiled source tree:
 
-    SkellPresetUIRenderer --output ./ui-quick4 --quick4
+    SkellPresetUIRenderer --output ./ui-quick4
 
 Direct Windows invocation from Developer PowerShell:
 
-    .\SkellPresetUIRenderer.exe --output .\ui-quick4 --quick4
+    .\SkellPresetUIRenderer.exe --output .\ui-quick4
 
 There is NO automatic GitHub screenshot capture: its dedicated
 ui-screenshots.yml workflow is manual-only and must not be triggered
@@ -44,7 +45,7 @@ cmake -S . -B build-ui -G Ninja -DCMAKE_BUILD_TYPE=Release \
 cmake --build build-ui --target SkellPresetUIRenderer --parallel 2
 xvfb-run -a -s '-screen 0 1920x1080x24' \
   ./build-ui/SkellPresetUIRenderer_artefacts/Release/SkellPresetUIRenderer \
-  --output ui-screenshots
+  --output ui-screenshots --full
 ```
 
 If the generated executable is in a different folder, locate it with

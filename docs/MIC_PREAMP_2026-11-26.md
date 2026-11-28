@@ -1,0 +1,3 @@
+# MIC Preamp integration — 2026-11-26
+
+Three independent MIC tabs: Noise Gate, Mic Mod, Mic Preamp. Gate -> existing mic model -> tube-inspired preamp -> existing post-MIC detector and rack. Dedicated append-only micTubeOn/Gain/Drive/Air/Trim parameters, not old micPre* (modeling). Default disabled/neutral, factory resets and legacy project/package migration, optional schema-v2 fields. 20 ms audio-thread ramps, exact neutral/off bypass, no added reported latency. Experimental ADAA candidate now opt-in by owner request; not hardware emulation or proven vocal improvement. Existing rack and factory sound remain unmodified when off. Native state/processor/UI/package tests added. Real vocal A/B, full-spectrum response, CPU, FL Studio, screenshot verification pending.

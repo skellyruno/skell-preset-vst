@@ -1,4 +1,5 @@
 #include "../Source/chain/PresetPackage.h"
+#include "../Source/chain/EffectRegistry.h"
 #include <iostream>
 #include <string>
 
@@ -48,7 +49,19 @@ int main(){
               && loaded.slots[15].slotId == 15
               && !loaded.slots[0].enabled
               && !loaded.slots[15].enabled
-              && !loaded.micPreOn,
+              && !loaded.micPreOn && !loaded.micGateOn && !loaded.micTubeOn
+              && loaded.micTubeGain==0.f && loaded.micTubeDrive==0.f && loaded.micTubeAir==0.f && loaded.micTubeTrim==0.f
+              && loaded.micGateThreshold==-45.f
+              && loaded.micGateRelease==160.f
+              && loaded.micGateHold==55.f
+               && loaded.micGateAttackMs==4.f && loaded.micGateHysteresisDb==3.f && loaded.micGateDepth==1.f
+              && loaded.stereoSeparation==0
+              && !loaded.slots[0].duckOn
+              && !loaded.slots[0].rightFirst && !loaded.slots[0].dubDuckOn
+              && loaded.slots[0].duckSource==0 && !loaded.slots[0].parallelReturn
+              && loaded.slots[0].duckDepth==.65f
+              && loaded.slots[0].duckAttack==12.f
+              && loaded.slots[0].limitAttack==0.f && loaded.slots[0].limitRelease==70.f,
               "Default rack imports without activating effects or mic preamp");
         bool importedNeutralParameters=true;
         for(const auto& slot:loaded.slots)
@@ -57,6 +70,14 @@ int main(){
         check(importedNeutralParameters,
               "Default empty rack roundtrip preserves neutral parameters in all 16 slots");
     }
+    {
+        skellpreset::package::Document tube;tube.micTubeOn=true;tube.micTubeGain=3.f;tube.micTubeDrive=.4f;tube.micTubeAir=2.f;tube.micTubeTrim=-3.f;
+        const auto file=testFile(dir,"mic-tube");skellpreset::package::Document restored;
+        check(skellpreset::package::write(file,tube).wasOk() && skellpreset::package::read(file,restored).wasOk() &&
+            restored.micTubeOn && restored.micTubeGain==3.f && restored.micTubeDrive==.4f && restored.micTubeAir==2.f && restored.micTubeTrim==-3.f,"Mic Preamp package recall");
+        tube.micTubeAir=7.f;check(skellpreset::package::write(file,tube).failed(),"Reject invalid Mic Preamp field");
+    }
+    {skellpreset::package::Document eq;eq.slots[0].studioEqDynamic[2]=.65f;eq.slots[0].studioEqThreshold[2]=-36.f;eq.slots[0].studioEqAttack[2]=7.f;eq.slots[0].studioEqRelease[2]=270.f;eq.slots[0].studioEqSlope[3]=2.f;eq.slots[0].studioEqExtraShape[4]=2.f;const auto path=testFile(dir,"dynamic-eq");skellpreset::package::Document restored;check(skellpreset::package::write(path,eq).wasOk()&&skellpreset::package::read(path,restored).wasOk()&&restored.slots[0].studioEqDynamic[2]==.65f&&restored.slots[0].studioEqDynamic[1]==0.f&&restored.slots[0].studioEqThreshold[2]==-36.f&&restored.slots[0].studioEqAttack[2]==7.f&&restored.slots[0].studioEqRelease[2]==270.f&&restored.slots[0].studioEqSlope[3]==2.f&&restored.slots[0].studioEqExtraShape[4]==2.f,"Dynamic EQ package roundtrip");eq.slots[0].studioEqDynamic[2]=1.1f;check(skellpreset::package::write(path,eq).failed(),"Reject invalid dynamic EQ depth");}
     skellpreset::package::Document first;
     first.name="Wide Ghost Vocal";first.bank="Adlibs";
     for(int s=0;s<skellpreset::package::slotCount;++s){
@@ -65,6 +86,12 @@ int main(){
         // 0..11 values in the first ten slots of v1 test archives.
         slot.type=s<11?s%11:13+s-11;
         slot.enabled=s%2==0;slot.wet=.15f+(float)s*.04f;
+        slot.duckOn=s==2;slot.duckDepth=.73f;
+        slot.rightFirst=s==2;slot.dubDuckOn=s==3;
+        slot.duckSource=s%3;slot.parallelReturn=s==3;
+        slot.duckThreshold=-28.f;slot.duckRelease=480.f;
+        slot.duckAttack=34.f;
+        slot.limitAttack=1.25f;slot.limitRelease=227.f;
         slot.params.fill(.5f);
     }
     first.activeSlotCount=14;
@@ -72,6 +99,11 @@ int main(){
     first.micPreInput=1;  // generic condenser input
     first.micPreTarget=3; // generic air output
     first.micPreAmount=.72f;first.micPreTrim=.63f;
+    first.micGateOn=true;first.micGateThreshold=-31.f;
+    first.micGateRelease=250.f;first.micGateHold=83.f;
+    first.micGateAttackMs=11.f;first.micGateHysteresisDb=7.f;first.micGateDepth=.6f;
+    // Output-stage stereo separation persists as a strict integer.
+    first.stereoSeparation=-43;
     first.macros.fill(.5f);
     first.macros[0]=.86f;
     auto path=testFile(dir,"roundtrip");
@@ -84,7 +116,20 @@ int main(){
           &&second.slots[11].type==13&&second.slots[15].type==17
           &&second.micPreOn && second.micPreInput==1
           &&second.micPreTarget==3 && second.micPreAmount==.72f
-          &&second.micPreTrim==.63f,
+          &&second.micPreTrim==.63f
+          &&second.micGateOn &&second.micGateThreshold==-31.f
+          &&second.micGateRelease==250.f &&second.micGateHold==83.f
+           &&second.micGateAttackMs==11.f &&second.micGateHysteresisDb==7.f &&second.micGateDepth==.6f
+          &&second.stereoSeparation==-43
+          &&second.slots[2].duckOn &&!second.slots[3].duckOn
+          &&second.slots[2].rightFirst && !second.slots[3].rightFirst
+          &&!second.slots[2].dubDuckOn && second.slots[3].dubDuckOn
+          &&second.slots[2].duckSource==2 && second.slots[3].parallelReturn
+          &&second.slots[2].duckDepth==.73f
+          &&second.slots[2].duckThreshold==-28.f
+          &&second.slots[2].duckRelease==480.f
+          &&second.slots[2].duckAttack==34.f
+          &&second.slots[2].limitAttack==1.25f &&second.slots[2].limitRelease==227.f,
           "Roundtrip sixteen slots, active rack count, macros and metadata");
 
     // Schema v2 supports all new VoxRack modules without modifying the
@@ -201,7 +246,8 @@ int main(){
                   "Load old native v2 file with flat EQ cuts and neutral Q");
         }
     }
-    // Modules 33..37 are append-only. ID 38 is deliberately unknown.
+    // New modules append; every effect in the current registry must be importable
+    // without widening or renumbering any old APVTS type choice.
     {
         auto newest=first;
         newest.slots[0].type=33;
@@ -212,7 +258,7 @@ int main(){
         check(skellpreset::package::read(file,recalled).wasOk()
               &&recalled.slots[0].type==33,
               "Recall Skelldizer module 33 without remapping");
-        for(int studio=34;studio<=37;++studio) {
+        for(int studio=34;studio<skellpreset::registry::count();++studio) {
             newest.slots[0].type=studio;
             const auto target=testFile(dir,"studio-module-"+juce::String(studio));
             check(skellpreset::package::write(target,newest).wasOk(),
@@ -222,10 +268,10 @@ int main(){
                   && loaded.slots[0].type==studio,
                   "Recall appended Studio module without renumbering");
         }
-        newest.slots[0].type=38;
+        newest.slots[0].type=skellpreset::registry::count();
         check(skellpreset::package::write(
-                 testFile(dir,"unknown-id38"),newest).failed(),
-              "Reject unknown module 38");
+                 testFile(dir,"unknown-new-module"),newest).failed(),
+              "Reject any module type beyond the current registry");
     }
     // Schema-v2 macros are optional too: absent means neutral, malformed means reject.
     {
@@ -278,6 +324,13 @@ int main(){
             };
             const NullCase nullCases[] = {
                 {true,"micPreOn","mic-pre-on","Reject explicit null mic-pre enable"},
+                {true,"micGateOn","mic-gate-on","Reject null mic gate on"},
+                {true,"micGateThreshold","mic-gate-threshold","Reject null mic gate threshold"},
+                {true,"micGateRelease","mic-gate-release","Reject null mic gate release"},
+                {true,"micGateHold","mic-gate-hold","Reject null mic gate hold"},
+                 {true,"micGateAttackMs","mic-attack","Reject null mic gate attack"},
+                 {true,"micGateHysteresisDb","mic-hyst","Reject null mic gate hysteresis"},
+                 {true,"micGateDepth","mic-depth","Reject null mic gate reduction"},
                 {true,"micPreInput","mic-pre-input","Reject explicit null mic-pre input"},
                 {true,"micPreTarget","mic-pre-target","Reject explicit null mic-pre target"},
                 {true,"micPreAmount","mic-pre-amount","Reject explicit null mic-pre amount"},
@@ -287,7 +340,18 @@ int main(){
                 {false,"studioEqKind","studio-eq-kind","Reject explicit null Studio EQ type array"},
                 {false,"studioEqOn","studio-eq-on","Reject explicit null Studio EQ enable array"},
                 {false,"eqLowCut","eq-low-cut","Reject explicit null EQ low-cut value"},
-                {false,"eqHighCut","eq-high-cut","Reject explicit null EQ high-cut value"}
+                {false,"eqHighCut","eq-high-cut","Reject explicit null EQ high-cut value"},
+                {false,"duckOn","duck-on","Reject explicit null wet sidechain on"},
+                {false,"rightFirst","right-first","Reject null right-first flag"},
+                {false,"dubDuckOn","dub-duck-on","Reject null dub sidechain flag"},
+                {false,"duckSource","duck-source","Reject null duck source"},
+                {false,"parallelReturn","parallel-return","Reject null parallel return flag"},
+                {false,"duckDepth","duck-depth","Reject null duck depth"},
+                {false,"duckThreshold","duck-threshold","Reject null duck threshold"},
+                {false,"duckRelease","duck-release","Reject null duck release"},
+                {false,"duckAttack","duck-attack","Reject null duck attack"},
+                {false,"limitAttack","limiter-attack","Reject null limiter attack"},
+                {false,"limitRelease","limiter-release","Reject null limiter release"}
             };
             for(const auto& test:nullCases) {
                 auto nullJson=juce::JSON::parse(jsonText);
