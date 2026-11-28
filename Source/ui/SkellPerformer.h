@@ -8,32 +8,24 @@ namespace skellpreset::stage {
 // coordinate system. Pose, ink plates and interactive mic share that space.
 class Performer {
     using P=juce::Point<float>; using Path=juce::Path; using C=juce::Colour;
-    const C bone{0xffe8e3d1}, ink{0xff111916}, edge{0xffa7aca0};
+    const C bone{0xfff3f0e8}, ink{0xff111614}, edge{0xffb7bcb5};
     static Path poly(std::initializer_list<P> points){Path p;if(points.size()<3)return p;const auto* v=points.begin();const size_t count=points.size();auto before=[&](size_t i){return v[i]+(v[(i+count-1)%count]-v[i])*.23f;};auto after=[&](size_t i){return v[i]+(v[(i+1)%count]-v[i])*.23f;};p.startNewSubPath(before(0));for(size_t i=0;i<count;++i){p.lineTo(before(i));p.quadraticTo(v[i],after(i));}p.closeSubPath();return p;}
     static void stroke(juce::Graphics& g,const Path& p,float w,C colour){g.setColour(colour);g.strokePath(p,juce::PathStrokeType(w,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
     void fill(juce::Graphics& g,const Path& p,C colour)const{g.setColour(colour);g.fillPath(p);}
-    void plate(juce::Graphics& g,const Path& p)const{fill(g,p,bone);stroke(g,p,.95f,ink);}
-    // Aged ink finish is baked once per articulated plate, never per frame.
-    static void patina(juce::Image& image){
-        juce::Image::BitmapData pixels(image,juce::Image::BitmapData::readWrite);
-        for(int y=0;y<pixels.height;++y)for(int x=0;x<pixels.width;++x){auto c=pixels.getPixelColour(x,y);if(c.getAlpha()<230||c.getBrightness()<.5f)continue;
-            unsigned h=(unsigned)(x/3)*374761393u+(unsigned)(y/3)*668265263u;h=(h^(h>>13))*1274126177u;h^=h>>16;
-            if(h%100u<7u)c=c.interpolatedWith(C(0xff3e4740),.37f);else if(h%100u<19u)c=c.interpolatedWith(C(0xff7d8273),.16f);
-            pixels.setPixelColour(x,y,c);
-        }
-    }
+    void plate(juce::Graphics& g,const Path& p)const{fill(g,p,bone);stroke(g,p,.72f,ink);}
     void hole(juce::Graphics& g,std::initializer_list<P> points)const{fill(g,poly(points),ink);}
     // Broad, irregular bone silhouette with ink-cut marrow and flared ends.
     void longBone(juce::Graphics& g,P a,P b,float ra,float rb,float bow=0.f)const{
         const P delta=b-a;const float len=juce::jmax(1.f,delta.getDistanceFromOrigin());const P u=delta/len,n{-u.y,u.x};
         const P m=(a+b)*.5f+n*bow;const float w=(ra+rb)*.46f;
         Path p;p.startNewSubPath(a-u*ra*.52f+n*ra*.7f);p.lineTo(a+n*ra);p.quadraticTo(a+u*len*.2f+n*w,m+n*w*.86f);p.lineTo(b-u*len*.19f+n*w*.82f);p.quadraticTo(b-u*rb*.55f+n*rb,b+n*rb);p.lineTo(b+u*rb*.65f+n*rb*.55f);p.lineTo(b+u*rb*.58f-n*rb*.64f);p.quadraticTo(b-n*rb,b-u*len*.17f-n*w);p.quadraticTo(m-n*w*.7f,a+u*len*.15f-n*w);p.lineTo(a-n*ra*.92f);p.lineTo(a-u*ra*.68f-n*ra*.44f);p.closeSubPath();plate(g,p);
-        if(len>13.f&&ra>2.f){hole(g,{a+u*len*.12f-n*ra*.65f,a+u*len*.22f-n*w*.68f,m-u*len*.12f-n*w*.25f,m-u*len*.18f+n*w*.11f,a+u*len*.20f+n*w*.53f});
-            hole(g,{m+u*len*.05f-n*w*.64f,m+u*len*.23f-n*w*.40f,b-u*len*.08f-n*w*.83f,b-u*len*.13f+n*w*.45f,m+u*len*.11f+n*w*.15f});
-            hole(g,{a-u*ra*.21f+n*ra*.35f,a+u*ra*.6f+n*ra*.66f,a+u*ra*.75f+n*ra*.14f});
-            hole(g,{b-u*rb*.58f-n*rb*.47f,b+u*rb*.15f-n*rb*.62f,b+u*rb*.29f+n*rb*.02f});
-            // Small irregular cortical chips interrupt the long white surfaces.
-            if(ra>4.f){for(int i=0;i<3;++i){const float t=.28f+.22f*i;const P q=a+u*len*t+n*((i%2==0?1.f:-1.f)*w*.57f);const float r=juce::jmin(1.2f,w*.27f);hole(g,{q-u*r,q+n*r*.55f,q+u*r*1.2f,q-n*r*.43f});}}}
+        // One tapered anatomical shadow rather than separate geometric surface marks.
+        if(len>13.f&&ra>2.f){
+            Path marrow;marrow.startNewSubPath(a+u*len*.10f-n*ra*.60f);
+            marrow.cubicTo(a+u*len*.28f-n*w*.75f,m-n*w*.62f,b-u*len*.10f-n*rb*.50f);
+            marrow.quadraticTo(b-u*len*.15f+n*w*.04f,m+n*w*.05f);
+            marrow.quadraticTo(a+u*len*.22f+n*w*.26f,a+u*len*.10f-n*ra*.60f);marrow.closeSubPath();fill(g,marrow,ink);
+        }
     }
     void knuckle(juce::Graphics& g,P p,float r)const{plate(g,poly({p+P{-r,-r*.35f},p+P{-r*.75f,-r*.85f},p+P{-r*.1f,-r},p+P{r*.65f,-r*.8f},p+P{r,r*.1f},p+P{r*.4f,r*.85f},p+P{-r*.3f,r},p+P{-r*.8f,r*.55f}}));if(r>3.f)hole(g,{p+P{-r*.3f,-r*.3f},p+P{r*.5f,-r*.45f},p+P{r*.2f,r*.3f}});}
     void shoeBones(juce::Graphics& g,P ankle,float direction)const{
@@ -50,9 +42,10 @@ class Performer {
         // Broad pelvic wings, dark iliac fossae and open obturator foramina.
         Path hip;hip.startNewSubPath(146,173);hip.cubicTo(131,158,120,175,126,188);hip.lineTo(131,194);hip.cubicTo(121,204,132,220,146,225);hip.lineTo(164,213);hip.lineTo(182,215);hip.cubicTo(192,225,203,216,199,204);hip.lineTo(197,191);hip.cubicTo(205,181,196,160,185,165);hip.cubicTo(176,164,169,174,174,191);hip.lineTo(161,197);hip.quadraticTo(153,187,146,173);hip.closeSubPath();plate(g,hip);
         hole(g,{{129,176},{137,174},{142,179},{148,188},{144,195},{139,191},{136,184},{132,184}});hole(g,{{183,175},{190,172},{196,175},{198,182},{193,191},{186,197},{181,190},{183,185}});
-        hole(g,{{135,204},{143,200},{150,204},{155,210},{147,214},{140,213},{139,219},{133,213}});hole(g,{{174,203},{182,196},{193,199},{199,207},{190,215},{182,213},{179,208}});
-        hole(g,{{126,183},{129,187},{128,193},{124,190}});hole(g,{{196,177},{199,183},{197,188},{194,183}});hole(g,{{155,216},{163,213},{161,219},{156,220}});
-        hole(g,{{155,194},{161,200},{168,195},{175,202},{168,211},{160,209}});fill(g,poly({{134,179},{138,178},{140,182},{137,185}}),bone);fill(g,poly({{189,179},{193,181},{190,185},{187,184}}),bone);fill(g,poly({{143,207},{147,205},{149,209},{145,211}}),bone);
+        Path leftSocket;leftSocket.startNewSubPath(135,204);leftSocket.cubicTo(142,198,151,202,151,209);leftSocket.cubicTo(148,214,137,216,135,209);leftSocket.closeSubPath();fill(g,leftSocket,ink);
+        Path rightSocket;rightSocket.startNewSubPath(176,203);rightSocket.cubicTo(183,195,194,198,196,205);rightSocket.cubicTo(193,214,181,216,176,207);rightSocket.closeSubPath();fill(g,rightSocket,ink);
+        
+        hole(g,{{155,194},{161,200},{168,195},{175,202},{168,211},{160,209}});
         // Visible irregular vertebrae and the neck, in front of a narrow spine.
         Path spine;spine.startNewSubPath(190,53);spine.cubicTo(182,83,165,123,158,192);stroke(g,spine,9.5f,ink);for(int i=0;i<15;++i){const float t=i/14.f,y=52.f+139.f*t+(i%3-1)*1.1f,x=190.f-32.f*t+3.f*std::sin(t*6.f)+(i%2?1.f:-1.f),w=3.7f+2.1f*t;plate(g,poly({{x-w-2,y-3},{x-1,y-4},{x+w,y-3},{x+w+1,y},{x+w-1,y+4},{x,y+5},{x-w,y+3},{x-w-2,y+1}}));if(i%3==0)hole(g,{{x-2,y-1},{x+2,y-2},{x+1,y+1}});}
         // Oblique thorax. Dark interior and broad, irregular inked rib crescents.
@@ -61,9 +54,7 @@ class Performer {
         for(int i=0;i<8;++i){const float t=i/7.f;const float x=141.f-9.f*std::sin(t*3.14f)+(i%3-1)*1.5f,y=77.f+8.2f*i+(i%3-1)*1.8f;
             const float tip=181.f-19.f*t+(i%2?1.5f:-1.f),endY=y+18.f-3.f*t+5.f*std::sin(t*3.14f);
             Path r;r.startNewSubPath(x-2,y);r.cubicTo(x-7,y+10,141.f-9.f*t,y+26,tip,endY+3);r.lineTo(tip+2,endY-2);r.cubicTo(152.f-5.f*t,y+20,x-2,y+8,x+2,y+1);r.closeSubPath();fill(g,r,bone);
-            if(i%3!=0)hole(g,{{x+4,y+11},{x+7,y+14},{x+10,y+15},{x+7,y+17}});
-            if(i%2==1)hole(g,{{x-2,y+9},{x+2,y+12},{x+2,y+15},{x-1,y+13}});
-            if(i>=3)hole(g,{{tip-11,endY+1},{tip-8,endY-2},{tip-4,endY-1},{tip-7,endY+2}});}
+        }
         Path outer;outer.startNewSubPath(142,78);outer.cubicTo(122,91,125,121,136,144);stroke(g,outer,3.3f,bone);
         hole(g,{{130,110},{134,115},{132,123},{127,118}});hole(g,{{134,140},{141,145},{137,150},{133,145}});
         for(int i=0;i<6;++i){const float t=i/5.f,y=88.f+8.f*i+(i%2)*1.2f;const float startX=192.f-7.f*t,tipX=188.f-4.f*t;Path r;r.startNewSubPath(startX,y-1);r.cubicTo(218.f-4.f*t,y-5,217.f-4.f*t,y+11,tipX,y+14);r.lineTo(tipX-1,y+10);r.cubicTo(209.f-4.f*t,y+8,212.f-4.f*t,y+1,startX,y+2);r.closeSubPath();fill(g,r,bone);}
@@ -90,7 +81,7 @@ class Performer {
         hole(g,{{172,35},{178,22},{181,26},{179,32},{183,36},{176,41}});hole(g,{{181,42},{190,35},{196,30},{197,20},{201,18},{203,23},{200,34},{192,43},{190,48},{183,48}});
         Path orbit;orbit.startNewSubPath(207,21);orbit.cubicTo(217,16,224,22,220,29);orbit.cubicTo(217,36,205,35,205,28);orbit.quadraticTo(204,24,207,21);orbit.closeSubPath();fill(g,orbit,ink);
         hole(g,{{229,29},{225,34},{220,41},{225,44},{231,40}});hole(g,{{190,43},{202,36},{211,38},{209,43},{201,47},{195,47}});hole(g,{{211,45},{216,42},{219,47},{224,46},{227,50},{217,51}});
-        hole(g,{{183,11},{190,7},{197,7},{191,10}});hole(g,{{175,31},{178,29},{179,32},{177,34}});hole(g,{{198,11},{202,10},{204,14},{201,16}});hole(g,{{204,6},{211,7},{215,10},{210,9}});hole(g,{{181,46},{184,45},{186,48},{183,50}});hole(g,{{217,37},{219,36},{220,39}});hole(g,{{175,20},{179,16},{178,21}});hole(g,{{186,15},{188,13},{190,14},{187,17}});hole(g,{{224,15},{226,19},{223,18}});
+        hole(g,{{183,11},{190,7},{197,7},{191,10}});hole(g,{{181,46},{184,45},{186,48},{183,50}});
         for(int i=0;i<5;++i){const float x=211.f+i*3.7f,y=49.f+(i%2)*.8f;plate(g,poly({{x,y},{x+3.4f,y+1.f},{x+2.7f,y+5.6f},{x+.6f,y+5.f}}));}
     }
     void jawArt(juce::Graphics& g)const{
@@ -108,7 +99,7 @@ class Performer {
         const float sway=4.f*activity*std::sin(phase*.6f);Path cable;cable.startNewSubPath(254,66);cable.cubicTo(307,90,323+sway,154,294+sway,200);cable.cubicTo(275,228,245,247,220,261);cable.cubicTo(194,277,194,311,202,332);stroke(g,cable,3.2f,ink);stroke(g,cable,1.6f,edge);
         Path mount;mount.startNewSubPath(242,60);mount.lineTo(236,75);stroke(g,mount,4.f,ink);stroke(g,mount,2.f,edge);Path stand;stand.startNewSubPath(235,89);stand.lineTo(201,337);stroke(g,stand,4.f,ink);stroke(g,stand,2.2f,edge);g.setColour(ink);g.fillEllipse(177,336,49,12);g.setColour(edge);g.drawEllipse(177,336,49,12,1.4f);
     }
-    static void cache(juce::Image& image,juce::Rectangle<int> area,const std::function<void(juce::Graphics&)>& paint){if(image.isValid())return;image=juce::Image(juce::Image::ARGB,area.getWidth()*2,area.getHeight()*2,true);juce::Graphics art(image);art.addTransform(juce::AffineTransform::translation(-(float)area.getX(),-(float)area.getY()).scaled(2.f));paint(art);patina(image);}
+    static void cache(juce::Image& image,juce::Rectangle<int> area,const std::function<void(juce::Graphics&)>& paint){if(image.isValid())return;image=juce::Image(juce::Image::ARGB,area.getWidth()*2,area.getHeight()*2,true);juce::Graphics art(image);art.addTransform(juce::AffineTransform::translation(-(float)area.getX(),-(float)area.getY()).scaled(2.f));paint(art);}
     static void blit(juce::Graphics& g,const juce::Image& image,float x,float y){g.setOpacity(1.f);g.drawImageTransformed(image,juce::AffineTransform::scale(.5f).translated(x,y));}
 public:
     static juce::AffineTransform bodyLean(float activity,float phase) noexcept {const float lean=(.012f*std::sin(phase*.41f)+.028f*std::sin(phase*.71f))*juce::jlimit(0.f,1.f,activity);return juce::AffineTransform::rotation(lean,151.f,365.f);}

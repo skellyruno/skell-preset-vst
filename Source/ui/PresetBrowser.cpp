@@ -44,12 +44,13 @@ bool visibleBoneAdlib(int index) {
 }
 // One shared geometry model for painting, click hit-testing and UI regression.
 // The three genres have a visible MANUAL heading and never overlap controls.
-juce::Rectangle<int> bankBounds(int index) noexcept {
+juce::Rectangle<int> bankBounds(int index,int width=0) noexcept {
     // Visual order: Main, Adlib, Genres, Artists, My Presets, Favorites.
     constexpr int visualRows[]{0,4,3,5,2};
+    if(width>0){const int tab=(width-36)/6;const int order[]{1,4,0,5,3};return {18+order[index]*tab,109,tab-3,30};}
     return {17,109+38*visualRows[index],168,33};
 }
-juce::Rectangle<int> adlibsBounds() noexcept {return {17,147,168,33};}
+juce::Rectangle<int> adlibsBounds(int width=0) noexcept {if(width>0){const int tab=(width-36)/6;return {18+2*tab,109,tab-3,30};}return {17,147,168,33};}
 juce::String singlePreviewName(int entry) {
     if(entry==alchemistIndex)return "ALCHEMIST";
     if(entry==deuceIndex)return "DEUCE";
@@ -495,8 +496,8 @@ bool PresetBrowser::configureDirectoryForScreenshot(int page,int width,int heigh
             if(artistFilter.getNumItems()<=1){
                 const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("Skell browser QA "+juce::Uuid().toString());
                 const auto fixtureArt=juce::SystemStats::getEnvironmentVariable("SKELL_BROWSER_QA_ART",{});
-                for(int i=0;i<3;++i){
-                    const juce::String artist=i==0?"QA Artist A":i==1?(fixtureArt.isNotEmpty()?"skellyruno (QA)":"QA Artist B"):"QA Artist C";
+                for(int i=0;i<5;++i){
+                    const juce::String artist=i==1?(fixtureArt.isNotEmpty()?"skellyruno (QA)":"QA Artist B"):"QA Artist "+juce::String::charToString((juce::juce_wchar)('A'+i));
                     const int index=(int)userPresets.size();userPresets.push_back(root.getChildFile(artist+" main.skellpreset"));userArtwork.emplace_back();userCinemaArtwork.resize(userPresets.size());
                     if(i==1&&fixtureArt.isNotEmpty()){const auto file=juce::File(fixtureArt);if(file.existsAsFile()&&file.getSize()<1024*1024)userCinemaArtwork[(size_t)index]=skellpreset::artistart::prepare(juce::ImageFileFormat::loadFrom(file));}
                     const auto key=favoriteKey(-index-1);artistKeys.add(key);artistNames.add(artist);setOrganizationValue("type:"+key,"main");setOrganizationValue("tier:"+artist.toLowerCase(),i==0?"Underground":"Mainstream");
@@ -619,28 +620,29 @@ void PresetBrowser::placeWithin(juce::Rectangle<int> usable,juce::Rectangle<int>
     if(bounds!=getBounds())setBounds(bounds);
 }
 void PresetBrowser::resized(){
-    search.setBounds(50,17,getWidth()-182,42);
+    search.setBounds(50,48,getWidth()-163,42);
     search.setColour(juce::TextEditor::backgroundColourId,juce::Colours::transparentBlack);
     search.setColour(juce::TextEditor::outlineColourId,juce::Colours::transparentBlack);
     search.setColour(juce::TextEditor::focusedOutlineColourId,juce::Colours::transparentBlack);
     search.setFont(juce::Font(juce::FontOptions(15.f)));
     search.setEnabled(!detailsOpen && !chooserActive);
     clearSearchButton.setEnabled(!detailsOpen && !chooserActive && search.getText().isNotEmpty());
-    clearSearchButton.setBounds(getWidth()-126,22,66,31);
-    closeBrowser.setBounds(getWidth()-51,22,31,31);closeBrowser.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);closeBrowser.setColour(juce::TextButton::textColourOffId,Theme::muted);
+    clearSearchButton.setBounds(getWidth()-104,54,85,30);
+    closeBrowser.setBounds(getWidth()-44,10,26,26);closeBrowser.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);closeBrowser.setColour(juce::TextButton::textColourOffId,Theme::muted);
     sortPicker.setVisible(!detailsOpen && directoryMode()==DirectoryMode::none);
     sortPicker.setBounds(18,getHeight()-77,166,29);
-    showcaseView.setBounds(getWidth()-251,69,94,29);
-    thumbnailView.setBounds(getWidth()-151,69,53,29);
-    listView.setBounds(getWidth()-92,69,73,29);
+    showcaseView.setBounds(getWidth()-276,9,94,28);
+    thumbnailView.setBounds(getWidth()-177,9,53,28);
+    listView.setBounds(getWidth()-119,9,70,28);
     for(auto* b:{&thumbnailView,&listView,&showcaseView})b->setVisible(!detailsOpen);
     showcaseView.setColour(juce::TextButton::buttonColourId,showcaseMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
     showcaseView.setColour(juce::TextButton::textColourOffId,showcaseMode?Theme::green:Theme::muted);
     const bool exhibition=showcaseMode&&!detailsOpen;
-    const int mid=207+(getWidth()-224)/2, foot=juce::jmin(getHeight()-(showVocalTabs()?100:61),showcaseCardBounds(0).getBottom()+76);
+    const int mid=getWidth()/2, foot=juce::jmin(getHeight()-(showVocalTabs()?100:61),showcaseCardBounds(0).getBottom()+63);
     const int arrowY=showcaseCardBounds(0).getCentreY()-20;
-    showcasePrevious.setBounds(208,arrowY,25,40);showcaseNext.setBounds(getWidth()-43,arrowY,25,40);
-    showcaseLoad.setBounds(mid-82,foot,164,34);showcaseFavorite.setBounds(mid+89,foot,85,34);
+    showcasePrevious.setBounds(20,arrowY,25,40);showcaseNext.setBounds(getWidth()-45,arrowY,25,40);
+    showcaseLoad.setBounds(mid-89,foot,178,34);showcaseFavorite.setBounds(mid+96,foot,85,34);
+    if(exhibition)sortPicker.setBounds(18,getHeight()-77,142,29);
     for(auto* b:{&showcasePrevious,&showcaseNext,&showcaseLoad,&showcaseFavorite}){b->setVisible(exhibition);b->setColour(juce::TextButton::buttonColourId,b==&showcaseLoad?Theme::green.withAlpha(.22f):Theme::panelAlt);b->setColour(juce::TextButton::textColourOffId,Theme::white);}
     if(exhibition){const int n=showcaseSelection(),count=resultCount();showcasePrevious.setEnabled(showcaseIndex(-1,count,n)>=0);showcaseNext.setEnabled(showcaseIndex(1,count,n)>=0);showcaseLoad.setEnabled(n>=0&&!chooserActive&&!loadInFlight&&!saveInFlight);showcaseLoad.setButtonText(directoryMode()==DirectoryMode::none?"LOAD PRESET":directoryMode()==DirectoryMode::artists?"OPEN ARTIST":"OPEN COLLECTION");showcaseFavorite.setVisible(directoryMode()==DirectoryMode::none);const auto entries=directoryMode()==DirectoryMode::none?filtered():std::vector<int>{};showcaseFavorite.setEnabled(n>=0&&n<(int)entries.size()&&!chooserActive);showcaseFavorite.setButtonText(n>=0&&n<(int)entries.size()&&isFavorite(entries[(size_t)n])?"FAVORITED":"FAVORITE");}
     thumbnailView.setColour(juce::TextButton::buttonColourId,!listMode&&!showcaseMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
@@ -648,8 +650,8 @@ void PresetBrowser::resized(){
     thumbnailView.setColour(juce::TextButton::textColourOffId,!listMode&&!showcaseMode?Theme::green:Theme::muted);
     listView.setColour(juce::TextButton::textColourOffId,listMode&&!showcaseMode?Theme::green:Theme::muted);
     directoryBack.setVisible(!detailsOpen && hasDirectoryParent());
-    directoryBack.setBounds(207,69,64,29);
-    detailsButton.setBounds(18,detailsOpen?112:getHeight()-38,166,28);
+    directoryBack.setBounds(185,9,61,28);
+    detailsButton.setBounds(18,detailsOpen?112:getHeight()-38,exhibition?142:166,28);
     starterButton.setVisible(detailsOpen);
     starterButton.setBounds(207,412,std::max(0,std::min(310,getWidth()-234)),32);
     importButton.setVisible(detailsOpen);exportButton.setVisible(detailsOpen);
@@ -689,7 +691,7 @@ void PresetBrowser::resized(){
         saveAsButton.setBounds(104,496,80,28);
     }else{
         genreFilter.setBounds(18,337,166,27);
-        artistTierFilter.setBounds(18,337,166,27);
+        artistTierFilter.setBounds(18,exhibition?getHeight()-77:337,exhibition?142:166,27);
         artistFilter.setBounds(18,368,166,27);
         typeFilter.setBounds(18,399,166,27);
         importButton.setBounds(18,getHeight()-70,166,28);
@@ -1304,7 +1306,7 @@ juce::Rectangle<int> PresetBrowser::directoryCardBounds(int position) const {
 }
 int PresetBrowser::resultAt(juce::Point<int> p) const {
     if(detailsOpen)return -1;
-    if(showcaseMode){const int n=showcaseSelection(),count=resultCount();for(int d=-1;d<=1;++d){const int index=showcaseIndex(d,count,n);if(index>=0&&showcaseCardBounds(d).contains(p))return index;}return -1;}
+    if(showcaseMode){const int n=showcaseSelection(),count=resultCount();for(int d=count>=5?-2:-1;d<=(count>=5?2:1);++d){const int index=showcaseIndex(d,count,n);if(index>=0&&showcaseCardBounds(d).contains(p))return index;}return -1;}
     if(directoryMode()==DirectoryMode::none && listMode)
         return presetCardHitForTest(false,p.x,p.y,getWidth(),visibleRows())?scroll+(p.y-110)/61:-1;
     for(int i=0;i<pageCapacity();++i)
@@ -1696,6 +1698,13 @@ bool PresetBrowser::testBrowserLayoutForTest() {
         setSize(size.x,size.y);
         for(int b=0;b<banks.size();++b){bank=b;library=validate(false)&&library;}
         library=validate(true)&&library;
+        showDetails(false);setShowcase(true);
+        const auto area=getLocalBounds();
+        const int w=getWidth();
+        for(int b=0;b<banks.size();++b){const auto tab=bankBounds(b,w);library=library&&area.contains(tab)&&!tab.intersects(adlibsBounds(w));
+            for(int j=b+1;j<banks.size();++j)library=library&&!tab.intersects(bankBounds(j,w));}
+        library=library&&area.contains(showcaseCardBounds(0))&&area.contains(showcaseLoad.getBounds())&&!showcaseCardBounds(0).intersects(showcaseLoad.getBounds());
+        setShowcase(false);
     }
     setBounds(oldBounds);bank=oldBank;
     const bool details=validate(true);showDetails(oldDetails);
@@ -2237,15 +2246,15 @@ void PresetBrowser::paint(juce::Graphics&g) {
     g.fillRoundedRectangle(getLocalBounds().toFloat(),12.f);
     g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),12.f,1.2f);
     g.setColour(Theme::white.withAlpha(.045f));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2.f),10.f,.8f);
-    const juce::Rectangle<float> searchFrame(18.f,16.f,(float)getWidth()-150.f,44.f);
+    const juce::Rectangle<float> searchFrame(18.f,46.f,(float)getWidth()-130.f,46.f);
     g.setColour(Theme::plot);g.fillRoundedRectangle(searchFrame,9.f);g.setColour(search.hasKeyboardFocus(true)?Theme::green.withAlpha(.65f):Theme::stroke);g.drawRoundedRectangle(searchFrame.reduced(.5f),9.f,1.f);
-    g.setColour(Theme::muted);g.drawEllipse(29.f,29.f,12.f,12.f,1.5f);g.drawLine(39.f,39.f,45.f,45.f,1.5f);
+    g.setColour(Theme::muted);g.drawEllipse(30.f,60.f,12.f,12.f,1.5f);g.drawLine(40.f,70.f,46.f,76.f,1.5f);
     g.setColour(Theme::stroke.withAlpha(.65f));g.drawHorizontalLine(103,18.f,(float)getWidth()-18.f);
-    g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,67.f,3.f,23.f),1.5f);
+    g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,13.f,3.f,19.f),1.5f);
     g.setColour(Theme::stroke.withAlpha(.7f));
-    g.drawVerticalLine(196,105.f,(float)getHeight()-15.f);
+    if(!showcaseMode||detailsOpen)g.drawVerticalLine(196,105.f,(float)getHeight()-15.f);
     Theme::text(g,detailsOpen?"MANAGE LIBRARY":"PRESET BROWSER",
-                {30,73,154,20},13.5f,Theme::white,true);
+                {29,11,151,24},13.5f,Theme::white,true);
     const auto directory=directoryMode();
     const auto entries=directory==DirectoryMode::none?filtered():std::vector<int>{};
     const auto cards=directory==DirectoryMode::none?std::vector<DirectoryCard>{}:directoryCards();
@@ -2258,45 +2267,40 @@ void PresetBrowser::paint(juce::Graphics&g) {
     if(bank==4 && genreFilter.getSelectedId()>1)location+=" / "+genreFilter.getText();
     const int visibleCount=directory==DirectoryMode::none?(int)entries.size():(int)cards.size();
     Theme::fittedText(g,location+"  /  " +juce::String(visibleCount),
-        {hasDirectoryParent()?280:207,73,std::max(0,getWidth()-(hasDirectoryParent()?539:466)),20},13.f,Theme::white,true,juce::Justification::centredLeft);
+        {hasDirectoryParent()?252:188,12,std::max(0,getWidth()-(hasDirectoryParent()?535:471)),23},11.5f,Theme::muted,true,juce::Justification::centredLeft);
     if(detailsOpen)
-        Theme::text(g,"ESC TO RETURN",{getWidth()-175,75,151,20},
+        Theme::text(g,"ESC TO RETURN",{getWidth()-204,11,150,25},
             10,Theme::muted,false,juce::Justification::centredRight);
     if(!detailsOpen) {
         for(int i=0;i<banks.size();++i){
-            const auto b=bankBounds(i).toFloat();
+            const auto b=bankBounds(i,showcaseMode?getWidth():0).toFloat();
             const bool selected=i==bank && (i!=0 || !mainAdlibs);
             const bool hovered=i==hoveredBank;
-            g.setColour(selected?Theme::green.withAlpha(.14f):
-                        hovered?Theme::panelAlt.brighter(.075f):Theme::panel);
-            g.fillRoundedRectangle(b,6.f);
-            if(selected){g.setColour(Theme::green);g.fillRoundedRectangle(b.getX()+3.f,b.getY()+7.f,2.f,b.getHeight()-14.f,1.f);}
-            g.setColour(selected?Theme::green.withAlpha(.55f):
-                        hovered?Theme::muted.withAlpha(.68f):Theme::stroke.withAlpha(.75f));
-            g.drawRoundedRectangle(b.reduced(.5f),6.f,selected?1.25f:1.f);
-            Theme::fittedText(g,banks[i],
-                {29,(int)b.getY()+5,112,20},12.f,
-                selected?Theme::white:Theme::muted,selected,
-                juce::Justification::centredLeft);
-            Theme::text(g,juce::String(categoryCounts[(size_t)i]),
-                {149,(int)b.getY()+6,28,18},10.f,
-                selected?Theme::green:Theme::muted,true,
-                juce::Justification::centredRight);
+            if(showcaseMode){
+                const char* names[]{"MAIN","MINE","ARTISTS","FAVORITES","GENRES"};
+                if(hovered){g.setColour(Theme::white.withAlpha(.04f));g.fillRoundedRectangle(b,5.f);}
+                Theme::fittedText(g,names[i],b.toNearestInt().reduced(4,0),11.5f,selected?Theme::white:Theme::muted,true,juce::Justification::centred);
+                if(selected){g.setColour(Theme::green);g.fillRoundedRectangle(b.getCentreX()-b.getWidth()*.28f,b.getBottom()-2.f,b.getWidth()*.56f,2.f,1.f);}
+            }else{
+                g.setColour(selected?Theme::green.withAlpha(.12f):hovered?Theme::white.withAlpha(.045f):Theme::panel.withAlpha(.36f));g.fillRoundedRectangle(b,16.f);
+                g.setColour(selected?Theme::green.withAlpha(.55f):Theme::stroke.withAlpha(.65f));g.drawRoundedRectangle(b.reduced(.5f),16.f,.85f);
+                g.setColour(selected?Theme::green:Theme::muted.withAlpha(.5f));g.fillEllipse(b.getX()+11.f,b.getCentreY()-3.f,6.f,6.f);
+                Theme::fittedText(g,banks[i],{39,(int)b.getY()+5,102,20},12.f,selected?Theme::white:Theme::muted,selected);
+                Theme::text(g,juce::String(categoryCounts[(size_t)i]),{149,(int)b.getY()+6,24,18},10.f,selected?Theme::green:Theme::muted,true,juce::Justification::centredRight);
+            }
         }
-        const auto sub=adlibsBounds().toFloat();
-        g.setColour(mainAdlibs?Theme::green.withAlpha(.15f):
-                   hoveredAdlibs?Theme::panelAlt.brighter(.075f):
-                                 Theme::panel);
-        g.fillRoundedRectangle(sub,5.f);
-        g.setColour(mainAdlibs?Theme::green.withAlpha(.68f):
-                   hoveredAdlibs?Theme::muted.withAlpha(.75f):
-                                 Theme::stroke.withAlpha(.45f));
-        g.drawRoundedRectangle(sub.reduced(.5f),5.f,.85f);
-        Theme::text(g,"Adlib Presets",{29,152,112,19},12.f,
-            mainAdlibs?Theme::white:Theme::muted,mainAdlibs);
-        Theme::text(g,juce::String(adlibsCount),{144,153,29,17},
-            10.f,mainAdlibs?Theme::green:Theme::muted,true,
-            juce::Justification::centredRight);
+        const auto sub=adlibsBounds(showcaseMode?getWidth():0).toFloat();
+        if(showcaseMode){
+            if(hoveredAdlibs){g.setColour(Theme::white.withAlpha(.04f));g.fillRoundedRectangle(sub,5.f);}
+            Theme::fittedText(g,"ADLIBS",sub.toNearestInt().reduced(4,0),11.5f,mainAdlibs?Theme::white:Theme::muted,true,juce::Justification::centred);
+            if(mainAdlibs){g.setColour(Theme::green);g.fillRoundedRectangle(sub.getCentreX()-sub.getWidth()*.28f,sub.getBottom()-2.f,sub.getWidth()*.56f,2.f,1.f);}
+        }else{
+            g.setColour(mainAdlibs?Theme::green.withAlpha(.12f):hoveredAdlibs?Theme::white.withAlpha(.045f):Theme::panel.withAlpha(.36f));g.fillRoundedRectangle(sub,16.f);
+            g.setColour(mainAdlibs?Theme::green.withAlpha(.55f):Theme::stroke.withAlpha(.65f));g.drawRoundedRectangle(sub.reduced(.5f),16.f,.85f);
+            g.setColour(mainAdlibs?Theme::green:Theme::muted.withAlpha(.5f));g.fillEllipse(sub.getX()+11.f,sub.getCentreY()-3.f,6.f,6.f);
+            Theme::text(g,"Adlib Presets",{39,152,102,19},12.f,mainAdlibs?Theme::white:Theme::muted,mainAdlibs);
+            Theme::text(g,juce::String(adlibsCount),{149,153,24,17},10.f,mainAdlibs?Theme::green:Theme::muted,true,juce::Justification::centredRight);
+        }
     } else {
         Theme::text(g,"ARTIST",{19,159,166,17},10.f,Theme::muted,true);
         Theme::text(g,"CATEGORY",{19,264,166,17},10.f,Theme::muted,true);
@@ -2350,8 +2354,9 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         const bool rowHover=itemIndex==hoveredCard;
-        g.setGradientFill(juce::ColourGradient(rowHover?Theme::panelAlt.brighter(.15f):Theme::panelAlt,rect.getTopLeft(),Theme::panel,rect.getBottomLeft(),false));
-        g.fillRoundedRectangle(rect,7.f);
+        g.setColour(rowHover?Theme::white.withAlpha(.065f):Theme::panelAlt.withAlpha(.38f));
+        g.fillRoundedRectangle(rect,5.f);
+        g.setColour(Theme::stroke.withAlpha(.36f));g.drawHorizontalLine(y+58,rect.getX()+8.f,rect.getRight()-8.f);
         const bool loaded=custom
             ?activeUserPreset==userPresets[(size_t)(-entry-1)]
             :entry==processor.loadedFactoryPresetIndex();
@@ -2359,8 +2364,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const bool focused=itemIndex==keyboardCard;
         g.setColour(loaded?Theme::green:
                     focused?Theme::blue.withAlpha(.92f):
-                    hovered?Theme::green.withAlpha(.68f):Theme::stroke);
-        g.drawRoundedRectangle(rect.reduced(.5f),7.f,
+                    hovered?Theme::green.withAlpha(.38f):juce::Colours::transparentBlack);
+        g.drawRoundedRectangle(rect.reduced(.5f),5.f,
                                loaded?1.6f:focused?1.6f:1.f);
         if(focused){
             // Stable focus indicator without obscuring the artwork/name.
@@ -2562,7 +2567,7 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
         const bool right=e.x>=getWidth()-8,bottom=e.y>=getHeight()-8;
         resizeLeft=e.x<8;resizeTop=e.y<8;
         const bool edge=right || bottom || resizeLeft || resizeTop;
-        const bool header=e.y>=63 && e.y<103;
+        const bool header=e.y>=8 && e.y<39;
         if(edge || header){
             resizingWindow=edge;draggingWindow=!edge;userPlaced=true;
             resizeWidth=right;resizeHeight=bottom;
@@ -2570,12 +2575,12 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
             return;
         }
     }
-    if(!detailsOpen && e.x>=17 && e.x<185){
-        if(adlibsBounds().contains(e.getPosition())){
+    if(!detailsOpen && (showcaseMode|| (e.x>=17 && e.x<185))){
+        if(adlibsBounds(showcaseMode?getWidth():0).contains(e.getPosition())){
             chooseAdlibs();grabKeyboardFocus();return;
         }
         for(int index=0;index<banks.size();++index)
-            if(bankBounds(index).contains(e.getPosition())) {
+            if(bankBounds(index,showcaseMode?getWidth():0).contains(e.getPosition())) {
                 chooseBank(index);grabKeyboardFocus();return;
             }
     }
@@ -2625,14 +2630,14 @@ void PresetBrowser::mouseMove(const juce::MouseEvent& e){
     if(right || bottom){setMouseCursor(right && bottom?
         ((e.x<8)==(e.y<8)?juce::MouseCursor::TopLeftCornerResizeCursor:juce::MouseCursor::TopRightCornerResizeCursor):
         right?juce::MouseCursor::LeftRightResizeCursor:juce::MouseCursor::UpDownResizeCursor);return;}
-    if(e.y>=63 && e.y<103 && e.x<195){setMouseCursor(juce::MouseCursor::DraggingHandCursor);return;}
+    if(e.y>=8 && e.y<39 && e.x<185){setMouseCursor(juce::MouseCursor::DraggingHandCursor);return;}
     int nextBank=-1;
     bool nextAdlibs=false;
-    if(!detailsOpen && e.x>=17 && e.x<185){
-        nextAdlibs=adlibsBounds().contains(e.getPosition());
+    if(!detailsOpen && (showcaseMode|| (e.x>=17 && e.x<185))){
+        nextAdlibs=adlibsBounds(showcaseMode?getWidth():0).contains(e.getPosition());
         if(!nextAdlibs)
             for(int i=0;i<banks.size();++i)
-                if(bankBounds(i).contains(e.getPosition())){nextBank=i;break;}
+                if(bankBounds(i,showcaseMode?getWidth():0).contains(e.getPosition())){nextBank=i;break;}
     }
     const int candidate=resultAt(e.getPosition());
     const bool directory=directoryMode()!=DirectoryMode::none;
