@@ -49,12 +49,17 @@ public:
     Frame processFrame(float left,float right) noexcept {
         const Frame in{safe(left),safe(right)};if(!ready_)return in;started_=true;
         const auto slew=[this](float& v,float t){v+=step_*(t-v);};
-        slew(pole_,targetPole_);slew(hp_,targetHp_);slew(wet_,targetWet_);slew(earlyGain_,targetEarly_);slew(lateGain_,targetLate_);
+        slew(pole_,targetPole_);slew(hp_,targetHp_);slew(earlyGain_,targetEarly_);slew(lateGain_,targetLate_);
+        // Exact dry/wet endpoints; leave the existing tail-control law unchanged.
+        if(wet_!=targetWet_){const float next=wet_+step_*(targetWet_-wet_);
+            wet_=(next==wet_||std::abs(targetWet_-next)<1.e-6f)?targetWet_:next;}
+
         if(fade_>=1.f&&preNow_!=preTarget_){preOld_=preNow_;preNow_=preTarget_;fade_=0.f;}
         for(unsigned c=0;c<2;++c){low_[c]=flush(low_[c]+hp_*(in[c]-low_[c]));pre_[prePos_][c]=in[c]-low_[c];}
-        const auto readPre=[this](unsigned d)->Frame {return pre_[(prePos_+pre_.size()-d)%pre_.size()];};
-        const auto a=readPre(preOld_),b=readPre(preNow_);
-        const Frame x{a[0]+fade_*(b[0]-a[0]),a[1]+fade_*(b[1]-a[1])};
+        const auto readPre=[this](unsigned d)->Frame {return pre_[prePos_>=d?prePos_-d:prePos_+pre_.size()-d];};
+        const auto b=readPre(preNow_);
+        Frame x=b;
+        if(fade_<1.f){const auto a=readPre(preOld_);x={a[0]+fade_*(b[0]-a[0]),a[1]+fade_*(b[1]-a[1])};}
         if(++prePos_==pre_.size())prePos_=0;
         fade_=std::min(1.f,fade_+fadeStep_);
         early_[earlyPos_]=x;Frame er{};

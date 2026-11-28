@@ -27,6 +27,16 @@ int main(){
             a.setLowCut(90);b.setLowCut(90);}
             const float l=i<fs?.8f*u(gen):0.f,r=i<fs?.8f*u(gen):0.f;auto y=a.processFrame(l,r),z=b.processFrame(l,r);assert(y==z);for(auto v:y){assert(std::isfinite(v));peak=std::max(peak,std::abs(v));if(i>=fs)tail+=v*v;}}
         assert(peak<4.f&&tail>1e-6);a.reset();assert((a.processFrame(0,0)==E::Frame{}));auto y=a.processFrame(std::numeric_limits<float>::quiet_NaN(),0);assert(std::isfinite(y[0]));
+        // Automation must converge to exact dry at every supported sample rate.
+        // Keep processing the wet history even while the output is dry.
+        a.prepare(fs);a.setParameters(2.5f,.3f,1.f);a.reset();
+        for(unsigned i=0;i<unsigned(.15*fs);++i)a.processFrame(.2f,-.1f);
+        a.setParameters(2.5f,.3f,0.f);
+        for(unsigned i=0;i<unsigned(.5*fs);++i)a.processFrame(.15f,-.25f);
+        for(unsigned i=0;i<128;++i){const E::Frame x{.2f*float(std::sin(i*.11)),.3f*float(std::cos(i*.19))};assert(a.processFrame(x[0],x[1])==x);}
+        a.setParameters(2.5f,.3f,1.f);double preserved=0.;
+        for(unsigned i=0;i<unsigned(.12*fs);++i){const auto y=a.processFrame(0,0);preserved+=double(y[0])*y[0]+double(y[1])*y[1];}
+        assert(preserved>1.e-8);
         skellcore::experimental::convolution::HybridVocalRoom room;assert((room.process(.5f,.5f)==E::Frame{}));room.prepare(fs);room.set(.6f,.4f,12.f,100.f);room.reset();double e=0;for(unsigned i=0;i<unsigned(.3*fs);++i){auto v=room.process(i==0?.7f:0.f,0.f);e+=v[1]*v[1];}assert(e>1e-7);
     }
 }

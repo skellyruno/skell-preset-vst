@@ -1,0 +1,15 @@
+# Hybrid room refinement — 2026-11-28
+
+Follow-up to the shared original hybrid reverb, not commercial IR1 recovery. Exact header blob 387c3de9fea579fc42240fb78e20628d797de5d8, replacing efc2c36e691c41fd90104f8193d1d45b660086a5. Existing opt-in configuration and all approved default routes, identities, controls and presets remain unchanged.
+
+Correct wet smoother convergence to exact endpoints when float increments stall or residual is below 1e-6. Wet zero returns the sanitized original dry sample; wet history remains active. Other control smoothing and tail feedback laws remain unchanged. Predelay uses bounded conditional ring wrap, skips the old tap once the crossfade has completed, and continues coalesced target changes without resetting histories. Settled static audio unchanged in tested cases; not a guarantee for every automation path. Same owner-thread contract; no external IR loading added.
+
+Six-rate focused optimized GCC C++17 regression (-O3 -UNDEBUG -Wall -Wextra -Werror -ffp-contract=off) and ASan/UBSan passed, including exact dry after wet automation and nonzero preserved wet tail on restoration. Rack-specific include variant passed optimized. Final offline static before/after comparison: 72 impulse pairs across 44.1/48/96/192k, 3 sizes, 3 decay settings, 2 damping settings, 30ms predelay; 8 recorded pairs from two reused private sources, one-second excerpts plus 2s silence, nominal 1.6s/.3/20ms/size1. 160 renders, all exact float output equality. Earlier broader smoother attempt also 160 static renders; rejected due increased cost and unnecessary changes. No private audio committed.
+
+Finite band energy-decay curve T30 regression (-5 to -35dB, extrapolated to -60dB), second-order Butterworth analysis bandpass, no commercial reference. At 48k nominal 1.6s, size1, damping .15: 125–500Hz 1.591695s, 500–2000Hz 1.527816s, 2–8kHz 1.221918s. At damping .75: 1.384265/0.924653/0.332565s. All six fits R² >=.9605. Not certified room-acoustic RT60 measurement; finite synthetic impulse, bandpass tail and early/late energy affect estimate.
+
+Final direct native callback proxy repeated three times per version, alternating before/after order on second run: 120282 callbacks per version, 16 conditions per repeat (44.1/48/96/192k, 64/512 samples, one/three rooms, 3s, periodic decay/predelay changes). Median paired total-processing-time ratio after/before .993848; no meaningful speedup claim. Previous header 7 missed deadlines, refined header 23; zero observed scalar operator-new allocations both. 48k/64 three rooms measured .02741–.03017s per 3s input; local proxy only. Initial timing run confounded by concurrent offline benchmark and different smoothing implementation, not used for final timing. High-rate callback stability remains a gate; no production promotion.
+
+Cached offline kit 13/13 hashes verified. No UI edits or new UI capture, full host/DAW/listening gates remain independent. Commercial IR1 processor/reference IR unavailable; no commercial match claim. All changes isolated to research candidate and tests. Do not merge unverified work.
+
+Parent 2307defa1f3127883e5823df3e96e4a82084eae8.
