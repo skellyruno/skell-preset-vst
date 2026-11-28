@@ -901,6 +901,14 @@ int main(int argc, char** argv) {
         if (!skellcore::ui::headless::writePng(overview, folder.getChildFile("contact-sheet.png")))
             ++failures;
         if(quick4 && extras) {
+            // Actual browser layouts from the production component, not a mockup.
+            for(int page:{0,13,14}){
+                editor.configureForScreenshot(0,1,true);
+                if(!editor.configureBrowserForScreenshot(page,780,560,true)){++failures;continue;}
+                const auto shot=skellcore::ui::headless::capture(editor,1168,688);
+                const char* name=page==0?"library-list-100.png":page==13?"library-showcase-100.png":"artist-showcase-100.png";
+                if(!shot.image.isValid()||!skellcore::ui::headless::writePng(shot.image,folder.getChildFile(name)))++failures;
+            }
             for(int scene=0;scene<6;++scene){
                 if(!editor.smartMatchForScreenshot(scene)){std::fprintf(stderr,"Live Match interaction %d failed\n",scene);++failures;}
                 if(scene<3||scene>=4){const auto shot=skellcore::ui::headless::capture(editor,1168,688);const char* names[]{"match-style-100.png","match-insufficient-100.png","match-done-100.png","","match-listening-active-100.png","match-refine-100.png"};if(!shot.image.isValid()||!skellcore::ui::headless::writePng(shot.image,folder.getChildFile(names[scene])))++failures;}

@@ -23,7 +23,7 @@ public:
     bool keyPressed(const juce::KeyPress&) override;
     void open();
     bool configureDirectoryForScreenshot(int page,int width,int height);
-    void setListViewForScreenshot(bool list) {preferencesReadOnly=true;setListView(list,false);}
+    void setListViewForScreenshot(bool list) {preferencesReadOnly=true;if(!showcaseMode)setListView(list,false);}
     bool testViewSwitchForTest();
     void applyTheme();
     // Cached on the message thread; no image file I/O from paint/audio.
@@ -69,7 +69,15 @@ public:
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
 private:
-    juce::TextButton thumbnailView{"THUMBNAILS"},listView{"LIST"};
+    juce::TextButton thumbnailView{"GRID"},listView{"LIBRARY"},showcaseView{"SHOWCASE"},closeBrowser{"X"};
+    juce::TextButton showcasePrevious{"<"},showcaseNext{">"},showcaseLoad{"LOAD"},showcaseFavorite{"FAVORITE"};
+    bool showcaseMode=false;
+    void setShowcase(bool enabled);
+    int showcaseSelection() const;
+    void moveShowcase(int delta);
+    void activateShowcase();
+    juce::Rectangle<int> showcaseCardBounds(int offset) const;
+
     bool listMode=true,preferencesReadOnly=false;
     juce::StringArray recentKeys;
     void rememberRecent(int entry);
@@ -176,6 +184,7 @@ private:
     void resetResults();
     struct DirectoryCard {juce::String label;int id=0,main=0,adlib=0,other=0,artIndex=-1;};
     enum class DirectoryMode { none,genres,tiers,artists };
+    void paintShowcase(juce::Graphics&,const std::vector<int>&,const std::vector<DirectoryCard>&);
     DirectoryMode directoryMode() const;
     std::vector<DirectoryCard> directoryCards() const;
     int resultCount() const;

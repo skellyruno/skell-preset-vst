@@ -59,11 +59,18 @@ juce::String singlePreviewName(int entry) {
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     loadUIPreferences();
     addAndMakeVisible(thumbnailView);addAndMakeVisible(listView);
+    for(auto* button:{&showcaseView,&showcasePrevious,&showcaseNext,&showcaseLoad,&showcaseFavorite,&closeBrowser})addAndMakeVisible(*button);
+    closeBrowser.setTooltip("Close preset browser");closeBrowser.onClick=[this]{setVisible(false);if(onClose)onClose();};
+    showcaseView.setTooltip("Browse artwork, then explicitly load a sound or open a collection");
+    showcaseView.onClick=[this]{setShowcase(true);};
+    showcasePrevious.onClick=[this]{moveShowcase(-1);};showcaseNext.onClick=[this]{moveShowcase(1);};
+    showcaseLoad.onClick=[this]{activateShowcase();};
+    showcaseFavorite.onClick=[this]{const auto entries=filtered();const int n=showcaseSelection();if(directoryMode()==DirectoryMode::none&&n>=0&&n<(int)entries.size()){toggleFavorite(entries[(size_t)n]);resized();repaint();}};
     thumbnailView.setTooltip("Browse artwork cards while keeping the current search and filters");
     listView.setTooltip("Browse compact rows while keeping the current search and filters");
     thumbnailView.onClick=[this]{setListView(false);};
     listView.onClick=[this]{setListView(true);};
-    search.setMultiLine(false);
+    search.setMultiLine(false);search.setJustification(juce::Justification::centredLeft);
     search.setTextToShowWhenEmpty("Search sounds / artist:name / genre:name",Theme::muted);
     artistEditor.setMultiLine(false);
     artistEditor.setTextToShowWhenEmpty("Artist for selected preset",Theme::muted);
@@ -152,7 +159,7 @@ PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
     sortPicker.setSelectedId(1,juce::dontSendNotification);
     sortPicker.setTooltip("Change display order, never rename presets or modify audio.");
     sortPicker.onChange=[this]{
-        scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;browserWheelCarry=0.f;repaint();
+        scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;browserWheelCarry=0.f;if(showcaseMode)resized();repaint();
     };
     addAndMakeVisible(categoryEditor);
     for(auto* button:{&importButton,&exportButton,&saveAsButton,&artworkButton,
@@ -454,7 +461,7 @@ void PresetBrowser::open() {
     artistTierFilter.setSelectedId(1,juce::dontSendNotification);
     typeFilter.setSelectedId(1,juce::dontSendNotification);refreshArtistChoices();
     artistFilter.setSelectedId(1,juce::dontSendNotification);refreshArtwork();
-    bank=0;mainAdlibs=false;scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
+    showcaseMode=false;bank=0;mainAdlibs=false;scroll=0;hoveredCard=-1;hoveredStar=-1;keyboardCard=-1;
     hoveredBank=-1;hoveredAdlibs=false;browserWheelCarry=0.f;
     genreFilter.setSelectedId(1,juce::dontSendNotification);
     // Preserve the user's in-session display sort without saving DAW state.
@@ -478,6 +485,26 @@ bool PresetBrowser::configureDirectoryForScreenshot(int page,int width,int heigh
             embeddedArtistMetadata=std::move(fixtureBank.metadata);
             scanLibrary();refreshArtistChoices();
         }
+    }
+    if(page==13 || page==14){
+        userPlaced=true;setBounds(constrainWindow({usableBounds.getX()+8,usableBounds.getY()+4,width,height}));
+        if(page==14){
+            chooseBank(2);
+            // Real installed artist presets are used if available. Otherwise
+            // the renderer exercises in-memory QA collections, not fake releases.
+            if(artistFilter.getNumItems()<=1){
+                const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("Skell browser QA "+juce::Uuid().toString());
+                const auto fixtureArt=juce::SystemStats::getEnvironmentVariable("SKELL_BROWSER_QA_ART",{});
+                for(int i=0;i<3;++i){
+                    const juce::String artist=i==0?"QA Artist A":i==1?(fixtureArt.isNotEmpty()?"skellyruno (QA)":"QA Artist B"):"QA Artist C";
+                    const int index=(int)userPresets.size();userPresets.push_back(root.getChildFile(artist+" main.skellpreset"));userArtwork.emplace_back();userCinemaArtwork.resize(userPresets.size());
+                    if(i==1&&fixtureArt.isNotEmpty()){const auto file=juce::File(fixtureArt);if(file.existsAsFile()&&file.getSize()<1024*1024)userCinemaArtwork[(size_t)index]=skellpreset::artistart::prepare(juce::ImageFileFormat::loadFrom(file));}
+                    const auto key=favoriteKey(-index-1);artistKeys.add(key);artistNames.add(artist);setOrganizationValue("type:"+key,"main");setOrganizationValue("tier:"+artist.toLowerCase(),i==0?"Underground":"Mainstream");
+                }
+                refreshArtistChoices();categoryCountsDirty=true;
+            }
+        }
+        setShowcase(true);moveShowcase(1);if(page==14&&embeddedArtistMetadata.empty()&&resultCount()>2)focusCard(resultCount()-1);return true;
     }
     if(page>=9){
         if(embeddedArtistMetadata.empty())return false;
@@ -565,7 +592,7 @@ void PresetBrowser::focusCard(int index){
     keyboardCard=juce::jlimit(0,count-1,index);
     if(keyboardCard<scroll)scroll=keyboardCard;
     if(keyboardCard>=scroll+pageCapacity())scroll=keyboardCard-pageCapacity()+1;
-    hoveredCard=-1;hoveredStar=-1;repaint();
+    hoveredCard=-1;hoveredStar=-1;if(showcaseMode)resized();repaint();
 }
 bool PresetBrowser::showVocalTabs() const {
     return !detailsOpen && ((bank==2 && artistFilter.getSelectedId()>1) ||
@@ -592,20 +619,30 @@ void PresetBrowser::placeWithin(juce::Rectangle<int> usable,juce::Rectangle<int>
     if(bounds!=getBounds())setBounds(bounds);
 }
 void PresetBrowser::resized(){
-    search.setBounds(19,17,getWidth()-111,42);
+    search.setBounds(19,17,getWidth()-151,42);
     search.setFont(juce::Font(juce::FontOptions(15.f)));
     search.setEnabled(!detailsOpen && !chooserActive);
     clearSearchButton.setEnabled(!detailsOpen && !chooserActive && search.getText().isNotEmpty());
-    clearSearchButton.setBounds(getWidth()-86,22,66,31);
+    clearSearchButton.setBounds(getWidth()-126,22,66,31);
+    closeBrowser.setBounds(getWidth()-51,22,31,31);closeBrowser.setColour(juce::TextButton::buttonColourId,Theme::panelAlt);closeBrowser.setColour(juce::TextButton::textColourOffId,Theme::muted);
     sortPicker.setVisible(!detailsOpen && directoryMode()==DirectoryMode::none);
     sortPicker.setBounds(18,getHeight()-77,166,29);
-    thumbnailView.setBounds(getWidth()-205,69,117,29);
-    listView.setBounds(getWidth()-82,69,63,29);
-    for(auto* b:{&thumbnailView,&listView})b->setVisible(!detailsOpen);
-    thumbnailView.setColour(juce::TextButton::buttonColourId,!listMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
-    listView.setColour(juce::TextButton::buttonColourId,listMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
-    thumbnailView.setColour(juce::TextButton::textColourOffId,!listMode?Theme::green:Theme::muted);
-    listView.setColour(juce::TextButton::textColourOffId,listMode?Theme::green:Theme::muted);
+    showcaseView.setBounds(getWidth()-251,69,94,29);
+    thumbnailView.setBounds(getWidth()-151,69,53,29);
+    listView.setBounds(getWidth()-92,69,73,29);
+    for(auto* b:{&thumbnailView,&listView,&showcaseView})b->setVisible(!detailsOpen);
+    showcaseView.setColour(juce::TextButton::buttonColourId,showcaseMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
+    showcaseView.setColour(juce::TextButton::textColourOffId,showcaseMode?Theme::green:Theme::muted);
+    const bool exhibition=showcaseMode&&!detailsOpen;
+    const int mid=207+(getWidth()-224)/2, foot=juce::jmin(getHeight()-(showVocalTabs()?100:61),showcaseCardBounds(0).getBottom()+76);
+    showcasePrevious.setBounds(208,190,25,40);showcaseNext.setBounds(getWidth()-43,190,25,40);
+    showcaseLoad.setBounds(mid-71,foot,142,31);showcaseFavorite.setBounds(mid+78,foot,85,31);
+    for(auto* b:{&showcasePrevious,&showcaseNext,&showcaseLoad,&showcaseFavorite}){b->setVisible(exhibition);b->setColour(juce::TextButton::buttonColourId,b==&showcaseLoad?Theme::green.withAlpha(.22f):Theme::panelAlt);b->setColour(juce::TextButton::textColourOffId,Theme::white);}
+    if(exhibition){const int n=showcaseSelection(),count=resultCount();showcasePrevious.setEnabled(n>0);showcaseNext.setEnabled(n>=0&&n+1<count);showcaseLoad.setEnabled(n>=0&&!chooserActive&&!loadInFlight&&!saveInFlight);showcaseLoad.setButtonText(directoryMode()==DirectoryMode::none?"LOAD PRESET":directoryMode()==DirectoryMode::artists?"OPEN ARTIST":"OPEN COLLECTION");showcaseFavorite.setVisible(directoryMode()==DirectoryMode::none);const auto entries=directoryMode()==DirectoryMode::none?filtered():std::vector<int>{};showcaseFavorite.setEnabled(n>=0&&n<(int)entries.size()&&!chooserActive);showcaseFavorite.setButtonText(n>=0&&n<(int)entries.size()&&isFavorite(entries[(size_t)n])?"FAVORITED":"FAVORITE");}
+    thumbnailView.setColour(juce::TextButton::buttonColourId,!listMode&&!showcaseMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
+    listView.setColour(juce::TextButton::buttonColourId,listMode&&!showcaseMode?Theme::green.withAlpha(.18f):Theme::panelAlt);
+    thumbnailView.setColour(juce::TextButton::textColourOffId,!listMode&&!showcaseMode?Theme::green:Theme::muted);
+    listView.setColour(juce::TextButton::textColourOffId,listMode&&!showcaseMode?Theme::green:Theme::muted);
     directoryBack.setVisible(!detailsOpen && hasDirectoryParent());
     directoryBack.setBounds(207,69,64,29);
     detailsButton.setBounds(18,detailsOpen?112:getHeight()-38,166,28);
@@ -621,7 +658,7 @@ void PresetBrowser::resized(){
                        static_cast<juce::Component*>(&addCategoryButton),
                        static_cast<juce::Component*>(&artworkButton)})
         control->setVisible(detailsOpen);
-    genreFilter.setVisible(false);artistTierFilter.setVisible(false);
+    genreFilter.setVisible(false);artistTierFilter.setVisible(exhibition&&bank==2&&artistFilter.getSelectedId()<=1);
     artistFilter.setVisible(false);typeFilter.setVisible(false);
     syncVocalTabs();
     const int tabWidth=juce::jmax(1,(getWidth()-229)/3);
@@ -1200,7 +1237,7 @@ PresetBrowser::DirectoryMode PresetBrowser::directoryMode() const {
     if(detailsOpen || search.getText().trim().isNotEmpty())return DirectoryMode::none;
     if(bank==4 && genreFilter.getSelectedId()<=1)return DirectoryMode::genres;
     if(bank==2 && artistFilter.getSelectedId()<=1)
-        return artistTierFilter.getSelectedId()<=1?DirectoryMode::tiers:DirectoryMode::artists;
+        return showcaseMode||artistTierFilter.getSelectedId()>1?DirectoryMode::artists:DirectoryMode::tiers;
     return DirectoryMode::none;
 }
 bool PresetBrowser::hasDirectoryParent() const {
@@ -1263,6 +1300,7 @@ juce::Rectangle<int> PresetBrowser::directoryCardBounds(int position) const {
 }
 int PresetBrowser::resultAt(juce::Point<int> p) const {
     if(detailsOpen)return -1;
+    if(showcaseMode){const int n=showcaseSelection();for(int d=-1;d<=1;++d)if(n+d>=0&&n+d<resultCount()&&showcaseCardBounds(d).contains(p))return n+d;return -1;}
     if(directoryMode()==DirectoryMode::none && listMode)
         return presetCardHitForTest(false,p.x,p.y,getWidth(),visibleRows())?scroll+(p.y-110)/61:-1;
     for(int i=0;i<pageCapacity();++i)
@@ -2197,7 +2235,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
     g.setColour(Theme::green.withAlpha(.82f));g.fillRoundedRectangle(juce::Rectangle<float>(18.f,67.f,3.f,23.f),1.5f);
     g.setColour(Theme::stroke.withAlpha(.7f));
     g.drawVerticalLine(196,105.f,(float)getHeight()-15.f);
-    Theme::text(g,detailsOpen?"MANAGE LIBRARY":"LIBRARY",
+    Theme::text(g,detailsOpen?"MANAGE LIBRARY":"PRESET BROWSER",
                 {30,73,154,20},13.5f,Theme::white,true);
     const auto directory=directoryMode();
     const auto entries=directory==DirectoryMode::none?filtered():std::vector<int>{};
@@ -2211,7 +2249,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
     if(bank==4 && genreFilter.getSelectedId()>1)location+=" / "+genreFilter.getText();
     const int visibleCount=directory==DirectoryMode::none?(int)entries.size():(int)cards.size();
     Theme::fittedText(g,location+"  /  " +juce::String(visibleCount),
-        {hasDirectoryParent()?280:207,73,std::max(0,getWidth()-(hasDirectoryParent()?493:420)),20},13.f,Theme::white,true,juce::Justification::centredLeft);
+        {hasDirectoryParent()?280:207,73,std::max(0,getWidth()-(hasDirectoryParent()?539:466)),20},13.f,Theme::white,true,juce::Justification::centredLeft);
     if(detailsOpen)
         Theme::text(g,"ESC TO RETURN",{getWidth()-175,75,151,20},
             10,Theme::muted,false,juce::Justification::centredRight);
@@ -2271,6 +2309,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
     for(int i=0;i<3;++i)g.drawLine((float)getWidth()-5.f-i*4.f,(float)getHeight()-3.f,
         (float)getWidth()-3.f,(float)getHeight()-5.f-i*4.f,1.f);
     if(detailsOpen)return;
+    if(showcaseMode){paintShowcase(g,entries,cards);return;}
     if(directory!=DirectoryMode::none){paintDirectory(g,cards);return;}
     if(!detailsOpen && !listMode){paintPresetGrid(g,entries);return;}
     // Preset cards only appear at a leaf or in search. Artist metadata can be assigned with the sidebar
@@ -2301,15 +2340,8 @@ void PresetBrowser::paint(juce::Graphics&g) {
         const int y=110+i*61;
         auto rect=juce::Rectangle<float>(207.f,(float)y,(float)getWidth()-224.f,56.f);
         const bool rowHover=itemIndex==hoveredCard;
-        const std::array<juce::Colour,4> accents{{Theme::green,Theme::amber,Theme::pink,Theme::white}};
-        const int seed=custom?-entry:entry+1;
-        const auto accent=accents[(size_t)artworkPaletteIndexForTest(seed)];
-        const auto art=custom?artworkForUser(-entry-1):
-            skellpreset::artistart::Art{entry==alchemistIndex?alchemistArtwork:juce::Image{},juce::Image{},{}};
-        skellpreset::artistart::cinematic(g,rect,art,Theme::panelAlt,accent,rowHover);
-        if(!art.portrait.isValid())paintCover(g,skellpreset::artistart::portraitBounds(rect),seed,accent);
-        g.setColour(Theme::bg.withAlpha(.84f));
-        g.fillRoundedRectangle(rect.getRight()-76.f,rect.getY()+8.f,52.f,40.f,5.f);
+        g.setColour(rowHover?Theme::panelAlt.brighter(.14f):i%2==0?Theme::panelAlt:Theme::panel);
+        g.fillRoundedRectangle(rect,5.f);
         const bool loaded=custom
             ?activeUserPreset==userPresets[(size_t)(-entry-1)]
             :entry==processor.loadedFactoryPresetIndex();
@@ -2331,11 +2363,15 @@ void PresetBrowser::paint(juce::Graphics&g) {
             g.fillRoundedRectangle(rect.getX(),rect.getY()+9.f,2.5f,
                                    rect.getHeight()-18.f,1.25f);
         }
-        Theme::fittedText(g,itemName,{220,y+5,juce::jmax(1,getWidth()-394),25},16.f,Theme::white,true,
-                          juce::Justification::centredLeft);
-        const auto bankColour=juce::Colour(0xffb5c0cb);
-        Theme::fittedText(g,itemBank,{220,y+32,juce::jmax(1,getWidth()-394),17},10.5f,bankColour,true,
-                          juce::Justification::centredLeft);
+        const int available=getWidth()-304;
+        const int nameWidth=juce::jmax(80,available*46/100);
+        Theme::fittedText(g,itemName,{220,y+5,nameWidth,25},15.f,Theme::white,true);
+        Theme::fittedText(g,custom&&userArtist.isNotEmpty()?userArtist:custom?juce::String("PERSONAL"):juce::String("FACTORY"),{220,y+31,nameWidth,17},10.5f,Theme::muted);
+        juce::StringArray tags;
+        if(custom){const auto type=vocalType(-entry-1);if(type=="main")tags.add("MAIN");else if(type=="adlib")tags.add("ADLIB");if(userGenre.isNotEmpty())tags.add(userGenre.toUpperCase());}
+        else tags.add(itemBank.toUpperCase());
+        int tx=225+nameWidth;const int limit=getWidth()-81;
+        for(int t=0;t<tags.size()&&tx<limit-26;++t){const auto tint=t==0?Theme::green:Theme::blue;const int tw=juce::jmin(limit-tx,juce::jlimit(42,100,tags[t].length()*7+16));const juce::Rectangle<float> pill((float)tx,(float)y+17.f,(float)tw,22.f);g.setColour(tint.withAlpha(.12f));g.fillRoundedRectangle(pill,11.f);Theme::fittedText(g,tags[t],pill.toNearestInt().reduced(5,0),10.f,tint,true,juce::Justification::centred);tx+=tw+5;}
         // Independent star target: selecting a favorite must not audition the
         // preset or alter any audio/host automation IDs.
         const bool favorite=isFavorite(entry);
@@ -2527,6 +2563,7 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     }
     const int hit=resultAt(e.getPosition());
     if(!e.mods.isPopupMenu() && hit>=0){
+        if(showcaseMode){focusCard(hit);resized();grabKeyboardFocus();return;}
         if(directoryMode()!=DirectoryMode::none){
             grabKeyboardFocus();activateDirectoryRow(hit);return;
         }
@@ -2581,7 +2618,7 @@ void PresetBrowser::mouseMove(const juce::MouseEvent& e){
     }
     const int candidate=resultAt(e.getPosition());
     const bool directory=directoryMode()!=DirectoryMode::none;
-    const bool onStar=!directory && candidate>=scroll && (listMode?
+    const bool onStar=!showcaseMode && !directory && candidate>=scroll && (listMode?
         e.x>=getWidth()-77 && e.x<=getWidth()-38:
         directoryCardBounds(candidate-scroll).removeFromRight(35).removeFromTop(35).contains(e.getPosition()));
     // Avoid filtering all the cards for every pixel of mouse travel.
@@ -2600,7 +2637,7 @@ void PresetBrowser::mouseMove(const juce::MouseEvent& e){
     hoveredBank=nextBank;hoveredAdlibs=nextAdlibs;
     repaint();
     setTooltip(nextStar>=0?"Toggle favorite without changing the loaded sound.":
-               next>=0?(directory?"Open this group without changing the loaded sound.":"Load this preset; your current sound can be undone."):
+               next>=0?(showcaseMode?"Select artwork without loading; use the explicit action button.":directory?"Open this group without changing the loaded sound.":"Load this preset; your current sound can be undone."):
                nextAdlibs?"Browse factory and manually classified Adlib presets.":
                nextBank>=0?"Browse this library category.":
                "Click a category, choose a genre or search for a saved sound.");
@@ -2615,6 +2652,7 @@ void PresetBrowser::mouseExit(const juce::MouseEvent&){
 void PresetBrowser::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel){
     if(detailsOpen || e.x<197 || e.y<102 || e.y>getHeight()-48 ||
        !std::isfinite(wheel.deltaY) || wheel.deltaY==0.f)return;
+    if(showcaseMode){browserWheelCarry=juce::jlimit(-1.f,1.f,(browserWheelCarry*wheel.deltaY<0?0.f:browserWheelCarry)+wheel.deltaY);if(std::abs(browserWheelCarry)>=.18f){moveShowcase(browserWheelCarry<0?1:-1);browserWheelCarry=0.f;}return;}
     const int maxScroll=std::max(0,resultCount()-pageCapacity());
     // One row per traditional wheel tick, so categories do not jump past
     // results; trackpads use small accumulated deltas on the message thread.
@@ -2647,6 +2685,7 @@ bool PresetBrowser::keyPressed(const juce::KeyPress& key){
         return true;
     }
     if(detailsOpen)return false;
+    if(showcaseMode){if(code==juce::KeyPress::leftKey||code==juce::KeyPress::rightKey){moveShowcase(code==juce::KeyPress::leftKey?-1:1);return true;}if(code==juce::KeyPress::returnKey){activateShowcase();return true;}}
     const bool directory=directoryMode()!=DirectoryMode::none;
     const auto entries=directory?std::vector<int>{}:filtered();
     if(code==juce::KeyPress::leftKey || code==juce::KeyPress::rightKey){

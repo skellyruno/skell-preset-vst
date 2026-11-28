@@ -8,7 +8,7 @@ namespace skellpreset::stage {
 // coordinate system. Pose, ink plates and interactive mic share that space.
 class Performer {
     using P=juce::Point<float>; using Path=juce::Path; using C=juce::Colour;
-    const C bone{0xffeee9dc}, ink{0xff18221f}, edge{0xffbcbdb0};
+    const C bone{0xfff0edde}, ink{0xff101916}, edge{0xffbcbdb0};
     static Path poly(std::initializer_list<P> points){Path p;if(points.size()<3)return p;const auto* v=points.begin();const size_t count=points.size();auto before=[&](size_t i){return v[i]+(v[(i+count-1)%count]-v[i])*.23f;};auto after=[&](size_t i){return v[i]+(v[(i+1)%count]-v[i])*.23f;};p.startNewSubPath(before(0));for(size_t i=0;i<count;++i){p.lineTo(before(i));p.quadraticTo(v[i],after(i));}p.closeSubPath();return p;}
     static void stroke(juce::Graphics& g,const Path& p,float w,C colour){g.setColour(colour);g.strokePath(p,juce::PathStrokeType(w,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));}
     void fill(juce::Graphics& g,const Path& p,C colour)const{g.setColour(colour);g.fillPath(p);}
@@ -17,9 +17,10 @@ class Performer {
     // Broad, irregular bone silhouette with ink-cut marrow and flared ends.
     void longBone(juce::Graphics& g,P a,P b,float ra,float rb,float bow=0.f)const{
         const P delta=b-a;const float len=juce::jmax(1.f,delta.getDistanceFromOrigin());const P u=delta/len,n{-u.y,u.x};
-        const P m=(a+b)*.5f+n*bow;const float w=(ra+rb)*.40f;
+        const P m=(a+b)*.5f+n*bow;const float w=(ra+rb)*.46f;
         Path p;p.startNewSubPath(a-u*ra*.52f+n*ra*.7f);p.lineTo(a+n*ra);p.quadraticTo(a+u*len*.2f+n*w,m+n*w*.86f);p.lineTo(b-u*len*.19f+n*w*.82f);p.quadraticTo(b-u*rb*.55f+n*rb,b+n*rb);p.lineTo(b+u*rb*.65f+n*rb*.55f);p.lineTo(b+u*rb*.58f-n*rb*.64f);p.quadraticTo(b-n*rb,b-u*len*.17f-n*w);p.quadraticTo(m-n*w*.7f,a+u*len*.15f-n*w);p.lineTo(a-n*ra*.92f);p.lineTo(a-u*ra*.68f-n*ra*.44f);p.closeSubPath();plate(g,p);
-        if(len>13.f&&ra>2.f){hole(g,{a+u*len*.12f-n*ra*.55f,a+u*len*.24f-n*w*.42f,m-u*len*.08f-n*w*.22f,m-u*len*.17f+n*w*.25f,a+u*len*.19f+n*w*.33f});hole(g,{m+u*len*.08f-n*w*.25f,b-u*len*.15f-n*w*.38f,b-u*len*.10f+n*w*.14f,m+u*len*.16f+n*w*.28f});
+        if(len>13.f&&ra>2.f){hole(g,{a+u*len*.12f-n*ra*.65f,a+u*len*.22f-n*w*.68f,m-u*len*.12f-n*w*.25f,m-u*len*.18f+n*w*.11f,a+u*len*.20f+n*w*.53f});
+            hole(g,{m+u*len*.05f-n*w*.64f,m+u*len*.23f-n*w*.40f,b-u*len*.08f-n*w*.83f,b-u*len*.13f+n*w*.45f,m+u*len*.11f+n*w*.15f});
             hole(g,{a-u*ra*.21f+n*ra*.35f,a+u*ra*.6f+n*ra*.66f,a+u*ra*.75f+n*ra*.14f});
             hole(g,{b-u*rb*.58f-n*rb*.47f,b+u*rb*.15f-n*rb*.62f,b+u*rb*.29f+n*rb*.02f});
             // Small irregular cortical chips interrupt the long white surfaces.
@@ -38,23 +39,26 @@ class Performer {
         longBone(g,{145,205},{191,269},10.f,8.f,-5);knuckle(g,{191,269},8.f);
         longBone(g,{187,276},{151,351},6.7f,5.5f,-2);longBone(g,{194,278},{158,351},3.4f,2.7f);shoeBones(g,{151,350},1);
         // Broad pelvic wings, dark iliac fossae and open obturator foramina.
-        Path hip;hip.startNewSubPath(146,173);hip.cubicTo(128,162,119,174,123,190);hip.lineTo(136,196);hip.cubicTo(128,208,133,221,147,222);hip.lineTo(164,213);hip.lineTo(182,215);hip.cubicTo(196,227,208,216,202,204);hip.lineTo(197,191);hip.cubicTo(205,176,196,167,184,168);hip.quadraticTo(172,171,175,190);hip.lineTo(161,197);hip.quadraticTo(153,187,146,173);hip.closeSubPath();plate(g,hip);
+        Path hip;hip.startNewSubPath(146,173);hip.cubicTo(127,159,116,174,122,188);hip.lineTo(131,194);hip.cubicTo(121,204,132,220,146,225);hip.lineTo(164,213);hip.lineTo(182,215);hip.cubicTo(196,227,208,216,202,204);hip.lineTo(197,191);hip.cubicTo(208,180,199,163,185,165);hip.cubicTo(176,164,169,174,174,191);hip.lineTo(161,197);hip.quadraticTo(153,187,146,173);hip.closeSubPath();plate(g,hip);
         hole(g,{{129,176},{137,174},{142,179},{148,188},{144,195},{139,191},{136,184},{132,184}});hole(g,{{183,175},{190,172},{196,175},{198,182},{193,191},{186,197},{181,190},{183,185}});
-        hole(g,{{139,204},{145,200},{154,203},{155,211},{146,216},{138,212}});hole(g,{{177,204},{185,199},{195,202},{196,210},{189,216},{179,211}});
+        hole(g,{{135,204},{143,200},{150,204},{155,210},{147,214},{140,213},{139,219},{133,213}});hole(g,{{174,203},{182,196},{193,199},{199,207},{190,215},{182,213},{179,208}});
+        hole(g,{{126,183},{129,187},{128,193},{124,190}});hole(g,{{196,177},{199,183},{197,188},{194,183}});hole(g,{{155,216},{163,213},{161,219},{156,220}});
         hole(g,{{155,194},{161,200},{168,195},{175,202},{168,211},{160,209}});fill(g,poly({{134,179},{138,178},{140,182},{137,185}}),bone);fill(g,poly({{189,179},{193,181},{190,185},{187,184}}),bone);fill(g,poly({{143,207},{147,205},{149,209},{145,211}}),bone);
         // Visible irregular vertebrae and the neck, in front of a narrow spine.
-        Path spine;spine.startNewSubPath(190,53);spine.cubicTo(182,83,165,123,158,192);stroke(g,spine,9.5f,ink);for(int i=0;i<15;++i){const float t=i/14.f,y=52.f+139.f*t,x=190.f-32.f*t+3.f*std::sin(t*6.f),w=3.7f+2.1f*t;plate(g,poly({{x-w-2,y-2},{x+w,y-3},{x+w+2,y},{x+w,y+4},{x-w,y+3},{x-w-2,y+1}}));if(i%3==0)hole(g,{{x-2,y-1},{x+2,y-2},{x+1,y+1}});}
+        Path spine;spine.startNewSubPath(190,53);spine.cubicTo(182,83,165,123,158,192);stroke(g,spine,9.5f,ink);for(int i=0;i<15;++i){const float t=i/14.f,y=52.f+139.f*t+(i%3-1)*1.1f,x=190.f-32.f*t+3.f*std::sin(t*6.f)+(i%2?1.f:-1.f),w=3.7f+2.1f*t;plate(g,poly({{x-w-2,y-3},{x-1,y-4},{x+w,y-3},{x+w+1,y},{x+w-1,y+4},{x,y+5},{x-w,y+3},{x-w-2,y+1}}));if(i%3==0)hole(g,{{x-2,y-1},{x+2,y-2},{x+1,y+1}});}
         // Oblique thorax. Dark interior and broad, irregular inked rib crescents.
-        Path cage;cage.startNewSubPath(152,66);cage.cubicTo(132,65,127,94,129,121);cage.quadraticTo(125,145,139,156);cage.lineTo(159,141);cage.lineTo(178,130);cage.lineTo(190,151);cage.cubicTo(213,143,220,117,219,98);cage.quadraticTo(210,83,191,83);cage.quadraticTo(175,68,152,66);cage.closeSubPath();fill(g,cage,ink);
+        Path cage;cage.startNewSubPath(152,66);cage.cubicTo(127,66,122,98,127,120);cage.cubicTo(121,138,127,154,137,160);cage.lineTo(159,141);cage.lineTo(178,130);cage.lineTo(190,153);cage.cubicTo(207,142,213,113,219,98);cage.quadraticTo(210,83,191,83);cage.quadraticTo(175,68,152,66);cage.closeSubPath();fill(g,cage,ink);
         // Each rib is a tapered closed ink crescent rather than a uniform stroke.
-        for(int i=0;i<8;++i){const float t=i/7.f;const float x=143.f-8.f*std::sin(t*3.14f),y=76.f+8.f*i+(i%3-1)*1.1f;
+        for(int i=0;i<8;++i){const float t=i/7.f;const float x=141.f-9.f*std::sin(t*3.14f)+(i%3-1)*1.5f,y=77.f+8.2f*i+(i%3-1)*1.8f;
             const float tip=181.f-19.f*t+(i%2?1.5f:-1.f),endY=y+15.f+3.f*std::sin(t*3.14f);
-            Path r;r.startNewSubPath(x-2,y);r.cubicTo(x-8,y+12,149.f-7.f*t,y+26,tip,endY+3);r.lineTo(tip+1,endY-1);r.cubicTo(151.f-4.f*t,y+20,x-2,y+11,x+2,y+1);r.closeSubPath();fill(g,r,bone);
-            if(i%2==1)hole(g,{{x-2,y+9},{x+1,y+12},{x+2,y+15},{x-1,y+13}});}
-        Path outer;outer.startNewSubPath(142,78);outer.cubicTo(126,94,128,124,137,143);stroke(g,outer,2.f,bone);
+            Path r;r.startNewSubPath(x-2,y);r.cubicTo(x-6,y+9,145.f-9.f*t,y+25,tip,endY+3);r.lineTo(tip+2,endY-2);r.cubicTo(151.f-5.f*t,y+19,x-2,y+8,x+2,y+1);r.closeSubPath();fill(g,r,bone);
+            if(i%2==1)hole(g,{{x-2,y+9},{x+2,y+12},{x+2,y+15},{x-1,y+13}});
+            if(i>=3)hole(g,{{tip-11,endY+1},{tip-8,endY-2},{tip-4,endY-1},{tip-7,endY+2}});}
+        Path outer;outer.startNewSubPath(142,78);outer.cubicTo(122,91,125,121,136,144);stroke(g,outer,3.3f,bone);
+        hole(g,{{130,110},{134,115},{132,123},{127,118}});hole(g,{{134,140},{141,145},{137,150},{133,145}});
         for(int i=0;i<6;++i){const float t=i/5.f,y=88.f+8.f*i+(i%2)*1.2f;const float startX=192.f-7.f*t,tipX=188.f-4.f*t;Path r;r.startNewSubPath(startX,y-1);r.cubicTo(218.f-4.f*t,y-5,217.f-4.f*t,y+11,tipX,y+14);r.lineTo(tipX-1,y+10);r.cubicTo(209.f-4.f*t,y+8,212.f-4.f*t,y+1,startX,y+2);r.closeSubPath();fill(g,r,bone);}
         plate(g,poly({{187,82},{194,87},{189,103},{185,124},{179,138},{174,130},{179,109},{180,96}}));hole(g,{{183,112},{187,108},{184,119}});
-        Path margin;margin.startNewSubPath(139,147);margin.quadraticTo(151,156,176,130);margin.quadraticTo(188,135,193,147);stroke(g,margin,5.1f,bone);
+        Path margin;margin.startNewSubPath(139,147);margin.cubicTo(143,158,153,150,175,132);margin.quadraticTo(186,137,193,149);stroke(g,margin,5.1f,bone);hole(g,{{143,150},{148,146},{151,150},{146,153}});
         longBone(g,{144,68},{184,85},5.8f,4.6f,3);longBone(g,{190,85},{216,91},4.2f,5.6f,-3);
         // Mic-side elbow and gripping hand, static relative to the microphone.
         longBone(g,{215,94},{262,135},7.f,5.8f,2);knuckle(g,{262,135},6.f);
@@ -66,21 +70,21 @@ class Performer {
         longBone(g,{145,68},{109,78},6.6f,6.2f,2);knuckle(g,{109,78},6.1f);
         longBone(g,{105,75},{66,60},5.6f,4.2f,0);longBone(g,{106,82},{64,65},2.8f,2.7f);
         plate(g,poly({{64,54},{57,45},{47,45},{38,51},{39,61},{49,67},{60,66},{70,62}}));hole(g,{{43,51},{48,50},{53,53},{50,58},{44,56}});hole(g,{{55,58},{60,54},{63,59},{59,63}});hole(g,{{47,61},{51,60},{53,64},{49,65}});
-        const P bases[4]{{43,52},{46,47},{51,44},{57,46}};const P mids[4]{{30,45},{33,39},{44,32},{55,35}};const P ends[4]{{19,34},{25,28},{36,21},{51,23}};
+        const P bases[4]{{43,54},{45,49},{50,46},{55,48}};const P mids[4]{{31,48},{32,42},{37,37},{45,38}};const P ends[4]{{19,37},{18,29},{27,32},{35,32}};
         for(int i=0;i<4;++i){longBone(g,bases[i],mids[i],3.4f,2.7f);knuckle(g,mids[i],2.4f);longBone(g,mids[i],ends[i],2.5f,1.8f);}
-        longBone(g,{62,51},{61,32},3.3f,2.5f);longBone(g,{61,32},{49,12},2.5f,1.6f);knuckle(g,{145,68},7.4f);
+        longBone(g,{62,51},{61,31},3.8f,2.7f);longBone(g,{61,31},{46,7},2.9f,1.8f);knuckle(g,{145,68},7.4f);
     }
     void skullArt(juce::Graphics& g)const{
         // Large cranium, tapered occiput, projecting maxilla and open cheek arch.
-        Path cr;cr.startNewSubPath(171,43);cr.cubicTo(166,24,178,7,194,5);cr.cubicTo(213,2,229,14,230,31);cr.lineTo(234,36);cr.lineTo(229,43);cr.lineTo(234,47);cr.lineTo(230,53);cr.lineTo(217,54);cr.lineTo(210,49);cr.lineTo(201,49);cr.lineTo(193,55);cr.cubicTo(180,55,172,50,171,43);cr.closeSubPath();plate(g,cr);
+        Path cr;cr.startNewSubPath(171,43);cr.cubicTo(163,25,175,8,193,4);cr.cubicTo(211,0,229,13,230,31);cr.lineTo(234,36);cr.lineTo(229,43);cr.lineTo(234,47);cr.lineTo(230,53);cr.lineTo(217,54);cr.lineTo(210,49);cr.lineTo(201,49);cr.lineTo(193,55);cr.cubicTo(180,55,172,50,171,43);cr.closeSubPath();plate(g,cr);
         hole(g,{{172,35},{178,22},{181,26},{179,32},{183,36},{176,41}});hole(g,{{181,42},{190,35},{196,30},{197,20},{201,18},{203,23},{200,34},{192,43},{190,48},{183,48}});
         Path orbit;orbit.startNewSubPath(208,21);orbit.cubicTo(219,17,225,23,219,32);orbit.cubicTo(211,37,203,31,208,21);orbit.closeSubPath();fill(g,orbit,ink);
-        hole(g,{{228,29},{225,35},{221,40},{226,43},{232,40}});hole(g,{{193,43},{202,36},{211,38},{207,44},{200,45}});hole(g,{{211,45},{216,42},{219,47},{224,46},{227,50},{217,51}});
+        hole(g,{{228,29},{225,35},{221,40},{226,43},{232,40}});hole(g,{{190,43},{202,36},{211,38},{209,43},{201,47},{195,47}});hole(g,{{211,45},{216,42},{219,47},{224,46},{227,50},{217,51}});
         hole(g,{{183,11},{190,7},{197,7},{191,10}});hole(g,{{204,6},{211,7},{215,10},{210,9}});hole(g,{{181,46},{184,45},{186,48},{183,50}});hole(g,{{217,37},{219,36},{220,39}});hole(g,{{175,20},{179,16},{178,21}});hole(g,{{186,15},{188,13},{190,14},{187,17}});hole(g,{{224,15},{226,19},{223,18}});
         for(int i=0;i<5;++i){const float x=211.f+i*3.7f;plate(g,poly({{x,49},{x+3.4f,50},{x+2.7f,56},{x+.6f,55}}));}
     }
     void jawArt(juce::Graphics& g)const{
-        Path jaw;jaw.startNewSubPath(192,44);jaw.lineTo(197,45);jaw.lineTo(198,56);jaw.quadraticTo(201,64,212,68);jaw.lineTo(222,64);jaw.lineTo(225,67);jaw.lineTo(222,73);jaw.lineTo(212,76);jaw.cubicTo(200,72,190,61,190,52);jaw.closeSubPath();plate(g,jaw);
+        Path jaw;jaw.startNewSubPath(192,44);jaw.lineTo(197,45);jaw.lineTo(198,56);jaw.cubicTo(199,65,206,69,212,70);jaw.lineTo(223,65);jaw.lineTo(226,69);jaw.lineTo(222,76);jaw.lineTo(212,79);jaw.cubicTo(200,74,189,62,190,52);jaw.closeSubPath();plate(g,jaw);
         hole(g,{{194,49},{197,57},{200,62},{195,59},{192,54}});hole(g,{{205,68},{211,71},{219,68},{215,73},{210,73}});
         for(int i=0;i<4;++i){const float x=209.f+i*3.2f;plate(g,poly({{x,67},{x+.6f,62},{x+2.9f,62},{x+3.f,67}}));}
     }
@@ -105,7 +109,7 @@ public:
         cache(body,{112,43,170,329},[this](auto& art){bodyArt(art);});cache(arm,{10,5,147,87},[this](auto& art){armArt(art);});cache(head,{162,0,78,62},[this](auto& art){skullArt(art);});cache(jaw,{184,40,48,42},[this](auto& art){jawArt(art);});
         g.addTransform(bodyLean(react,phase));cableAndStand(g,react,phase);blit(g,body,112,43);
         {juce::Graphics::ScopedSaveState armPose(g);g.addTransform(juce::AffineTransform::rotation(.06f*react*std::sin(phase*.68f),145,68));blit(g,arm,10,5);}
-        {juce::Graphics::ScopedSaveState skullPose(g);g.addTransform(juce::AffineTransform::rotation(-.02f+.04f*react*std::sin(phase*.73f),193,53));blit(g,head,162,0);g.addTransform(juce::AffineTransform::rotation(.12f+.27f*std::sqrt(voice),193,46));blit(g,jaw,184,40);}
+        {juce::Graphics::ScopedSaveState skullPose(g);g.addTransform(juce::AffineTransform::rotation(-.02f+.04f*react*std::sin(phase*.73f),193,53));blit(g,head,162,0);g.addTransform(juce::AffineTransform::rotation(.17f+.27f*std::sqrt(voice),193,46));blit(g,jaw,184,40);}
         microphone(g,react);
     }
 private:mutable juce::Image body,arm,head,jaw;

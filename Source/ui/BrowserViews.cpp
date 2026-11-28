@@ -5,7 +5,9 @@
 #include "../chain/AlchemistNativePreset.h"
 
 void PresetBrowser::setListView(bool list,bool persist) {
-    if(listMode==list)return;
+    const bool wasShowcase=showcaseMode;const auto previousDirectory=directoryMode();showcaseMode=false;
+    if(wasShowcase&&directoryMode()!=previousDirectory){scroll=0;keyboardCard=-1;}
+    if(listMode==list&&!wasShowcase)return;
     const int anchor=keyboardCard>=0?keyboardCard:scroll;
     listMode=list;
     hoveredCard=hoveredStar=-1;browserWheelCarry=0.f;
@@ -102,7 +104,7 @@ void PresetBrowser::paintPresetGrid(juce::Graphics& g,const std::vector<int>& en
                     " / "+juce::String(entries.size()),{207,getHeight()-27,getWidth()-227,18},10.f,Theme::muted);
 }
 bool PresetBrowser::testViewSwitchForTest() {
-    const bool savedMode=listMode,savedReadOnly=preferencesReadOnly;
+    const bool savedMode=listMode,savedReadOnly=preferencesReadOnly,savedShowcase=showcaseMode;
     preferencesReadOnly=true;
     const int oldBank=bank,tier=artistTierFilter.getSelectedId(),artist=artistFilter.getSelectedId(),
         genre=genreFilter.getSelectedId(),type=typeFilter.getSelectedId(),oldFocus=keyboardCard,oldScroll=scroll;
@@ -183,7 +185,15 @@ bool PresetBrowser::testViewSwitchForTest() {
     }
     artRow->setProperty("sha256",juce::String::repeatedString("0",64));
     ok=ok && skellpreset::artistart::decode(bankVar,cache).empty();
-    setListView(savedMode,false);keyboardCard=oldFocus;scroll=oldScroll;resized();
+    // Showcase focus and side cards never trigger a host program change.
+    const int originalProgram=processor.loadedFactoryPresetIndex();
+    setShowcase(true);const int center=showcaseSelection();
+    if(center>=0){ok=ok&&resultAt(showcaseCardBounds(0).getCentre())==center;
+        if(center+1<resultCount()){moveShowcase(1);ok=ok&&showcaseSelection()==center+1;}
+        ok=ok&&processor.loadedFactoryPresetIndex()==originalProgram;
+    }
+    ok=ok&&showcaseLoad.isVisible()&&!showcaseCardBounds(0).intersects(showcaseCardBounds(1))&&getLocalBounds().contains(showcaseLoad.getBounds());
+    setListView(savedMode,false);if(savedShowcase)setShowcase(true);keyboardCard=oldFocus;scroll=oldScroll;resized();
     preferencesReadOnly=savedReadOnly;
     return ok;
 }
@@ -193,4 +203,49 @@ void PresetBrowser::rememberRecent(int entry) {
     recentKeys.removeString(key);recentKeys.insert(0,key);
     while(recentKeys.size()>40)recentKeys.remove(recentKeys.size()-1);
     saveUIPreferences();
+}
+
+void PresetBrowser::setShowcase(bool enabled){
+    const auto previousDirectory=directoryMode();showcaseMode=enabled;
+    if(previousDirectory!=directoryMode()){keyboardCard=-1;scroll=0;}
+    hoveredCard=hoveredStar=-1;browserWheelCarry=0;resized();repaint();
+}
+int PresetBrowser::showcaseSelection() const {return auditionTargetForTest(keyboardCard,scroll,resultCount());}
+void PresetBrowser::moveShowcase(int delta){const int n=showcaseSelection();if(n>=0)focusCard(n+delta);}
+void PresetBrowser::activateShowcase(){
+    if(!showcaseMode||detailsOpen||chooserActive||loadInFlight||saveInFlight)return;
+    const int n=showcaseSelection();if(n<0)return;
+    if(directoryMode()!=DirectoryMode::none){activateDirectoryRow(n);return;}
+    const auto entries=filtered();if(n<(int)entries.size())auditionEntry(entries[(size_t)n]);
+}
+juce::Rectangle<int> PresetBrowser::showcaseCardBounds(int offset) const {
+    const int w=getWidth()-224,mid=207+w/2,hero=juce::jmin(210,(w-66)*48/100),side=juce::jmax(35,(w-66-hero)/2-8);
+    const int height=juce::jlimit(138,236,getHeight()-(showVocalTabs()?311:272));
+    if(offset==0)return {mid-hero/2,131,hero,height};
+    return {offset<0?mid-hero/2-side-8:mid+hero/2+8,151,side,height-40};
+}
+void PresetBrowser::paintShowcase(juce::Graphics& g,const std::vector<int>& entries,const std::vector<DirectoryCard>& cards){
+    const bool directory=directoryMode()!=DirectoryMode::none;const int count=directory?(int)cards.size():(int)entries.size(),n=showcaseSelection();
+    const int width=getWidth()-224,mid=207+width/2;
+    if(n<0||n>=count){Theme::fittedText(g,"NO MATCHING SOUNDS",{220,210,width-26,36},17.f,Theme::muted,true,juce::Justification::centred);return;}
+    const auto hero=showcaseCardBounds(0);g.setGradientFill(juce::ColourGradient(Theme::green.withAlpha(.12f),(float)mid,(float)hero.getCentreY(),Theme::plot.withAlpha(0.f),(float)(mid+width/2),(float)hero.getBottom(),true));g.fillRect(207,110,width,hero.getHeight()+75);
+    juce::String title,subtitle;
+    for(int d:{-1,1,0}){
+        const int i=n+d;if(i<0||i>=count)continue;const auto rect=showcaseCardBounds(d);const auto area=rect.toFloat();juce::Image cover;juce::String label;int seed=0;
+        if(directory){const auto& card=cards[(size_t)i];label=card.label;seed=card.id;cover=artworkForUser(card.artIndex).portrait;if(directoryMode()==DirectoryMode::artists){const auto found=artistArtwork.find(skellpreset::artistart::key(card.label));if(found!=artistArtwork.end())cover=found->second.portrait;}}
+        else {const int entry=entries[(size_t)i];seed=entry<0?-entry:entry+1;label=entry<0?userDisplayName(-entry-1):processor.getProgramName(entry);cover=entry<0?artworkForUser(-entry-1).portrait:entry==skellpreset::alchemist::factoryIndex?alchemistArtwork:juce::Image{};}
+        g.setColour(Theme::panelAlt);g.fillRoundedRectangle(area,9.f);
+        {juce::Graphics::ScopedSaveState state(g);juce::Path clip;clip.addRoundedRectangle(area.reduced(2.f),7.f);g.reduceClipRegion(clip);
+            if(cover.isValid())g.drawImageWithin(cover,rect.getX()+2,rect.getY()+2,rect.getWidth()-4,rect.getHeight()-4,juce::RectanglePlacement::fillDestination);
+            else {const std::array<juce::Colour,4> accents{{Theme::green,Theme::blue,Theme::amber,Theme::pink}};skellpreset::art::paintCover(g,area.reduced(2.f),seed,accents[(size_t)artworkPaletteIndexForTest(seed)].withAlpha(.85f));}
+            g.setGradientFill(juce::ColourGradient(Theme::bg.withAlpha(d==0?.02f:.43f),area.getTopLeft(),Theme::bg.withAlpha(d==0?.35f:.82f),area.getBottomLeft(),false));g.fillRect(area);
+        }
+        g.setColour(d==0?Theme::green.withAlpha(.85f):hoveredCard==i?Theme::green.withAlpha(.5f):Theme::stroke);g.drawRoundedRectangle(area.reduced(.6f),9.f,d==0?1.6f:1.f);
+        if(d!=0)Theme::fittedText(g,label,rect.withTop(rect.getBottom()-29).reduced(4,0),10.f,Theme::muted,true,juce::Justification::centred);
+        else{title=label;if(directory){const auto& card=cards[(size_t)i];subtitle=juce::String(card.main)+" MAIN  /  "+juce::String(card.adlib)+" ADLIB  /  "+juce::String(card.other)+" OTHER";}else{const int entry=entries[(size_t)i];subtitle=entry<0?artistForUser(-entry-1):juce::String("FACTORY PRESET");}}
+    }
+    Theme::fittedText(g,title,{220,hero.getBottom()+13,width-26,31},21.f,Theme::white,true,juce::Justification::centred);
+    Theme::fittedText(g,subtitle,{220,hero.getBottom()+45,width-26,19},11.f,Theme::muted,true,juce::Justification::centred);
+    const int footer=getHeight()-(showVocalTabs()?65:25);
+    Theme::fittedText(g,juce::String(n+1)+" / "+juce::String(count)+"  |  BROWSE WITHOUT LOADING",{215,footer,width-16,16},10.f,Theme::muted,false,juce::Justification::centred);
 }
