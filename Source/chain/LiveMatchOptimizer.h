@@ -158,12 +158,48 @@ inline bool referencePass(const Profile& p,const Profile& ref) noexcept {
         &&std::abs(p.correlation-ref.correlation)<=.35f&&bandError(p,ref)<=4.5f
         &&(!p.detailed||!ref.detailed||(std::abs(p.envelopeContrast-ref.envelopeContrast)<=10.f&&temporalError(p,ref)<=3.5f));
 }
+// Worker-only bandwise stereo evidence. Broad complementary splits are
+// diagnostics, not new audio processing or a calibrated spectrum analyzer.
+struct StereoBands {
+    std::array<double,3> mid{},side{},balance{};
+    bool valid=false;
+};
+inline StereoBands stereoBands(const float* samples,size_t frames,double rate,const std::atomic<bool>* cancel=nullptr) noexcept {
+    StereoBands out;
+    if(!samples||frames<rate*.65||!std::isfinite(rate)||rate<8000||rate>192000)return out;
+    const double low=1.-std::exp(-6.283185307179586*300./rate),high=1.-std::exp(-6.283185307179586*3000./rate);
+    std::array<double,2> lo{},hi{};
+    for(size_t i=0;i<frames;++i){
+        if((i&2047u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return {};
+        const double l=samples[2*i],r=samples[2*i+1];if(!std::isfinite(l)||!std::isfinite(r))return {};
+        const std::array<double,2> x{{.5*(l+r),.5*(l-r)}};
+        std::array<std::array<double,3>,2> band{};
+        for(size_t c=0;c<2;++c){lo[c]+=low*(x[c]-lo[c]);hi[c]+=high*(x[c]-hi[c]);band[c]={{lo[c],hi[c]-lo[c],x[c]-hi[c]}};}
+        for(size_t k=0;k<3;++k){const double m=band[0][k],d=band[1][k];out.mid[k]+=m*m;out.side[k]+=d*d;out.balance[k]+=2.*m*d;}
+    }
+    double total=0;for(size_t k=0;k<3;++k){out.mid[k]/=frames;out.side[k]/=frames;out.balance[k]/=frames;total+=out.mid[k]+out.side[k];}
+    out.valid=total>1.e-8&&!(cancel&&cancel->load(std::memory_order_relaxed));return out;
+}
+inline float stereoBandError(const StereoBands& value,const StereoBands& target) noexcept {
+    if(!value.valid||!target.valid)return 1.e6f;
+    double total=0,error=0,weight=0;
+    for(size_t k=0;k<3;++k)total+=target.mid[k]+target.side[k];
+    for(size_t k=0;k<3;++k){
+        const double t=target.mid[k]+target.side[k],v=value.mid[k]+value.side[k];
+        if(t<total*.025)continue; // don't amplify estimates from near-empty bands
+        const double w=std::sqrt(t/total);
+        const double a=value.side[k]/std::max(v,1.e-12),b=target.side[k]/t;
+        const double pan=value.balance[k]/std::max(v,1.e-12),refPan=target.balance[k]/t;
+        error+=w*(std::abs(a-b)+.35*std::abs(pan-refPan));weight+=w;
+    }
+    return weight>0?(float)(error/weight):1.e6f;
+}
 struct Optimization {
     Recipe recipe{};
     float initial=1.e6f,final=1.e6f,holdoutInitial=1.e6f,holdoutFinal=1.e6f,dryScore=1.e6f,dryHoldout=1.e6f;
     int tested=0,accepted=0;bool valid=false,referenceRejected=false;
 };
-inline constexpr int plainBudget=25,baseReferenceBudget=132,stereoReferenceBudget=168,referenceBudget=180;
+inline constexpr int plainBudget=25,baseReferenceBudget=132,stereoReferenceBudget=168,echoReferenceBudget=180,referenceBudget=198;
 inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* ref=nullptr,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr,const Audio* referenceAudio=nullptr) {
     Optimization o;
     if(!dry.valid()||(ref&&!ref->valid())||!validMatchAudio(a,cancel))return o;
@@ -271,7 +307,7 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
             float best=anchorScore+.45f*anchorEchoError;
             if(targetRatio>=.025f&&anchorEchoError<1.e5f){
                 for(float wet:{.05f,.10f,.18f,.25f,.5f,.75f})for(float feedback:{.2f,.5f}){
-                    if(o.tested>=referenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))break;
+                    if(o.tested>=echoReferenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))break;
                     auto challenger=anchor;challenger.delay={wet,{{time,feedback,.45f,.5f}}};
                     const float score=evaluate(challenger);
                     if(score>=1.e5f)continue;
@@ -289,6 +325,51 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
                        echoRatioError(heldCandidate,heldTarget)+.025f>=echoRatioError(heldAnchor,heldTarget)){
                         o.recipe=anchor;o.final=anchorScore;o.holdoutFinal=anchorHoldout;o.accepted=anchorAccepted;finalHold=anchorProfile;
                     }
+                }
+            }
+        }
+    }
+    // Frequency-dependent stereo refinement: use the existing Width insert's
+    // mono-bass and balance controls, never a learned or reference-fed filter.
+    // Preserve a qualified echo reconstruction; this search cannot replace it.
+    if(rt&&rh&&referenceAudio&&o.recipe.delay.wet==0.f){
+        const auto& b=*referenceAudio;
+        const auto bt=selectReferenceSegment(b,0,b.frames()/2),bh=selectReferenceSegment(b,b.frames()/2,b.frames());
+        const auto targetBands=stereoBands(b.stereo.data()+2*bt.begin,bt.end-bt.begin,b.rate,cancel);
+        const auto bandAnchor=o.recipe;const float bandAnchorScore=o.final,bandAnchorHold=o.holdoutFinal;const int bandAnchorAccepted=o.accepted;
+        const auto bandAnchorProfile=finalHold;
+        const auto anchorMeasured=measure(a,train,&bandAnchor,cancel,true,&rendered);
+        const float initialBand=usableSegment(anchorMeasured)?stereoBandError(stereoBands(rendered.data(),rendered.size()/2,a.rate,cancel),targetBands):1.e6f;
+        if(initialBand>.035f&&initialBand<1.e5f){
+            float bestBand=initialBand,bestCombined=bandAnchorScore+8.f*initialBand;
+            auto offerBand=[&](Recipe candidate){
+                if(o.tested>=referenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))return;
+                const float score=evaluate(candidate);if(score>=1.e5f||score>bandAnchorScore+.025f)return;
+                const float error=stereoBandError(stereoBands(rendered.data(),rendered.size()/2,a.rate,cancel),targetBands);
+                if(error+.005f<bestBand&&score+8.f*error+.015f<bestCombined){bestBand=error;bestCombined=score+8.f*error;o.recipe=candidate;o.final=score;++o.accepted;}
+            };
+            const float baseWidth=bandAnchor.width.wet>0.f?bandAnchor.width.p[0]:.5f;
+            for(float amount:{std::clamp(baseWidth*.75f,0.f,1.f),baseWidth,std::clamp(baseWidth*1.4f,0.f,1.f)})
+                for(float cutoff:{.35f,1.f})for(float bass:{.5f,1.f}){
+                    auto candidate=bandAnchor;candidate.width={1.f,{{amount,cutoff,.5f,bass}}};offerBand(candidate);
+                }
+            // Test a second tone seed: the first fit may have compensated for
+            // missing stereo processing with EQ or compressor settings.
+            const auto drySeed=fit(dry);
+            for(float amount:{.5f,.7f,.9f})for(float pan:{.35f,.5f,.65f}){
+                auto candidate=drySeed;candidate.width={1.f,{{amount,1.f,pan,1.f}}};offerBand(candidate);
+            }
+            const auto bandWinner=o.recipe;
+            for(float pan:{.35f,.425f,.575f,.65f}){auto candidate=bandWinner;if(candidate.width.wet==0.f)candidate.width={1.f,{{.5f,.35f,.5f,0.f}}};candidate.width.p[2]=pan;offerBand(candidate);}
+            if(o.accepted!=bandAnchorAccepted){
+                const auto targetHeld=stereoBands(b.stereo.data()+2*bh.begin,bh.end-bh.begin,b.rate,cancel);
+                finalHold=measure(a,hold,&o.recipe,cancel,true,&rendered);o.holdoutFinal=referenceLoss(finalHold,t2,rh);
+                const float heldBand=stereoBandError(stereoBands(rendered.data(),rendered.size()/2,a.rate,cancel),targetHeld);
+                const auto anchorHeld=measure(a,hold,&bandAnchor,cancel,true,&rendered);
+                const float anchorBand=usableSegment(anchorHeld)?stereoBandError(stereoBands(rendered.data(),rendered.size()/2,a.rate,cancel),targetHeld):1.e6f;
+                if(!referencePass(finalHold,*rh)||o.holdoutFinal>bandAnchorHold+.025f||heldBand+.025f>=anchorBand||anchorBand>=1.e5f||
+                   o.holdoutFinal+8.f*heldBand+.05f>=bandAnchorHold+8.f*anchorBand){
+                    o.recipe=bandAnchor;o.final=bandAnchorScore;o.holdoutFinal=bandAnchorHold;o.accepted=bandAnchorAccepted;finalHold=bandAnchorProfile;
                 }
             }
         }
