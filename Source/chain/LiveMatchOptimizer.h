@@ -22,7 +22,7 @@ struct EqControls {
     }
 };
 inline std::array<float,5> compControls(const Recipe& r) noexcept {
-    return {(r.threshold+48.f)/42.f,(r.ratio-1.f)/11.f,10.f/98.f,100.f/480.f,.5f+r.makeup/24.f};
+    return {(r.threshold+48.f)/42.f,(r.ratio-1.f)/11.f,(std::clamp(r.attackMs,2.f,100.f)-2.f)/98.f,(std::clamp(r.releaseMs,20.f,500.f)-20.f)/480.f,.5f+r.makeup/24.f};
 }
 class NativeCandidate {
 public:
@@ -30,7 +30,7 @@ public:
         const EqControls c(r);eq.prepare(rate);eq.set(c.p,c.q,c.kind,c.on);
         gate.prepare(rate);gate.threshold=-65.f;gate.release=160.f;gate.holdMs=55.f;gate.attackMs=4.f;gate.hysteresisDb=3.f;
         const auto cp=compControls(r);comp.set(-48.f+cp[0]*42.f,1.f+cp[1]*11.f,2.f+cp[2]*98.f,20.f+cp[3]*480.f,(cp[4]-.5f)*24.f);comp.prepare(rate);
-        deess.prepare(rate);deess.set(3500.f+.35f*8000.f,-53.f+.65f*39.f,2.f+.15f*20.f,35.f+.3f*245.f);
+        deess.prepare(rate);const auto& ds=r.deessControls;deess.set(3500.f+ds[0]*8000.f,-53.f+ds[1]*39.f,2.f+ds[2]*20.f,35.f+ds[3]*245.f);
         if(r.mod.wet>0.f){const auto& p=r.mod.p;if(r.modulation==1){chorus.prepare(rate);chorus.set(.08f+3.9f*p[0],1.f+10.f*p[1],2.f+3.f*p[2],p[3]);chorus.reset();chorus.phase=std::fmod(startFrame*(double)chorus.rate/rate,1.);}else if(r.modulation==2){flanger.prepare(rate);flanger.set(.05f+4.95f*p[0],.3f+9.f*p[1],(p[2]*2.f-1.f)*.82f,p[3]);flanger.reset();flanger.phase=std::fmod(startFrame*(double)flanger.rate/rate,1.);}}
         if(r.delay.wet>0.f){const auto& p=r.delay.p;delay.prepare(rate);delay.configure((int)(rate*(.055+.85*p[0])),p[1]*.8f,500.f+17500.f*p[2]);delay.reset();}
         if(r.room.wet>0.f){const auto& p=r.room.p;room.prepare(rate);room.set(p[0],p[1],200.f*p[2],20.f+980.f*p[3]);room.reset();}
@@ -94,6 +94,12 @@ inline Profile measure(const Audio& a,Segment s,const Recipe* r,const std::atomi
     }
     return analyzer.result();
 }
+// Reject corrupt PCM even if it is outside the selected analysis phrases.
+inline bool validMatchAudio(const Audio& a,const std::atomic<bool>* cancel) noexcept {
+    if(!std::isfinite(a.rate)||a.rate<8000.||a.rate>192000.||a.stereo.size()%2||a.frames()<a.rate*5.9||a.frames()>a.rate*20.+1)return false;
+    for(size_t i=0;i<a.stereo.size();++i){if((i&4095u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return false;if(!std::isfinite(a.stereo[i]))return false;}
+    return !(cancel&&cancel->load(std::memory_order_relaxed));
+}
 inline bool usableSegment(const Profile& p) noexcept {return p.finite()&&p.invalid==0.f&&p.active>=.65f&&p.rmsDb>=-50.f&&p.peak>0.f&&p.clipped<.005f;}
 struct Target {float low,high,crest,level;};
 inline Target targetFor(const Profile& dry,const Profile* ref) noexcept {
@@ -139,12 +145,12 @@ struct Optimization {
 inline constexpr int plainBudget=25,referenceBudget=132;
 inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* ref=nullptr,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr,const Audio* referenceAudio=nullptr) {
     Optimization o;
-    if(!dry.valid()||(ref&&!ref->valid())||!std::isfinite(a.rate)||a.rate<8000.||a.rate>192000.||a.stereo.size()%2||a.frames()<a.rate*5.9||a.frames()>a.rate*20.+1)return o;
+    if(!dry.valid()||(ref&&!ref->valid())||!validMatchAudio(a,cancel))return o;
     const auto train=ref?selectReferenceSegment(a,0,a.frames()/2):selectSegment(a,0,a.frames()/2),hold=ref?selectReferenceSegment(a,a.frames()/2,a.frames()):selectSegment(a,a.frames()/2,a.frames());
     const auto d1=measure(a,train,nullptr,cancel,ref!=nullptr),d2=measure(a,hold,nullptr,cancel,ref!=nullptr);
     if(!usableSegment(d1)||!usableSegment(d2))return o;
     Profile refTrain,refHold;const Profile* rt=ref;const Profile* rh=ref;
-    if(ref&&referenceAudio){const auto& b=*referenceAudio;if(!std::isfinite(b.rate)||b.rate<8000||b.rate>192000||b.stereo.size()%2||b.frames()<b.rate*5.9||b.frames()>b.rate*20.+1)return o;
+    if(ref&&referenceAudio){const auto& b=*referenceAudio;if(!validMatchAudio(b,cancel))return o;
         refTrain=measure(b,selectReferenceSegment(b,0,b.frames()/2),nullptr,cancel,true);refHold=measure(b,selectReferenceSegment(b,b.frames()/2,b.frames()),nullptr,cancel,true);
         if(!usableSegment(refTrain)||!usableSegment(refHold))return o;
         rt=&refTrain;rh=&refHold;

@@ -608,6 +608,15 @@ public:
         tickMatch();
         if(scene==1)return matchPanel.isVisible()&&processor.presetName()==original;
         if(scene==4){updateHeaderMeters(true);idle.setAudioFresh(processor.liveScopeSampleCount()>0);idle.setMeasuredPeaks(processor.getInputPeak(),processor.getOutputPeak());idle.tickAnimation(juce::Time::getMillisecondCounterHiRes(),true);matchPanel.advanceAnimationForScreenshot(1.8f);const auto p95=matchPanel.benchmarkOrbForScreenshot();return std::isfinite(p95)&&p95<33.33&&matchListening&&matchPanel.isVisible()&&processor.presetName()==original;}
+        if(scene==6){
+            if(!matchOptimization)return false;
+            processor.setSlotParam(0,0,.137f);
+            HistorySnapshot edited;
+            if(!makeSnapshot(edited))return false;
+            for(int i=0;matchOptimization&&i<3000;++i){juce::Thread::sleep(10);tickMatch();}
+            HistorySnapshot after;
+            return !matchOptimization&&makeSnapshot(after)&&after.state==edited.state&&processor.presetName()==original;
+        }
         // Only the headless test waits for the owned optimizer. Normal UI
         // polls asynchronously and never blocks the message thread.
         for(int i=0;matchOptimization&&i<3000;++i){juce::Thread::sleep(10);tickMatch();}
@@ -2041,7 +2050,7 @@ private:
         if(matchFile)matchFile->cancel.store(true,std::memory_order_relaxed);
         matchFile.reset();
         if(matchOptimization)matchOptimization->cancel.store(true,std::memory_order_relaxed);
-        matchOptimization.reset();matchAudio.reset();matchDry={};matchBeat={};matchIntent={};matchLastRecipe.reset();matchLastDetail.clear();matchPanel.setBeatReady(false);matchPanel.setRefinementAvailable(false);
+        matchOptimization.reset();matchAudio.reset();matchDry={};matchBeat={};matchIntent={};matchLastRecipe.reset();matchLastState.reset();matchLastDetail.clear();matchPanel.setBeatReady(false);matchPanel.setRefinementAvailable(false);
         matchPanel.setVisible(false);matchButton.setToggleState(false,juce::dontSendNotification);
     }
     void beginMatch(){
@@ -2060,7 +2069,7 @@ private:
         if(!processor.startLiveMatch()){matchListening=false;matchPanel.update(SkellMatchPanel::Problem,"Not enough memory for local analysis. Close other plugins and retry.",0.f,0.f,false);return;}
         matchPanel.update(SkellMatchPanel::Listening,juce::String(skellpreset::liveMatch::guideFor(matchPanel.selectedStyle()).name)+" auto mix. Play an isolated vocal; your rack is unchanged until validation.",0.f,0.f,false);
     }
-    struct MatchOptimizationResult {std::atomic<bool> cancel{false},done{false};std::atomic<int> progress{0};skellpreset::liveMatch::Optimization result;skellpreset::liveMatch::Profile target;skellpreset::liveMatch::MixStyle style=skellpreset::liveMatch::MixStyle::Balanced;bool reference=false,refinement=false;skellpreset::liveMatch::MixIntent intent;skellpreset::liveMatch::Profile beat;std::optional<skellpreset::liveMatch::Recipe> previous;};
+    struct MatchOptimizationResult {std::atomic<bool> cancel{false},done{false};std::atomic<int> progress{0};skellpreset::liveMatch::Optimization result;skellpreset::liveMatch::Profile target;skellpreset::liveMatch::MixStyle style=skellpreset::liveMatch::MixStyle::Balanced;bool reference=false,refinement=false;skellpreset::liveMatch::MixIntent intent;skellpreset::liveMatch::Profile beat;std::optional<skellpreset::liveMatch::Recipe> previous;HistorySnapshot rackAtStart;};
     void finishMatch(const skellpreset::liveMatch::Profile& profile,bool reference,std::shared_ptr<skellpreset::liveMatch::Audio> audio={},const skellpreset::liveMatch::MixIntent* refinement=nullptr){
         processor.cancelLiveMatch();matchListening=false;
         if(!profile.valid()){
@@ -2068,10 +2077,17 @@ private:
             if(profile.invalid>0.f){matchPanel.update(SkellMatchPanel::Problem,"Invalid audio samples detected. Choose a clean recording or retry.",0.f,0.f,matchDry.valid());return;}
             matchPanel.update(SkellMatchPanel::Problem,"Not enough clean audio. Use at least 6 seconds with 4 seconds of audible vocals; avoid clipping.",0.f,0.f,matchDry.valid());return;
         }
-        if(!reference&&!refinement){matchDry=audio?profile:skellpreset::liveMatch::Profile{};matchAudio=std::move(audio);matchLastRecipe.reset();matchIntent={};matchPanel.setRefinementAvailable(false);}
+        if(!reference&&!refinement){matchDry=audio?profile:skellpreset::liveMatch::Profile{};matchAudio=std::move(audio);matchLastRecipe.reset();matchLastState.reset();matchIntent={};matchPanel.setRefinementAvailable(false);}
         if(reference&&!audio){matchPanel.update(SkellMatchPanel::Problem,"Reference audio could not be retained. Choose another isolated file.",0.f,0.f,matchDry.valid());return;}
         if(!matchAudio){matchPanel.update(SkellMatchPanel::Problem,"No usable dry sample. Retry or choose a dry file.",0.f,0.f,false);return;}
         auto job=std::make_shared<MatchOptimizationResult>();job->reference=reference;job->target=profile;job->style=matchPanel.selectedStyle();job->intent=refinement?*refinement:matchIntent;job->beat=matchBeat;job->refinement=refinement!=nullptr;if(refinement)job->previous=matchLastRecipe;
+        if(!makeSnapshot(job->rackAtStart)){
+            matchPanel.update(SkellMatchPanel::Problem,"Save and remove hosted effects before replacing this rack.",0.f,0.f,matchDry.valid());return;
+        }
+        if(refinement&&(!matchLastState||job->rackAtStart.state!=matchLastState->state||job->rackAtStart.selectedPreset!=matchLastState->selectedPreset)){
+            matchLastRecipe.reset();matchLastState.reset();matchPanel.setRefinementAvailable(false);
+            matchPanel.update(SkellMatchPanel::Problem,"Rack changed since Auto Mix. Your edits are kept. Retry Match to start a new mix.",1.f,0.f,matchDry.valid());return;
+        }
         matchOptimization=job;
         const auto source=matchAudio;const auto dry=matchDry;
         matchPanel.update(SkellMatchPanel::Refining,"Rendering native candidates and checking a separate vocal phrase. Your rack is unchanged.",0.f,0.f,true);
@@ -2086,11 +2102,16 @@ private:
         if(!o.valid){matchPanel.update(SkellMatchPanel::Problem,o.referenceRejected?"Reference level, tone, space or stereo character is outside this rack match. Your rack is unchanged.":"No verified improvement on both vocal phrases. Try a longer or clearer dry vocal.",1.f,0.f,matchDry.valid());return;}
         prepareHistory();
         if(!pendingHistory){matchPanel.update(SkellMatchPanel::Problem,"Save and remove hosted effects before replacing this rack.",0.f,0.f,matchDry.valid());return;}
+        if(pendingHistory->state!=job.rackAtStart.state||pendingHistory->selectedPreset!=job.rackAtStart.selectedPreset){
+            pendingHistory.reset();matchLastRecipe.reset();matchLastState.reset();matchPanel.setRefinementAvailable(false);
+            matchPanel.update(SkellMatchPanel::Problem,"Rack changed during analysis. Your edits are kept. Retry Match when ready.",1.f,0.f,matchDry.valid());return;
+        }
         const auto result=processor.applyLiveMatch(matchDry,job.reference?&job.target:nullptr,&o.recipe);
         if(result.failed()){pendingHistory.reset();matchPanel.update(SkellMatchPanel::Problem,result.getErrorMessage(),0.f,0.f,matchDry.valid());return;}
         commitHistory();refresh();
         const auto detail=juce::String(job.reference?"Reference":skellpreset::liveMatch::guideFor(job.style).name)+" / "+juce::String(o.tested)+" candidates. Feature score "+juce::String(o.dryHoldout,1)+" to "+juce::String(o.holdoutFinal,1)+". Audition in your DAW.";
-        if(!job.reference){matchLastRecipe=o.recipe;matchIntent=job.intent;}else matchLastRecipe.reset();
+        matchLastState.reset();matchLastRecipe.reset();
+        if(!job.reference){HistorySnapshot applied;if(makeSnapshot(applied)){matchLastState=std::move(applied);matchLastRecipe=o.recipe;matchIntent=job.intent;}}
         matchLastDetail=detail;matchPanel.setRefinementAvailable(matchLastRecipe.has_value());
         matchPanel.update(SkellMatchPanel::Done,detail,1.f,0.f,true);
         matchPanel.toFront(true);
@@ -2227,6 +2248,7 @@ private:
     skellpreset::liveMatch::Profile matchBeat;
     skellpreset::liveMatch::MixIntent matchIntent;
     std::optional<skellpreset::liveMatch::Recipe> matchLastRecipe;
+    std::optional<HistorySnapshot> matchLastState;
     juce::String matchLastDetail;
     struct MatchFileResult {std::atomic<bool> cancel{false},done{false};skellpreset::liveMatch::Profile profile;std::shared_ptr<skellpreset::liveMatch::Audio> audio;bool reference=false,beat=false;};
     std::shared_ptr<MatchOptimizationResult> matchOptimization;

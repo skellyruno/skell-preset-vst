@@ -128,6 +128,23 @@ int main(){
     }
     const auto refined=optimizeAutoMix(audio,dry,MixStyle::Balanced,nullptr,nullptr,intent,nullptr,&balanced.recipe);
     if(refined.valid){const auto h=selectReferenceSegment(audio,audio.frames()/2,audio.frames());const auto raw=measure(audio,h,nullptr,nullptr,true);const auto guide=contextualGuide(MixStyle::Balanced,dryDetailed,intent,nullptr);const auto target=styleTarget(raw,guide);const auto prev=styleLoss(measure(audio,h,&balanced.recipe,nullptr,true),raw,target,balanced.recipe,guide);if(refined.holdoutFinal+.025f>=prev)return 48;}
+    // Default timing matches the existing rack mapping; new timings are bounded.
+    Recipe timing;auto controls=compControls(timing);
+    if(std::abs(2.f+98.f*controls[2]-12.f)>.001f||std::abs(20.f+480.f*controls[3]-120.f)>.001f)return 49;
+    timing.attackMs=24.f;timing.releaseMs=190.f;controls=compControls(timing);
+    if(std::abs(2.f+98.f*controls[2]-24.f)>.001f||std::abs(20.f+480.f*controls[3]-190.f)>.001f)return 50;
+    timing.attackMs=-10;timing.releaseMs=900;controls=compControls(timing);if(controls[2]!=0.f||controls[3]!=1.f)return 51;
+    auto corrupt=audio;corrupt.stereo.back()=std::numeric_limits<float>::infinity();
+    if(validMatchAudio(corrupt,nullptr)||optimizeAutoMix(corrupt,dry,MixStyle::Balanced).tested!=0||optimize(corrupt,dry).tested!=0)return 52;
+    // Finite dry profile cannot conceal corruption elsewhere in a reference.
+    if(optimize(audio,dry,&dry,nullptr,nullptr,&corrupt).tested!=0)return 53;
+    // Frequency learning must follow actual burst location and not confuse a steady tone with sibilance.
+    for(double burstHz:{3200.,7200.}){Audio fixture;fixture.rate=48000.;
+        for(int i=0;i<48000*3;++i){const double t=i/48000.;const bool burst=std::fmod(t,.5)<.12;const float x=(float)(.12*std::sin(6.283185307179586*220.*t)+(burst?.10:0.)*std::sin(6.283185307179586*burstHz*t));fixture.stereo.push_back(x);fixture.stereo.push_back(x);}
+        const auto learned=learnPresence(fixture,{0,fixture.frames()});std::cout<<"Presence "<<burstHz<<" -> "<<learned.harshHz<<" / "<<learned.sibilantHz<<"\n";
+        if(burstHz<4000&&learned.harshHz!=3200.f)return 54;
+        if(burstHz>4000&&learned.sibilantHz!=7200.f)return 55;
+    }
     std::atomic<bool> canceled{true};if(optimizeAutoMix(audio,dry,MixStyle::Pop,&canceled).valid)return 35;if(optimize(audio,dry,nullptr,&canceled).valid)return 12;
     std::cout<<"Live vocal match capture and bounded profile decisions passed at four sample rates\n";
 }

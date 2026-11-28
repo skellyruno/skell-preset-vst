@@ -70,11 +70,37 @@ inline float styleLoss(const Profile& p,const Profile& dry,const Target& target,
     const float dynamics=.12f*std::abs(p.activeContrast-std::max(1.f,dry.activeContrast-2.f*desiredRide));
     return loss(p,target)+dynamics+.8f*color+.18f*bandError(p,dry)+1.3f*space+.08f*std::max(0.f,p.quietDb-dry.quietDb-12.f)+.6f*std::max(0.f,dry.correlation-p.correlation-.12f);
 }
-inline constexpr int autoMixBudget=57;
+// Original, worker-only spectral probe. Learn short bursts of upper-band
+// energy relative to the whole vocal, rather than permanently EQing all highs.
+struct PresenceLearn {float harshHz=0,sibilantHz=0;};
+inline PresenceLearn learnPresence(const Audio& a,Segment phrase,const std::atomic<bool>* cancel=nullptr) noexcept {
+    if(!std::isfinite(a.rate)||a.rate<8000||a.rate>192000||phrase.begin>=phrase.end||phrase.end>a.frames())return {};
+    constexpr std::array<float,6> frequencies{{2200,3200,4400,5600,7200,9000}};
+    struct Probe {double b=0,a1=0,a2=0;std::array<double,2> z1{},z2{};double energy=0;std::array<unsigned,41> hist{};unsigned count=0;};
+    std::array<Probe,6> probes{};
+    for(size_t k=0;k<probes.size();++k){if(frequencies[k]>=a.rate*.44)continue;auto& q=probes[k];const double w=6.283185307179586*frequencies[k]/a.rate,alpha=std::sin(w)/5.;q.b=alpha/(1.+alpha);q.a1=-2.*std::cos(w)/(1.+alpha);q.a2=(1.-alpha)/(1.+alpha);}
+    const size_t window=std::max<size_t>(1,(size_t)(a.rate*.020));double total=0;size_t n=0;
+    for(size_t i=phrase.begin;i<phrase.end;++i){if((i&2047u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return {};
+        for(size_t c=0;c<2;++c){const double x=a.stereo[2*i+c];if(!std::isfinite(x))return {};total+=x*x;
+            for(auto& q:probes){if(q.b==0)continue;const double y=q.b*x+q.z1[c];q.z1[c]=q.z2[c]-q.a1*y;q.z2[c]=-q.b*x-q.a2*y;q.energy+=y*y;}}
+        if(++n==window){if(total/(2.*window)>=1.e-5){for(auto& q:probes){if(q.b==0)continue;const double db=10.*std::log10(std::max(1.e-8,q.energy/std::max(total,1.e-12)));++q.hist[(size_t)std::clamp((int)((db+80.)*.5),0,40)];++q.count;}}for(auto& q:probes)q.energy=0;total=0;n=0;}
+    }
+    PresenceLearn result;float bestHarsh=0,bestSib=0;
+    for(size_t k=0;k<probes.size();++k){const auto& q=probes[k];if(q.count<20)continue;
+        auto percentile=[&](unsigned goal){unsigned sum=0;for(size_t b=0;b<q.hist.size();++b){sum+=q.hist[b];if(sum>=goal)return -80.f+2.f*(float)b;}return 0.f;};
+        const float typical=percentile((q.count+1)/2),upper=percentile((9*q.count+9)/10);
+        // Require both a measurable upper-band contribution and burst contrast.
+        const float score=std::max(0.f,upper+26.f)*std::clamp((upper-typical-4.f)/8.f,0.f,1.f);
+        if(k<3&&score>bestHarsh){bestHarsh=score;result.harshHz=frequencies[k];}
+        if(k>=2&&score>bestSib){bestSib=score;result.sibilantHz=frequencies[k];}
+    }
+    return result;
+}
+inline constexpr int autoMixBudget=71;
 inline Optimization optimizeAutoMix(const Audio& a,const Profile& dry,MixStyle style,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr,const MixIntent& intent={},const Profile* beat=nullptr,const Recipe* previous=nullptr) {
     Optimization o;
     const auto canceled=[&]{return cancel&&cancel->load(std::memory_order_relaxed);};
-    if(canceled()||!dry.valid()||!std::isfinite(a.rate)||a.rate<8000||a.rate>192000||a.stereo.size()%2||a.frames()<a.rate*5.9||a.frames()>a.rate*20.+1)return o;
+    if(canceled()||!dry.valid()||!validMatchAudio(a,cancel))return o;
     const auto train=selectReferenceSegment(a,0,a.frames()/2),hold=selectReferenceSegment(a,a.frames()/2,a.frames());
     const auto d1=measure(a,train,nullptr,cancel,true),d2=measure(a,hold,nullptr,cancel,true);
     if(!usableSegment(d1)||!usableSegment(d2)||canceled())return o;
@@ -126,6 +152,35 @@ inline Optimization optimizeAutoMix(const Audio& a,const Profile& dry,MixStyle s
     if(canceled())return {};
     o.holdoutFinal=styleLoss(measure(a,hold,&o.recipe,cancel,true),d2,t2,o.recipe,guide);
     if(o.holdoutFinal>=o.dryHoldout-.025f){o.recipe=starter;o.final=o.initial;o.holdoutFinal=o.holdoutInitial;o.accepted=0;}
+    // Preserve the original search winner as a predeclared fallback. The
+    // timing challenger is selected solely on train; holdout only vetoes it.
+    const auto incumbent=o.recipe;const float incumbentTrain=o.final,incumbentHold=o.holdoutFinal;
+    const int incumbentAccepted=o.accepted;
+    if(incumbent.ratio>1.05f){
+        // The fast/slow response families are intentionally broad, not fixed
+        // genre presets. The dry dynamics and rendered score decide the winner.
+        for(float attack:{5.f,24.f,40.f})for(float release:{65.f,190.f}){
+            auto candidate=incumbent;candidate.attackMs=attack;candidate.releaseMs=release;offer(candidate);
+        }
+        const auto timingWinner=o.recipe;
+        for(float release:{90.f,280.f}){auto candidate=timingWinner;candidate.releaseMs=release;offer(candidate);}
+        if(canceled())return {};
+        const float challengerHold=styleLoss(measure(a,hold,&o.recipe,cancel,true),d2,t2,o.recipe,guide);
+        if(o.final+.025f<incumbentTrain&&challengerHold+.025f<incumbentHold){o.holdoutFinal=challengerHold;}
+        else{o.recipe=incumbent;o.final=incumbentTrain;o.holdoutFinal=incumbentHold;o.accepted=incumbentAccepted;}
+    }
+    // Learn from the dry training phrase only. Keep the timing winner as a
+    // fallback; a new frequency setting must improve both measured phrases.
+    const auto learned=learnPresence(a,train,cancel);
+    if(learned.harshHz>0||learned.sibilantHz>0){
+        const auto incumbent=o.recipe;const float incumbentTrain=o.final,incumbentHold=o.holdoutFinal;const int incumbentAccepted=o.accepted;
+        if(learned.harshHz>0){for(float amount:{.5f,1.f,1.5f}){auto candidate=incumbent;candidate.harshness={std::min(.65f,std::max(.08f,tame)*amount),{{std::clamp(std::log(learned.harshHz/1800.f)/std::log(4.2f),0.f,1.f),.32f,.45f,.30f}}};offer(candidate);}}
+        if(learned.sibilantHz>0){for(float reduction:{.10f,.25f,.40f}){auto candidate=o.recipe;candidate.deess=true;candidate.deessControls={{std::clamp((learned.sibilantHz*.85f-3500.f)/8000.f,0.f,1.f),.50f,reduction,.25f}};offer(candidate);}}
+        if(canceled())return {};
+        const float challengerHold=styleLoss(measure(a,hold,&o.recipe,cancel,true),d2,t2,o.recipe,guide);
+        if(o.final+.025f<incumbentTrain&&challengerHold+.025f<incumbentHold)o.holdoutFinal=challengerHold;
+        else{o.recipe=incumbent;o.final=incumbentTrain;o.holdoutFinal=incumbentHold;o.accepted=incumbentAccepted;}
+    }
     // A refinement must beat the currently applied recipe on both phrases,
     // measured under the NEW intent; otherwise the rack remains untouched.
     if(previous){const float priorTrain=styleLoss(measure(a,train,previous,cancel,true),d1,t1,*previous,guide);

@@ -2090,7 +2090,7 @@ juce::Result SkellPresetAudioProcessor::applyLiveMatch(const skellpreset::liveMa
     const EqControls settings(r);eq.params=settings.p;eq.eqQ=settings.q;eq.studioEqKind=settings.kind;eq.studioEqOn=settings.on;
     auto& comp=doc.slots[1];comp.type=Compressor;comp.enabled=true;
     const auto cp=compControls(r);std::copy(cp.begin(),cp.end(),comp.params.begin());
-    if(r.deess){auto& ds=doc.slots[2];ds.type=DeEsser;ds.enabled=true;ds.params[0]=.35f;ds.params[1]=.65f;ds.params[2]=.15f;ds.params[3]=.3f;}
+    if(r.deess){auto& ds=doc.slots[2];ds.type=DeEsser;ds.enabled=true;std::copy(r.deessControls.begin(),r.deessControls.end(),ds.params.begin());}
     int next=3;
     auto add=[&](int type,const EffectChoice& choice){if(choice.wet<=0.f)return;auto& slot=doc.slots[(size_t)next++];slot.type=type;slot.enabled=true;slot.wet=choice.wet;std::copy(choice.p.begin(),choice.p.end(),slot.params.begin());};
     add(VocalRiderFX,r.rider);add(Saturator,r.saturation);add(DynamicHarshnessFX,r.harshness);
