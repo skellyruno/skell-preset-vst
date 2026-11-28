@@ -286,3 +286,8 @@ endif()
 add_executable(SkellPresetMatchStereoCandidateTest test_match_stereo_candidate.cpp)
 target_compile_features(SkellPresetMatchStereoCandidateTest PRIVATE cxx_std_17)
 add_test(NAME SkellPresetMatchStereoCandidateTest COMMAND SkellPresetMatchStereoCandidateTest)
+
+# Training-only paired echo-period evidence; never a reference replay filter.
+add_executable(SkellPresetMatchEchoEvidenceTest test_match_echo_evidence.cpp)
+target_compile_features(SkellPresetMatchEchoEvidenceTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMatchEchoEvidenceTest COMMAND SkellPresetMatchEchoEvidenceTest)

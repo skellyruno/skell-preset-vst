@@ -1,5 +1,6 @@
 #pragma once
 #include "LiveVocalMatch.h"
+#include "MatchEchoEvidence.h"
 #include "StudioNativeDSP.h"
 #include "ModulationFX.h"
 #include "VoxRackFX.h"
@@ -162,7 +163,7 @@ struct Optimization {
     float initial=1.e6f,final=1.e6f,holdoutInitial=1.e6f,holdoutFinal=1.e6f,dryScore=1.e6f,dryHoldout=1.e6f;
     int tested=0,accepted=0;bool valid=false,referenceRejected=false;
 };
-inline constexpr int plainBudget=25,baseReferenceBudget=132,referenceBudget=168;
+inline constexpr int plainBudget=25,baseReferenceBudget=132,stereoReferenceBudget=168,referenceBudget=180;
 inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* ref=nullptr,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr,const Audio* referenceAudio=nullptr) {
     Optimization o;
     if(!dry.valid()||(ref&&!ref->valid())||!validMatchAudio(a,cancel))return o;
@@ -236,7 +237,7 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
         const auto originalTrain=measure(a,train,&original,cancel,true);
         const bool stereoMismatch=std::abs(originalTrain.correlation-rt->correlation)>.35f||std::abs(std::max(-60.f,originalTrain.sideDb)-std::max(-60.f,rt->sideDb))>6.f;
         if(stereoMismatch){
-            auto offerStereo=[&](Recipe candidate){if(o.tested>=referenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))return;const float score=evaluate(candidate);if(score+.025f<o.final){o.recipe=candidate;o.final=score;++o.accepted;}};
+            auto offerStereo=[&](Recipe candidate){if(o.tested>=stereoReferenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))return;const float score=evaluate(candidate);if(score+.025f<o.final){o.recipe=candidate;o.final=score;++o.accepted;}};
             const auto core=fit(dry,ref);
             // Decorrelated native taps, not pitch-shifted doubling.
             for(float wet:{.55f,.90f,1.f})for(float depth:{.15f,.65f})for(float motion:{.18f,.65f}){
@@ -251,6 +252,46 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
     if(rh&&(o.recipe.doubler.wet>0.f||o.recipe.width.wet>0.f)){
         const auto originalHold=validate(original);const float originalError=referenceLoss(originalHold,t2,rh);
         if(!referencePass(finalHold,*rh)||o.holdoutFinal+.025f>=originalError){o.recipe=original;o.final=originalScore;o.accepted=originalAccepted;finalHold=originalHold;o.holdoutFinal=originalError;}
+    }
+    // Sound Match transfer: infer an echo period only from the earlier paired
+    // audio. The previous recipe and the existing holdout remain the anchors.
+    if(rt&&rh&&referenceAudio){
+        const auto echo=estimateEchoEvidence(a,*referenceAudio,a.frames()/2,cancel);
+        if(echo.seconds>0.f){
+            const auto anchor=o.recipe;const float anchorScore=o.final,anchorHoldout=o.holdoutFinal;const int anchorAccepted=o.accepted;
+            const auto anchorProfile=finalHold;
+            const float time=std::clamp((echo.seconds-.055f)/.85f,0.f,1.f);
+            const float targetRatio=pairedEchoRatio(a,referenceAudio->stereo.data()+2*train.begin,train.begin,train.end,echo.seconds);
+            // The normal score misses isolated echoes outside its four fixed
+            // envelope lags. Add a gain-invariant paired return measurement
+            // only after direct-signal identity has passed on training audio.
+            const auto anchorTrainProfile=measure(a,train,&anchor,cancel,true,&rendered);
+            const float anchorRatio=usableSegment(anchorTrainProfile)?pairedEchoRatio(a,rendered.data(),train.begin,train.end,echo.seconds):-1.f;
+            const float anchorEchoError=echoRatioError(anchorRatio,targetRatio);
+            float best=anchorScore+.45f*anchorEchoError;
+            if(targetRatio>=.025f&&anchorEchoError<1.e5f){
+                for(float wet:{.05f,.10f,.18f,.25f,.5f,.75f})for(float feedback:{.2f,.5f}){
+                    if(o.tested>=referenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))break;
+                    auto challenger=anchor;challenger.delay={wet,{{time,feedback,.45f,.5f}}};
+                    const float score=evaluate(challenger);
+                    if(score>=1.e5f)continue;
+                    const float actualRatio=pairedEchoRatio(a,rendered.data(),train.begin,train.end,echo.seconds);
+                    const float combined=score+.45f*echoRatioError(actualRatio,targetRatio);
+                    if(combined+.025f<best){best=combined;o.recipe=challenger;o.final=score;++o.accepted;}
+                }
+                if(o.accepted!=anchorAccepted){
+                    finalHold=measure(a,hold,&o.recipe,cancel,true,&rendered);o.holdoutFinal=referenceLoss(finalHold,t2,rh);
+                    const float heldTarget=pairedEchoRatio(a,referenceAudio->stereo.data()+2*hold.begin,hold.begin,hold.end,echo.seconds);
+                    const float heldCandidate=pairedEchoRatio(a,rendered.data(),hold.begin,hold.end,echo.seconds);
+                    const auto heldAnchorProfile=measure(a,hold,&anchor,cancel,true,&rendered);
+                    const float heldAnchor=usableSegment(heldAnchorProfile)?pairedEchoRatio(a,rendered.data(),hold.begin,hold.end,echo.seconds):-1.f;
+                    if(!referencePass(finalHold,*rh)||o.holdoutFinal+.025f>=anchorHoldout||
+                       echoRatioError(heldCandidate,heldTarget)+.025f>=echoRatioError(heldAnchor,heldTarget)){
+                        o.recipe=anchor;o.final=anchorScore;o.holdoutFinal=anchorHoldout;o.accepted=anchorAccepted;finalHold=anchorProfile;
+                    }
+                }
+            }
+        }
     }
     // Reject a trained winner that regresses on unseen material or cannot
     // improve on dry input. Keep the starter only if it independently wins.

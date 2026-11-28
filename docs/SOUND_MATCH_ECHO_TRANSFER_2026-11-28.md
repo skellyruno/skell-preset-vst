@@ -1,0 +1,15 @@
+# Sound Match echo-evidence transfer — 2026-11-28
+
+Baseline Skell Preset `649415e657759282b411ed76bf70a63aaec96fd7`; Sound Match research inspected at `1b053e5f4b049baf132045b64d0b3215f08a4731` (R93: 26/33 numerical qualifiers, not 100%). Sources: `wav_only/isolated_echo_period.py`, `tail_identification.py`, `pairing_audit.py`, `stereo_delay_match.py`, R88/R92/R93 records. Native C++ worker-only adaptation of our research, no external code or Python dependencies. VocalPreset has no explicit license in the reviewed tree; Vocal Suite is GPL-3.0-or-later. Neither is incorporated as source.
+
+## Implementation
+
+- Equal-format earlier-region paired evidence, three direct-signal checks, block-averaged/differenced mono source and stereo target residual, lag search bounded to existing native Delay control range (55–905 ms), cancellation and ambiguous-peak abstention. Different-take reference matching remains available, without paired inference.
+- Paired direct/return two-tap measurement on actual native candidate PCM, gain-invariant, used only when earlier evidence supports an echo. It is a diagnostic, not an impulse response or target audio replay. Up to 12 extra native candidates within a 180 total reference budget. Holdout is never used to choose candidates: both the original generic holdout acceptance and the measured held-out echo ratio must improve against the anchor, otherwise restore it. No factory recipe, production DSP kernel, UI, automation ID or audio-thread change.
+
+## Local measurements
+
+- Deterministic controlled 779 ms repeated echo evidence at 16/44.1/48/96/192 kHz: within 2 ms; cancellation, unrelated take, identity/no-echo, and heldout isolation passed. Native known-delay fixture at 16 kHz: prior 242 ms, 1.46604 generic heldout error; new 779 ms, 0.926009. Existing feature error is not a similarity percentage.
+- Private archived Hop Out MAIN DRY / MAIN DEL aligned 12-second excerpt, selected from dry only (starts at 1 second), native 44.1 kHz: baseline 55 ms, 1.65218 held-out error; evidence 779.728 ms, final selected 779.728 ms, 1.11653 held-out error. Generic training score changes 0.649683 to 0.859611; the new training objective includes paired echo amplitude. Same-take excerpt development evidence, not an independent performance or listening endorsement. Native rack model is not a claim of original FL knob parity.
+- Other real-pair baseline/updated diagnostic checks (same-take): Hop Out MAIN ALL, Club GATE -> Angelic and Wobbly. Unchanged generic heldout scores in initial echo-evidence comparison; no extra delay chosen where identity or period evidence abstains. Heavy modulation and fully wet prints may lack direct evidence; this is intentional. No private audio or preset data in Git.
+- Pinned offline kit: 13 checksums pass. Exact prior revision Windows CI passed, local Quick4 4/4 inspected. New revision native/Windows/host verification must be tracked separately. Production pitch correction, independent listening, stage optimization remain open.
