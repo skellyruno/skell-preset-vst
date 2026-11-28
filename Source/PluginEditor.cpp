@@ -1571,7 +1571,7 @@ public:
         const float titleX=75.f,titleW=wordmark.getWidth(),titleH=wordmark.getHeight();
         constexpr int subHeight=14;
         constexpr float overlap=4.f;
-        const float titleY=39.5f-(titleH+subHeight-overlap)*.5f;
+        const float titleY=44.5f-(titleH+subHeight-overlap)*.5f;
         wordmark.draw(g,{titleX,titleY,titleW,titleH});
         const int subY=juce::roundToInt(titleY+titleH-overlap);
         const int left=juce::roundToInt(titleX),right=juce::roundToInt(titleX+titleW);
