@@ -13,10 +13,9 @@ public:
     explicit PresetBrowser(SkellPresetAudioProcessor&);
     void paint(juce::Graphics&) override;
     void resized() override;
+    void visibilityChanged() override {if(onVisibilityChanged)onVisibilityChanged();}
     void mouseDown(const juce::MouseEvent&) override;
-    void mouseDrag(const juce::MouseEvent&) override;
-    void mouseUp(const juce::MouseEvent&) override;
-    void placeWithin(juce::Rectangle<int> usable,juce::Rectangle<int> preferred);
+    void dockTo(juce::Rectangle<int> workspace);
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
@@ -65,7 +64,7 @@ public:
     }
     std::function<void()> onBeforeLoad;
     std::function<void()> onLoadFailed;
-    std::function<void()> onClose;
+    std::function<void()> onClose,onVisibilityChanged;
     std::function<void()> onLoaded;
     std::function<void()> onCoverChanged;
 private:
@@ -82,7 +81,6 @@ private:
     bool listMode=true,preferencesReadOnly=false;
     juce::StringArray recentKeys;
     void rememberRecent(int entry);
-    bool resizeLeft=false,resizeTop=false;
     void setListView(bool list,bool persist=true);
     void loadUIPreferences();
     void saveUIPreferences() const;
@@ -174,10 +172,7 @@ private:
     void refreshGenreChoices();
     void refreshArtistChoices();
     int visibleRows() const noexcept {return juce::jlimit(6,7,(getHeight()-153)/61);}
-    bool userPlaced=false,draggingWindow=false,resizingWindow=false;
-    bool resizeWidth=false,resizeHeight=false;
-    juce::Rectangle<int> usableBounds,gestureStartBounds;
-    juce::Point<int> windowGestureStart;
+    juce::Rectangle<int> usableBounds;
     juce::Rectangle<int> constrainWindow(juce::Rectangle<int>) const;
     bool showVocalTabs() const;
     void syncVocalTabs();

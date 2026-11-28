@@ -902,11 +902,11 @@ int main(int argc, char** argv) {
             ++failures;
         if(quick4 && extras) {
             // Actual browser layouts from the production component, not a mockup.
-            for(int page:{0,13,14}){
+            for(int page:{0,13,15,14}){
                 editor.configureForScreenshot(0,1,true);
-                if(!editor.configureBrowserForScreenshot(page,780,560,true)){++failures;continue;}
+                if(!editor.configureBrowserForScreenshot(page,0,0,true)){++failures;continue;}
                 const auto shot=skellcore::ui::headless::capture(editor,1168,688);
-                const char* name=page==0?"library-list-100.png":page==13?"library-showcase-100.png":"artist-showcase-100.png";
+                const char* name=page==0?"library-list-100.png":page==13?"library-showcase-100.png":page==15?"artist-library-real-100.png":"artist-showcase-qa-100.png";
                 if(!shot.image.isValid()||!skellcore::ui::headless::writePng(shot.image,folder.getChildFile(name)))++failures;
             }
             for(int scene=0;scene<6;++scene){

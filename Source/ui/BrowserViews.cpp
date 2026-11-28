@@ -25,19 +25,15 @@ void PresetBrowser::loadUIPreferences() {
     const auto stored=settings.getProperty("recent",{});
     if(const auto* recents=stored.getArray())for(const auto& entry:*recents)
         if(entry.isString() && entry.toString().length()<=270 && recentKeys.size()<40)recentKeys.addIfNotAlreadyThere(entry.toString());
-    const int w=(int)settings.getProperty("width",650),h=(int)settings.getProperty("height",538);
-    if(w>=620 && w<=1000 && h>=530 && h<=610) {
-        setBounds((int)settings.getProperty("x",445),(int)settings.getProperty("y",77),w,h);
-        userPlaced=true;
-    }
+    // Legacy floating-window coordinates are intentionally ignored. The editor
+    // now owns the browser bounds; retain list preference and recents.
 }
 void PresetBrowser::saveUIPreferences() const {
     if(preferencesReadOnly)return;
     auto* object=new juce::DynamicObject;
     juce::Array<juce::var> recent;for(const auto& key:recentKeys)recent.add(key);
     object->setProperty("recent",juce::var(recent));
-    object->setProperty("list",listMode);object->setProperty("x",getX());object->setProperty("y",getY());
-    object->setProperty("width",getWidth());object->setProperty("height",getHeight());
+    object->setProperty("list",listMode);
     const juce::var settings(object);
     const auto destination=libraryDirectory().getChildFile("BrowserUI.json");
     if(destination.getParentDirectory().createDirectory().failed())return;
@@ -226,11 +222,13 @@ void PresetBrowser::activateShowcase(){
     const auto entries=filtered();if(n<(int)entries.size())auditionEntry(entries[(size_t)n]);
 }
 juce::Rectangle<int> PresetBrowser::showcaseCardBounds(int offset) const {
-    const int w=getWidth()-100,mid=getWidth()/2,hero=juce::jmin(234,w*36/100);
+    const int w=getWidth()-100,mid=getWidth()/2,hero=juce::jmin(240,w*36/100);
     const bool five=resultCount()>=5;
-    const int side=juce::jmax(35,five?(w-hero)*31/100:(w-hero)/2-14);
-    const int far=juce::jmax(24,(w-hero-2*side)/2-16);
-    const int height=juce::jlimit(128,236,getHeight()-(showVocalTabs()?334:294));
+    // Never let a neighboring card outweigh the featured portrait, even
+    // with two results or when the rack is hidden.
+    const int side=juce::jmax(35,juce::jmin(hero*76/100,five?(w-hero)*31/100:(w-hero)/2-14));
+    const int far=juce::jmax(24,juce::jmin(hero*55/100,(w-hero-2*side)/2-16));
+    const int height=juce::jlimit(128,250,getHeight()-(showVocalTabs()?334:294));
     if(offset==0)return {mid-hero/2,154,hero,height};
     const int x=offset<0?mid-hero/2-side-8:mid+hero/2+8;
     if(std::abs(offset)==1)return {x,175,side,height-42};
@@ -239,7 +237,11 @@ juce::Rectangle<int> PresetBrowser::showcaseCardBounds(int offset) const {
 void PresetBrowser::paintShowcase(juce::Graphics& g,const std::vector<int>& entries,const std::vector<DirectoryCard>& cards){
     const bool directory=directoryMode()!=DirectoryMode::none;const int count=directory?(int)cards.size():(int)entries.size(),n=showcaseSelection();
     const int width=getWidth()-36,mid=getWidth()/2;
-    if(n<0||n>=count){Theme::fittedText(g,"NO MATCHING SOUNDS",{18,210,width,36},17.f,Theme::muted,true,juce::Justification::centred);return;}
+    if(n<0||n>=count){
+        const bool artists=directoryMode()==DirectoryMode::artists&&search.getText().trim().isEmpty();
+        Theme::fittedText(g,artists?"NO ARTIST COLLECTIONS YET":"NO MATCHING SOUNDS",{18,210,width,36},19.f,Theme::white,true,juce::Justification::centred);
+        Theme::fittedText(g,artists?"Import a personal preset and assign its artist in Manage Library.":"Try another category or clear your search.",{28,250,width-20,38},13.f,Theme::muted,false,juce::Justification::centred);return;
+    }
     const auto hero=showcaseCardBounds(0);
     const auto gallery=juce::Rectangle<float>(18.f,145.f,(float)width,(float)(getHeight()-181));
     g.setGradientFill(juce::ColourGradient(Theme::panelAlt.withAlpha(.7f),gallery.getTopLeft(),Theme::bg.withAlpha(.85f),gallery.getBottomLeft(),false));g.fillRoundedRectangle(gallery,12.f);

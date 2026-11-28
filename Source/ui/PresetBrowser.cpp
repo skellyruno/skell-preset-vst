@@ -58,6 +58,7 @@ juce::String singlePreviewName(int entry) {
 }
 }
 PresetBrowser::PresetBrowser(SkellPresetAudioProcessor& p):processor(p) {
+    setOpaque(true); // The docked page fully covers the workspace.
     loadUIPreferences();
     addAndMakeVisible(thumbnailView);addAndMakeVisible(listView);
     for(auto* button:{&showcaseView,&showcasePrevious,&showcaseNext,&showcaseLoad,&showcaseFavorite,&closeBrowser})addAndMakeVisible(*button);
@@ -487,13 +488,13 @@ bool PresetBrowser::configureDirectoryForScreenshot(int page,int width,int heigh
             scanLibrary();refreshArtistChoices();
         }
     }
-    if(page==13 || page==14){
-        userPlaced=true;setBounds(constrainWindow({usableBounds.getX()+8,usableBounds.getY()+4,width,height}));
-        if(page==14){
+    if(page==13 || page==14 || page==15){
+        if(width>0&&height>0)setBounds(constrainWindow({usableBounds.getX(),usableBounds.getY(),width,height}));
+        if(page>=14){
             chooseBank(2);
             // Real installed artist presets are used if available. Otherwise
             // the renderer exercises in-memory QA collections, not fake releases.
-            if(artistFilter.getNumItems()<=1){
+            if(page==14&&artistFilter.getNumItems()<=1&&fixtureRoot.isAChildOf(juce::File::getSpecialLocation(juce::File::tempDirectory))){
                 const auto root=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("Skell browser QA "+juce::Uuid().toString());
                 const auto fixtureArt=juce::SystemStats::getEnvironmentVariable("SKELL_BROWSER_QA_ART",{});
                 for(int i=0;i<5;++i){
@@ -510,7 +511,7 @@ bool PresetBrowser::configureDirectoryForScreenshot(int page,int width,int heigh
     if(page>=9){
         if(embeddedArtistMetadata.empty())return false;
         const auto artist=embeddedArtistMetadata.begin()->second.artist;
-        userPlaced=true;setBounds(constrainWindow({usableBounds.getX()+8,usableBounds.getY()+4,width,height}));
+        if(width>0&&height>0)setBounds(constrainWindow({usableBounds.getX(),usableBounds.getY(),width,height}));
         chooseBank(2);
         const auto tier=artistTier(artist);
         if(!activateDirectoryRow(tier=="Underground"?0:tier=="Mainstream"?1:2))return false;
@@ -540,7 +541,7 @@ bool PresetBrowser::configureDirectoryForScreenshot(int page,int width,int heigh
         }
         refreshArtistChoices();
     }
-    userPlaced=true;setBounds(constrainWindow({usableBounds.getX()+8,usableBounds.getY()+4,width,height}));
+    if(width>0&&height>0)setBounds(constrainWindow({usableBounds.getX(),usableBounds.getY(),width,height}));
     if(page==1 || page==2){
         chooseBank(4);
         if(page==2){
@@ -614,10 +615,9 @@ juce::Rectangle<int> PresetBrowser::constrainWindow(juce::Rectangle<int> r) cons
     return {juce::jlimit(usableBounds.getX(),usableBounds.getRight()-w,r.getX()),
         juce::jlimit(usableBounds.getY(),usableBounds.getBottom()-h,r.getY()),w,h};
 }
-void PresetBrowser::placeWithin(juce::Rectangle<int> usable,juce::Rectangle<int> preferred){
-    usableBounds=usable;
-    const auto bounds=constrainWindow(userPlaced?getBounds():preferred);
-    if(bounds!=getBounds())setBounds(bounds);
+void PresetBrowser::dockTo(juce::Rectangle<int> workspace){
+    usableBounds=workspace;
+    if(workspace!=getBounds())setBounds(workspace);
 }
 void PresetBrowser::resized(){
     search.setBounds(50,48,getWidth()-163,42);
@@ -1694,7 +1694,7 @@ bool PresetBrowser::testBrowserLayoutForTest() {
     };
     const int oldBank=bank;bool library=true;
     const auto oldBounds=getBounds();
-    for(const auto size:{juce::Point<int>{620,530},juce::Point<int>{1000,604}}){
+    for(const auto size:{juce::Point<int>{620,530},juce::Point<int>{906,561},juce::Point<int>{1000,604},juce::Point<int>{1140,561}}){
         setSize(size.x,size.y);
         for(int b=0;b<banks.size();++b){bank=b;library=validate(false)&&library;}
         library=validate(true)&&library;
@@ -2240,12 +2240,11 @@ bool PresetBrowser::testCategoryCountsForTest(){
 }
 void PresetBrowser::paint(juce::Graphics&g) {
     Theme::selectFor(processor.state);
-    g.setGradientFill(juce::ColourGradient(
-        Theme::panel,0.f,0.f,
-        Theme::bg,0.f,(float)getHeight(),false));
-    g.fillRoundedRectangle(getLocalBounds().toFloat(),12.f);
-    g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),12.f,1.2f);
-    g.setColour(Theme::white.withAlpha(.045f));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2.f),10.f,.8f);
+    g.fillAll(Theme::bg);
+    g.setGradientFill(juce::ColourGradient(Theme::panel,0.f,0.f,Theme::bg,0.f,(float)getHeight(),false));
+    g.fillRoundedRectangle(getLocalBounds().toFloat(),8.f);
+    g.setColour(Theme::stroke);g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(.5f),8.f,1.0f);
+    g.setColour(Theme::white.withAlpha(.045f));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(2.f),6.f,.65f);
     const juce::Rectangle<float> searchFrame(18.f,46.f,(float)getWidth()-130.f,46.f);
     g.setColour(Theme::plot);g.fillRoundedRectangle(searchFrame,9.f);g.setColour(search.hasKeyboardFocus(true)?Theme::green.withAlpha(.65f):Theme::stroke);g.drawRoundedRectangle(searchFrame.reduced(.5f),9.f,1.f);
     g.setColour(Theme::muted);g.drawEllipse(30.f,60.f,12.f,12.f,1.5f);g.drawLine(40.f,70.f,46.f,76.f,1.5f);
@@ -2317,11 +2316,7 @@ void PresetBrowser::paint(juce::Graphics&g) {
                 10.5f,saveStatus.startsWith("SAVE FAILED")?Theme::red:Theme::green,
                 true,juce::Justification::centredLeft);
     }
-    // Don't draw clickable library cards beneath Edit Details input fields.
-    // Children on that page remain visible and keyboard accessible.
-    g.setColour(Theme::muted.withAlpha(.65f));
-    for(int i=0;i<3;++i)g.drawLine((float)getWidth()-5.f-i*4.f,(float)getHeight()-3.f,
-        (float)getWidth()-3.f,(float)getHeight()-5.f-i*4.f,1.f);
+    // Keep the management page free of interactive library cards.
     if(detailsOpen)return;
     if(showcaseMode){paintShowcase(g,entries,cards);return;}
     if(directory!=DirectoryMode::none){paintDirectory(g,cards);return;}
@@ -2563,18 +2558,6 @@ void PresetBrowser::auditionEntry(int entry) {
 }
 void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
     if(!e.mods.isLeftButtonDown())return;
-    if(!usableBounds.isEmpty() && getParentComponent()){
-        const bool right=e.x>=getWidth()-8,bottom=e.y>=getHeight()-8;
-        resizeLeft=e.x<8;resizeTop=e.y<8;
-        const bool edge=right || bottom || resizeLeft || resizeTop;
-        const bool header=e.y>=8 && e.y<39;
-        if(edge || header){
-            resizingWindow=edge;draggingWindow=!edge;userPlaced=true;
-            resizeWidth=right;resizeHeight=bottom;
-            gestureStartBounds=getBounds();windowGestureStart=e.getEventRelativeTo(getParentComponent()).getPosition();
-            return;
-        }
-    }
     if(!detailsOpen && (showcaseMode|| (e.x>=17 && e.x<185))){
         if(adlibsBounds(showcaseMode?getWidth():0).contains(e.getPosition())){
             chooseAdlibs();grabKeyboardFocus();return;
@@ -2603,34 +2586,7 @@ void PresetBrowser::mouseDown(const juce::MouseEvent&e) {
         }
     }
 }
-void PresetBrowser::mouseDrag(const juce::MouseEvent& e){
-    if((!draggingWindow && !resizingWindow) || !getParentComponent())return;
-    const auto delta=e.getEventRelativeTo(getParentComponent()).getPosition()-windowGestureStart;
-    auto bounds=gestureStartBounds;
-    if(draggingWindow)bounds=bounds.translated(delta.x,delta.y);
-    else {
-        const int minW=juce::jmin(620,usableBounds.getWidth()),minH=juce::jmin(530,usableBounds.getHeight());
-        if(resizeLeft)bounds.setLeft(juce::jlimit(juce::jmax(usableBounds.getX(),gestureStartBounds.getRight()-1000),
-            gestureStartBounds.getRight()-minW,gestureStartBounds.getX()+delta.x));
-        if(resizeTop)bounds.setTop(juce::jlimit(juce::jmax(usableBounds.getY(),gestureStartBounds.getBottom()-610),
-            gestureStartBounds.getBottom()-minH,gestureStartBounds.getY()+delta.y));
-        if(resizeWidth)bounds.setRight(juce::jlimit(bounds.getX()+minW,juce::jmin(usableBounds.getRight(),bounds.getX()+1000),
-            gestureStartBounds.getRight()+delta.x));
-        if(resizeHeight)bounds.setBottom(juce::jlimit(bounds.getY()+minH,juce::jmin(usableBounds.getBottom(),bounds.getY()+610),
-            gestureStartBounds.getBottom()+delta.y));
-    }
-    setBounds(constrainWindow(bounds));
-}
-void PresetBrowser::mouseUp(const juce::MouseEvent&){
-    if(draggingWindow || resizingWindow)saveUIPreferences();
-    draggingWindow=resizingWindow=resizeWidth=resizeHeight=resizeLeft=resizeTop=false;
-}
 void PresetBrowser::mouseMove(const juce::MouseEvent& e){
-    const bool right=e.x>=getWidth()-8 || e.x<8,bottom=e.y>=getHeight()-8 || e.y<8;
-    if(right || bottom){setMouseCursor(right && bottom?
-        ((e.x<8)==(e.y<8)?juce::MouseCursor::TopLeftCornerResizeCursor:juce::MouseCursor::TopRightCornerResizeCursor):
-        right?juce::MouseCursor::LeftRightResizeCursor:juce::MouseCursor::UpDownResizeCursor);return;}
-    if(e.y>=8 && e.y<39 && e.x<185){setMouseCursor(juce::MouseCursor::DraggingHandCursor);return;}
     int nextBank=-1;
     bool nextAdlibs=false;
     if(!detailsOpen && (showcaseMode|| (e.x>=17 && e.x<185))){

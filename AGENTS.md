@@ -39,3 +39,5 @@
 - Owner 2026-11-27: Match must be draggable, use the same original Hub radar/artwork as SkellyMotion, retain a visible stage performer and compact actions. Align IN/OUT meters with the header switches and unify rack MIC/stereo hardware. Preserve approved audience composition and keep all stage animation on the UI thread; no generated mockups.
 
 - Owner 2026-11-27 follow-up: Match opens centered, 25% larger in each dimension, remains draggable, uses the Skell Preset theme accent, and animates a breathing particle sphere during analysis. Preserve original Hub artwork for completed/attention states. No generated images or new DSP workload.
+
+- Owner follow-up: the preset browser is now a docked workspace page, not a draggable or resizable modal. Fill the stage workspace on either rack dock; preserve the header, meters, rack and audio state. Ignore legacy floating browser coordinates, retaining recents and list preferences. QA artist placeholders are renderer-only and must never be shipped as real presets.

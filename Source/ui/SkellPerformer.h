@@ -85,7 +85,7 @@ class Performer {
         for(int i=0;i<5;++i){const float x=211.f+i*3.7f,y=49.f+(i%2)*.8f;plate(g,poly({{x,y},{x+3.4f,y+1.f},{x+2.7f,y+5.6f},{x+.6f,y+5.f}}));}
     }
     void jawArt(juce::Graphics& g)const{
-        Path jaw;jaw.startNewSubPath(192,44);jaw.lineTo(197,45);jaw.lineTo(198,56);jaw.cubicTo(199,65,205,72,212,73);jaw.lineTo(222,69);jaw.lineTo(225,72);jaw.lineTo(221,79);jaw.lineTo(212,81);jaw.cubicTo(200,76,188,62,190,52);jaw.closeSubPath();plate(g,jaw);
+        Path jawContour;jawContour.startNewSubPath(192,44);jawContour.lineTo(197,45);jawContour.lineTo(198,56);jawContour.cubicTo(199,65,205,72,212,73);jawContour.lineTo(222,69);jawContour.lineTo(225,72);jawContour.lineTo(221,79);jawContour.lineTo(212,81);jawContour.cubicTo(200,76,188,62,190,52);jawContour.closeSubPath();plate(g,jawContour);
         hole(g,{{194,49},{197,57},{200,62},{195,59},{192,54}});hole(g,{{205,68},{211,71},{219,68},{215,73},{210,73}});
         for(int i=0;i<4;++i){const float x=209.f+i*3.2f;plate(g,poly({{x,67},{x+.6f,62},{x+2.9f,62},{x+3.f,67}}));}
     }

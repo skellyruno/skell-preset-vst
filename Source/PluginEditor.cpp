@@ -153,7 +153,7 @@ public:
         stageButton.setTooltip("Click SKELLPRESET to return to the stage");
         stageButton.setTitle("Return to the stage");
         style(stageButton);addAndMakeVisible(stageButton);
-        stageButton.onClick=[this]{if(chain.onClearSelection)chain.onClearSelection();};
+        stageButton.onClick=[this]{browser.setVisible(false);if(chain.onClearSelection)chain.onClearSelection();};
         chain.setSelectedSlot(-1);
         themeButton.onClick=[this] {setTheme(Theme::nextVariant(selectedTheme));};
         addAndMakeVisible(themeButton);
@@ -208,7 +208,7 @@ public:
         preset.onClick=[this]{
             if(matchPanel.isVisible())closeMatch();
             micPanel.setVisible(false);
-            if(browser.isVisible())browser.setVisible(false);else {slot.setHostedEditorPresentation(false);browser.open();}
+            if(browser.isVisible())browser.setVisible(false);else {slot.setHostedEditorPresentation(false);slot.dismissTransientOverlays();browser.open();}
         };
         style(preset);addAndMakeVisible(preset);
         matchButton.setButtonText("MATCH");matchButton.setTooltip("Analyze isolated dry vocals and create an undoable native rack preset");
@@ -448,6 +448,7 @@ public:
         };
         browser.onCoverChanged=[this]{repaint();};
         browser.onClose=[this]{preset.repaint();};
+        browser.onVisibilityChanged=[this]{syncPresetHeader();};
         addAndMakeVisible(bypassShade);bypassShade.setVisible(false);
         addAndMakeVisible(browser);browser.setVisible(false);
         settingsPanel.toFront(false);
@@ -1013,7 +1014,16 @@ public:
             issues.add("MIC panel did not dismiss overlapping effect library");
         chain.triggerMicForTest();
         preset.onClick();
-        if(!browser.isVisible())issues.add("Preset selector did not open browser");
+        if(!browser.isVisible()||!preset.getToggleState())issues.add("Preset selector did not open and highlight the browser");
+        const bool originalDock=rackOnRight,originalHidden=rackHidden;
+        for(bool right:{false,true}){
+            dockRack(right);resized();
+            if(browser.getBounds()!=workspaceBounds() || browser.getBounds().intersects(chain.getBounds()) || browser.getY()<preset.getBottom())
+                issues.add("Preset page is not docked clear of the rack/header");
+        }
+        rackHidden=true;resized();
+        if(browser.getBounds()!=workspaceBounds())issues.add("Preset page did not expand with the hidden rack");
+        rackHidden=originalHidden;dockRack(originalDock);resized();
         if(browser.visibleFactoryPresetsForTest()!=2 ||
            !browser.canSetCoverForTest())
             issues.add("Main Vocals must show exactly Alchemist and Deuce");
@@ -1063,7 +1073,7 @@ public:
            processor.getProgramName(skellpreset::deuce_v25::factoryIndex)!="Deuce")
             issues.add("The two visible factory presets must use the requested names");
         preset.onClick();
-        if(browser.isVisible())issues.add("Preset selector did not close browser");
+        if(browser.isVisible()||preset.getToggleState())issues.add("Preset selector did not close and reset the browser");
         toggleView();
         if(!chain.isVisible() || !drawerVisible())issues.add("Moon drawer must keep rack available");
         toggleView();
@@ -1714,9 +1724,9 @@ public:
         settingsPanel.setBounds(settings.getRight()-230,78,230,98);
         record.setBounds(0,0,1,1);
         record.setVisible(false);
-        // Keep the rack unobstructed when the user docks it on the right.
-        browser.placeWithin(juce::Rectangle<int>(8,76,Theme::width-16,Theme::height-84),
-                            {rackOnRight&&!rackHidden?workspace.getRight()-650:preset.getRight()-650,77,650,538});
+        // Presets are a workspace page, not a floating window. The header,
+        // meters and rack stay visible on either dock.
+        browser.dockTo(workspace);
         bypassShade.setBounds(workspace.withTrimmedBottom(26));
         if(bypassShade.isVisible())bypassShade.toFront(false);
         // Rack presentation stays reachable even with a bypassed effect.
@@ -1726,6 +1736,12 @@ public:
         if(micPanel.isVisible())micPanel.toFront(false);
         matchPanel.placeWithin(getLocalBounds(),rackOnRight);
         if(matchPanel.isVisible())matchPanel.toFront(false);
+    }
+    void syncPresetHeader(){
+        const bool open=browser.isVisible();
+        preset.setToggleState(open,juce::dontSendNotification);
+        const auto label=processor.presetName().toUpperCase()+(open?"  ▲":"  ▼");
+        if(preset.getButtonText()!=label)preset.setButtonText(label);
     }
     void refresh(){
         Theme::select(selectedTheme);
@@ -1773,7 +1789,7 @@ public:
             micPanel.anyActive()?Theme::green.withAlpha(.21f):Theme::panelAlt);
         micButton.setColour(juce::TextButton::textColourOffId,
             micPanel.anyActive()?Theme::green:Theme::white);
-        preset.setButtonText(processor.presetName().toUpperCase()+"  ▼");
+        syncPresetHeader();
         powerButton.setBypassed(bypass);
         matchButton.setEnabled(!bypass);
         // UI state must reflect the current host/program state *now*, not at
@@ -1802,8 +1818,7 @@ public:
         const int newTheme=Theme::clampVariant((int)processor.state.state.getProperty("uiTheme",0));
         if(newTheme!=selectedTheme){setTheme(newTheme,false);return;}
         syncSizeControl((float)outer.getWidth()/Theme::width);
-        const auto n=processor.presetName().toUpperCase()+"  ▼";
-        if(preset.getButtonText()!=n)preset.setButtonText(n);
+        syncPresetHeader();
         const int m=juce::jlimit(0,3,(int)processor.state.getRawParameterValue("mode")->load());
         if(m==3&&matchPanel.isVisible())closeMatch();
         if(bypassShade.isVisible()!=(m==3))refresh();
