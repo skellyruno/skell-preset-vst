@@ -6,6 +6,7 @@
 #include "ImportedVocalFX.h"
 #include "AdvancedVocalDSP.h"
 #include "VisualAnalysis.h"
+#include "VocalEffects.h"
 
 namespace skellpreset::liveMatch {
 // Shared normalized control mapping: the scorer and rack writer use the
@@ -37,6 +38,8 @@ public:
         if(r.rider.wet>0.f){const auto& controls=r.rider.p;rider.prepare(rate);rider.set(controls[0],-26.f+14.f*controls[1],3.f+12.f*controls[2],controls[3]);}
         if(r.harshness.wet>0.f){const auto& controls=r.harshness.p;harshness.prepare(rate);harshness.set(controls[0],controls[1],controls[2],controls[3]);}
         if(r.saturation.wet>0.f){satDrive=dsp::dbToGain(r.saturation.p[0]*24.f);satBlend=.5f+r.saturation.p[1];satDenom=std::max(.5f,satDrive*.6f);}
+        if(r.doubler.wet>0.f){doubler.prepare(rate);doubler.reset();}
+        if(r.width.wet>0.f){const auto& controls=r.width.p;width.prepare(rate);width.set(2.f*controls[0],60.f+340.f*controls[1],2.f*controls[2]-1.f,controls[3]);}
         out=dsp::dbToGain(r.output);
     }
     std::array<float,2> process(float l,float r) noexcept {
@@ -49,12 +52,15 @@ public:
         if(recipe.saturation.wet>0.f)mix({visual::saturatorCore(v[0],satDrive,satBlend,satDenom),visual::saturatorCore(v[1],satDrive,satBlend,satDenom)},recipe.saturation.wet);
         if(recipe.harshness.wet>0.f)mix(harshness.process(v[0],v[1]),recipe.harshness.wet);
         if(recipe.mod.wet>0.f){if(recipe.modulation==1)mix(chorus.process(v[0],v[1]),recipe.mod.wet);else if(recipe.modulation==2)mix(flanger.process(v[0],v[1]),recipe.mod.wet);}
+        if(recipe.doubler.wet>0.f){const auto& controls=recipe.doubler.p;mix(doubler.process(v[0],v[1],controls[0],controls[1],controls[2],controls[3]),recipe.doubler.wet);}
         if(recipe.delay.wet>0.f)mix(delay.process(v[0],v[1]),recipe.delay.wet);
         if(recipe.room.wet>0.f)mix(room.process(v[0],v[1]),recipe.room.wet);
+        if(recipe.width.wet>0.f)mix(width.process(v[0],v[1]),recipe.width.wet);
         return {v[0]*out,v[1]*out};
     }
 private:
     dsp::VocalChorus chorus;dsp::VocalFlanger flanger;dsp::Delay delay;dsp::VoxRackRoom room;
+    dsp::AdlibDoubler doubler;dsp::VocalWidth width;
     dsp::VocalRider rider;dsp::DynamicHarshness harshness;float satDrive=1.f,satBlend=1.f,satDenom=1.f;
     Recipe recipe;studio::ParametricEQ eq;dsp::Gate gate;dsp::Compressor comp;dsp::SplitDeEsser deess;float out=1.f;
 };
@@ -85,7 +91,7 @@ inline Profile measure(const Audio& a,Segment s,const Recipe* r,const std::atomi
     if(rendered)rendered->resize((s.end-s.begin)*2);
     // Warm up the exact native kernels before measuring the chosen phrase.
     Recipe neutral;
-    const size_t warm=(size_t)(a.rate*(r&&(r->mod.wet>0||r->delay.wet>0||r->room.wet>0||r->rider.wet>0||r->harshness.wet>0)?1.5:.2)),start=s.begin>warm?s.begin-warm:0;
+    const size_t warm=(size_t)(a.rate*(r&&(r->mod.wet>0||r->delay.wet>0||r->room.wet>0||r->rider.wet>0||r->harshness.wet>0||r->doubler.wet>0||r->width.wet>0)?1.5:.2)),start=s.begin>warm?s.begin-warm:0;
     NativeCandidate chain(a.rate,r?*r:neutral,start);
     for(size_t i=start;i<s.end;++i){
         if((i&2047u)==0&&cancel&&cancel->load(std::memory_order_relaxed))return {};
@@ -156,7 +162,7 @@ struct Optimization {
     float initial=1.e6f,final=1.e6f,holdoutInitial=1.e6f,holdoutFinal=1.e6f,dryScore=1.e6f,dryHoldout=1.e6f;
     int tested=0,accepted=0;bool valid=false,referenceRejected=false;
 };
-inline constexpr int plainBudget=25,referenceBudget=132;
+inline constexpr int plainBudget=25,baseReferenceBudget=132,referenceBudget=168;
 inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* ref=nullptr,const std::atomic<bool>* cancel=nullptr,std::atomic<int>* progress=nullptr,const Audio* referenceAudio=nullptr) {
     Optimization o;
     if(!dry.valid()||(ref&&!ref->valid())||!validMatchAudio(a,cancel))return o;
@@ -211,7 +217,7 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
         // Train-only structure search: compare single effects and serial combinations
         // using the same existing rack kernels and normalized controls.
         auto complexity=[](const Recipe& r){return .12f*((r.mod.wet>0)+(r.delay.wet>0)+(r.room.wet>0));};
-        auto offer=[&](Recipe r){if(o.tested>=referenceBudget|| (cancel&&cancel->load(std::memory_order_relaxed)))return;const float score=evaluate(r);if(score+complexity(r)+.015f<o.final+complexity(o.recipe)){o.recipe=r;o.final=score;++o.accepted;}};
+        auto offer=[&](Recipe r){if(o.tested>=baseReferenceBudget|| (cancel&&cancel->load(std::memory_order_relaxed)))return;const float score=evaluate(r);if(score+complexity(r)+.015f<o.final+complexity(o.recipe)){o.recipe=r;o.final=score;++o.accepted;}};
         const auto tone=o.recipe;const auto dryTone=fit(dry);
         for(int type:{1,2})for(float wet:{.30f,.65f,.90f})for(float rate:{.12f,.42f}){auto r=tone;r.modulation=type;r.mod={wet,{{rate,.65f,.5f,1.f}}};offer(r);auto alternative=dryTone;alternative.modulation=type;alternative.mod=r.mod;offer(alternative);}
         const auto modulationWinner=o.recipe;
@@ -222,7 +228,30 @@ inline Optimization optimize(const Audio& a,const Profile& dry,const Profile* re
         for(float scale:{1.f,.45f})for(int fx=0;fx<3;++fx)for(int dim=0;dim<3;++dim)for(float sign:{-1.f,1.f}){auto r=o.recipe;auto& e=fx==0?r.mod:fx==1?r.delay:r.room;if(e.wet==0)continue;if(dim==0)e.wet=std::clamp(e.wet+sign*.18f*scale,0.f,.98f);else e.p[dim-1]=std::clamp(e.p[dim-1]+sign*.18f*scale,0.f,1.f);offer(r);}
     }
     if(cancel&&cancel->load(std::memory_order_relaxed))return {};
+    // If the training phrase still has a stereo mismatch, try a bounded
+    // set of existing stereo/double inserts. Do not use holdout to pick
+    // parameters. A failed challenger may fall back to the original winner.
+    const auto original=o.recipe;const float originalScore=o.final;const int originalAccepted=o.accepted;
+    if(rt){
+        const auto originalTrain=measure(a,train,&original,cancel,true);
+        const bool stereoMismatch=std::abs(originalTrain.correlation-rt->correlation)>.35f||std::abs(std::max(-60.f,originalTrain.sideDb)-std::max(-60.f,rt->sideDb))>6.f;
+        if(stereoMismatch){
+            auto offerStereo=[&](Recipe candidate){if(o.tested>=referenceBudget||(cancel&&cancel->load(std::memory_order_relaxed)))return;const float score=evaluate(candidate);if(score+.025f<o.final){o.recipe=candidate;o.final=score;++o.accepted;}};
+            const auto core=fit(dry,ref);
+            // Decorrelated native taps, not pitch-shifted doubling.
+            for(float wet:{.55f,.90f,1.f})for(float depth:{.15f,.65f})for(float motion:{.18f,.65f}){
+                auto candidate=core;candidate.doubler={wet,{{.85f,depth,motion,.85f}}};offerStereo(candidate);
+            }
+            const auto stereoWinner=o.recipe;
+            for(float amount:{0.f,.20f,.40f,.70f,1.f}){auto candidate=stereoWinner;candidate.width={1.f,{{amount,.35f,.5f,0.f}}};offerStereo(candidate);candidate=original;candidate.width={1.f,{{amount,.35f,.5f,0.f}}};offerStereo(candidate);}
+        }
+    }
+    if(cancel&&cancel->load(std::memory_order_relaxed))return {};
     auto finalHold=validate(o.recipe);o.holdoutFinal=referenceLoss(finalHold,t2,rh);
+    if(rh&&(o.recipe.doubler.wet>0.f||o.recipe.width.wet>0.f)){
+        const auto originalHold=validate(original);const float originalError=referenceLoss(originalHold,t2,rh);
+        if(!referencePass(finalHold,*rh)||o.holdoutFinal+.025f>=originalError){o.recipe=original;o.final=originalScore;o.accepted=originalAccepted;finalHold=originalHold;o.holdoutFinal=originalError;}
+    }
     // Reject a trained winner that regresses on unseen material or cannot
     // improve on dry input. Keep the starter only if it independently wins.
     if(o.holdoutFinal>o.holdoutInitial+.025f||o.holdoutFinal+.025f>=o.dryHoldout||

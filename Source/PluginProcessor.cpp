@@ -2095,7 +2095,8 @@ juce::Result SkellPresetAudioProcessor::applyLiveMatch(const skellpreset::liveMa
     auto add=[&](int type,const EffectChoice& choice){if(choice.wet<=0.f)return;auto& slot=doc.slots[(size_t)next++];slot.type=type;slot.enabled=true;slot.wet=choice.wet;std::copy(choice.p.begin(),choice.p.end(),slot.params.begin());};
     add(VocalRiderFX,r.rider);add(Saturator,r.saturation);add(DynamicHarshnessFX,r.harshness);
     if(r.modulation==1)add(VocalChorusFX,r.mod);else if(r.modulation==2)add(VocalFlangerFX,r.mod);
-    add(Delay,r.delay);add(VoxRackRoom,r.room);
+    add(AdlibDoubler,r.doubler);add(Delay,r.delay);add(VoxRackRoom,r.room);add(StereoWidth,r.width);
+    doc.activeSlotCount=std::max(doc.activeSlotCount,next);
     doc.outputDb=r.output;
     setReal("delta",0.f); // normal audition, never inherit delta-only output
     return applyValidatedPresetDocument(doc);

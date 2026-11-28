@@ -281,3 +281,8 @@ if(TARGET skellay_shared_native)
     target_link_libraries(SkellPresetMatchDelayChainTest PRIVATE skellay_shared_native)
     add_test(NAME SkellPresetMatchDelayChainTest COMMAND SkellPresetMatchDelayChainTest)
 endif()
+
+# Reference search uses existing rack width and decorrelated double inserts.
+add_executable(SkellPresetMatchStereoCandidateTest test_match_stereo_candidate.cpp)
+target_compile_features(SkellPresetMatchStereoCandidateTest PRIVATE cxx_std_17)
+add_test(NAME SkellPresetMatchStereoCandidateTest COMMAND SkellPresetMatchStereoCandidateTest)

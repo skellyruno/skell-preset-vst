@@ -2,6 +2,7 @@
 // Exercise the existing MIT SkellyTune backend with an explicitly selected note.
 #include <SkellCore/backends/tune/RealtimeTuner.hpp>
 #include <SkellCore/backends/tune/ScaleMask.hpp>
+#include "../Source/chain/MatchPitchEvidence.h"
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -30,5 +31,16 @@ int main(){
         tuner.process(in,out,latency+64,2);
         for(int i=0;i<latency+64;++i){const float expected=i==latency+17?.25f:0.f;if(std::abs(output[i]-expected)>1.e-6f||std::abs(right[i]-expected)>1.e-6f)return 5;}
     }
+    // Two independent melodic phrases must agree on a note mask. A single
+    // sustained note cannot determine the key, and relative keys stay ambiguous.
+    using namespace skellpreset::liveMatch;
+    Audio melody;melody.rate=16000;
+    constexpr int notes[]={62,64,66,67,69,71,73};
+    for(int phrase=0;phrase<2;++phrase)for(int note:notes){const double hz=440.*std::pow(2.,(note-69)/12.);for(int i=0;i<melody.rate*.54;++i){const double t=i/melody.rate;const float x=t<.48?.13f*(float)(std::sin(2*skelly::kPi*hz*t)+.15*std::sin(4*skelly::kPi*hz*t)):0.f;melody.stereo.push_back(x);melody.stereo.push_back(x);}}
+    const auto evidence=consensusPitchNotes(melody);std::cout<<"Scale notes mask "<<evidence.mask<<" coverage "<<evidence.coverage<<" margin "<<evidence.margin<<" distinct "<<evidence.distinct<<"\n";
+    if(evidence.mask!=skelly::scaleMask(2,1))return 6;
+    Audio sparse;sparse.rate=16000;for(int i=0;i<8*sparse.rate;++i){const float x=.13f*(float)std::sin(2*skelly::kPi*440*i/sparse.rate);sparse.stereo.push_back(x);sparse.stereo.push_back(x);}
+    if(consensusPitchNotes(sparse).mask)return 7;
+    std::atomic<bool> stop{true};if(consensusPitchNotes(melody,&stop).mask)return 8;
     return 0;
 }

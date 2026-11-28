@@ -99,7 +99,7 @@ private:
 struct EffectChoice {float wet=0;std::array<float,4> p{{.5f,.5f,.5f,.5f}};};
 struct Recipe {float low=0,high=0,threshold=-24,ratio=2,makeup=0;bool deess=false;float output=-3;
     int modulation=0; // 0 none, 1 chorus, 2 flanger
-    EffectChoice mod,delay,room,rider,harshness,saturation;
+    EffectChoice mod,delay,room,rider,harshness,saturation,doubler,width;
     // Match-only compressor timing, mapped to existing rack parameters.
     float attackMs=12.f,releaseMs=120.f;
     float highpassHz=75.f;
